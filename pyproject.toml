@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "bond-ai"
+version = "0.1.0"
+description = ""
+authors = ["jmcarnahan <jmcarny@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.13"
+pytest = "^8.3.4"
+sqlalchemy = "^2.0.36"
+python-dotenv = "^1.0.1"
+streamlit-google-auth = "^1.1.8"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
