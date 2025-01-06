@@ -64,13 +64,15 @@ def main_pages(name, email):
     thread_id = threads_page.get_current_thread_id()
 
     account = []
-    account.append(st.Page(create_home_page(name=name), title="Home Page"))
+    account.append(st.Page(create_home_page(name=name), title="Home"))
     account.append(st.Page(create_threads_page(threads_page), title="Threads"))
     pages["Account"] = account
 
-    agent_pages = []
-    for agent in Agent.list_agents():
-        agent_pages.append(st.Page(create_chat_page(agent=agent, title=agent.name, threads=user_threads, thread_id=thread_id), title=agent.name))
+    agent_pages = Config.get_pages()
+    if not agent_pages:
+        agent_pages = []
+        for agent in Agent.list_agents():
+            agent_pages.append(st.Page(create_chat_page(agent=agent, title=agent.name, threads=user_threads, thread_id=thread_id), title=agent.name))
     pages["Agents"] = agent_pages
 
     return pages
