@@ -5,8 +5,10 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.sql import text
 from dotenv import load_dotenv
 from openai import OpenAI, AzureOpenAI
+from bond_ai.bond.functions import Functions
 import os
 import logging
+import importlib
 
 load_dotenv()
 
@@ -82,6 +84,43 @@ class Config:
     @classmethod
     def get_openai_project(cls):
         return os.getenv('OPENAI_PROJECT')
+    
+    @classmethod
+    def get_functions(cls):
+        fully_qualified_name = os.getenv('FUNCTIONS_CLASS', f"{Functions.__module__}.{Functions.__qualname__}")
+        try:
+            module_name, class_name = fully_qualified_name.rsplit(".", 1)
+            module = importlib.import_module(module_name)
+            functions_class = getattr(module, class_name)
+            LOGGER.debug(f"Loaded functions module: {fully_qualified_name}")
+            # need to return an instance of the class so class must have a no-arg constructor
+            return functions_class()
+        except ImportError:
+            raise ImportError(f"Could not import functions module: {fully_qualified_name}")
+
+    @classmethod
+    def get_pages(cls):
+        # pages function must return an list of st.Page objects
+        pages = os.getenv('PAGES_FUNCTION', None)
+        if pages:
+            parts = pages.rsplit(".", 2)
+            if len(parts) == 2:
+                module = importlib.import_module(parts[0])
+                function = getattr(module, parts[1])
+                return function()
+            elif len(parts) == 3:
+                module = importlib.import_module(parts[0])
+                cls = getattr(module, parts[1])
+                function = getattr(cls, parts[2])
+                return function()
+            else:
+                raise ValueError("PAGES_FUNCTION must be a list of length 2 or 3")
+        else:
+            return None
+        
+
+
+
 
 
 
