@@ -3,7 +3,6 @@ import io
 import json
 from PIL import Image
 from bond_ai.bond.config import Config
-from bond_ai.bond.functions import Functions
 from typing_extensions import override
 from openai import OpenAI, AssistantEventHandler
 from openai.types.beta.threads import (
@@ -38,29 +37,61 @@ class AgentResponseHandler(abc.ABC):
     def on_done(self, success=True, message=None):
         pass
 
-class GeneratorStringIO(io.TextIOBase):
+
+# class GeneratorStringIO(io.TextIOBase):
+#     """
+#     Wrap a generator that yields pieces of text, providing a .read() method
+#     so it behaves like a file for streaming parsers (e.g. ijson).
+#     """
+#     def __init__(self, text_generator):
+#         super().__init__()
+#         self._gen = iter(text_generator)
+#         self._buffer = ""
+
+#     def read(self, size=-1):
+#         if size < 0:
+#             # Read ALL remaining data from the generator
+#             chunks = [self._buffer]
+#             self._buffer = ""
+#             for chunk in self._gen:
+#                 chunks.append(chunk)
+#             return "".join(chunks)
+#         else:
+#             # Read 'size' characters (or until the generator is exhausted).
+#             while len(self._buffer) < size:
+#                 try:
+#                     next_chunk = next(self._gen)
+#                     self._buffer += next_chunk
+#                 except StopIteration:
+#                     break
+#             result = self._buffer[:size]
+#             self._buffer = self._buffer[size:]
+#             return result
+
+class GeneratorBytesIO(io.RawIOBase):
     """
     Wrap a generator that yields pieces of text, providing a .read() method
-    so it behaves like a file for streaming parsers (e.g. ijson).
+    so it behaves like a file for streaming parsers (e.g. ijson), but returns bytes.
     """
-    def __init__(self, text_generator):
+    def __init__(self, text_generator, encoding='utf-8'):
         super().__init__()
         self._gen = iter(text_generator)
-        self._buffer = ""
+        self._buffer = b""
+        self._encoding = encoding
 
     def read(self, size=-1):
         if size < 0:
             # Read ALL remaining data from the generator
             chunks = [self._buffer]
-            self._buffer = ""
+            self._buffer = b""
             for chunk in self._gen:
-                chunks.append(chunk)
-            return "".join(chunks)
+                chunks.append(chunk.encode(self._encoding))
+            return b"".join(chunks)
         else:
-            # Read 'size' characters (or until the generator is exhausted).
+            # Read 'size' bytes (or until the generator is exhausted).
             while len(self._buffer) < size:
                 try:
-                    next_chunk = next(self._gen)
+                    next_chunk = next(self._gen).encode(self._encoding)
                     self._buffer += next_chunk
                 except StopIteration:
                     break
@@ -215,34 +246,33 @@ class Agent:
     assistant_id: str = None
     name: str = None
     openai_client = None
-    functions: Functions = None
 
-    def __init__(self, assistant_id, name, functions):
+    def __init__(self, assistant_id, name):
         self.assistant_id = assistant_id
         self.name = name
         self.openai_client = Config.get_openai_client()
-        self.functions = functions
+        self.functions = Config.get_functions()
 
     def __str__(self):
         return f"Agent: {self.name} ({self.assistant_id})"
 
     @classmethod
-    def list_agents(cls, limit=100, functions=None):
+    def list_agents(cls, limit=100):
         openai_client = Config.get_openai_client()
         assistants = openai_client.beta.assistants.list(order="desc",limit=str(limit))
         agents = []
         for asst in assistants.data:
-            agents.append(cls(assistant_id=asst.id, name=asst.name, functions=Functions()))
+            agents.append(cls(assistant_id=asst.id, name=asst.name))
         return agents
 
     @classmethod
-    def get_agent_by_name(cls, name, functions=None):
+    def get_agent_by_name(cls, name):
         openai_client = Config.get_openai_client()
         # TODO: fix this to handle more than 100 assistants
         assistants = openai_client.beta.assistants.list(order="desc",limit="100")
         for asst in assistants.data:
             if asst.name == name:
-                return cls(assistant_id=asst.id, name=asst.name, functions=functions)
+                return cls(assistant_id=asst.id, name=asst.name)
         return None
 
     def create_user_message(self, prompt, thread_id):
@@ -274,10 +304,10 @@ class Agent:
 
 
     def handle_response(self, prompt, thread_id, handler: AgentResponseHandler):
-        print("Handling response")
+        LOGGER.debug("Handling response")
         try:
             agent_gen = self.stream_response(prompt=prompt, thread_id=thread_id, wrap_json=True)
-            stream = GeneratorStringIO(agent_gen)
+            stream = GeneratorBytesIO(agent_gen)
             current_id = None
             current_type = None
             current_role = None
@@ -313,7 +343,6 @@ class Agent:
         if prompt is not None:
             user_message = self.create_user_message(prompt, thread_id)
             LOGGER.debug("Created new user message: ", user_message.id)
-
         message_queue = Queue()
         if wrap_json:
             yield '['
@@ -356,7 +385,6 @@ class Agent:
             thread_id=thread_id,
             assistant_id=self.assistant_id,
         )
-        
         for i in range(100):
             match run.status:
                 case "completed":
