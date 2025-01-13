@@ -239,40 +239,38 @@ class EventHandler(AssistantEventHandler):
             case _:
                 LOGGER.warning(f"Run status is not handled: {self.current_run.status}")
 
-
-
 class Agent:
 
     assistant_id: str = None
     name: str = None
     openai_client = None
 
-    def __init__(self, assistant_id, name):
+    def __init__(self, assistant_id, name, config):
         self.assistant_id = assistant_id
         self.name = name
-        self.openai_client = Config.get_openai_client()
-        self.functions = Config.get_functions()
+        self.config = config
+        self.openai_client = config.get_openai_client()
+        self.functions = config.get_functions()
 
     def __str__(self):
         return f"Agent: {self.name} ({self.assistant_id})"
 
     @classmethod
-    def list_agents(cls, limit=100):
-        openai_client = Config.get_openai_client()
-        assistants = openai_client.beta.assistants.list(order="desc",limit=str(limit))
+    def list_agents(cls, config, limit=100):
+        assistants = config.get_openai_client().beta.assistants.list(order="desc",limit=str(limit))
         agents = []
         for asst in assistants.data:
-            agents.append(cls(assistant_id=asst.id, name=asst.name))
+            agents.append(cls(assistant_id=asst.id, name=asst.name, config=config))
         return agents
 
     @classmethod
-    def get_agent_by_name(cls, name):
-        openai_client = Config.get_openai_client()
+    def get_agent_by_name(cls, name, config):
+        openai_client = config.get_openai_client()
         # TODO: fix this to handle more than 100 assistants
         assistants = openai_client.beta.assistants.list(order="desc",limit="100")
         for asst in assistants.data:
             if asst.name == name:
-                return cls(assistant_id=asst.id, name=asst.name)
+                return cls(assistant_id=asst.id, name=asst.name, config=config)
         return None
 
     def create_user_message(self, prompt, thread_id):
@@ -339,10 +337,10 @@ class Agent:
 
 
     def stream_response(self, prompt=None, thread_id=None, wrap_json:bool=False):
-        LOGGER.debug("Agent streaming response using assistant id: ", self.assistant_id)
+        LOGGER.debug(f"Agent streaming response using assistant id: {self.assistant_id}")
         if prompt is not None:
             user_message = self.create_user_message(prompt, thread_id)
-            LOGGER.debug("Created new user message: ", user_message.id)
+            LOGGER.debug(f"Created new user message: {user_message.id}")
         message_queue = Queue()
         if wrap_json:
             yield '['
@@ -373,13 +371,28 @@ class Agent:
                 yield '{}]'
             stream_thread.join()
             stream.close()
+
+            # if the functions have any files we need to add them to the thread after the run
+            code_file_ids = self.functions.consume_code_file_ids()
+            if code_file_ids:
+                for file_id in code_file_ids:
+                    message = self.openai_client.beta.threads.messages.create(
+                        thread_id=thread_id,
+                        role="user",
+                        content="data file from last run",
+                        attachments=[  
+                            {"file_id": file_id, "tools": [{"type": "code_interpreter"}]}
+                        ],
+                    )
+                LOGGER.info(f"Added code files to thread: {code_file_ids} from functions")
+
             return
 
     def get_response(self, prompt=None, thread_id=None):
-        LOGGER.debug("Agent getting response using assistant id: ", self.assistant_id)
+        LOGGER.debug(f"Agent getting response using assistant id: {self.assistant_id}")
         if prompt is not None:
             user_message = self.create_user_message(prompt, thread_id)
-            LOGGER.debug("Created new user message: ", user_message.id)
+            LOGGER.debug(f"Created new user message: {user_message.id}")
 
         run = self.openai_client.beta.threads.runs.create_and_poll(
             thread_id=thread_id,
@@ -399,11 +412,11 @@ class Agent:
                     # Loop through each tool in the required action section
                     tool_outputs = []
                     for tool in run.required_action.submit_tool_outputs.tool_calls:
-                        print("Looking for function: ", tool.function.name)
+                        LOGGER.debug("Looking for function: ", tool.function.name)
                         function_to_call = getattr(self.functions, tool.function.name, None)
                         if function_to_call:
                             try:
-                                print(f"Calling function {tool.function.name}")
+                                LOGGER.debug(f"Calling function {tool.function.name}")
                                 parameters = json.loads(tool.function.arguments) if hasattr(tool.function, 'arguments') else {}
                                 result = function_to_call(**parameters)
                                 tool_outputs.append({
@@ -411,7 +424,7 @@ class Agent:
                                     "output": result
                                 })
                             except Exception as e:
-                                print(f"Error calling function {tool.function.name}: {e}")
+                                LOGGER.error(f"Error calling function {tool.function.name}: {e}")
 
                     # Submit all tool outputs at once after collecting them in a list
                     if tool_outputs:
@@ -423,11 +436,11 @@ class Agent:
                             )
                             #print("Tool outputs submitted successfully.")
                         except Exception as e:
-                            print("Failed to submit tool outputs:", e)
+                            LOGGER.error(f"Failed to submit tool outputs: {e}")
                     else:
-                        print("No tool outputs to submit.")
+                        LOGGER.trace("No tool outputs to submit.")
                 case _:
-                    print(f"Run status: {run.status}")
+                    LOGGER.warning(f"Run status: {run.status}")
 
 
 

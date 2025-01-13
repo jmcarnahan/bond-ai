@@ -11,18 +11,22 @@ class Threads:
      
     user_id: str = None
 
-    def __init__(self, user_id):
+    def __init__(self, user_id, config):
         self.user_id = user_id
+        self.config = config
+
+    def get_user_id(self):
+        return self.user_id
 
     def get_db_session(self):
-        session = Config.get_db_session()
+        session = self.config.get_db_session()
         session.execute(text("CREATE TABLE IF NOT EXISTS threads (thread_id TEXT PRIMARY KEY, name TEXT, user_id TEXT, origin DATETIME)"))
         session.commit()
         return session
 
     def create_thread_name(self, thread_id):
         thread_name = "New Thread"
-        messages = Config.get_openai_client().beta.threads.messages.list(thread_id=thread_id, limit=1, order="asc")
+        messages = self.config.get_openai_client().beta.threads.messages.list(thread_id=thread_id, limit=1, order="asc")
         if len(messages.data) > 0:
             thread_name = messages.data[0].content[0].text.value.replace("\'", " ")
             with self.get_db_session() as session:
@@ -40,8 +44,18 @@ class Threads:
                 threads.append({"thread_id": thread_id, "name": name, "origin": origin})
         return threads
         
+    def get_current_thread_id(self):
+        session = self.config.get_session()
+        if 'thread' not in session:
+            threads = self.get_current_threads(count=1)
+            if len(threads) > 0:
+                session['thread'] = threads[0]['thread_id']
+            else:
+                session['thread'] = self.create_thread()
+        return session['thread']
+
     def create_thread(self):
-        thread = Config.get_openai_client().beta.threads.create()
+        thread = self.config.get_openai_client().beta.threads.create()
         with self.get_db_session() as session:
             session.execute(text(f"INSERT INTO threads (thread_id, user_id, origin) VALUES ('{thread.id}', '{self.user_id}', CURRENT_TIMESTAMP)"))
             session.commit()
@@ -49,7 +63,7 @@ class Threads:
     
     def get_messages(self, thread_id, limit=20):
         response_msgs = []
-        messages = Config.get_openai_client().beta.threads.messages.list(thread_id=thread_id, limit=limit, order="asc")
+        messages = self.config.get_openai_client().beta.threads.messages.list(thread_id=thread_id, limit=limit, order="asc")
         for message in messages.data:
             part_idx = 0
             for part in message.content:
@@ -58,7 +72,7 @@ class Threads:
                 if part.type == "text":
                     response_msgs.append({"id": part_id, "type": part.type, "role": message.role, "content": part.text.value})
                 elif part.type == "image_file":
-                    response_content = Config.get_openai_client().files.content(part.image_file.file_id)
+                    response_content = self.config.get_openai_client().files.content(part.image_file.file_id)
                     data_in_bytes = response_content.read()
                     readable_buffer = io.BytesIO(data_in_bytes)
                     image = Image.open(readable_buffer)
@@ -67,7 +81,7 @@ class Threads:
 
     
     def delete_thread(self, thread_id):
-        Config.get_openai_client().beta.threads.delete(thread_id=thread_id)
+        self.config.get_openai_client().beta.threads.delete(thread_id=thread_id)
         with self.get_db_session() as session:
             session.execute(text(f"DELETE FROM threads WHERE thread_id = '{thread_id}'"))
             session.commit()
@@ -76,7 +90,7 @@ class Threads:
 
 
 if __name__ == "__main__":
-    threads = Threads()
+    threads = Threads(user_id="test", config=Config())
 
     with threads.get_db_session() as session:
         results = session.execute(text("SELECT thread_id, name FROM threads order by origin")).fetchall()

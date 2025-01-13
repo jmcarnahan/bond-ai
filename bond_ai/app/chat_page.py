@@ -50,7 +50,8 @@ class ChatPage(AgentResponseHandler):
         if prompt := st.chat_input("What's up?"):
             user_message = self.agent.create_user_message(prompt, thread_id)
             st.session_state[self.messages_key][user_message.id] = {"content": prompt, "id": user_message.id, "type": 'text', "role": 'user'}
-            self.display_chat_message(prompt, 'text', 'user')
+            for id, message in st.session_state[self.messages_key].items():
+                self.display_chat_message(message['content'], message['type'], message['role'])            
             self.agent.handle_response(None, thread_id, self)
         else:
             for id, message in st.session_state[self.messages_key].items():

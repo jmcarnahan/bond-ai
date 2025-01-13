@@ -32,17 +32,11 @@ def create_home_page(name=""):
                 get_authenticator().logout()
     return home_page
 
-def create_threads_page(threads):
+def create_threads_page(config):
+    page = ThreadsPage(config)
     def threads_page():
-        return threads.display_threads()
+        return page.display_threads()
     return threads_page
-
-
-def create_chat_page(agent, title, threads, thread_id):
-    def dynamic_function():
-        return ChatPage(agent=agent, title=title, threads=threads).display_chatbot(thread_id)
-    dynamic_function.__name__ = f"chat_{agent.assistant_id}"
-    return dynamic_function
 
 
 def create_login_page():
@@ -53,39 +47,34 @@ def create_login_page():
     return login_page
 
 
-def main_pages(name, email):
+def main_pages(name, user_id):
     pages = {}
-    openai_client = Config.get_openai_client()
-    assistants = openai_client.beta.assistants.list(order="desc",limit="20")
-    LOGGER.info("Got assistants: ", len(assistants.data))
 
-    user_threads = Threads(user_id=email)
-    threads_page = ThreadsPage(user_threads)
-    thread_id = threads_page.get_current_thread_id()
+    st.session_state['user_id'] = user_id
+    config = Config(session=st.session_state)
+    openai_client = config.get_openai_client()
+    assistants = openai_client.beta.assistants.list(order="desc",limit="20")
+    LOGGER.debug(f"Got assistants: {len(assistants.data)}")
 
     account = []
     account.append(st.Page(create_home_page(name=name), title="Home"))
-    account.append(st.Page(create_threads_page(threads_page), title="Threads"))
+    account.append(st.Page(create_threads_page(config=config), title="Threads"))
     pages["Account"] = account
 
-    agent_pages = Config.get_pages()
-    if not agent_pages:
-        agent_pages = []
-        for agent in Agent.list_agents():
-            agent_pages.append(st.Page(create_chat_page(agent=agent, title=agent.name, threads=user_threads, thread_id=thread_id), title=agent.name))
+    agent_pages = config.get_pages()
     pages["Agents"] = agent_pages
 
     return pages
 
 def main (name, email):
-    LOGGER.info("Using app without login")
+    LOGGER.debug("Using app without login")
     pages = main_pages(name, email)
     pg = st.navigation(pages)
     st.set_page_config(page_title="Home", layout="wide")
     pg.run()
 
 def login_main():
-    LOGGER.info("Using app with login")
+    LOGGER.debug("Using app with login")
     pages = {}
     if 'connected' in st.session_state and st.session_state['connected']:
         name  = st.session_state['user_info'].get('name')
