@@ -1,12 +1,15 @@
 # Bond AI
 
-Bond AI is a Python-based project that leverages Streamlit to create an interactive web application. The primary source code is located in the `bond_ai` directory, and the test code is in the `tests` directory. This project uses Poetry for dependency management and setup.
+Bond AI leverages OpenAI's Assistant APi to help develop Generative AI agents and chatbots with access to your own tools, APIs and data sources. Bond AI also has a web UI with a built-in chat interface and is extensible to other interfaces with access to these agents. 
+
 
 ## Features
 
-- Interactive web application built with Streamlit
-- Integration with OpenAI for generating responses
+- Simple definition of agents with tools and data
+- Automatic discovery of agents
+- Built-in threads, tool access and data integration from the Assistants API
 - Google authentication support
+- Thread sharing between users
 - Modular design with agents, threads, and pages
 
 ## Getting Started
@@ -33,18 +36,23 @@ Bond AI is a Python-based project that leverages Streamlit to create an interact
 
 3. Set up environment variables:
 
-    Create a [.env](http://_vscodecontentref_/1) file in the project root directory and add the following variables:
+    Create a .env file in the project root directory and add the following variables:
 
     ```env
     OPENAI_API_KEY=your_openai_api_key
-    AZURE_OPENAI_API_KEY=your_azure_openai_api_key
-    AZURE_OPENAI_ENDPOINT=your_azure_openai_endpoint
-    AZURE_OPENAI_API_VERSION=2024-08-01-preview
+    OPENAI_PROJECT=you_openai_project_id
+    OPENAI_DEPLOYMENT=openai_model #(e.g. "gpt-4o-mini")
+
+    # or
+    # AZURE_OPENAI_API_KEY=your_azure_openai_api_key
+    # AZURE_OPENAI_ENDPOINT=your_azure_openai_endpoint
+    # AZURE_OPENAI_API_VERSION=api_version (e.g. 2024-08-01-preview)
+    
+    AUTH_ENABLED=True
     GOOGLE_AUTH_CREDS_PATH=path_to_your_google_auth_creds.json
-    GOOGLE_AUTH_COOKIE_NAME=your_cookie_name
-    GOOGLE_AUTH_COOKIE_KEY=your_cookie_key
-    GOOGLE_AUTH_REDIRECT_URI=your_redirect_uri
-    METADATA_DB_URL=sqlite:///.metadata.db
+    GOOGLE_AUTH_REDIRECT_URI=your_redirect_uri_for_this_app
+
+    METADATA_DB_URL=database_url_for_metadata #(e.g. sqlite:///.metadata.db)
     ```
 
 ### Running the Application
@@ -53,6 +61,7 @@ To start the application, run the following command:
 
 ```sh
 python -m bond_ai.app.start --server.port=8080 --server.address=0.0.0.0
+```
 
 ### Running Tests
 
@@ -63,6 +72,8 @@ poetry run pytest
 ```
 
 This will execute all the tests in the `tests` directory and provide a summary of the results.
+
+The primary source code is located in the `bond_ai` directory, and the test code is in the `tests` directory. This project uses Poetry for dependency management and setup.
 
 ### Contributing
 
