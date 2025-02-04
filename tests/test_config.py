@@ -25,6 +25,7 @@ class TestConfig:
       del self.session['_FUNCTIONS_INSTANCE']
     if '_PAGES_INSTANCE' in self.session:
       del self.session['_PAGES_INSTANCE']
+    os.environ['METADATA_CLASS'] = 'bond_ai.bond.metadata.metadata_db.MetadataSqlAlchemy'
     self.config = Config(session=self.session)
 
   def test_openai(self):
@@ -67,4 +68,9 @@ class TestConfig:
     assert isinstance(pages, list)
     assert len(pages) == 2
 
+  def test_metadata_db(self):
+    # the meta data class is set up in the setup_method
+    metadata = self.config.get_metadata()
+    assert metadata is not None
+    
 
