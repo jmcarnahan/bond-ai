@@ -25,8 +25,8 @@ def get_authenticator():
     if 'authenticator' not in st.session_state:
         st.session_state['authenticator'] = Authenticate(
             secret_credentials_path = os.getenv('GOOGLE_AUTH_CREDS_PATH'),
-            cookie_name=os.getenv('GOOGLE_AUTH_COOKIE_NAME'),
-            cookie_key=os.getenv('GOOGLE_AUTH_COOKIE_KEY'),
+            cookie_name=os.getenv('GOOGLE_AUTH_COOKIE_NAME', "__bond_ai_name"),
+            cookie_key=os.getenv('GOOGLE_AUTH_COOKIE_KEY', '__bond_ai_key'),
             redirect_uri=os.getenv('GOOGLE_AUTH_REDIRECT_URI'),
         )
     return st.session_state['authenticator']
