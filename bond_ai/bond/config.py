@@ -1,10 +1,6 @@
-
-
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, scoped_session
-from sqlalchemy.sql import text
 from dotenv import load_dotenv
 from openai import OpenAI, AzureOpenAI
+from bond_ai.bond.metadata import Metadata
 import os
 import logging
 import importlib
@@ -22,10 +18,7 @@ class Config:
         else:
             self.session = {}
 
-        self.engines = {}
-        metadata_db_path = os.getenv('METADATA_FILE', '.metadata.db')
-        LOGGER.info(f"Using metadata db path: {metadata_db_path}")
-        self.engines['default'] = create_engine(f"sqlite:///{metadata_db_path}", echo=False)
+        self.metadata = Metadata(config=self)
 
         api_key = os.getenv('OPENAI_API_KEY')
         if api_key:
@@ -44,6 +37,7 @@ class Config:
             raise ValueError("API key is not set. Please ensure the OPENAI_API_KEY or AZURE_OPENAI_API_KEY is set in the .env file.")
 
     def __new__(cls, *args, **kwargs):
+        session = None
         if kwargs.get('session') is not None:
             session = kwargs['session']
             if '_bond_config' in session:
@@ -59,22 +53,9 @@ class Config:
 
     def get_session(self):
         return self.session
-
-    def get_db_engine(self, db_path="default"):
-        if db_path not in self.engines:
-            engine = create_engine(f'sqlite:///{db_path}', echo=True)
-            self.engines[db_path] = engine
-        return self.engines[db_path]
-
-    def get_db_session(self, db_path="default"):
-        engine = self.get_db_engine(db_path)
-        Session = scoped_session(sessionmaker(bind=engine))
-        return Session()
-
-    def close_db_engine(self, db_path="default"):
-        if db_path in self.engines:
-            self.engines[db_path].dispose()
-            del self.engines[db_path]
+    
+    def get_metadata(self) -> Metadata:
+        return self.metadata
 
     def get_openai_client(self):
         return self.openai_client
@@ -114,6 +95,23 @@ class Config:
         from bond_ai.bond.pages import Pages, DefaultPages
         pages: Pages = self._get_instance('PAGES_CLASS', '_PAGES_INSTANCE', Pages, DefaultPages)
         return pages.get_pages()
+    
+    def get_threads(self):
+        if 'user_id' not in self.session:
+            raise ValueError("User ID is not set in session")
+        
+        user_id = self.session['user_id']
+        threads_key = f"_THREADS_INSTANCE_{user_id}"
+        if threads_key in self.session:
+            LOGGER.debug(f"Returning cached instance of threads for user {user_id}")
+            return self.session[threads_key]
+        else:
+            from bond_ai.bond.threads import Threads
+            threads = Threads(user_id=user_id, config=self)
+            LOGGER.debug(f"Created new instance of threads for user {user_id}")
+            self.session[threads_key] = threads
+            return threads
+
 
         
 

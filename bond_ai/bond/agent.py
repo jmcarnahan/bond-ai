@@ -3,6 +3,7 @@ import io
 import json
 from PIL import Image
 from bond_ai.bond.config import Config
+from bond_ai.bond.broker import AgentResponseMessage
 from typing_extensions import override
 from openai import OpenAI, AssistantEventHandler
 from openai.types.beta.threads import (
@@ -21,52 +22,14 @@ import threading
 import logging
 import base64
 import abc
-# import ijson.backends.yajl2_c as yajl2_c
+
+
+
+
 import ijson
 
 LOGGER = logging.getLogger(__name__)
 
-
-class AgentResponseHandler(abc.ABC):
-
-    @abc.abstractmethod
-    def on_content(self, content, id, type, role):
-        pass
-
-    @abc.abstractmethod
-    def on_done(self, success=True, message=None):
-        pass
-
-
-# class GeneratorStringIO(io.TextIOBase):
-#     """
-#     Wrap a generator that yields pieces of text, providing a .read() method
-#     so it behaves like a file for streaming parsers (e.g. ijson).
-#     """
-#     def __init__(self, text_generator):
-#         super().__init__()
-#         self._gen = iter(text_generator)
-#         self._buffer = ""
-
-#     def read(self, size=-1):
-#         if size < 0:
-#             # Read ALL remaining data from the generator
-#             chunks = [self._buffer]
-#             self._buffer = ""
-#             for chunk in self._gen:
-#                 chunks.append(chunk)
-#             return "".join(chunks)
-#         else:
-#             # Read 'size' characters (or until the generator is exhausted).
-#             while len(self._buffer) < size:
-#                 try:
-#                     next_chunk = next(self._gen)
-#                     self._buffer += next_chunk
-#                 except StopIteration:
-#                     break
-#             result = self._buffer[:size]
-#             self._buffer = self._buffer[size:]
-#             return result
 
 class GeneratorBytesIO(io.RawIOBase):
     """
@@ -102,12 +65,14 @@ class GeneratorBytesIO(io.RawIOBase):
 
 class EventHandler(AssistantEventHandler):  
 
-    def __init__(self, message_queue: Queue, openai_client: OpenAI, functions, wrap_json:bool=False):
+    def __init__(self, message_queue: Queue, openai_client: OpenAI, functions, thread_id, threads, wrap_json:bool=False):
         super().__init__()
         self.message_queue = message_queue
         self.openai_client = openai_client
         self.functions = functions
         self.wrap_json = wrap_json
+        self.thread_id = thread_id
+        self.threads = threads
 
         self.current_msg = None
         self.wrap_state = 0
@@ -224,18 +189,23 @@ class EventHandler(AssistantEventHandler):
                     else:
                         LOGGER.error(f"Unhandled tool call type: {tool_call.type}")
                 if tool_call_outputs:
-                    with self.openai_client.beta.threads.runs.submit_tool_outputs_stream(
-                        thread_id=self.current_run.thread_id,
-                        run_id=self.current_run.id,
-                        tool_outputs=tool_call_outputs,
-                        event_handler=EventHandler(
-                            openai_client=self.openai_client,
-                            message_queue=self.message_queue,
-                            functions=self.functions,
-                            wrap_json=self.wrap_json,
-                        )
-                    ) as stream:
-                        stream.until_done() 
+                    try: 
+                        with self.openai_client.beta.threads.runs.submit_tool_outputs_stream(
+                            thread_id=self.current_run.thread_id,
+                            run_id=self.current_run.id,
+                            tool_outputs=tool_call_outputs,
+                            event_handler=EventHandler(
+                                openai_client=self.openai_client,
+                                message_queue=self.message_queue,
+                                functions=self.functions,
+                                thread_id=self.thread_id,
+                                threads=self.threads,
+                                wrap_json=self.wrap_json,
+                            )
+                        ) as stream:
+                            stream.until_done() 
+                    except Exception as e:
+                        LOGGER.error(f"Failed to submit tool outputs {tool_call_outputs}: {e}")
             case _:
                 LOGGER.warning(f"Run status is not handled: {self.current_run.status}")
 
@@ -245,41 +215,54 @@ class Agent:
     name: str = None
     openai_client = None
 
-    def __init__(self, assistant_id, name, config):
+    def __init__(self, assistant_id, name, config, user_id, metadata={}):
         self.assistant_id = assistant_id
         self.name = name
         self.config = config
+        self.user_id = user_id
+        self.threads = config.get_threads()
         self.openai_client = config.get_openai_client()
         self.functions = config.get_functions()
+        self.metadata = metadata
 
     def __str__(self):
         return f"Agent: {self.name} ({self.assistant_id})"
 
     @classmethod
-    def list_agents(cls, config, limit=100):
+    def list_agents(cls, config, user_id, limit=100):
         assistants = config.get_openai_client().beta.assistants.list(order="desc",limit=str(limit))
         agents = []
         for asst in assistants.data:
-            agents.append(cls(assistant_id=asst.id, name=asst.name, config=config))
+            agents.append(cls(assistant_id=asst.id, name=asst.name, config=config, user_id=user_id, metadata=asst.metadata))
         return agents
 
     @classmethod
-    def get_agent_by_name(cls, name, config):
+    def get_agent_by_name(cls, name, config, user_id):
         openai_client = config.get_openai_client()
         # TODO: fix this to handle more than 100 assistants
         assistants = openai_client.beta.assistants.list(order="desc",limit="100")
         for asst in assistants.data:
             if asst.name == name:
-                return cls(assistant_id=asst.id, name=asst.name, config=config)
+                return cls(assistant_id=asst.id, name=asst.name, config=config, user_id=user_id, metadata=asst.metadata)
         return None
 
-    def create_user_message(self, prompt, thread_id):
-        return self.openai_client.beta.threads.messages.create(
+    def create_user_message(self, prompt, thread_id, attachments=None):
+        msg = self.openai_client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
             content=prompt,
+            attachments=attachments,
         )
+        user_msg = AgentResponseMessage(id=msg.id, type='text', role='user', thread_id=thread_id, content=prompt)
+        self.threads.notify(user_msg)
+        return msg
     
+    def get_metadata_value(self, key, default_value=None):
+        if key in self.metadata:
+            return self.metadata[key]
+        else:
+            return default_value
+
     def get_messages(self, thread_id):
         response_msgs = []
         messages = self.openai_client.beta.threads.messages.list(
@@ -300,8 +283,7 @@ class Agent:
                     response_msgs.append({"id": part_id, "role": message.role, "content": image})
         return response_msgs
 
-
-    def handle_response(self, prompt, thread_id, handler: AgentResponseHandler):
+    def handle_response(self, prompt, thread_id):
         LOGGER.debug("Handling response")
         try:
             agent_gen = self.stream_response(prompt=prompt, thread_id=thread_id, wrap_json=True)
@@ -319,7 +301,13 @@ class Agent:
                         case "item.role":
                             current_role = value
                         case "item.content":
-                            handler.on_content(value, current_id, current_type, current_role)
+                            agent_msg = AgentResponseMessage(id=current_id, 
+                                                            type=current_type, 
+                                                            role=current_role, 
+                                                            thread_id=thread_id, 
+                                                            content=value)
+                            self.threads.notify(agent_msg)
+                            LOGGER.debug(f"Notified message: {agent_msg.model_dump_json()}")
                         case _:
                             LOGGER.error(f"Unhandled event: {prefix}, {event}, {value}")
                 elif event == 'end_map' or event == 'end_array' or event == 'start_map' or event == 'start_array':
@@ -330,10 +318,15 @@ class Agent:
                     LOGGER.debug(f"Map key: {value}")
                 else:
                     LOGGER.warning(f"Unhandled event: {prefix}, {event}, {value}")
-            handler.on_done()
         except Exception as e:
-            LOGGER.error(f"Error handling response: {e}")
-            handler.on_done(success=False, message=str(e))
+            LOGGER.exception(f"Error handling response: {str(e)}")
+            agent_msg = AgentResponseMessage(id="undefined", 
+                                type='error', 
+                                role='system', 
+                                thread_id=thread_id, 
+                                content=str(e),
+                                is_error=True)
+            self.notify(agent_msg)
 
 
     def stream_response(self, prompt=None, thread_id=None, wrap_json:bool=False):
@@ -351,6 +344,8 @@ class Agent:
                 message_queue=message_queue,
                 openai_client=self.openai_client,
                 functions=self.functions,
+                thread_id=thread_id,
+                threads=self.threads,
                 wrap_json=wrap_json,
             )
         ) as stream:
@@ -376,10 +371,14 @@ class Agent:
             code_file_ids = self.functions.consume_code_file_ids()
             if code_file_ids:
                 for file_id in code_file_ids:
+                    # attachments = [  
+                    #     {"file_id": file_id, "tools": [{"type": "code_interpreter"}]}
+                    # ]
+                    # message = self.create_user_message(self, "data file from last run", thread_id, attachments=attachments)
                     message = self.openai_client.beta.threads.messages.create(
                         thread_id=thread_id,
                         role="user",
-                        content="data file from last run",
+                        content=f"__FILE__{file_id}",
                         attachments=[  
                             {"file_id": file_id, "tools": [{"type": "code_interpreter"}]}
                         ],
