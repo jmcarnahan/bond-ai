@@ -104,7 +104,7 @@ class BondBrokerConnection:
         self.subscribers = {}
         LOGGER.info(f"Stopped {str(self)}")
 
-    def subscribe(self, thread_id, subscriber_id):
+    def subscribe(self, thread_id, subscriber_id) -> queue.Queue:
         if thread_id not in self.subscribers:
             self.subscribers[thread_id] = {}
         if subscriber_id not in self.subscribers[thread_id]:
@@ -149,8 +149,8 @@ class BondBroker:
       self.stop()
 
   def stop(self):
-      try:
-          if self.context:
+    try:
+        if self.context:
             self.sub_socket.close(linger=0)
             self.pub_socket.close()
             self.context.term()
@@ -159,16 +159,16 @@ class BondBroker:
                 self.broker_thread.join()
             self.context = None
             LOGGER.info(f"Stopped {str(self)}")
-      except Exception as e:
+    except Exception as e:
           LOGGER.error(f"Error closing {str(self)}: {e}")
 
   def proxy(self):
-    while not self.stop_event.is_set():
-      try:
+
+    try:
         zmq.proxy(self.sub_socket, self.pub_socket)
-      except Exception as e:
-        #LOGGER.warning(f"Stopped proxying messages: {e}")
-        continue
+    except Exception as e:
+        LOGGER.warning(f"Stopped proxying messages: {e}")
+        #continue
 
   @classmethod
   def connect(cls):
