@@ -1,6 +1,5 @@
 import streamlit as st
 from bond_ai.bond.threads import Threads
-from bond_ai.app.utils import Formatting
 import logging
 import re
 
