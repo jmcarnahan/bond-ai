@@ -11,11 +11,140 @@ import threading
 import time
 import uuid
 import queue
+import re
+from xml.sax import ContentHandler, make_parser
+from xml.sax.xmlreader import XMLReader
+from abc import ABC, abstractmethod
 
 LOGGER = logging.getLogger(__name__)
 
+START_MSG_PATTERN = r'^<\s*_bondmessage(?:\s+[\w:-]+="[^"]*")*\s*/?>$'
+PARSE_MSG_PATTERN = r'^<\s*_bondmessage(?:\s+([\w:-]+)="([^"]*)")*\s*/?>$'
+END_MSG_PATTERN   = r'^</\s*_bondmessage\s*>$'
+ATTR_MSG_PATTERN  = r'([\w:-]+)="([^"]*)"'
+
+class ThreadMessageHandler(ABC):
+
+    @abstractmethod
+    def onMessage(self, thread_id, message_id, type, role, is_error=False, is_done=False, clob=None):
+        pass
+
+class ThreadMessageTextGenerator:
+    
+    def __init__(self, content=None):
+        self.queue = queue.Queue()
+        self.content = content
+        self.running = content is None
+
+    def generate(self):
+        self.running = True
+        self.content = ""
+        while True:
+            try:
+                text = self.queue.get(timeout=5)
+                if text is None:
+                    break
+                self.content += text
+                yield text
+            except queue.Empty:
+                continue
+
+    def put(self, text):
+        self.queue.put(text)
+
+    def close(self):
+        if self.content is None:
+            self.content = ""
+        while not self.queue.empty():
+            chunk = self.queue.get()
+            if chunk is not None:
+                self.content += chunk
+            else:
+                break
+        self.running = False
+
+    def is_closed(self):
+        return not self.running
+
+    def get_content(self):
+        if self.running:
+            self.close()
+        return self.content
 
 
+class ThreadMessageParser:
+        
+    def __init__(self, handler:ThreadMessageHandler):
+        self.running = True
+        self.handler = handler
+        LOGGER.info(f"Starting parser {id(self)} with handler {id(handler)}")
+        
+    def stop(self):
+        self.running = False
+
+    def is_bondmessage_start_tag(self, message_str:str):
+        return bool(re.match(START_MSG_PATTERN, message_str.strip()))
+
+    def parse_bondmessage_start_tag(self, message_str:str):
+        if not re.match(PARSE_MSG_PATTERN, message_str.strip()):
+            return None  
+        attributes = dict(re.findall(ATTR_MSG_PATTERN, message_str))
+        return attributes
+    
+    def is_bondmessage_end_tag(self, message_str:str):
+        return bool(re.match(END_MSG_PATTERN, message_str.strip()))
+    
+    def generate_text(self, xml_queue:queue.Queue, sink:ThreadMessageTextGenerator):
+       while self.running:
+            xml_chunk = None
+            try:
+                xml_chunk = xml_queue.get(timeout=5)
+                if xml_chunk is None:  # Stop signal
+                    break
+                if self.is_bondmessage_end_tag(xml_chunk):
+                    sink.put(None)
+                    return
+                else:
+                    sink.put(xml_chunk)
+            except queue.Empty:
+                continue
+            except Exception as e:
+                LOGGER.error(f"Error parsing chunk: {xml_chunk}", exc_info=e)
+
+
+    def parse(self, xml_queue:queue.Queue):
+        LOGGER.info(f"Continuing parser {id(self)} with queue {id(xml_queue)} and handler {id(self.handler)}")
+        while self.running:
+            xml_chunk = None
+            try:
+                xml_chunk = xml_queue.get(timeout=5)
+                LOGGER.debug(f"Got chunk: {xml_chunk}")
+                if xml_chunk is None:  # Stop signal
+                    break
+                if self.is_bondmessage_start_tag(xml_chunk):
+                    attributes = self.parse_bondmessage_start_tag(xml_chunk)
+                    if 'id' in attributes and 'thread_id' in attributes:
+                        gen = ThreadMessageTextGenerator()
+                        # start generating the text
+                        thread = threading.Thread(target=self.generate_text, args=(xml_queue, gen))
+                        thread.start()
+                        # on message will block until complete
+                        self.handler.onMessage(thread_id=attributes['thread_id'], 
+                                                    message_id=attributes['id'], 
+                                                    type=attributes.get('type', 'text'), 
+                                                    role=attributes.get('role', 'user'),
+                                                    is_error=attributes.get('is_error', 'false').lower() == 'true',
+                                                    is_done=attributes.get('is_done', 'false').lower() == 'true',
+                                                    clob=gen)
+
+                    else:
+                        LOGGER.error(f"Invalid bondmessage tag: {xml_chunk}")
+                else:
+                    LOGGER.error(f"Unexpected XML chunk: {xml_chunk}")
+            except queue.Empty:
+                continue
+            except Exception as e:
+                LOGGER.error(f"Error parsing chunk: {xml_chunk}", exc_info=e)
 
 class Threads:
      
@@ -26,65 +155,11 @@ class Threads:
         self.config = config
         self.metadata = self.config.get_metadata()
 
-        # port = self.find_unused_port()
-        # self.address = f"tcp://localhost:{port}"
-        # broker_address = os.environ.get("BROKER_ADDRESS", "tcp://localhost:5555")
-
-        # self.pub_context = zmq.Context()
-        # self.pub_socket = self.pub_context.socket(zmq.PUB)
-        # self.pub_socket.connect(broker_address)
-
-        # self.sub_context = zmq.Context()
-        # self.sub_socket = self.sub_context.socket(zmq.SUB)
-        # self.sub_socket.bind(self.address)
-        # self.sub_socket.setsockopt_string(zmq.SUBSCRIBE, "")
-
         self.conn: BondBrokerConnection = BondBroker.connect()
         self.conn.start()
-        # self.stop_event = threading.Event() 
-        # self.callback_thread = threading.Thread(target=self.listen, daemon=True)
-        # self.callback_thread.start()
-        # LOGGER.debug(f"Threads initialized for user {self.user_id} - listening on {self.address} and sending to {broker_address}")
-
-    # def find_unused_port(self):
-    #     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    #         s.bind(("", 0)) 
-    #         return s.getsockname()[1] 
-
-    # def __del__(self):
-    #     self.close()
-        # if not self.stop_event.is_set():
-        #     self.close()
 
     def close(self):
         self.conn.stop()
-        # self.stop_event.set()
-        # if self.callback_thread.is_alive():
-        #     self.callback_thread.join()
-        # LOGGER.debug(f"Threads closed for user {self.user_id}")
-        # self.pub_socket.close(linger=0)
-        # self.pub_context.term()
-        # self.sub_socket.close(linger=0)
-        # self.sub_context.term()
-
-    # def listen(self):
-    #     while not self.stop_event.is_set():
-    #         try:
-    #             message_str = self.sub_socket.recv_string(flags=zmq.NOBLOCK)
-    #             agent_msg = AgentResponseMessage.model_validate_json(message_str)
-    #             if agent_msg.thread_id in self.callbacks:
-    #                 for callback_id, callback in self.callbacks[agent_msg.thread_id].items():
-    #                     callback(agent_msg)
-    #                 LOGGER.debug(f"Callbacks: ({agent_msg.role}) message for thread {agent_msg.thread_id} to {len(self.callbacks[agent_msg.thread_id])} callbacks")
-    #             else:
-    #                 LOGGER.warning(f"No callback for thread {agent_msg.thread_id}")
-    #         except zmq.Again:
-    #             # TODO: may want to add a sleep here
-    #             time.sleep(0.1)
-    #         except Exception as e:
-    #             LOGGER.error(f"Error processing message: {e}")
-
-
 
     def get_user_id(self):
         return self.user_id
@@ -126,7 +201,7 @@ class Threads:
         LOGGER.info(f"Granted thread {thread_id} to user {user_id}")
         return thread_id
     
-    def get_messages(self, thread_id, limit=20) -> dict:
+    def get_messages(self, thread_id, limit=100) -> dict:
         response_msgs = []
         messages = self.config.get_openai_client().beta.threads.messages.list(thread_id=thread_id, limit=limit, order="asc")
         for message in messages.data:
@@ -153,40 +228,18 @@ class Threads:
 
     def notify(self, message:AgentResponseMessage) -> str:
         self.conn.publish(message)
-        # message_str = message.model_dump_json()
-        # self.pub_socket.send_string(message_str)
+
+    def put(self, content) -> str:
+        self.conn.put(content)
 
     def subscribe(self, thread_id) -> queue.Queue:
         subscriber_id = f"{self.user_id}.{thread_id}"
         return self.conn.subscribe(thread_id, subscriber_id)
-
+    
     def unsubscribe(self, thread_id) -> bool:
         subscriber_id = f"{self.user_id}.{thread_id}"
         return self.conn.unsubscribe(thread_id, subscriber_id)
 
-
-
-    # def create_listener(self, thread_id, callback):
-    #     if thread_id not in self.callbacks:
-    #         self.callbacks[thread_id] = {}
-    #     callback_id = f"{self.user_id}.{thread_id}.{callback.__module__}.{callback.__qualname__}"
-    #     if callback_id not in self.callbacks[thread_id]:
-    #         self.callbacks[thread_id][callback_id] = callback
-    #         msg = AgentSubscribeMessage(thread_id=thread_id, subscriber_id=callback_id, zmq_address=self.address)
-    #         self.pub_socket.send_string(msg.model_dump_json())
-    #         LOGGER.debug(f"Subscribing to thread {thread_id} at {self.address} with callback {callback_id}")
-    #     else:
-    #         LOGGER.debug(f"Callback {callback_id} already exists for thread {thread_id}")
-    #     return callback_id
-    
-    # def delete_listener(self, thread_id, callback_id):
-    #     if thread_id in self.callbacks:
-    #         if callback_id in self.callbacks[thread_id]:
-    #             del self.callbacks[thread_id][callback_id]
-    #             msg = AgentUnsubscribeMessage(thread_id=thread_id, subscriber_id=callback_id)
-    #             self.pub_socket.send_string(msg.model_dump_json())
-    #             return True
-    #     return False
 
 
 

@@ -75,7 +75,7 @@ class EventHandler(AssistantEventHandler):
         self.threads = threads
 
         self.current_msg = None
-        self.wrap_state = 0
+        self.message_state = 0
         self.files = {}
         LOGGER.debug("EventHandler initialized with wrap_json: ", wrap_json)
 
@@ -86,16 +86,18 @@ class EventHandler(AssistantEventHandler):
             LOGGER.error(f"Message created before previous message was done: {self.current_msg}")
         self.current_msg = message
 
+
     @override 
     def on_message_delta(self, delta: MessageDelta, snapshot: Message) -> None:
+        LOGGER.debug(f"on_message_delta: {delta} -> wrap_json: {self.wrap_json}")
         for part in delta.content:
+            part_id = f"{self.current_msg.id}_{part.index}"
             if self.wrap_json:
-                part_id = f"{self.current_msg.id}_{part.index}"
                 if part.type == 'image_file':
                     # Need to close the previous part if it is open
-                    if self.wrap_state > 0:
+                    if self.message_state > 0:
                         self.message_queue.put('},\n')
-                        self.wrap_state = 0
+                        self.message_state = 0
 
                     if part.image_file.file_id not in self.files:
                         self.message_queue.put('{"id": "' + part_id + 
@@ -109,7 +111,7 @@ class EventHandler(AssistantEventHandler):
                                                '", "content": "' + json_img_src[1:-1] + '"},\n')
                 elif part.type == 'text':
                     # initialize the content if necessary
-                    if self.wrap_state == 0:
+                    if self.message_state == 0:
                         self.message_queue.put('{"id": "' + part_id + 
                                                '", "role": "' + str(self.current_msg.role) + 
                                                '", "type": "' + part.type + 
@@ -117,32 +119,53 @@ class EventHandler(AssistantEventHandler):
                         
                     # always add to the content and increment the state
                     self.message_queue.put(json.dumps(part.text.value)[1:-1])
-                    self.wrap_state += 1
-
-                else:
-                    if part.type == 'image_file':
-                        if part.image_file.file_id not in self.files:
-                            self.message_queue.put(f"|No image found.|")
-                        else:
-                            self.message_queue.put(f"|{part.image_file.file_id}|")
-                    elif part.type == 'text':
-                        self.message_queue.put(part.text.value)
+                    self.message_state += 1
+            else:
+                if part.type == 'image_file':
+                    if self.message_state > 0:
+                        self.message_queue.put('</_bondmessage>')
+                        self.message_state = 0
+                    
+                    if part.image_file.file_id not in self.files:
+                        self.message_queue.put(f"<_bondmessage id=\"{part_id}\" role=\"{self.current_msg.role}\" type=\"error\" thread_id=\"{self.thread_id}\" is_done=\"false\">")
+                        self.message_queue.put("No image found.")
+                        self.message_queue.put("</_bondmessage>")
                     else:
-                        LOGGER.info(f"Delta message of unhandled type: {delta}")
+                        self.message_queue.put(f"<_bondmessage id=\"{part_id}\" role=\"{self.current_msg.role}\" type=\"image_file\" thread_id=\"{self.thread_id}\" file=\"{part.image_file.file_id}\" is_done=\"false\">")
+                        self.message_queue.put(f"{self.files[part.image_file.file_id]}")
+                        self.message_queue.put("</_bondmessage>")
+        
+                elif part.type == 'text':
+                    if self.message_state == 0:
+                        self.message_queue.put(f"<_bondmessage id=\"{part_id}\" role=\"{self.current_msg.role}\" type=\"text\" thread_id=\"{self.thread_id}\" is_done=\"false\">")
+                    self.message_queue.put(part.text.value)
+                    self.message_state += 1
+                else:
+                    LOGGER.info(f"Delta message of unhandled type: {delta}")
 
 
     @override 
     def on_message_done(self, message: Message) -> None:
         if self.wrap_json:
-            if self.wrap_state > 0:
+            if self.message_state > 0:
                 self.message_queue.put('"},\n')
-                self.wrap_state = 0
+                self.message_state = 0
         else:
-            self.message_queue.put('\n')
+            if self.message_state > 0:
+                self.message_queue.put('</_bondmessage>')
+                self.message_state = 0
         self.current_msg = None
+
 
     @override
     def on_end(self) -> None:
+        if self.wrap_json:
+            pass
+        else:
+            self.message_queue.put(f"<_bondmessage id=\"-1\" role=\"system\" type=\"text\" thread_id=\"{self.thread_id}\" is_done=\"true\">")
+            self.message_queue.put("Done.")
+            self.message_queue.put("</_bondmessage>")
+
         self.message_queue.put(None)
 
     @override
@@ -246,15 +269,21 @@ class Agent:
                 return cls(assistant_id=asst.id, name=asst.name, config=config, user_id=user_id, metadata=asst.metadata)
         return None
 
-    def create_user_message(self, prompt, thread_id, attachments=None):
+    def create_user_message(self, prompt, thread_id, attachments=None, wrap_json:bool=False):
         msg = self.openai_client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
             content=prompt,
             attachments=attachments,
         )
-        user_msg = AgentResponseMessage(id=msg.id, type='text', role='user', thread_id=thread_id, content=prompt)
-        self.threads.notify(user_msg)
+        if wrap_json:
+            user_msg = AgentResponseMessage(id=msg.id, type='text', role='user', thread_id=thread_id, content=prompt)
+            self.threads.notify(user_msg)
+        else:
+            LOGGER.debug(f"Broadcasting new message: {prompt}")
+            self.threads.put(f"<_bondmessage id=\"{msg.id}\" role=\"user\" type=\"text\" thread_id=\"{thread_id}\" is_done=\"false\">")
+            self.threads.put(prompt)
+            self.threads.put("</_bondmessage>")
         return msg
     
     def get_metadata_value(self, key, default_value=None):
@@ -318,6 +347,8 @@ class Agent:
                     LOGGER.debug(f"Map key: {value}")
                 else:
                     LOGGER.warning(f"Unhandled event: {prefix}, {event}, {value}")
+            done_msg = AgentResponseMessage(id="-1", type="text", role="system", thread_id=thread_id, content="Done", is_done=True)
+            self.threads.notify(done_msg)
         except Exception as e:
             LOGGER.exception(f"Error handling response: {str(e)}")
             agent_msg = AgentResponseMessage(id="undefined", 
@@ -325,18 +356,22 @@ class Agent:
                                 role='system', 
                                 thread_id=thread_id, 
                                 content=str(e),
-                                is_error=True)
+                                is_error=True,
+                                is_done=True)
             self.notify(agent_msg)
 
 
     def stream_response(self, prompt=None, thread_id=None, wrap_json:bool=False):
         LOGGER.debug(f"Agent streaming response using assistant id: {self.assistant_id}")
-        if prompt is not None:
-            user_message = self.create_user_message(prompt, thread_id)
-            LOGGER.debug(f"Created new user message: {user_message.id}")
-        message_queue = Queue()
+
         if wrap_json:
             yield '['
+
+        if prompt is not None:
+            user_message = self.create_user_message(prompt=prompt, thread_id=thread_id, attachments=None, wrap_json=wrap_json)
+            LOGGER.debug(f"Created new user message: {user_message.id}")
+        message_queue = Queue()
+
         with self.openai_client.beta.threads.runs.stream(
             thread_id=thread_id,
             assistant_id=self.assistant_id,
@@ -364,6 +399,7 @@ class Agent:
             message_queue.task_done()   
             if wrap_json:
                 yield '{}]'
+
             stream_thread.join()
             stream.close()
 
@@ -384,9 +420,22 @@ class Agent:
                         ],
                     )
                 LOGGER.info(f"Added code files to thread: {code_file_ids} from functions")
-
             return
-
+        
+    def broadcast_response(self, prompt=None, thread_id=None):
+        try:
+            for content in self.stream_response(prompt=prompt, thread_id=thread_id, wrap_json=False):
+                LOGGER.debug(f"Broadcasting content: {content}")
+                self.threads.put(content)
+        except Exception as e:
+            LOGGER.exception(f"Error handling response: {str(e)}")
+        return
+    
+    # def broadcast_response_async(self, prompt=None, thread_id=None):
+    #     thread = threading.Thread(target=self.broadcast_response, args=(prompt, thread_id))
+    #     thread.start()
+    #     return thread
+  
     def get_response(self, prompt=None, thread_id=None):
         LOGGER.debug(f"Agent getting response using assistant id: {self.assistant_id}")
         if prompt is not None:
