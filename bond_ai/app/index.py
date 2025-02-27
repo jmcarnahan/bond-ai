@@ -1,15 +1,13 @@
 import streamlit as st
-from bond_ai.bond.config import Config
+from bond_ai.bond.pages import Pages
 from bond_ai.bond.threads import Threads
-from bond_ai.bond.agent import Agent
-from bond_ai.app.chat_page import ChatPage
 from bond_ai.app.threads_page import ThreadsPage
 import logging
 import os
 import re
 from streamlit_google_auth import Authenticate
 from dotenv import load_dotenv
-import uuid
+
 
 load_dotenv()
 
@@ -31,18 +29,53 @@ def get_authenticator():
         )
     return st.session_state['authenticator']
 
-def create_home_page(name=""):
+
+def display_page(page): 
+    def dynamic_function():
+        return page.display()
+    dynamic_function.__name__ = page.get_id()
+    return dynamic_function
+
+def create_home_page(name="", pages=[]):
     def home_page():
-        st.markdown("## Home Page")
-        st.markdown(f"### Welcome {name}")
-        if name != "":
-            if st.button('Log out'):
-                get_authenticator().logout()
+
+        st.session_state['clear_thread'] = False
+
+        # header_cols = st.columns([1, 0.2])
+        # with header_cols[0]:
+        #     st.markdown(f"### Welcome {name}")
+        # with header_cols[1]:
+        #     if name != "":
+        #         if st.button('Log out'):
+        #             get_authenticator().logout()
+
+
+        cols = st.columns(3)
+        idx = 0
+        for page in pages:
+            with cols[idx % 3]:
+                with st.container(height=200, border=True):
+                    if st.button(label=page.get_name(), key=page.get_id()):
+                        # TODO: change this to a query param once that is available in streamlit
+                        st.session_state['clear_thread'] = True
+                        st.switch_page(st.Page(display_page(page)))
+                    if page.get_description() is not None:
+                        st.markdown(f"{page.get_description()}")
+                idx += 1
+
+            LOGGER.debug(f"Home card: {page.get_name()} {page.get_id()}")
+
+        # reset the page thread to the current thread everytime we show the home page
+        # user_id = st.session_state['user_id']   
+        # thread_id = Threads.threads(user_id=user_id).get_current_thread_id(session=st.session_state)
+        # st.session_state['page_thread'] = thread_id
+
     return home_page
 
-def create_threads_page(config):
-    page = ThreadsPage(config)
+def create_threads_page():
+    page = ThreadsPage()
     def threads_page():
+        st.session_state['clear_thread'] = False
         return page.display_threads()
     return threads_page
 
@@ -78,27 +111,23 @@ def main_pages(name, user_id):
     pages = {}
 
     st.session_state['user_id'] = user_id
-    config = Config(session=st.session_state)
-    openai_client = config.get_openai_client()
-    assistants = openai_client.beta.assistants.list(order="desc",limit="20")
-    LOGGER.debug(f"Got assistants: {len(assistants.data)}")
+    agent_pages = Pages.pages().get_pages()
 
     account = []
-    account.append(st.Page(create_home_page(name=name), title="Home"))
-    account.append(st.Page(create_threads_page(config=config), title="Threads"))
+    account.append(st.Page(create_home_page(name=name, pages=agent_pages), title="Home"))
+    account.append(st.Page(create_threads_page(), title="Threads"))
     pages["Account"] = account
 
-    agent_pages = config.get_pages()
-    pages["Agents"] = agent_pages
-
+    # thread_id = config.get_threads().get_current_thread_id()
+    pages["Agents"] = [st.Page(display_page(page), title=page.get_name()) for page in agent_pages]
     return pages
 
 def main (name, email):
-    LOGGER.debug("Using app without login")
+    LOGGER.info("Using app without login")
     pages = main_pages(name, email)
     pg = st.navigation(pages)
-    st.set_page_config(page_title="Home", layout="wide")
     pg.run()
+
 
 def login_main():
     pages = {}
@@ -106,6 +135,7 @@ def login_main():
         name  = st.session_state['user_info'].get('name')
         email = st.session_state['user_info'].get('email')
         pages = main_pages(name, email)
+
     else:
         if os.getenv('GOOGLE_AUTH_ENABLED', "False").lower() == "true":
             LOGGER.info(f"Starting app with login with redirect: {os.getenv('GOOGLE_AUTH_REDIRECT_URI')}")
@@ -113,13 +143,13 @@ def login_main():
         else:
             LOGGER.info("Using simple login without google auth")
             pages = {'Login': [st.Page(create_simple_login_page(), title="Login")]}
+
     pg = st.navigation(pages)
-    st.set_page_config(page_title="Home", layout="wide")
     pg.run()
-
-
+    
 
 if __name__ == "__main__":
+    st.set_page_config(page_title="Home", layout="wide")
     if os.getenv('AUTH_ENABLED', "True").lower() == "true":
         login_main()
     else:
