@@ -20,6 +20,4 @@ class MyFunctions(Functions):
 class MyPages(Pages):
 
   def get_pages(self):
-    if self.get_config() is None:
-      raise ValueError("No config provided, pages will be None")
     return ['foo', 'bar']
