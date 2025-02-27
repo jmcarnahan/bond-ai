@@ -4,6 +4,7 @@ from sqlalchemy.sql import text
 import os
 import logging
 import uuid
+import streamlit as st
 
 
 LOGGER = logging.getLogger(__name__)
@@ -20,36 +21,24 @@ class Thread(Base):
 
 class Metadata:
 
-  def __init__(self, config):
-    self.session = config.get_session()
-    self.engine_key = __name__ + "_metadata_db_engine"
-    self.db_session_key = __name__ + "_metadata_db_session"
-
-    if self.engine_key in self.session:
-      self.engine = self.session[self.engine_key]
-    else:
-      metadata_db_url = os.getenv('METADATA_DB_URL', 'sqlite:///.metadata.db')
-      self.engine = create_engine(metadata_db_url, echo=False)
-      Base.metadata.create_all(self.engine) 
-      self.session[self.engine_key] = self.engine
-      LOGGER.debug(f"Created database engine for metadata at {metadata_db_url}")
-
+  def __init__(self):
+    metadata_db_url = os.getenv('METADATA_DB_URL', 'sqlite:///.metadata.db')
+    self.engine = create_engine(metadata_db_url, echo=False)
+    Base.metadata.create_all(self.engine) 
+    self.session = scoped_session(sessionmaker(bind=self.engine))
+    LOGGER.info(f"Created Metadata instance using database engine: {metadata_db_url}")
+      
+  @classmethod
+  @st.cache_resource
+  def metadata(cls):
+    return Metadata()
 
   def get_db_session(self):
-    if self.db_session_key not in self.session:
-      Session = scoped_session(sessionmaker(bind=self.engine))
-      self.session[self.db_session_key] = Session()
-      LOGGER.debug(f"Created new database session")
-      # # need to re-listen for every new session
-      # event.listen(Thread, 'after_update', self.create_after_insert_listener())
-    return self.session[self.db_session_key]
-      
+    return self.session()
 
   def close_db_engine(self):
     self.engine.dispose()
     self.engine = None
-    if self.engine_key in self.session:
-        del self.session[self.engine_key]
     LOGGER.info(f"Closed database engine")
 
   def close(self) -> None:
