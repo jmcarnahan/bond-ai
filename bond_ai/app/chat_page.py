@@ -32,6 +32,10 @@ class ChatPage(Page):
 
     def get_description(self):
         return self.agent.description
+    
+    # def catchup(self):
+    #     for message_id, message in st.session_state['displayed_messages'].items():
+    #         self.display_message(message)
 
     def display_message(self, message: BondMessage):
 
