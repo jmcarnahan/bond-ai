@@ -23,7 +23,6 @@ class ChatPage(Page):
     def __init__(self, agent, title):
         self.agent = agent
         self.title = title
-        self.displayed_messages = {}
 
     def get_id(self):
         return self.agent.assistant_id
@@ -33,14 +32,12 @@ class ChatPage(Page):
 
     def get_description(self):
         return self.agent.description
-    
-    def catchup(self):
-        for message_id, message in self.displayed_messages.items():
-            self.display_message(message)
 
     def display_message(self, message: BondMessage):
 
-        if message.message_id in self.displayed_messages:
+        LOGGER.debug(f"Asked to display message: {message.message_id} from thread {message.thread_id}")
+
+        if message.message_id in st.session_state['displayed_messages']:
             LOGGER.debug(f"Received duplicate message, ignoring {message.message_id}")
             return
 
@@ -55,7 +52,7 @@ class ChatPage(Page):
             else:
                 chat_msg.write_stream(message.clob.generate())
                 message.clob.close()
-            self.displayed_messages[message.message_id] = message
+            st.session_state['displayed_messages'][message.message_id] = message
 
         elif message.type == "image_file":
             chat_msg = st.chat_message(message.role)
@@ -67,7 +64,7 @@ class ChatPage(Page):
                 chat_msg.write(image)
             else:
                 chat_msg.write(content)
-            self.displayed_messages[message.message_id] = message
+            st.session_state['displayed_messages'][message.message_id] = message
  
         else:
             LOGGER.error(f"Unknown message type {message.type}")
@@ -101,6 +98,7 @@ class ChatPage(Page):
 
         st.markdown(f"## {self.title}")
         threads = Threads.threads(user_id=st.session_state['user_id'])
+        st.session_state['displayed_messages'] = {}
 
         clear_thread = st.session_state.get('clear_thread', False)
         if clear_thread:
@@ -110,7 +108,7 @@ class ChatPage(Page):
             initial_prompt = self.agent.get_metadata_value('initial_prompt')
             if initial_prompt:
                 conn = Broker.broker().connect(thread_id=thread_id, subscriber_id=st.session_state['user_id'])
-                message = self.agent.create_user_message(initial_prompt, thread_id, role='system')
+                message = self.agent.create_user_message(initial_prompt, thread_id, override_role='system')
                 self.run_thread(thread_id, conn)
                 LOGGER.info(f"Clear thread -> Sent initial prompt: {initial_prompt}")
             st.session_state['clear_thread'] = False        
@@ -133,7 +131,7 @@ class ChatPage(Page):
             conn = Broker.broker().connect(thread_id=thread_id, subscriber_id=st.session_state['user_id'])
             message = self.agent.create_user_message(prompt, thread_id)
             self.run_thread(thread_id, conn)
-            # st.rerun()
+            st.rerun()
             
 
 
