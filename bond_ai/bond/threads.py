@@ -1,7 +1,6 @@
 import io
 import socket
 import json
-import zmq
 from PIL import Image
 import base64
 from bond_ai.bond.config import Config
@@ -94,7 +93,7 @@ class Threads:
                 message.role = metadata["override_role"]
 
             for part in message.content:
-                part_idx += 1
+                LOGGER.debug(f"Processing message part: {str(part)}")
                 part_id = f"{message.id}_{part_idx}"
                 if part.type == "text":
                     response_msgs.append(BondMessage(thread_id=thread_id, message_id=part_id, type=part.type, role=message.role, content=part.text.value))
@@ -107,6 +106,7 @@ class Threads:
                     # readable_buffer = io.BytesIO(data_in_bytes)
                     # image = Image.open(readable_buffer)
                     response_msgs.append(BondMessage(thread_id=thread_id, message_id=part_id, type=part.type, role=message.role, content=img_src))
+                part_idx += 1
         return {message.message_id: message for message in response_msgs}
 
     # def get_messages(self, thread_id):
