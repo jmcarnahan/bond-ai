@@ -1,0 +1,8 @@
+.env
+**/.metadata.db
+data
+archive
+__pycache__
+pytest.ini
+dist
+creds
