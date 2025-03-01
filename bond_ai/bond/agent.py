@@ -1,6 +1,5 @@
 import streamlit as st
 import io
-import json
 from PIL import Image
 from bond_ai.bond.config import Config
 from bond_ai.bond.functions import Functions
@@ -24,10 +23,6 @@ import logging
 import base64
 import abc
 
-
-
-
-import ijson
 
 LOGGER = logging.getLogger(__name__)
 
@@ -270,6 +265,7 @@ class Agent:
                         attachments=[  
                             {"file_id": file_id, "tools": [{"type": "code_interpreter"}]}
                         ],
+                        metadata={"override_role": "system"}
                     )
                 LOGGER.info(f"Added code files to thread: {code_file_ids} from functions")
             return
