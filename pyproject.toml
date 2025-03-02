@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bondable"
-version = "0.1.1"
+version = "0.1.2"
 description = "Bond AI is UI working with agents using the OpenAI Assistants API"
 license = "MIT"
 authors = ["jmcarnahan <jmcarny@gmail.com>"]
