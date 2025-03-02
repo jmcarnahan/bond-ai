@@ -1,8 +1,8 @@
-import json
+
 import logging 
 from typing import List
-from bond_ai.bond.functions import Functions
-from bond_ai.bond.pages import Pages
+from bondable.bond.functions import Functions
+from bondable.bond.pages import Pages
 LOGGER = logging.getLogger(__name__)
 
 class MySession(dict):
@@ -15,7 +15,12 @@ class MyFunctions(Functions):
       return []
 
   def use_numbers (self, a, b):
-      return json.dumps({"value": a - b})
+      try:
+        import json
+        return json.dumps({"value": a - b})
+      except Exception as e:
+        LOGGER.error(f"Error in use_numbers: {e}")
+        return '{"error": "Error in use_numbers"}'
   
 class MyPages(Pages):
 

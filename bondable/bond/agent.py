@@ -1,9 +1,9 @@
 import streamlit as st
 import io
 from PIL import Image
-from bond_ai.bond.config import Config
-from bond_ai.bond.functions import Functions
-from bond_ai.bond.broker import Broker
+from bondable.bond.config import Config
+from bondable.bond.functions import Functions
+from bondable.bond.broker import Broker
 from typing_extensions import override
 from openai import OpenAI, AssistantEventHandler
 from openai.types.beta.threads import (
@@ -22,6 +22,7 @@ import threading
 import logging
 import base64
 import abc
+import json
 
 
 LOGGER = logging.getLogger(__name__)
@@ -74,7 +75,7 @@ class EventHandler(AssistantEventHandler):
                 self.message_queue.put(part.text.value)
                 self.message_state += 1
             else:
-                LOGGER.info(f"Delta message of unhandled type: {delta}")
+                LOGGER.warning(f"Delta message of unhandled type: {delta}")
 
 
     @override 
@@ -91,6 +92,13 @@ class EventHandler(AssistantEventHandler):
         self.message_queue.put("Done.")
         self.message_queue.put("</_bondmessage>")
         self.message_queue.put(None)
+
+    @override
+    def on_exception(self, exception):
+        LOGGER.error(f"Received assistant exception: {exception}")
+        self.message_queue.put(f"<_bondmessage id=\"-1\" role=\"system\" type=\"text\" thread_id=\"{self.thread_id}\" is_done=\"false\" is_error=\"true\">")
+        self.message_queue.put(f"An error occurred: " + str(exception))
+        self.message_queue.put("</_bondmessage>")       
 
     @override
     def on_image_file_done(self, image_file: ImageFile) -> None:

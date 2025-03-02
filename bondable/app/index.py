@@ -1,7 +1,7 @@
 import streamlit as st
-from bond_ai.bond.pages import Pages
-from bond_ai.bond.threads import Threads
-from bond_ai.app.threads_page import ThreadsPage
+from bondable.bond.pages import Pages
+from bondable.bond.threads import Threads
+from bondable.app.threads_page import ThreadsPage
 import logging
 import os
 import re

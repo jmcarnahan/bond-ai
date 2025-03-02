@@ -1,5 +1,5 @@
 
-from bond_ai.bond.broker import Broker, BondMessage
+from bondable.bond.broker import Broker, BondMessage
 
 import os
 import sys

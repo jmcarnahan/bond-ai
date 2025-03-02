@@ -1,6 +1,6 @@
-from bond_ai.bond.config import Config
-from bond_ai.bond.threads import Threads
-from bond_ai.bond.metadata import Metadata
+from bondable.bond.config import Config
+from bondable.bond.threads import Threads
+from bondable.bond.metadata import Metadata
 import os
 import sys
 import time

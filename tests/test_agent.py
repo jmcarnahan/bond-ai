@@ -1,7 +1,8 @@
-from bond_ai.bond.agent import Agent
-from bond_ai.bond.broker import Broker, BondMessage
-from bond_ai.bond.threads import Threads
-from bond_ai.bond.config import Config
+from bondable.bond.agent import Agent
+from bondable.bond.broker import Broker, BondMessage
+from bondable.bond.threads import Threads
+from bondable.bond.config import Config
+from bondable.bond.functions import Functions
 from tests.common import MySession
 import pytest
 import os
@@ -12,8 +13,6 @@ import streamlit as st
 LOGGER = logging.getLogger(__name__)
 
 user_id = 'test_user'
-
-
 
 class TestAgent:
 
@@ -160,6 +159,12 @@ class TestAgent:
 
 
   def test_functions_agent_broadcast(self):
+
+    # first confirm that the function is working
+    fxns = Functions.functions()
+    result = fxns.use_numbers(a=3, b=4)
+    assert result == '{"value": -1}'
+
     openai_client = self.config.get_openai_client()
     functions_assistant = openai_client.beta.assistants.create(
         name="Functions Agent",

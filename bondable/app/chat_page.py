@@ -1,9 +1,9 @@
 import streamlit as st
 import queue
-from bond_ai.bond.threads import Threads
-from bond_ai.bond.agent import Agent
-from bond_ai.bond.broker import Broker, BondMessage, BrokerConnectionEmpty
-from bond_ai.bond.page import Page
+from bondable.bond.threads import Threads
+from bondable.bond.agent import Agent
+from bondable.bond.broker import Broker, BondMessage, BrokerConnectionEmpty
+from bondable.bond.page import Page
 from typing_extensions import override
 import base64
 import logging

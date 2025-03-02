@@ -4,7 +4,7 @@ from typing import Dict, Any, List
 from abc import ABC, abstractmethod
 import os
 import importlib
-from bond_ai.bond.config import Config
+from bondable.bond.config import Config
 
 LOGGER = logging.getLogger(__name__)
 

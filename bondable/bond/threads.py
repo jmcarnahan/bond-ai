@@ -3,10 +3,10 @@ import socket
 import json
 from PIL import Image
 import base64
-from bond_ai.bond.config import Config
-from bond_ai.bond.metadata import Metadata
-from bond_ai.bond.broker import BondMessage
-from bond_ai.bond.broker import Broker
+from bondable.bond.config import Config
+from bondable.bond.metadata import Metadata
+from bondable.bond.broker import BondMessage
+from bondable.bond.broker import Broker
 import logging
 import os
 import threading

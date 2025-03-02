@@ -1,9 +1,8 @@
 from abc import ABC, abstractmethod
-from bond_ai.bond.agent import Agent
-from bond_ai.app.chat_page import ChatPage
-from bond_ai.bond.threads import Threads
-from bond_ai.bond.page import Page
-from bond_ai.bond.config import Config
+from bondable.bond.agent import Agent
+from bondable.app.chat_page import ChatPage
+from bondable.bond.page import Page
+from bondable.bond.config import Config
 import logging
 import streamlit as st
 import os

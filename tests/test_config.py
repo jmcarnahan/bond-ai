@@ -1,7 +1,7 @@
-from bond_ai.bond.config import Config
-from bond_ai.bond.functions import Functions
-from bond_ai.bond.pages import Pages
-from bond_ai.bond.metadata import Metadata
+from bondable.bond.config import Config
+from bondable.bond.functions import Functions
+from bondable.bond.pages import Pages
+from bondable.bond.metadata import Metadata
 
 import os
 import sys
