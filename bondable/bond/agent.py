@@ -1,4 +1,3 @@
-import streamlit as st
 import io
 from PIL import Image
 from bondable.bond.config import Config
@@ -181,6 +180,9 @@ class Agent:
     def __str__(self):
         return f"Agent: {self.name} ({self.assistant_id})"
 
+    def get_assistant_id(self):
+        return self.assistant_id
+
     def get_name(self):
         return self.name
     
@@ -341,6 +343,7 @@ class Agent:
                         LOGGER.trace("No tool outputs to submit.")
                 case _:
                     LOGGER.warning(f"Run status: {run.status}")
+
 
 
 
