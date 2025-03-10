@@ -4,7 +4,7 @@ from sqlalchemy.sql import text
 import os
 import logging
 import uuid
-import streamlit as st
+from bondable.bond.cache import bond_cache
 
 
 LOGGER = logging.getLogger(__name__)
@@ -27,9 +27,9 @@ class Metadata:
     Base.metadata.create_all(self.engine) 
     self.session = scoped_session(sessionmaker(bind=self.engine))
     LOGGER.info(f"Created Metadata instance using database engine: {metadata_db_url}")
-      
+
   @classmethod
-  @st.cache_resource
+  @bond_cache
   def metadata(cls):
     return Metadata()
 
