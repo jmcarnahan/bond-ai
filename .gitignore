@@ -1,5 +1,6 @@
 .env
 **/.metadata.db
+**/.bondcache.db
 data
 archive
 __pycache__
