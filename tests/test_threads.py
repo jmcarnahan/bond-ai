@@ -1,16 +1,15 @@
+import logging 
+LOGGER = logging.getLogger(__name__)
+
 from bondable.bond.config import Config
 from bondable.bond.threads import Threads
 from bondable.bond.metadata import Metadata
+from bondable.bond.cache import bond_cache_clear
+from tests.common import MySession
 import os
 import sys
-import time
-import importlib
-import logging 
-import pytest
-import streamlit as st
-from tests.common import MySession
 from abc import ABC, abstractmethod
-LOGGER = logging.getLogger(__name__)
+
 
 
 user_id = 'test_user'
@@ -22,6 +21,7 @@ class TestThreads(ABC):
   def setup_method(self):
     pass
 
+  @abstractmethod
   def teardown_method(self):
     pass
 
@@ -39,8 +39,8 @@ class TestThreads(ABC):
 
   def test_get_current_thread(self):
     thread_id = self.threads.create_thread()
-    assert thread_id is not None
     session = MySession()
+    assert thread_id is not None
     current_thread_id = self.threads.get_current_thread_id(session=session)
     assert current_thread_id is not None
     assert current_thread_id == thread_id
@@ -85,10 +85,7 @@ class TestThreads(ABC):
 class TestThreadsDB(TestThreads):
 
   def setup_method(self):
-    tests_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
-    if tests_path not in sys.path:
-        sys.path.append(tests_path)
-    st.cache_resource.clear()
+    bond_cache_clear()
     os.environ['METADATA_CLASS'] = 'bond_ai.bond.metadata.metadata_db.MetadataSqlAlchemy'
     os.environ['METADATA_DB_URL'] = 'sqlite:///.metadata-test.db'
     self.config = Config.config()

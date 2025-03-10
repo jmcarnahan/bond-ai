@@ -1,16 +1,11 @@
-
-from bondable.bond.broker import Broker, BondMessage
-
-import os
-import sys
-import importlib
 import logging 
-import pytest
-
 LOGGER = logging.getLogger(__name__)
 
-user_id = 'test_user'
-
+from bondable.bond.broker import Broker, BondMessage
+from bondable.bond.cache import bond_cache_clear
+import os
+import sys
+import pytest
 
 
 class MessageListener:
@@ -38,16 +33,8 @@ class MessageListener:
 
 class TestBroker:
 
-  @pytest.fixture(scope="class", autouse=True)
-  def setup_class(self, request):
-    tests_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
-    if tests_path not in sys.path:
-        sys.path.append(tests_path)
-
   def setup_method(self):
-    import streamlit as st
-    st.cache_resource.clear()
-
+    bond_cache_clear()
 
   def test_cache(self):
     broker = Broker.broker()

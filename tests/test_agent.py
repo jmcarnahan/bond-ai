@@ -1,23 +1,23 @@
+import logging
+LOGGER = logging.getLogger(__name__)
+
 from bondable.bond.agent import Agent
 from bondable.bond.broker import Broker, BondMessage
 from bondable.bond.threads import Threads
 from bondable.bond.config import Config
 from bondable.bond.functions import Functions
-from tests.common import MySession
+from bondable.bond.cache import bond_cache_clear
 import pytest
 import os
 import time
-import logging
-import streamlit as st
 
-LOGGER = logging.getLogger(__name__)
 
 user_id = 'test_user'
 
 class TestAgent:
 
   def setup_method(self):
-    st.cache_resource.clear()
+    bond_cache_clear()
     os.environ['METADATA_CLASS'] = 'bond_ai.bond.metadata.metadata_db.MetadataSqlAlchemy'
     os.environ['FUNCTIONS_CLASS'] = 'tests.common.MyFunctions'
     self.broker = Broker.broker()
@@ -27,7 +27,7 @@ class TestAgent:
   def teardown_method(self):
     self.threads.close()
     self.broker.stop()
-    st.cache_resource.clear()
+    bond_cache_clear()
 
   def test_list_agents(self):
     agents = Agent.list_agents()

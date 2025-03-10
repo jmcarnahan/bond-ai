@@ -1,9 +1,10 @@
-
 import logging 
+LOGGER = logging.getLogger(__name__)
+
 from typing import List
 from bondable.bond.functions import Functions
 from bondable.bond.pages import Pages
-LOGGER = logging.getLogger(__name__)
+
 
 class MySession(dict):
   def __init__(self, *args, **kwargs):
