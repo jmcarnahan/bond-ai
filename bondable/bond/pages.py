@@ -1,15 +1,14 @@
+import logging
+LOGGER = logging.getLogger(__name__)
+
 from abc import ABC, abstractmethod
 from bondable.bond.agent import Agent
 from bondable.app.chat_page import ChatPage
 from bondable.bond.page import Page
 from bondable.bond.config import Config
-import logging
-import streamlit as st
+from bondable.bond.cache import bond_cache
 import os
 import importlib
-
-LOGGER = logging.getLogger(__name__)
-
 
 
 class Pages(ABC):
@@ -25,7 +24,7 @@ class Pages(ABC):
     pass
 
   @classmethod
-  @st.cache_resource
+  @bond_cache
   def pages(cls):
       fully_qualified_name = os.getenv('PAGES_CLASS', f"{DefaultPages.__module__}.{DefaultPages.__qualname__}")
       try:
