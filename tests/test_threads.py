@@ -103,6 +103,8 @@ class TestThreadsDB(TestThreads):
     self.config = None
     self.threads.close()
     self.threads = None
+    del os.environ['METADATA_CLASS']
+    del os.environ['METADATA_DB_URL']
 
 
 

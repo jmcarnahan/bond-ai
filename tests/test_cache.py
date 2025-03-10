@@ -16,6 +16,7 @@ class TestCache:
     global count
     count = 0
     bond_cache_clear()
+    configure_cache(CacheType.BOND)
 
   def test_count_bond(self, setup):
     configure_cache(CacheType.BOND)

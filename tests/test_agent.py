@@ -28,6 +28,8 @@ class TestAgent:
     self.threads.close()
     self.broker.stop()
     bond_cache_clear()
+    del os.environ['METADATA_CLASS']
+    del os.environ['FUNCTIONS_CLASS']
 
   def test_list_agents(self):
     agents = Agent.list_agents()

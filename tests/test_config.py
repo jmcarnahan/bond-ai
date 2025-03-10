@@ -47,12 +47,14 @@ class TestConfig:
 
   def test_get_functions_common(self, setup):
     os.environ['FUNCTIONS_CLASS'] = 'tests.common.MyFunctions'
+    bond_cache_clear()
     functions = Functions.functions()
     assert functions is not None
     assert functions.get_config() is not None
     assert hasattr(functions, 'use_numbers')
     cached_functions = Functions.functions()
     assert id(functions) == id(cached_functions)
+    del os.environ['FUNCTIONS_CLASS']
 
   def test_get_pages_default(self, setup):
     if 'PAGES_CLASS' in os.environ:
@@ -67,11 +69,13 @@ class TestConfig:
 
   def test_get_pages_common(self, setup):
     os.environ['PAGES_CLASS'] = 'tests.common.MyPages'
+    bond_cache_clear()
     pages_cls = Pages.pages()
     assert pages_cls is not None
     pages = pages_cls.get_pages()
     assert isinstance(pages, list)
     assert len(pages) == 2
+    del os.environ['PAGES_CLASS']
 
   def test_metadata_db(self, setup):
     metadata = Metadata.metadata()
