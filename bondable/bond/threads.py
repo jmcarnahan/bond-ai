@@ -7,6 +7,7 @@ from bondable.bond.config import Config
 from bondable.bond.metadata import Metadata
 from bondable.bond.broker import BondMessage
 from bondable.bond.broker import Broker
+from bondable.bond.cache import bond_cache
 import logging
 import os
 import threading
@@ -17,7 +18,6 @@ import re
 from xml.sax import ContentHandler, make_parser
 from xml.sax.xmlreader import XMLReader
 from abc import ABC, abstractmethod
-import streamlit as st
 
 LOGGER = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class Threads:
         LOGGER.info(f"Created new threads instance for user: ({self.user_id})")
 
     @classmethod
-    @st.cache_resource
+    @bond_cache
     def threads(cls, user_id):
         return Threads(user_id=user_id)
 
