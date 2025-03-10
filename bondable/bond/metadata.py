@@ -22,11 +22,11 @@ class Thread(Base):
 class Metadata:
 
   def __init__(self):
-    metadata_db_url = os.getenv('METADATA_DB_URL', 'sqlite:///.metadata.db')
-    self.engine = create_engine(metadata_db_url, echo=False)
+    self.metadata_db_url = os.getenv('METADATA_DB_URL', 'sqlite:///.metadata.db')
+    self.engine = create_engine(self.metadata_db_url, echo=False)
     Base.metadata.create_all(self.engine) 
     self.session = scoped_session(sessionmaker(bind=self.engine))
-    LOGGER.info(f"Created Metadata instance using database engine: {metadata_db_url}")
+    LOGGER.info(f"Created Metadata instance using database engine: {self.metadata_db_url}")
 
   @classmethod
   @bond_cache
@@ -34,12 +34,18 @@ class Metadata:
     return Metadata()
 
   def get_db_session(self):
+    if not self.engine:
+      self.engine = create_engine(self.metadata_db_url, echo=False)
+      Base.metadata.create_all(self.engine)
+      self.session = scoped_session(sessionmaker(bind=self.engine))
+      LOGGER.info(f"Re-created Metadata instance using database engine: {self.metadata_db_url}")
     return self.session()
 
   def close_db_engine(self):
-    self.engine.dispose()
-    self.engine = None
-    LOGGER.info(f"Closed database engine")
+    if self.engine:
+      self.engine.dispose()
+      self.engine = None
+      LOGGER.info(f"Closed database engine")
 
   def close(self) -> None:
     self.close_db_engine()
