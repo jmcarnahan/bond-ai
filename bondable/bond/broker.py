@@ -1,8 +1,7 @@
 import logging
 import queue
 import re
-import streamlit as st
-
+from bondable.bond.cache import bond_cache
 
 LOGGER = logging.getLogger(__name__)
 
@@ -168,7 +167,7 @@ class Broker:
         LOGGER.info("Created Broker instance")
 
     @classmethod
-    @st.cache_resource
+    @bond_cache
     def broker(cls):
         return Broker()
 
