@@ -5,10 +5,10 @@ from abc import ABC, abstractmethod
 import os
 import importlib
 from bondable.bond.config import Config
+from bondable.bond.decorator import bondtool
+from bondable.bond.cache import bond_cache
 
 LOGGER = logging.getLogger(__name__)
-
-import streamlit as st
 
 class Functions(ABC):
 
@@ -23,7 +23,7 @@ class Functions(ABC):
         pass
 
     @classmethod
-    @st.cache_resource
+    @bond_cache
     def functions(cls):
         fully_qualified_name = os.getenv('FUNCTIONS_CLASS', f"{DefaultFunctions.__module__}.{DefaultFunctions.__qualname__}")
         try:
@@ -44,6 +44,11 @@ class DefaultFunctions(Functions):
     
     def consume_code_file_ids(self):
         return []
+    
+    @bondtool(description="Will say hello to the name provided.", arg_descriptions={"name": "The name to say hello to."})
+    def hello(self, name:str) -> str:
+        LOGGER.info(f"Saying hello to: {name}")
+        return f"Hello, {name}!"
 
 
 
