@@ -11,6 +11,7 @@ import pytest
 import pandas as pd
 import base64
 import hashlib
+import tempfile
 
 
 class TestBuilder:
@@ -34,15 +35,16 @@ class TestBuilder:
         'Last_Purchase_Amount': [100.50, 200.75, 150.00]
       }
       df = pd.DataFrame(data)
-      data_file = 'sample_customers.csv'
-      df.to_csv(data_file, index=False)
-      html_file = 'sample_customers.html'
-      df.to_html(html_file, index=False)
+      data_file = tempfile.NamedTemporaryFile(suffix=".csv", delete=True)
+      df.to_csv(data_file.name, index=False)
+      html_file = tempfile.NamedTemporaryFile(suffix=".html", delete=True)
+      df.to_html(html_file.name, index=False)
 
       yield builder, config, data_file, html_file
 
       builder.cleanup()
-      os.remove(data_file)
+      os.remove(data_file.name)
+      os.remove(html_file.name)
     
   def test_get_agent_1(self, setup):
     builder, config, data_file, html_file = setup
@@ -99,7 +101,7 @@ class TestBuilder:
         tools=[{"type": "code_interpreter"}],
         tool_resources={
           "code_interpreter": {
-            "files": [data_file]
+            "files": [data_file.name]
           }
         }
     )
@@ -124,7 +126,7 @@ class TestBuilder:
         tools=[{"type": "code_interpreter"}],
         tool_resources={
           "code_interpreter": {
-            "files": [data_file]
+            "files": [data_file.name]
           }
         }
     )
@@ -141,10 +143,10 @@ class TestBuilder:
 
   def test_file_hash_1(self, setup):
     builder, config, data_file, html_file = setup
-    file_record = builder._get_file_record(data_file)
+    file_record = builder._get_file_record(data_file.name)
     assert file_record is not None
     assert file_record['content'] is not None
-    assert file_record['path'] == data_file
+    assert file_record['path'] == data_file.name
     assert file_record['file_hash'] is not None
     file_hash = hashlib.sha256(file_record['content']).hexdigest()
     assert file_hash == file_record['file_hash']
@@ -159,9 +161,9 @@ class TestBuilder:
   def test_vector_store_2(self, setup):
     builder, config, data_file, html_file = setup
 
-    vector_store_id = builder.get_vector_store(name='test_vector_store', files=[html_file])
+    vector_store_id = builder.get_vector_store(name='test_vector_store', files=[html_file.name])
     assert vector_store_id is not None
-    file_id = builder.get_file_id(html_file)
+    file_id = builder.get_file_id(html_file.name)
     assert file_id is not None
     vector_store_file = config.get_openai_client().beta.vector_stores.files.retrieve(
       vector_store_id=vector_store_id,
@@ -171,11 +173,11 @@ class TestBuilder:
     vector_store_file = vector_store_file.to_dict()
     assert vector_store_file['id'] == file_id
 
-    new_vector_store_id = builder.get_vector_store(name='test_vector_store', files=[html_file])
+    new_vector_store_id = builder.get_vector_store(name='test_vector_store', files=[html_file.name])
     assert new_vector_store_id is not None
     assert new_vector_store_id == vector_store_id
 
-    new_file_id = builder.get_file_id(html_file)
+    new_file_id = builder.get_file_id(html_file.name)
     assert new_file_id is not None
     assert new_file_id == file_id
 
@@ -199,7 +201,7 @@ class TestBuilder:
         tools=[{"type": "file_search"}],
         tool_resources={
           "file_search": {
-            "files": [html_file]
+            "files": [html_file.name]
           }
         }
     )
@@ -213,7 +215,7 @@ class TestBuilder:
     assert assistant.instructions == agent_def.instructions
     tool_resources = AgentDefinition.to_dict(assistant.tool_resources)
     assert len(tool_resources['file_search']['vector_store_ids']) == 1
-    file_id = builder.get_file_id(html_file)
+    file_id = builder.get_file_id(html_file.name)
     assert file_id is not None
     vector_store_file = config.get_openai_client().beta.vector_stores.files.retrieve(
       vector_store_id=tool_resources['file_search']['vector_store_ids'][0],
@@ -232,7 +234,7 @@ class TestBuilder:
         tools=[{"type": "file_search"}],
         tool_resources={
           "file_search": {
-            "files": [html_file]
+            "files": [html_file.name]
           }
         }
     )
@@ -243,7 +245,7 @@ class TestBuilder:
     assert assistant is not None
     new_tool_resources = AgentDefinition.to_dict(assistant.tool_resources)
     assert len(new_tool_resources['file_search']['vector_store_ids']) == 1
-    new_file_id = builder.get_file_id(html_file)
+    new_file_id = builder.get_file_id(html_file.name)
     assert new_file_id is not None
     assert new_file_id == file_id
 
