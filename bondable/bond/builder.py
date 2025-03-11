@@ -72,7 +72,7 @@ class AgentDefinition:
             tool = self.to_dict(tool)
             if 'type' in tool and tool['type'] == 'file_search':
                 tool.pop('file_search', None)
-            LOGGER.info(f"Creating Agent Definition with tool -> {tool}")
+            LOGGER.debug(f"Creating Agent Definition with tool -> {tool}")
             self.tools.append(tool)
         LOGGER.debug(f"Tools: {json.dumps(self.tools, sort_keys=True, indent=4)}")
 
