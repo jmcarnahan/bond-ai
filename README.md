@@ -31,7 +31,15 @@ Bond AI leverages OpenAI's Assistant APi to help develop Generative AI agents an
 2. Install dependencies using Poetry:
 
     ```sh
+    poetry config virtualenvs.in-project true
+
     poetry install
+
+    poetry build
+
+    poetry shell
+
+    source $(poetry env info --path)/bin/activate
     ```
 
 3. Set up environment variables:
