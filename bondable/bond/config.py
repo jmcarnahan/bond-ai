@@ -45,7 +45,7 @@ class Config:
     def __del__(self):
         LOGGER.info("Closing Config instance")
         try:
-            if self.secrets is not None:
+            if hasattr(self, 'secrets') and self.secrets is not None:
                 self.secrets.transport.close()
         except Exception as e:
             LOGGER.error(f"Error closing Config instance {e}")
