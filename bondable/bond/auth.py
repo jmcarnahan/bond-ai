@@ -9,21 +9,18 @@ from google_auth_oauthlib.flow import Flow
 from google.auth.transport import requests
 from google.oauth2 import id_token, credentials
 from bondable.bond.cache import bond_cache
+from bondable.bond.config import Config
 import dotenv
 
 dotenv.load_dotenv()
 
-DEFAULT_SCOPES_STR = "openid, https://www.googleapis.com/auth/userinfo.email, https://www.googleapis.com/auth/userinfo.profile, https://www.googleapis.com/auth/gmail.readonly"
 
 class GoogleAuth:
     
     def __init__(self):
-        self.CLIENT_SECRETS_FILE = os.getenv("GOOGLE_AUTH_CREDS_PATH")
-        self.REDIRECT_URI = os.getenv("GOOGLE_AUTH_REDIRECT_URI")
-        self.SCOPES_STR = os.getenv("GOOGLE_AUTH_SCOPES", DEFAULT_SCOPES_STR)
-        self.SCOPES = [scope.strip() for scope in self.SCOPES_STR.split(",")]
-        self.VALID_EMAILS = os.getenv("GOOGLE_AUTH_VALID_EMAILS", "").split(",")
-        LOGGER.info(f"Google Auth initialized: file={self.CLIENT_SECRETS_FILE} redirect_uri={self.REDIRECT_URI} scopes={self.SCOPES}")
+        config = Config.config()
+        self.auth_info = config.get_auth_info()
+        LOGGER.debug(f"Google Auth initialized: redirect_uri={self.auth_info['redirect_uri']} scopes={self.auth_info['scopes']}")
 
     @classmethod
     @bond_cache
@@ -31,10 +28,10 @@ class GoogleAuth:
         return GoogleAuth()
 
     def _get_flow(self):
-        return Flow.from_client_secrets_file(
-            self.CLIENT_SECRETS_FILE,
-            scopes=self.SCOPES,
-            redirect_uri=self.REDIRECT_URI
+        return Flow.from_client_config(
+            client_config=self.auth_info['auth_creds'],
+            scopes=self.auth_info['scopes'],
+            redirect_uri=self.auth_info['redirect_uri']
         )
     
     def get_auth_url(self):
@@ -81,7 +78,7 @@ class GoogleAuth:
             user_info = self._get_google_user_info(creds)
             LOGGER.info(f"Authenticated: {user_info['name']} {user_info['email']}")
 
-            if len(self.VALID_EMAILS) > 0 and user_info['email'] not in self.VALID_EMAILS:
+            if len(self.auth_info['valid_emails']) > 0 and user_info['email'] not in self.auth_info['valid_emails']:
                 LOGGER.error(f"Invalid email: {user_info['email']}")
                 raise ValueError(f"Cannot authenticate with user {user_info['email']}")
 
