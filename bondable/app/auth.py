@@ -29,7 +29,7 @@ class StreamlitAuth:
 
     def set_cookie(self, user_info):
         self.get_cookies().set(name="bond_user_info", value=self.auth.create_cookie(user_info=user_info), max_age=86400, same_site="strict")
-        LOGGER.info(f"Set cookie for user: {user_info['name']} {user_info['email']}")
+        LOGGER.debug(f"Set cookie for user: {user_info['name']} {user_info['email']}")
         time.sleep(2)
 
     def delete_cookie(self):
