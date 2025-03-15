@@ -48,6 +48,8 @@ Bond AI leverages OpenAI's Assistant APi to help develop Generative AI agents an
 
     gcloud config set project <your-project-id>
 
+    gcloud config get-value project
+
     Create a .env file in the project root directory and add the following variables:
 
     ```env
