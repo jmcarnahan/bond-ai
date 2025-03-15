@@ -117,7 +117,7 @@ def main (name, email):
 def login_main(auth: StreamlitAuth):
     pages = {}
     if auth.bond_login():
-        LOGGER.info(f"Logged in: {st.session_state['user']['name']}")
+        LOGGER.debug(f"Logged in: {st.session_state['user']['name']}")
         pages = main_pages(auth=auth, name=st.session_state["user"]['name'], user_id=st.session_state["user"]['email'])
     else:
         LOGGER.debug(f"Showing login page")
