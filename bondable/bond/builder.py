@@ -208,7 +208,7 @@ class AgentBuilder:
 
         for vector_store_record in session.query(VectorStore).all():
             try:
-                self.openai_client.beta.vector_stores.delete(vector_store_record.vector_store_id)
+                self.openai_client.vector_stores.delete(vector_store_record.vector_store_id)
                 LOGGER.info(f"Deleting vector store with vector_store_id: {vector_store_record.vector_store_id}")
             except Exception as e:
                 LOGGER.error(f"Error deleting vector store with vector_store_id: {vector_store_record.vector_store_id}. Error: {e}")
@@ -406,7 +406,7 @@ class AgentBuilder:
         if vector_store_record:
             LOGGER.debug(f"Reusing vector store {name} with vector_store_id: {vector_store_record.vector_store_id}")
         else: 
-            vector_store = self.openai_client.beta.vector_stores.create(name=name)
+            vector_store = self.openai_client.vector_stores.create(name=name)
             vector_store_record = VectorStore(name=name, vector_store_id=vector_store.id)
             session.add(vector_store_record)
             session.commit()
@@ -416,7 +416,7 @@ class AgentBuilder:
         return vector_store_id
     
     def upload_vector_store_file(self, vector_store_id, file_id):
-        vector_store_file = self.openai_client.beta.vector_stores.files.create_and_poll(
+        vector_store_file = self.openai_client.vector_stores.files.create_and_poll(
             vector_store_id=vector_store_id,
             file_id=file_id,
         )
@@ -436,7 +436,7 @@ class AgentBuilder:
         vector_store_id = self._get_or_create_vector_store(name)
 
         # get the current file ids associated with the vector store
-        vector_store_files = self.openai_client.beta.vector_stores.files.list(
+        vector_store_files = self.openai_client.vector_stores.files.list(
             vector_store_id=vector_store_id,
             limit=max_limit
         )
@@ -455,7 +455,7 @@ class AgentBuilder:
                 
         # next remove any files left over
         for file_id in vector_store_file_ids:
-            self.openai_client.beta.vector_stores.files.delete(vector_store_id=vector_store_id, file_id=file_id)
+            self.openai_client.vector_stores.files.delete(vector_store_id=vector_store_id, file_id=file_id)
             LOGGER.info(f"Deleted vector store [{vector_store_id}] file record for file: {file_id}")
 
         return vector_store_id

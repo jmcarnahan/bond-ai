@@ -165,7 +165,7 @@ class TestBuilder:
     assert vector_store_id is not None
     file_id = builder.get_file_id(html_file.name)
     assert file_id is not None
-    vector_store_file = config.get_openai_client().beta.vector_stores.files.retrieve(
+    vector_store_file = config.get_openai_client().vector_stores.files.retrieve(
       vector_store_id=vector_store_id,
       file_id=file_id
     )
@@ -181,7 +181,7 @@ class TestBuilder:
     assert new_file_id is not None
     assert new_file_id == file_id
 
-    new_vector_store_file = config.get_openai_client().beta.vector_stores.files.retrieve(
+    new_vector_store_file = config.get_openai_client().vector_stores.files.retrieve(
       vector_store_id=new_vector_store_id,
       file_id=new_file_id
     )
@@ -217,7 +217,7 @@ class TestBuilder:
     assert len(tool_resources['file_search']['vector_store_ids']) == 1
     file_id = builder.get_file_id(html_file.name)
     assert file_id is not None
-    vector_store_file = config.get_openai_client().beta.vector_stores.files.retrieve(
+    vector_store_file = config.get_openai_client().vector_stores.files.retrieve(
       vector_store_id=tool_resources['file_search']['vector_store_ids'][0],
       file_id=file_id
     )
@@ -249,7 +249,7 @@ class TestBuilder:
     assert new_file_id is not None
     assert new_file_id == file_id
 
-    new_vector_store_file = config.get_openai_client().beta.vector_stores.files.retrieve(
+    new_vector_store_file = config.get_openai_client().vector_stores.files.retrieve(
       vector_store_id=new_tool_resources['file_search']['vector_store_ids'][0],
       file_id=new_file_id
     )
