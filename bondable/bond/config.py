@@ -20,26 +20,29 @@ load_dotenv()
 
 class Config:
     
-    def __init__(self):
-
+    # config should init with a service account
+    # this should either be a base64 string or a file 
+    # both coming in via a env var
+    def __init__(self):        
         try:
-            if 'GOOGLE_USER_INFO' in os.environ:
-                user_info_base64 = os.getenv("GOOGLE_USER_INFO") # this is a bas64 string
-                user_info = base64.b64decode(user_info_base64).decode("utf-8")
-                self.credentials = service_account.Credentials.from_service_account_info(json.loads(user_info))
-                self.gcp_project_id = os.getenv('GOOGLE_PROJECT_ID', self.credentials.project_id)
+            if 'BOND_GCLOUD_SA_CREDS_STRING' in os.environ:
+                sa_creds_base64 = os.getenv("BOND_GCLOUD_SA_CREDS_STRING") # this is a bas64 string
+                sa_creds = base64.b64decode(sa_creds_base64).decode("utf-8")
+                self.credentials = service_account.Credentials.from_service_account_info(json.loads(sa_creds))
+                self.gcp_project_id = os.getenv('BOND_GCLOUD_PROJECT_ID', self.credentials.project_id)
                 self.secrets = secretmanager.SecretManagerServiceClient(credentials=self.credentials)
-                LOGGER.info(f"Using GCP credentials from GOOGLE_USER_INFO for project_id: {self.gcp_project_id}")
-            elif 'GOOGLE_APPLICATION_CREDENTIALS' in os.environ:
-                gcp_creds_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-                self.credentials = service_account.Credentials.from_service_account_file(gcp_creds_path)
-                self.gcp_project_id = os.getenv('GOOGLE_PROJECT_ID', self.credentials.project_id)
+                LOGGER.info(f"Using GCLOUD credentials from BOND_GCLOUD_SA_CREDS_STRING for project_id: {self.gcp_project_id}")
+            elif 'BOND_GCLOUD_SA_CREDS_PATH' in os.environ:
+                sa_creds_path = os.getenv('BOND_GCLOUD_SA_CREDS_PATH')
+                self.credentials = service_account.Credentials.from_service_account_file(sa_creds_path)
+                self.gcp_project_id = os.getenv('BOND_GCLOUD_PROJECT_ID', self.credentials.project_id)
                 self.secrets = secretmanager.SecretManagerServiceClient(credentials=self.credentials)
-                LOGGER.info(f"Using GCP credentials from GOOGLE_APPLICATION_CREDENTIALS for project_id: {self.gcp_project_id}")
+                LOGGER.info(f"Using GCLOUD credentials from BOND_GCLOUD_SA_CREDS_PATH for project_id: {self.gcp_project_id}")
             else:
-                self.credentials, self.gcp_project_id = google.auth.default()
+                self.credentials, project_id = google.auth.default()
+                self.gcp_project_id = os.getenv('BOND_GCLOUD_PROJECT_ID', project_id)
                 self.secrets = secretmanager.SecretManagerServiceClient(credentials=self.credentials)
-                LOGGER.info(f"Using GCP default credentials for project_id: {self.gcp_project_id}")
+                LOGGER.info(f"Using GCLOUD default credentials for project_id: {self.gcp_project_id}")
         except Exception as e:
             LOGGER.error(f"Error loading GCP credentials: {e}")
             raise e
