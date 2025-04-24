@@ -14,7 +14,6 @@ from bondable.bond.threads import Threads
 from bondable.app.threads_page import ThreadsPage
 from bondable.app.auth import StreamlitAuth
 import os
-import re
 from dotenv import load_dotenv
 
 load_dotenv()

@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 import os
 import logging
 import sys
-import signal
 
 
 load_dotenv()

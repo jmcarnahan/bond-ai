@@ -1,5 +1,4 @@
 import streamlit as st
-import queue
 from bondable.bond.threads import Threads
 from bondable.bond.agent import Agent
 from bondable.bond.broker import Broker, BondMessage, BrokerConnectionEmpty

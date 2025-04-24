@@ -3,7 +3,6 @@ from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
 from sqlalchemy.sql import text
 import os
 import logging
-import uuid
 from bondable.bond.cache import bond_cache
 
 

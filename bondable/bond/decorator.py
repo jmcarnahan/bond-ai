@@ -1,7 +1,6 @@
 import inspect
 from typing import Any, Callable, Optional, Dict, get_origin, get_args
 import logging
-import threading
 from functools import wraps
 
 LOGGER = logging.getLogger(__name__)
