@@ -16,7 +16,7 @@ Bond AI leverages OpenAI's Assistant APi to help develop Generative AI agents an
 
 ### Prerequisites
 
-- Python 3.13
+- Python 3.12
 - Poetry
 
 ### Installation
