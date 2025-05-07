@@ -3,8 +3,44 @@
 This document provides examples of how to use the REST API endpoints for the Bondable service.
 All examples use `curl` and assume the API is running at `http://localhost:8000`.
 
-**Authentication**: All protected endpoints require a JWT Bearer token in the `Authorization` header.
-Replace `<YOUR_JWT_TOKEN>` with a valid token.
+## Authentication (Obtaining a JWT Token)
+
+This API uses JWT Bearer tokens for authenticating protected endpoints. The tokens are obtained via a Google OAuth2 flow.
+
+**Steps to obtain a JWT token:**
+
+1.  **Initiate Login Flow**:
+    *   Open your web browser and navigate to: `http://localhost:8000/login`
+    *   This will redirect you to Google's authentication page.
+    *   Log in with your Google account and grant the necessary permissions if prompted.
+
+2.  **Handle the Callback**:
+    *   After successful authentication with Google, Google will redirect your browser to the callback URL:
+        `http://localhost:8000/auth/google/callback?code=<AUTHORIZATION_CODE>&scope=<SCOPES_GRANTED>`
+    *   Your browser will make a GET request to this callback URL.
+    *   The API server will exchange the `AUTHORIZATION_CODE` with Google for user information and then generate a JWT.
+    *   The server will respond to this callback request with a JSON containing the access token.
+
+    **Example Response from `/auth/google/callback`**:
+    ```json
+    {
+        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJyour_email@example.comIiwibmFtZSI6IkpvaG4gRG9lIiwiZXhwIjoxNjc4ODg2NDAwfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+        "token_type": "bearer"
+    }
+    ```
+    *   Copy the `access_token` value from this JSON response. This is your JWT token.
+
+3.  **Using the JWT Token**:
+    *   For all subsequent requests to protected API endpoints, include this token in the `Authorization` header:
+        `Authorization: Bearer <YOUR_JWT_TOKEN>`
+    *   Replace `<YOUR_JWT_TOKEN>` with the actual token you copied.
+
+**Note**: You will need to have your Google OAuth 2.0 credentials (client ID, client secret) correctly configured in your application's environment variables (e.g., in your `.env` file, used by `bondable/bond/auth.py`) for this flow to work. The `redirect_uris` in your Google Cloud Console project must also include `http://localhost:8000/auth/google/callback`.
+
+---
+
+**API Endpoint Usage**: All protected endpoints require a JWT Bearer token in the `Authorization` header as described above.
+Replace `<YOUR_JWT_TOKEN>` with a valid token in the `curl` examples below.
 
 ---
 
