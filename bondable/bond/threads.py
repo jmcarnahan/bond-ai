@@ -1,11 +1,12 @@
 import io
 import base64
 from bondable.bond.config import Config
-from bondable.bond.metadata import Metadata
+from bondable.bond.metadata import Metadata, Thread as OrmThread # Import the SQLAlchemy Thread model
 from bondable.bond.broker import BondMessage
 from bondable.bond.broker import Broker
 from bondable.bond.cache import bond_cache
 import logging
+from typing import Optional # Added import for Optional
 
 LOGGER = logging.getLogger(__name__)
 
@@ -46,25 +47,36 @@ class Threads:
                 thread['name'] = self.update_thread_name(thread_id=thread['thread_id'])
         return thread_list
 
-    def create_thread(self) -> str:
-        thread = self.config.get_openai_client().beta.threads.create()
-        return self.metadata.grant_thread(thread_id=thread.id, user_id=self.user_id, fail_if_missing=False)
+    def create_thread(self, name: Optional[str] = None) -> OrmThread: # Return the ORM Thread object
+        return self.metadata.create_thread(user_id=self.user_id, name=name) # Pass name
 
     def get_current_thread_id(self, session) -> str:
         if 'thread' not in session:
-            threads = self.get_current_threads(count=1)
-            if len(threads) > 0:
-                session['thread'] = threads[0]['thread_id']
+            threads_list = self.get_current_threads(count=1) # Renamed to avoid conflict with Threads class
+            if len(threads_list) > 0:
+                session['thread'] = threads_list[0]['thread_id']
             else:
-                session['thread'] = self.create_thread()
+                # create_thread now returns an ORM object. We need its thread_id.
+                new_thread_orm = self.create_thread()
+                session['thread'] = new_thread_orm.thread_id
         return session['thread']
     
-    def grant_thread(self, thread_id, user_id=None) -> str:
-        if user_id is None:
-            user_id = self.user_id
-        thread_id = self.metadata.grant_thread(thread_id=thread_id, user_id=user_id, fail_if_missing=True)
-        LOGGER.info(f"Granted thread {thread_id} to user {user_id}")
-        return thread_id
+    def grant_thread(self, thread_id: str, user_id: Optional[str] = None, name: Optional[str] = None) -> OrmThread:
+        """Grants an existing thread to a user, or updates their access name. Fails if thread doesn't exist."""
+        granting_user_id = user_id if user_id is not None else self.user_id
+        
+        # Call metadata.grant_thread with fail_if_missing=True because this method
+        # is intended for granting access to threads that should already exist.
+        # The 'name' parameter here can be used to set/update the name associated
+        # with this specific user's access to the thread.
+        granted_thread_orm = self.metadata.grant_thread(
+            thread_id=thread_id,
+            user_id=granting_user_id,
+            name=name, # Pass the name if provided
+            fail_if_missing=True
+        )
+        LOGGER.info(f"Granted/updated access for thread {granted_thread_orm.thread_id} to user {granting_user_id} with name '{granted_thread_orm.name}'")
+        return granted_thread_orm
     
     def has_messages(self, thread_id, last_message_id) -> bool:
         response = self.config.get_openai_client().beta.threads.messages.list(thread_id, limit=1, after=last_message_id)
@@ -129,10 +141,3 @@ class Threads:
 
     def get_thread(self, thread_id):
         return self.metadata.get_thread(thread_id=thread_id)
-
-
-
-
-
-
-
