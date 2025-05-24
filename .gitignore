@@ -1,7 +1,7 @@
 .env
 **/.metadata.db
 **/.bondcache.db
-data
+# data # Commented out to allow flutterui/lib/data to be tracked
 archive
 __pycache__
 pytest.ini
