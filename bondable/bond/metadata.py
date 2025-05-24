@@ -10,6 +10,7 @@ import datetime
 import hashlib
 import time
 from typing import List, Dict, Any, Optional, Tuple
+import openai # For exception handling like openai.NotFoundError
 
 
 LOGGER = logging.getLogger(__name__)
@@ -225,13 +226,19 @@ class Metadata:
                 }
                 return thread
             return None
+        
+    def get_thread_owner(self, thread_id: str) -> Optional[str]:
+        with self.get_db_session() as session:
+            thread = session.query(Thread).filter(Thread.thread_id == thread_id).first()
+            if thread:
+                return thread.user_id
+            return None
 
-    def get_file_record(self, file_tuple: Tuple[str, Optional[bytes]]) -> FileRecord:
+    def get_file_id(self, file_tuple: Tuple[str, Optional[bytes]]) -> str:
         """
         Ensures a file record exists in the database and uploads the file to OpenAI if not already present.
         Returns the FileRecord object.
         """
-        session = self.get_db_session()
 
         file_path = file_tuple[0]
         file_bytes = file_tuple[1]
@@ -245,34 +252,75 @@ class Metadata:
             
         LOGGER.debug(f"Getting hash for file {file_path}:\n{file_bytes}\n\n")
         file_hash = hashlib.sha256(file_bytes).hexdigest()
-        file_record = session.query(FileRecord).filter(FileRecord.file_hash == file_hash).first()
-        if file_record:
-            if file_record.file_path == file_path:
-                LOGGER.debug(f"File {file_path} is same in the database")
-            else:
-                file_record = None
-        
-        if not file_record:
-            # tuple of hash and path do not exist - need to create
-            LOGGER.debug(f"Creating new file '{file_path}' to OpenAI.")
-            file_id = None
+
+        with self.get_db_session() as session:
+            file_record: FileRecord = session.query(FileRecord).filter(FileRecord.file_hash == file_hash).first()
+            if file_record:
+                if file_record.file_path == file_path:
+                    LOGGER.info(f"File {file_path} (and hash) is same in the database. Reusing existing record.")
+                    return file_record.file_id
+                else:
+                    # Hash matches, but path is different. This implies same content from a new source path.
+                    # Create a new FileRecord for the new path, but reuse the OpenAI file_id from the record found by hash.
+                    LOGGER.info(f"Content hash for '{file_path}' matches existing record '{file_record.file_path}' (file_id: {file_record.file_id}). Creating new path record with existing file_id.")
+                    new_path_record = FileRecord(file_path=file_path, file_hash=file_hash, file_id=file_record.file_id)
+                    session.add(new_path_record)
+                    session.commit()
+                    return new_path_record.file_id
+            
+            # If no record found by hash, or if specific logic above decided to proceed to upload:
+            if not file_record: # This condition might be redundant now due to returns above, but keep for clarity of flow for new files
+                # tuple of hash and path do not exist - need to create
+                LOGGER.debug(f"Creating new file '{file_path}' to OpenAI.")
+                file_id = None
+                try:
+                    openai_file = self.openai_client.files.create(
+                        file=(file_path, io.BytesIO(file_bytes)),
+                        purpose='assistants'
+                    )
+                    file_id = openai_file.id
+                    LOGGER.info(f"Successfully uploaded '{file_path}' to OpenAI. File ID: {file_id}")
+                except Exception as e:
+                    LOGGER.error(f"Error uploading file '{file_path}' to OpenAI: {e}")
+                    raise e
+
+                file_record = FileRecord(file_path=file_path, file_hash=file_hash, file_id=file_id)
+                session.add(file_record)
+                session.commit()
+                LOGGER.info(f"Created new file record for {file_path}")
+                return file_record.file_id
+
+    def delete_file(self, provider_file_id: str) -> bool:
+        """
+        Deletes a file from the configured backend file storage (e.g., OpenAI)
+        and its corresponding record(s) from the local FileRecord database table.
+        Returns True if the operation is successful (file deleted from provider or confirmed not found,
+        and DB records deleted or confirmed not found). Raises an exception on critical failures.
+        """
+        try:
+            self.openai_client.files.delete(provider_file_id)
+            LOGGER.info(f"Successfully deleted file {provider_file_id} from provider.")
+        except openai.NotFoundError: 
+            LOGGER.warning(f"File {provider_file_id} not found on provider. Considered 'deleted' for provider part.")
+        except Exception as e:
+            LOGGER.error(f"Error deleting file {provider_file_id} from provider: {e}", exc_info=True)
+            raise  # Re-raise if provider deletion fails critically
+
+        # Proceed to delete from local DB
+        with self.get_db_session() as session:
             try:
-                openai_file = self.openai_client.files.create(
-                    file=(file_path, io.BytesIO(file_bytes)),
-                    purpose='assistants'
-                )
-                file_id = openai_file.id
-                LOGGER.info(f"Successfully uploaded '{file_path}' to OpenAI. File ID: {file_id}")
+                # FileRecord.file_id stores the provider_file_id
+                # Delete all local records associated with this provider_file_id
+                deleted_rows_count = session.query(FileRecord).filter(FileRecord.file_id == provider_file_id).delete()
+                session.commit()
+                if deleted_rows_count > 0:
+                    LOGGER.info(f"Deleted {deleted_rows_count} local DB records for provider_file_id: {provider_file_id}")
+                else:
+                    LOGGER.info(f"No local DB records found for provider_file_id: {provider_file_id}")
+                return True # Operation considered successful
             except Exception as e:
-                LOGGER.error(f"Error uploading file '{file_path}' to OpenAI: {e}")
-                raise e
-
-            file_record = FileRecord(file_path=file_path, file_hash=file_hash, file_id=file_id)
-            session.add(file_record)
-            session.commit()
-            LOGGER.info(f"Created new file record for {file_path}")
-            return file_record
-
+                LOGGER.error(f"Error deleting file records from DB for provider_file_id {provider_file_id}: {e}", exc_info=True)
+                raise # DB operation failure is critical
 
     def _get_vector_store_file_ids(self, vector_store_id: str) -> List[str]:
         """ Get the files associated with a vector store. """
@@ -284,45 +332,41 @@ class Metadata:
         vector_store_file_ids = [record['id'] for record in vector_store_files.to_dict()['data']]
         return vector_store_file_ids
 
-    def get_vector_store(self, name: str, file_tuples: Tuple[str, Optional[bytes]]) -> VectorStore:
+    def get_vector_store_id(self, name: str, file_tuples: Tuple[str, Optional[bytes]]) -> str:
         """
         Ensures an OpenAI Vector Store with the given name exists and contains exactly the specified file_ids.
         Adds missing files and removes extra files from the vector store.
         """
+        with self.get_db_session() as session:
+            vector_store_record = session.query(VectorStore).filter(VectorStore.name == name).first()
+            if vector_store_record:
+                LOGGER.debug(f"Reusing vector store {name} with vector_store_id: {vector_store_record.vector_store_id}")
+            else: 
+                vector_store = self.openai_client.vector_stores.create(name=name)
+                vector_store_record = VectorStore(name=name, vector_store_id=vector_store.id)
+                session.add(vector_store_record)
+                session.commit()
+                LOGGER.info(f"Created new vector store {name} with vector_store_id: {vector_store_record.vector_store_id}")
 
-        session = self.get_db_session()
+            vector_store_id = vector_store_record.vector_store_id
+            vector_store_file_ids = self._get_vector_store_file_ids(vector_store_id=vector_store_id)
 
-        # init the vector store
-        vector_store_record = session.query(VectorStore).filter(VectorStore.name == name).first()
-        if vector_store_record:
-            LOGGER.debug(f"Reusing vector store {name} with vector_store_id: {vector_store_record.vector_store_id}")
-        else: 
-            vector_store = self.openai_client.vector_stores.create(name=name)
-            vector_store_record = VectorStore(name=name, vector_store_id=vector_store.id)
-            session.add(vector_store_record)
-            session.commit()
-            LOGGER.info(f"Created new vector store {name} with vector_store_id: {vector_store_record.vector_store_id}")
-
-        vector_store_id = vector_store_record.vector_store_id
-        vector_store_file_ids = self._get_vector_store_file_ids(vector_store_id=vector_store_id)
-
-        for file_tuple in file_tuples:
-            file_record = self.get_file_record(file_tuple=file_tuple)
-            file_id = file_record.file_id
-            if file_record.file_id not in vector_store_file_ids:
-                if self.add_vector_store_file(vector_store_id, file_id):
-                    LOGGER.info(f"Created new vector store [{vector_store_id}] file record for file: {file_tuple[0]}")
+            for file_tuple in file_tuples:
+                file_id = self.get_file_id(file_tuple=file_tuple)
+                if file_id not in vector_store_file_ids:
+                    if self.add_vector_store_file(vector_store_id, file_id):
+                        LOGGER.info(f"Created new vector store [{vector_store_id}] file record for file: {file_tuple[0]}")
+                    else:
+                        LOGGER.error(f"Error uploading file {file_id} to vector store {vector_store_id}")
                 else:
-                    LOGGER.error(f"Error uploading file {file_id} to vector store {vector_store_id}")
-            else:
-                vector_store_file_ids.remove(file_id)
-                LOGGER.debug(f"Reusing vector store [{vector_store_id}] file record for file: {file_tuple[0]}")
-                
-        for file_id in vector_store_file_ids:
-            self.openai_client.vector_stores.files.delete(vector_store_id=vector_store_id, file_id=file_id)
-            LOGGER.info(f"Deleted vector store [{vector_store_id}] file record for file: {file_id}")
+                    vector_store_file_ids.remove(file_id)
+                    LOGGER.debug(f"Reusing vector store [{vector_store_id}] file record for file: {file_tuple[0]}")
+                    
+            for file_id in vector_store_file_ids:
+                self.openai_client.vector_stores.files.delete(vector_store_id=vector_store_id, file_id=file_id)
+                LOGGER.info(f"Deleted vector store [{vector_store_id}] file record for file: {file_id}")
 
-        return vector_store_record
+            return vector_store_id
 
     def add_vector_store_file(self, vector_store_id, file_id):
         """ Associate a file with a vector store and poll for completion. """

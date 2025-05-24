@@ -3,7 +3,10 @@ from PIL import Image
 from bondable.bond.config import Config
 from bondable.bond.functions import Functions
 from bondable.bond.broker import Broker
+from bondable.bond.definition import AgentDefinition
+from bondable.bond.metadata import Metadata
 from typing_extensions import override
+from typing import List, Dict
 from openai import OpenAI, AssistantEventHandler
 from openai.types.beta.threads import (
     Run,
@@ -175,12 +178,17 @@ class Agent:
         self.openai_client = Config.config().get_openai_client()
         self.functions = Functions.functions()
         self.broker = Broker.broker()
+        self.bond_metadata = Metadata.metadata()
+        self.agent_def = AgentDefinition.from_assistant(assistant_id=self.assistant_id)
         LOGGER.debug(f"Agent initialized: {self.name}")
 
     def __str__(self):
         return f"Agent: {self.name} ({self.assistant_id})"
 
     def get_assistant_id(self):
+        return self.assistant_id
+    
+    def get_id(self):
         return self.assistant_id
 
     def get_name(self):
@@ -189,22 +197,39 @@ class Agent:
     def get_description(self):
         return self.description
 
+    # TODO: we may want to cache this
     @classmethod
-    def list_agents(cls, limit=100):
-        assistants = Config.config().get_openai_client().beta.assistants.list(order="desc",limit=str(limit))
+    def list_agents(cls, user_id):
+        agent_records = Metadata.metadata().get_agent_records(user_id=user_id)
+        LOGGER.debug(f"Agent records: {agent_records}")
         agents = []
-        for asst in assistants.data:
-            agents.append(cls(assistant=asst))
+        for record in agent_records:
+            assistant = Config.config().get_openai_client().beta.assistants.retrieve(assistant_id=record['assistant_id'])
+            agents.append(cls(assistant=assistant))
         return agents
 
     @classmethod
-    def get_agent_by_name(cls, name):
-        # TODO: fix this to handle more than 100 assistants
-        assistants = Config.config().get_openai_client().beta.assistants.list(order="desc",limit="100")
-        for asst in assistants.data:
-            if asst.name == name:
-                return cls(assistant=asst)
-        return None
+    def get_agent(cls, assistant_id):
+        assistant = Config.config().get_openai_client().beta.assistants.retrieve(assistant_id=assistant_id)
+        if assistant is None:
+            raise Exception(f"Assistant not found: {assistant_id}")
+        return cls(assistant=assistant)
+    
+    def validate_user_access(self, user_id: str) -> bool:
+        """
+        Validates if the given user has access to this agent.
+
+        Args:
+            user_id (str): The ID of the user to validate.
+
+        Returns:
+            bool: True if the user has access, False otherwise.
+        """
+        if not self.bond_metadata.can_user_access_agent(user_id=user_id, assistant_id=self.assistant_id):
+            LOGGER.warning(f"User {user_id} does not have access to agent {self.assistant_id}")
+            return False
+        LOGGER.debug(f"User {user_id} has access to agent {self.assistant_id}")
+        return True
     
     def get_metadata_value(self, key, default_value=None):
         if key in self.metadata:
@@ -344,6 +369,13 @@ class Agent:
                 case _:
                     LOGGER.warning(f"Run status: {run.status}")
 
+    def get_code_interpreter_files(self) -> List[Dict[str, str]]:
+        file_ids = self.agent_def.tool_resources["code_interpreter"].get("file_ids", [])
+        return self.bond_metadata.get_file_paths(file_ids=file_ids)
+
+    def get_vector_store_files(self) -> List[Dict[str, str]]:
+        vector_store_ids = self.agent_def.tool_resources["file_search"].get("vector_store_ids", [])
+        return self.bond_metadata.get_vector_store_file_paths(vector_store_ids=vector_store_ids)
 
 
 
