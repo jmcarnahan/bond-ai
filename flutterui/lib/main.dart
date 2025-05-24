@@ -17,6 +17,13 @@ final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   throw UnimplementedError('SharedPreferences not initialized');
 });
 
+// Provider for the current AppTheme
+final appThemeProvider = Provider<AppTheme>((ref) {
+  // For now, we are hardcoding to McAfeeTheme.
+  // This could be made dynamic in the future if multiple themes are supported.
+  return McAfeeTheme();
+});
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
@@ -47,11 +54,11 @@ class MyApp extends ConsumerWidget {
       );
     }
 
-    final AppTheme currentTheme = McAfeeTheme();
+    final AppTheme currentTheme = ref.watch(appThemeProvider); // Use the provider
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'BondAI Flutter UI',
+      title: currentTheme.name, // Use theme name for app title
       theme: currentTheme.themeData,
       home: homeWidget,
       onGenerateRoute: (settings) {

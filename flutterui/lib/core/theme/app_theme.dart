@@ -8,4 +8,10 @@ import 'package:flutter/material.dart';
 abstract class AppTheme {
   /// Gets the [ThemeData] for the current theme.
   ThemeData get themeData;
+
+  /// Gets the name of the application.
+  String get name;
+
+  /// Gets the logo widget of the application.
+  Widget get logo;
 }

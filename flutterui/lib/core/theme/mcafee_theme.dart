@@ -4,6 +4,12 @@ import 'package:flutterui/core/theme/app_theme.dart';
 /// McAfee specific theme implementation.
 class McAfeeTheme implements AppTheme {
   @override
+  String get name => 'McAfee App'; // Placeholder name
+
+  @override
+  Widget get logo => Image.asset('assets/mcafee_logo.png', height: 40); // Placeholder logo
+
+  @override
   ThemeData get themeData {
     return ThemeData(
       brightness: Brightness.light,
@@ -58,10 +64,10 @@ class McAfeeTheme implements AppTheme {
 
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ButtonStyle(
-          foregroundColor: MaterialStateProperty.all<Color>(Colors.white),
-          backgroundColor: MaterialStateProperty.all<Color>(Color(0xFFFF1C1C)),
-          padding: MaterialStateProperty.all<EdgeInsets>(EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
-          shape: MaterialStateProperty.all<RoundedRectangleBorder>(
+          foregroundColor: WidgetStateProperty.all<Color>(Colors.white),
+          backgroundColor: WidgetStateProperty.all<Color>(Color(0xFFFF1C1C)),
+          padding: WidgetStateProperty.all<EdgeInsets>(EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+          shape: WidgetStateProperty.all<RoundedRectangleBorder>(
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
           ),
         ),
@@ -69,8 +75,8 @@ class McAfeeTheme implements AppTheme {
 
       textButtonTheme: TextButtonThemeData(
         style: ButtonStyle(
-          foregroundColor: MaterialStateProperty.all<Color>(Color(0xFFFF1C1C)),
-          textStyle: MaterialStateProperty.all<TextStyle>(
+          foregroundColor: WidgetStateProperty.all<Color>(Color(0xFFFF1C1C)),
+          textStyle: WidgetStateProperty.all<TextStyle>(
             TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           ),
         ),
@@ -78,11 +84,11 @@ class McAfeeTheme implements AppTheme {
 
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: ButtonStyle(
-          foregroundColor: MaterialStateProperty.all<Color>(Color(0xFF0C63E4)),
-          side: MaterialStateProperty.all<BorderSide>(
+          foregroundColor: WidgetStateProperty.all<Color>(Color(0xFF0C63E4)),
+          side: WidgetStateProperty.all<BorderSide>(
             BorderSide(color: Color(0xFF0C63E4)),
           ),
-          shape: MaterialStateProperty.all<RoundedRectangleBorder>(
+          shape: WidgetStateProperty.all<RoundedRectangleBorder>(
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
           ),
         ),
