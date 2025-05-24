@@ -138,22 +138,21 @@ class LoginScreen extends ConsumerWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
-                      // Left Column (Branding)
                       Expanded(
                         flex: 2,
                         child: Container(
-                          color: Colors.grey[850], // Dark grey background
+                          color: Colors.grey[850],
                           padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 48.0),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: <Widget>[
                               Image.asset(
-                                currentTheme.logo as String, // Assuming logo is a String path
+                                currentTheme.logo,
                                 height: 120, 
                               ),
                               const SizedBox(height: 24),
                               Text(
-                                "Protecting Your Digital Life",
+                                currentTheme.brandingMessage,
                                 textAlign: TextAlign.center,
                                 style: themeData.textTheme.titleLarge?.copyWith(
                                   color: Colors.white,
@@ -164,17 +163,16 @@ class LoginScreen extends ConsumerWidget {
                           ),
                         ),
                       ),
-                      // Right Column (Login Form)
                       Expanded(
                         flex: 3,
                         child: Container(
-                          color: themeData.colorScheme.background, // White background for form side
-                          padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 24.0), // Padding around the inner card
+                          color: themeData.colorScheme.background,
+                          padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 24.0),
                           child: Center(
                             child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 400), // Max width for the form itself
-                              child: SingleChildScrollView( // Ensure form scrolls if content is too tall
-                                child: loginFormCard, // Use the card defined above
+                              constraints: const BoxConstraints(maxWidth: 400),
+                              child: SingleChildScrollView(
+                                child: loginFormCard,
                               ),
                             ),
                           ),

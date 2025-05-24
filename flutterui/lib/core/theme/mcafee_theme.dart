@@ -7,6 +7,9 @@ class McAfeeTheme implements AppTheme {
   String get name => 'McAfee App';
 
   @override
+  String get brandingMessage => 'Protecting Your Digital Life';
+
+  @override
   String get logo => 'assets/mcafee_logo.png';
 
   @override
