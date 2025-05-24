@@ -4,10 +4,10 @@ import 'package:flutterui/core/theme/app_theme.dart';
 /// McAfee specific theme implementation.
 class McAfeeTheme implements AppTheme {
   @override
-  String get name => 'McAfee App'; // Placeholder name
+  String get name => 'McAfee App';
 
   @override
-  Widget get logo => Image.asset('assets/mcafee_logo.png', height: 40); // Placeholder logo
+  String get logo => 'assets/mcafee_logo.png';
 
   @override
   ThemeData get themeData {

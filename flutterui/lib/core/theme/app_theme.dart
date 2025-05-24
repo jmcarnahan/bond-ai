@@ -12,6 +12,6 @@ abstract class AppTheme {
   /// Gets the name of the application.
   String get name;
 
-  /// Gets the logo widget of the application.
-  Widget get logo;
+  /// Gets the logo asset path
+  String get logo;
 }
