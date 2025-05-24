@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/main.dart';
+import 'package:flutterui/core/theme/mcafee_theme.dart'; // Import for CustomColors
 
 class LoginScreen extends ConsumerWidget {
   const LoginScreen({super.key});
@@ -9,8 +10,11 @@ class LoginScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authNotifierProvider);
-    final currentTheme = ref.watch(appThemeProvider);
+    final appTheme = ref.watch(appThemeProvider); // Renamed for clarity from currentTheme
     final themeData = Theme.of(context);
+    // Access custom colors. Ensure CustomColors is part of your theme extensions.
+    final customColors = themeData.extension<CustomColors>();
+    final brandingSurfaceColor = customColors?.brandingSurface ?? McAfeeTheme.mcafeeDarkBrandingSurface; // Fallback
 
     ref.listen<AuthState>(authNotifierProvider, (previous, next) {
       if (next is AuthError) {
@@ -27,12 +31,12 @@ class LoginScreen extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         Image.asset(
-          currentTheme.logo,
+          appTheme.logo, // Use appTheme
           height: 80,
         ),
         const SizedBox(height: 30),
         Text(
-          'Welcome to ${currentTheme.name}',
+          'Welcome to ${appTheme.name}', // Use appTheme
           textAlign: TextAlign.center,
           style: themeData.textTheme.headlineMedium?.copyWith(
             color: themeData.colorScheme.onSurface,
@@ -141,21 +145,21 @@ class LoginScreen extends ConsumerWidget {
                       Expanded(
                         flex: 2,
                         child: Container(
-                          color: Colors.grey[850],
+                          color: brandingSurfaceColor, // Use themed branding color
                           padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 48.0),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: <Widget>[
                               Image.asset(
-                                currentTheme.logo,
-                                height: 120, 
+                                appTheme.logo, // Use appTheme
+                                height: 120,
                               ),
                               const SizedBox(height: 24),
                               Text(
-                                currentTheme.brandingMessage,
+                                appTheme.brandingMessage, // Use appTheme
                                 textAlign: TextAlign.center,
                                 style: themeData.textTheme.titleLarge?.copyWith(
-                                  color: Colors.white,
+                                  color: Colors.white, // Text on dark branding panel
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),

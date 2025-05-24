@@ -171,15 +171,16 @@ class Agent:
     openai_client = None
 
     def __init__(self, assistant):
+        self._assistant_object = assistant # Store the raw assistant object
         self.assistant_id = assistant.id
         self.name = assistant.name
-        self.metadata = assistant.metadata
+        self.metadata = assistant.metadata # This is OpenAI's metadata
         self.description = assistant.description
         self.openai_client = Config.config().get_openai_client()
         self.functions = Functions.functions()
         self.broker = Broker.broker()
         self.bond_metadata = Metadata.metadata()
-        self.agent_def = AgentDefinition.from_assistant(assistant_id=self.assistant_id)
+        self.agent_def = AgentDefinition.from_assistant(assistant_id=self.assistant_id) # This re-fetches, consider passing assistant
         LOGGER.debug(f"Agent initialized: {self.name}")
 
     def __str__(self):
@@ -196,6 +197,12 @@ class Agent:
     
     def get_description(self):
         return self.description
+
+    def get_created_at(self):
+        # The assistant object from OpenAI SDK has a created_at timestamp
+        if hasattr(self, '_assistant_object') and hasattr(self._assistant_object, 'created_at'):
+            return self._assistant_object.created_at
+        return None
 
     # TODO: we may want to cache this
     @classmethod
@@ -376,10 +383,3 @@ class Agent:
     def get_vector_store_files(self) -> List[Dict[str, str]]:
         vector_store_ids = self.agent_def.tool_resources["file_search"].get("vector_store_ids", [])
         return self.bond_metadata.get_vector_store_file_paths(vector_store_ids=vector_store_ids)
-
-
-
-        
-                    
-
-

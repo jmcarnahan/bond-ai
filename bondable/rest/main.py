@@ -103,6 +103,10 @@ class AgentRef(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
+    model: Optional[str] = None
+    tool_types: Optional[List[str]] = None
+    created_at_display: Optional[str] = None
+    sample_prompt: Optional[str] = None
 
 class ThreadRef(BaseModel):
     id: str
@@ -301,7 +305,33 @@ async def get_agents(current_user: Annotated[User, Depends(get_current_user)]):
     Returns the list of agents for the authenticated user.
     """
     agents = Agent.list_agents(user_id=current_user.email)
-    agent_refs = [AgentRef(id=agent.get_id(), name=agent.get_name(), description=agent.get_description()) for agent in agents]
+    agent_refs = []
+    for agent in agents:
+        tool_types = []
+        if agent.agent_def and agent.agent_def.tools:
+            for tool in agent.agent_def.tools:
+                if isinstance(tool, dict) and 'type' in tool:
+                    tool_types.append(tool['type'])
+                elif hasattr(tool, 'type'): # For OpenAI's ToolDefinition objects
+                    tool_types.append(tool.type)
+        
+        created_at_timestamp = agent.get_created_at() # Assuming Agent class will have this method
+        created_at_dt = datetime.fromtimestamp(created_at_timestamp, timezone.utc) if created_at_timestamp else None
+        created_at_display_str = created_at_dt.strftime("%b %d, %Y") if created_at_dt else None
+
+        sample_prompt_text = None
+        if agent.metadata and isinstance(agent.metadata, dict):
+            sample_prompt_text = agent.metadata.get("sample_prompt")
+
+        agent_refs.append(AgentRef(
+            id=agent.get_id(),
+            name=agent.get_name(),
+            description=agent.get_description(),
+            model=agent.agent_def.model if agent.agent_def else None,
+            tool_types=tool_types if tool_types else [], # Ensure it's a list or None
+            created_at_display=created_at_display_str,
+            sample_prompt=sample_prompt_text
+        ))
     return agent_refs
 
 @app.get("/threads", response_model=list[ThreadRef], tags=["Thread"])

@@ -6,11 +6,19 @@ class AgentListItemModel {
   final String id;
   final String name;
   final String? description;
+  final String? model;
+  final List<String>? tool_types; // Matches backend key
+  final String? createdAtDisplay;
+  final String? samplePrompt;
 
   const AgentListItemModel({
     required this.id,
     required this.name,
     this.description,
+    this.model,
+    this.tool_types,
+    this.createdAtDisplay,
+    this.samplePrompt,
   });
 
   factory AgentListItemModel.fromJson(Map<String, dynamic> json) {
@@ -18,11 +26,25 @@ class AgentListItemModel {
       id: json['id'] as String,
       name: json['name'] as String,
       description: json['description'] as String?,
+      model: json['model'] as String?,
+      tool_types: json['tool_types'] != null
+          ? List<String>.from(json['tool_types'] as List<dynamic>)
+          : null,
+      createdAtDisplay: json['created_at_display'] as String?,
+      samplePrompt: json['sample_prompt'] as String?,
     );
   }
 
   Map<String, dynamic> toJson() {
-    return {'id': id, 'name': name, 'description': description};
+    return {
+      'id': id,
+      'name': name,
+      'description': description,
+      'model': model,
+      'tool_types': tool_types,
+      'created_at_display': createdAtDisplay,
+      'sample_prompt': samplePrompt,
+    };
   }
 
   @override
@@ -32,11 +54,22 @@ class AgentListItemModel {
     return other is AgentListItemModel && // Adjusted type check
         other.id == id &&
         other.name == name &&
-        other.description == description;
+        other.description == description &&
+        other.model == model &&
+        other.tool_types == tool_types && // Consider list equality if needed
+        other.createdAtDisplay == createdAtDisplay &&
+        other.samplePrompt == samplePrompt;
   }
 
   @override
-  int get hashCode => id.hashCode ^ name.hashCode ^ description.hashCode;
+  int get hashCode =>
+      id.hashCode ^
+      name.hashCode ^
+      description.hashCode ^
+      model.hashCode ^
+      tool_types.hashCode ^
+      createdAtDisplay.hashCode ^
+      samplePrompt.hashCode;
 }
 
 // --- New Models for Agent Detail Screen ---

@@ -1,16 +1,53 @@
 import 'package:flutter/material.dart';
 import 'package:flutterui/core/theme/app_theme.dart';
 
+// Define a custom ThemeExtension for additional colors
+@immutable
+class CustomColors extends ThemeExtension<CustomColors> {
+  const CustomColors({
+    required this.brandingSurface,
+  });
+
+  final Color? brandingSurface;
+
+  @override
+  CustomColors copyWith({Color? brandingSurface}) {
+    return CustomColors(
+      brandingSurface: brandingSurface ?? this.brandingSurface,
+    );
+  }
+
+  @override
+  CustomColors lerp(ThemeExtension<CustomColors>? other, double t) {
+    if (other is! CustomColors) {
+      return this;
+    }
+    return CustomColors(
+      brandingSurface: Color.lerp(brandingSurface, other.brandingSurface, t),
+    );
+  }
+
+  // Optional: A helper to easily access from Theme.of(context)
+  static CustomColors? of(BuildContext context) {
+    return Theme.of(context).extension<CustomColors>();
+  }
+}
+
 /// McAfee specific theme implementation.
 class McAfeeTheme implements AppTheme {
+  static const Color mcafeeDarkBrandingSurface = Color(0xFF303030); // Colors.grey[850]
+
   @override
-  String get name => 'McAfee App';
+  String get name => 'McAfee';
 
   @override
   String get brandingMessage => 'Protecting Your Digital Life';
 
   @override
   String get logo => 'assets/mcafee_logo.png';
+
+  @override
+  String get logoIcon => 'assets/mcafee_shield_logo.png';
 
   @override
   ThemeData get themeData {
@@ -27,11 +64,13 @@ class McAfeeTheme implements AppTheme {
         error: Color(0xFFAF0707), // Deep red for error
         onError: Colors.white,
         background: Color(0xFFFFFFFF), // Body background
-        onBackground: Color(0xFF333333),
+        onBackground: Color(0xFF333333), // Very close to #303030, consider using this or a variant
         surface: Color(0xFFF2F4F7), // Light grey surface
         onSurface: Color(0xFF101828),
       ),
-
+      extensions: const <ThemeExtension<dynamic>>[
+        CustomColors(brandingSurface: mcafeeDarkBrandingSurface),
+      ],
       scaffoldBackgroundColor: Color(0xFFFFFFFF),
       fontFamily: 'Poppins',
 

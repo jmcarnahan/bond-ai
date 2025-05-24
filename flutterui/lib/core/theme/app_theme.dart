@@ -5,4 +5,5 @@ abstract class AppTheme {
   String get name;
   String get brandingMessage;
   String get logo;
+  String get logoIcon;
 }
