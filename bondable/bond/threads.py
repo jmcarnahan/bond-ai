@@ -136,6 +136,8 @@ class Threads:
 
 
     def delete_thread(self, thread_id) -> None:
+        if self.metadata.get_thread_owner(thread_id=thread_id) != self.user_id:
+            raise PermissionError("You do not have permission to delete this thread.")
         self.config.get_openai_client().beta.threads.delete(thread_id=thread_id)
         self.metadata.delete_thread(thread_id=thread_id)
 

@@ -25,22 +25,22 @@ class Config:
     # both coming in via a env var
     def __init__(self):        
         try:
-            if 'BOND_GCLOUD_SA_CREDS_STRING' in os.environ:
-                sa_creds_base64 = os.getenv("BOND_GCLOUD_SA_CREDS_STRING") # this is a bas64 string
+            if 'GCLOUD_SA_CREDS_STRING' in os.environ:
+                sa_creds_base64 = os.getenv("GCLOUD_SA_CREDS_STRING") # this is a bas64 string
                 sa_creds = base64.b64decode(sa_creds_base64).decode("utf-8")
                 self.credentials = service_account.Credentials.from_service_account_info(json.loads(sa_creds))
-                self.gcp_project_id = os.getenv('BOND_GCLOUD_PROJECT_ID', self.credentials.project_id)
+                self.gcp_project_id = os.getenv('GCLOUD_PROJECT_ID', self.credentials.project_id)
                 self.secrets = secretmanager.SecretManagerServiceClient(credentials=self.credentials)
-                LOGGER.info(f"Using GCLOUD credentials from BOND_GCLOUD_SA_CREDS_STRING for project_id: {self.gcp_project_id}")
-            elif 'BOND_GCLOUD_SA_CREDS_PATH' in os.environ:
-                sa_creds_path = os.getenv('BOND_GCLOUD_SA_CREDS_PATH')
+                LOGGER.info(f"Using GCLOUD credentials from GCLOUD_SA_CREDS_STRING for project_id: {self.gcp_project_id}")
+            elif 'GCLOUD_SA_CREDS_PATH' in os.environ:
+                sa_creds_path = os.getenv('GCLOUD_SA_CREDS_PATH')
                 self.credentials = service_account.Credentials.from_service_account_file(sa_creds_path)
-                self.gcp_project_id = os.getenv('BOND_GCLOUD_PROJECT_ID', self.credentials.project_id)
+                self.gcp_project_id = os.getenv('GCLOUD_PROJECT_ID', self.credentials.project_id)
                 self.secrets = secretmanager.SecretManagerServiceClient(credentials=self.credentials)
-                LOGGER.info(f"Using GCLOUD credentials from BOND_GCLOUD_SA_CREDS_PATH for project_id: {self.gcp_project_id}")
+                LOGGER.info(f"Using GCLOUD credentials from GCLOUD_SA_CREDS_PATH for project_id: {self.gcp_project_id}")
             else:
                 self.credentials, project_id = google.auth.default()
-                self.gcp_project_id = os.getenv('BOND_GCLOUD_PROJECT_ID', project_id)
+                self.gcp_project_id = os.getenv('GCLOUD_PROJECT_ID', project_id)
                 self.secrets = secretmanager.SecretManagerServiceClient(credentials=self.credentials)
                 LOGGER.info(f"Using GCLOUD default credentials for project_id: {self.gcp_project_id}")
         except Exception as e:
@@ -102,21 +102,35 @@ class Config:
     
     def get_openai_project(self, *args, **kwargs):
         return os.getenv('OPENAI_PROJECT')
-    
+
+    def get_jwt_config(self):
+        if 'JWT_SECRET_KEY' not in os.environ:
+            raise EnvironmentError("JWT_SECRET_KEY environment variable not set.")
+        jwt_config = {
+            'JWT_SECRET_KEY': os.environ.get("JWT_SECRET_KEY"),
+            'JWT_ALGORITHM': os.environ.get("JWT_ALGORITHM", "HS256"),
+            'ACCESS_TOKEN_EXPIRE_MINUTES': int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 30)),
+            'JWT_ISSUER': os.environ.get("JWT_ISSUER", "bondable"),
+            'JWT_REDIRECT_URI': os.environ.get("JWT_REDIRECT_URI", "http://localhost:5000"),
+        }
+        return type('JWTConfig', (object,), jwt_config)()
+
     def get_auth_info(self):
         auth_creds_str = self.get_secret_value(os.getenv('GOOGLE_AUTH_CREDS_SECRET_ID', 'google_auth_creds'), "{}")
         auth_creds = json.loads(auth_creds_str)
         redirect_uri = os.getenv('GOOGLE_AUTH_REDIRECT_URI', 'http://localhost:8080')
         scopes_str = os.getenv('GOOGLE_AUTH_SCOPES', 'openid, https://www.googleapis.com/auth/userinfo.email, https://www.googleapis.com/auth/userinfo.profile')
         scopes = [scope.strip() for scope in scopes_str.split(",")]
-        valid_emails = os.getenv('GOOGLE_AUTH_VALID_EMAILS', "").split(",")
+        valid_emails = []
+        if 'GOOGLE_AUTH_VALID_EMAILS' in os.environ:
+            valid_emails = os.getenv('GOOGLE_AUTH_VALID_EMAILS').split(",")
         auth_info = {
             "auth_creds": auth_creds,
             "redirect_uri": redirect_uri,
             "scopes": scopes,
             "valid_emails": valid_emails
         }
-        LOGGER.debug(f"Google Auth: {auth_info}")
+        LOGGER.info(f"Google Auth: redirect_uri={redirect_uri} scopes={scopes} valid_emails={valid_emails}")
         return auth_info
 
 
