@@ -224,52 +224,77 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     ? _buildEmptyChatPlaceholder(context)
                     : ListView.builder(
                         controller: _scrollController,
-                        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
+                        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 128.0),
                         itemCount: chatState.messages.length,
                     itemBuilder: (context, index) {
                       final message = chatState.messages[index];
                       final isUserMessage = message.role == 'user';
                       final isError = message.isError;
 
-                      Color bubbleColor;
-                      Color textColor;
-                      BorderRadius borderRadius;
+                      Widget coreMessageWidget;
 
+                      // Determine text color first
+                      Color messageTextColor;
                       if (isError) {
-                        bubbleColor = colorScheme.errorContainer;
-                        textColor = colorScheme.onErrorContainer;
-                        borderRadius = BorderRadius.circular(16.0);
+                        messageTextColor = colorScheme.onErrorContainer;
                       } else if (isUserMessage) {
-                        bubbleColor = colorScheme.primary; // McAfee Red
-                        textColor = colorScheme.onPrimary; // White
-                        borderRadius = BorderRadius.circular(16.0);
+                        messageTextColor = colorScheme.onPrimary;
                       } else { // Agent message
-                        bubbleColor = colorScheme.surfaceVariant; // Light grey
-                        textColor = colorScheme.onSurfaceVariant;
-                        borderRadius = BorderRadius.circular(16.0);
+                        messageTextColor = colorScheme.onSurfaceVariant;
                       }
 
-                      Widget messageContent = Card(
-                        color: bubbleColor,
-                        elevation: 0.5,
-                        shape: RoundedRectangleBorder(borderRadius: borderRadius),
-                        margin: EdgeInsets.zero,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 14.0),
-                          child: (message.role == 'assistant' &&
-                                  chatState.isSendingMessage && // Agent is "typing"
-                                  index == chatState.messages.length - 1 && // It's the last message
-                                  message.content.isEmpty) // And content hasn't arrived yet
-                              ? TypingIndicator(
-                                  dotColor: textColor.withOpacity(0.7), // Use themed color for dots
-                                )
-                              : SelectableText(
-                                  message.content,
-                                  style: textTheme.bodyMedium?.copyWith(color: textColor),
-                                ),
-                        ),
-                      );
+                      // Build the core message content (text or typing indicator)
+                      if (message.role == 'assistant' &&
+                          chatState.isSendingMessage &&
+                          index == chatState.messages.length - 1 &&
+                          message.content.isEmpty) {
+                        coreMessageWidget = TypingIndicator(
+                          dotColor: messageTextColor.withOpacity(0.7),
+                        );
+                      } else {
+                        coreMessageWidget = SelectableText(
+                          message.content,
+                          style: textTheme.bodyMedium?.copyWith(color: messageTextColor),
+                        );
+                      }
 
+                      // Now, wrap with Card if it's a user message or an error message
+                      // Agent messages (not errors) get plain content.
+                      Widget finalMessageContent;
+                      if (isError) {
+                        final bubbleColor = colorScheme.errorContainer;
+                        final borderRadius = BorderRadius.circular(16.0);
+                        finalMessageContent = Card(
+                          color: bubbleColor,
+                          elevation: 0.5,
+                          shape: RoundedRectangleBorder(borderRadius: borderRadius),
+                          margin: EdgeInsets.zero,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 14.0),
+                            child: coreMessageWidget,
+                          ),
+                        );
+                      } else if (isUserMessage) {
+                        final bubbleColor = colorScheme.primary;
+                        final borderRadius = BorderRadius.circular(16.0);
+                        finalMessageContent = Card(
+                          color: bubbleColor,
+                          elevation: 0.5,
+                          shape: RoundedRectangleBorder(borderRadius: borderRadius),
+                          margin: EdgeInsets.zero,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 14.0),
+                            child: coreMessageWidget,
+                          ),
+                        );
+                      } else { // Agent message (not error) - no Card, just padded content
+                        finalMessageContent = Padding(
+                          padding: const EdgeInsets.only(top: 2.0), // Small top padding to align text better with avatar center
+                          child: coreMessageWidget,
+                        );
+                      }
+
+                      // Build the Row structure
                       if (isUserMessage) {
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 6.0),
@@ -278,9 +303,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Flexible(
-                                child: ConstrainedBox( // Ensure user bubble doesn't take full width if short
+                                child: ConstrainedBox(
                                   constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-                                  child: messageContent,
+                                  child: finalMessageContent, // This is the Card for user messages
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -293,51 +318,83 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           ),
                         );
                       } else { // Agent or Error message
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.start,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              CircleAvatar(
-                                backgroundColor: isError 
-                                    ? colorScheme.errorContainer 
-                                    : (customColors?.brandingSurface ?? McAfeeTheme.mcafeeDarkBrandingSurface),
-                                radius: 16,
-                                child: Icon(
-                                  isError ? Icons.error_outline : Icons.smart_toy_outlined,
-                                  color: isError ? colorScheme.onErrorContainer : Colors.white, // White icon on dark grey
-                                  size: 20,
+                        if (isError) {
+                          // Error messages keep the avatar and constrained card style
+                          Widget avatar = CircleAvatar(
+                            backgroundColor: colorScheme.errorContainer,
+                            radius: 16,
+                            child: Icon(
+                              Icons.error_outline,
+                              color: colorScheme.onErrorContainer,
+                              size: 20,
+                            ),
+                          );
+                          Widget displayContent = Flexible(
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                              child: finalMessageContent, // This is the Card for error messages
+                            ),
+                          );
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                avatar,
+                                const SizedBox(width: 8),
+                                displayContent,
+                              ],
+                            ),
+                          );
+                        } else { // Agent message (not error) - no avatar, full width text
+                          // Agent's typing indicator (plain) is small.
+                          // Agent's text (plain) can take more width.
+                          bool isAgentTyping = message.role == 'assistant' &&
+                              chatState.isSendingMessage &&
+                              index == chatState.messages.length - 1 &&
+                              message.content.isEmpty;
+
+                          Widget displayContent;
+                          if (isAgentTyping) {
+                             // For typing indicator, we still want it to be small and to the left.
+                            displayContent = finalMessageContent; // Plain TypingIndicator (with its padding)
+                             return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 6.0),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // No avatar, no SizedBox
+                                    displayContent,
+                                  ],
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              // If it's the typing indicator, let the Card determine its own width.
-                              // Otherwise, constrain the width for actual messages.
-                              (message.role == 'assistant' &&
-                                      chatState.isSendingMessage &&
-                                      index == chatState.messages.length - 1 &&
-                                      message.content.isEmpty)
-                                  ? messageContent // This is the Card containing TypingIndicator
-                                  : Flexible(
-                                      child: ConstrainedBox(
-                                        constraints: BoxConstraints(
-                                            maxWidth: MediaQuery.of(context)
-                                                    .size
-                                                    .width *
-                                                0.75),
-                                        child: messageContent,
-                                      ),
-                                    ),
-                            ],
-                          ),
-                        );
+                              );
+                          } else {
+                            // Regular agent text (plain), allow it to take more width
+                            displayContent = Flexible( // Use Flexible to allow text to wrap
+                              child: finalMessageContent, // Plain text (with its padding)
+                            );
+                             return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 32.0), // Added horizontal padding
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start, // Keep text aligned to the top of the row
+                                  children: [
+                                    // No avatar, no SizedBox
+                                    displayContent,
+                                  ],
+                                ),
+                              );
+                          }
+                        }
                       }
                     },
                   ),
           ),
           // Removed standalone error message text as errors are now in bubbles
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 24.0),
             decoration: BoxDecoration(
               color: theme.scaffoldBackgroundColor, // Use scaffold background for consistency
               boxShadow: [
