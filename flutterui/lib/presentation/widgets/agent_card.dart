@@ -16,12 +16,12 @@ class AgentCard extends ConsumerWidget { // Change to ConsumerWidget
     final textTheme = themeData.textTheme;
 
     return Card(
-      elevation: 3.0, // Slightly reduced elevation for a cleaner look
+      elevation: 2.0, // Further reduced elevation
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12.0),
+        borderRadius: BorderRadius.circular(8.0), // Smaller border radius
       ),
-      color: themeData.cardTheme.color ?? colorScheme.background, // Ensure card uses theme background
-      margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+      color: themeData.cardTheme.color ?? colorScheme.background,
+      margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 4.0), // Reduced vertical margin
       child: InkWell(
         onTap: () {
           Navigator.pushNamed(
@@ -30,156 +30,71 @@ class AgentCard extends ConsumerWidget { // Change to ConsumerWidget
             arguments: agent,
           );
         },
-        borderRadius: BorderRadius.circular(12.0),
+        borderRadius: BorderRadius.circular(8.0), // Smaller border radius
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(12.0), // Reduced padding
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center, // Center content horizontally
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center, // Center content vertically
             children: <Widget>[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CircleAvatar(
-                    backgroundColor: colorScheme.primary, // McAfee Red
-                    foregroundColor: colorScheme.onPrimary, // White
-                    child: const Icon(Icons.person_outline),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          agent.name,
-                          style: textTheme.headlineSmall?.copyWith( // More prominent name
-                            color: colorScheme.onSurface,
-                            fontWeight: FontWeight.w600, // Slightly bolder for headline
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        if (agent.description != null &&
-                            agent.description!.isNotEmpty) ...[
-                          const SizedBox(height: 6), // Increased spacing
-                          Text(
-                            agent.description!,
-                            style: textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                        // Display Model
-                        if (agent.model != null && agent.model!.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Icon(Icons.memory, size: 14, color: colorScheme.onSurfaceVariant),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Model: ${agent.model}',
-                                style: textTheme.bodySmall?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                        // Display Created At
-                        if (agent.createdAtDisplay != null && agent.createdAtDisplay!.isNotEmpty) ...[
-                          const SizedBox(height: 4), // Smaller spacing
-                          Row(
-                            children: [
-                              Icon(Icons.calendar_today_outlined, size: 12, color: colorScheme.onSurfaceVariant.withOpacity(0.7)),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Created: ${agent.createdAtDisplay}',
-                                style: textTheme.bodySmall?.copyWith(
-                                  fontSize: 11, // Slightly smaller
-                                  color: colorScheme.onSurfaceVariant.withOpacity(0.7),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                        // Display Tool Types
-                        if (agent.tool_types != null && agent.tool_types!.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(Icons.build_circle_outlined, size: 14, color: colorScheme.onSurfaceVariant),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Wrap(
-                                  spacing: 4.0,
-                                  runSpacing: 2.0,
-                                  children: agent.tool_types!
-                                      .map((type) => Chip(
-                                            label: Text(
-                                              type.replaceAll('_', ' '), // Make it more readable
-                                              style: textTheme.labelSmall?.copyWith(
-                                                color: colorScheme.onSecondaryContainer, // Adjusted for chip
-                                              )
-                                            ),
-                                            backgroundColor: colorScheme.secondaryContainer, // Adjusted for chip
-                                            padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 0.0), // Smaller padding
-                                            labelPadding: EdgeInsets.zero, // Remove extra padding around label
-                                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap, // Reduce tap target size
-                                            visualDensity: VisualDensity.compact, // Make chip more compact
-                                          ))
-                                      .toList(),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                        // Display Sample Prompt
-                        if (agent.samplePrompt != null && agent.samplePrompt!.isNotEmpty) ...[
-                          const SizedBox(height: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceVariant.withOpacity(0.5),
-                              borderRadius: BorderRadius.circular(6.0),
-                              border: Border.all(color: colorScheme.outline.withOpacity(0.3))
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(Icons.lightbulb_outline, size: 16, color: colorScheme.onSurfaceVariant),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    '"${agent.samplePrompt}"',
-                                    style: textTheme.bodySmall?.copyWith(
-                                      color: colorScheme.onSurfaceVariant,
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
+              CircleAvatar(
+                backgroundColor: colorScheme.primary, // McAfee Red
+                foregroundColor: colorScheme.onPrimary, // White
+                radius: 24, // Slightly larger icon
+                child: const Icon(Icons.smart_toy_outlined, size: 28), // New Icon
               ),
-              const SizedBox(height: 16), // Increased space before "Tap to chat"
-              Align(
-                alignment: Alignment.bottomRight,
-                child: Text(
-                  'Tap to chat',
-                  style: textTheme.labelSmall?.copyWith(
-                    color: colorScheme.primary, // McAfee Red for action text
-                    fontWeight: FontWeight.w500,
+              const SizedBox(height: 12), // Space between icon and name
+              Text(
+                agent.name,
+                textAlign: TextAlign.center, // Center text
+                style: textTheme.titleMedium?.copyWith( // Adjusted style for better fit
+                  color: colorScheme.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (agent.description != null &&
+                  agent.description!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  agent.description!,
+                  textAlign: TextAlign.center, // Center text
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
                   ),
+                  maxLines: 2, // Reduced max lines for brevity
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              // Display Created At
+              if (agent.createdAtDisplay != null && agent.createdAtDisplay!.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisSize: MainAxisSize.min, // Row takes minimum space
+                  mainAxisAlignment: MainAxisAlignment.center, // Center row content
+                  children: [
+                    Icon(Icons.calendar_today_outlined, size: 12, color: colorScheme.onSurfaceVariant.withOpacity(0.7)),
+                    const SizedBox(width: 4),
+                    Text(
+                      // 'Created: ${agent.createdAtDisplay}', // Removed "Created: " prefix for brevity
+                      agent.createdAtDisplay!,
+                      style: textTheme.bodySmall?.copyWith(
+                        fontSize: 11,
+                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const Spacer(), // Pushes "Tap to chat" to the bottom if there's extra space
+              const SizedBox(height: 8),
+              Text(
+                'Tap to chat',
+                style: textTheme.labelSmall?.copyWith(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],

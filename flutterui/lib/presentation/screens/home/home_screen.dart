@@ -118,24 +118,26 @@ class HomeScreen extends ConsumerWidget {
                   }
                   return LayoutBuilder(
                     builder: (context, constraints) {
-                      int crossAxisCount = 2;
-                      if (constraints.maxWidth < 600) {
+                      int crossAxisCount;
+                      if (constraints.maxWidth < 500) { // Adjusted breakpoint
                         crossAxisCount = 1;
-                      } else if (constraints.maxWidth < 900) {
+                      } else if (constraints.maxWidth < 800) { // Adjusted breakpoint
                         crossAxisCount = 2;
-                      } else if (constraints.maxWidth < 1200) {
+                      } else if (constraints.maxWidth < 1100) { // Adjusted breakpoint
                         crossAxisCount = 3;
-                      } else {
+                      } else if (constraints.maxWidth < 1400) { // Adjusted breakpoint
                         crossAxisCount = 4;
+                      } else {
+                        crossAxisCount = 5; // Added a 5th column for very wide screens
                       }
 
                       return GridView.builder(
-                        padding: const EdgeInsets.only(bottom: 24.0, top: 8.0), 
+                        padding: const EdgeInsets.only(bottom: 24.0, top: 8.0),
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: crossAxisCount,
-                          crossAxisSpacing: 16.0,
-                          mainAxisSpacing: 16.0,
-                          childAspectRatio: crossAxisCount == 1 ? (3 / 3.2) : (3 / 3), 
+                          crossAxisSpacing: 12.0, // Reduced spacing
+                          mainAxisSpacing: 12.0,  // Reduced spacing
+                          childAspectRatio: crossAxisCount == 1 ? (16 / 9) : (4 / 2.5), // Adjusted aspect ratio for wider/shorter cards
                         ),
                         itemCount: agents.length,
                         itemBuilder: (context, index) {

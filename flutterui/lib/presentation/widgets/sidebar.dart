@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart'; // For logout
 import 'package:flutterui/providers/agent_provider.dart'; // Import the agents provider
-import 'package:flutterui/data/models/agent_model.dart'; // Import the AgentListItemModel
+// import 'package:flutterui/data/models/agent_model.dart'; // AgentListItemModel is used implicitly by agentsProvider
 import 'package:flutterui/presentation/screens/agents/create_agent_screen.dart'; // Import CreateAgentScreen
+import 'package:flutterui/core/theme/mcafee_theme.dart'; // Import McAfeeTheme for CustomColors
 
 class AppSidebar extends ConsumerWidget {
   const AppSidebar({super.key});
@@ -12,114 +12,142 @@ class AppSidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final agentsAsyncValue = ref.watch(agentsProvider);
+    final theme = Theme.of(context);
+    final mcafeeTheme = theme.extension<CustomColors>();
+    final mcafeePrimaryColor = theme.primaryColor; // McAfee Red
+    final mcafeeOnPrimaryColor = theme.colorScheme.onPrimary; // White for text on red
+    final mcafeeSurfaceColor = theme.colorScheme.surface; // Light grey for drawer background
+    final mcafeeOnSurfaceColor = theme.colorScheme.onSurface; // Text color on light grey
 
     return Drawer(
+      backgroundColor: mcafeeSurfaceColor, // Set overall drawer background
       child: ListView(
         padding: EdgeInsets.zero,
         children: <Widget>[
           DrawerHeader(
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primaryContainer,
+              color: mcafeeTheme?.brandingSurface ?? theme.colorScheme.primaryContainer, // Dark grey
             ),
-            child: Text(
-              'BondAI Menu',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onPrimaryContainer,
-                fontSize: 24,
-              ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Image.asset(
+                      'assets/mcafee_shield_logo.png', // McAfee shield logo
+                      height: 40,
+                      width: 40,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'My Agents', // Updated title
+                      style: TextStyle(
+                        color: mcafeeOnPrimaryColor, // White text
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
           ListTile(
-            leading: const Icon(Icons.home),
-            title: const Text('Home'),
+            leading: Icon(Icons.home, color: mcafeePrimaryColor),
+            title: Text('Home', style: TextStyle(color: mcafeeOnSurfaceColor)),
             onTap: () {
               Navigator.pop(context); // Close the drawer
-              // If already on home, no action needed.
-              // If on a different screen, use: Navigator.pushReplacementNamed(context, '/home');
+              if (ModalRoute.of(context)?.settings.name != '/home') {
+                 // Only push if not already on home or if home is not the root
+                if (Navigator.canPop(context)) { // Check if there's a screen to pop
+                    Navigator.popUntil(context, ModalRoute.withName('/')); // Pop to root
+                }
+                // If already at root and it's not home, or if you want to ensure home is pushed
+                // This logic might need adjustment based on your exact navigation stack for home
+                if (ModalRoute.of(context)?.settings.name != '/home') {
+                     Navigator.pushNamed(context, '/home');
+                }
+              }
             },
           ),
           ListTile(
-            leading: const Icon(
-              Icons.forum_outlined,
-            ), // Changed icon for consistency if desired, or keep Icons.forum
-            title: const Text('Threads'),
+            leading: Icon(Icons.forum_outlined, color: mcafeePrimaryColor),
+            title: Text('Threads', style: TextStyle(color: mcafeeOnSurfaceColor)),
             onTap: () {
               Navigator.pop(context); // Close drawer
-              // Navigate to ThreadsScreen. Assumes route name '/threads' is or will be defined.
               if (ModalRoute.of(context)?.settings.name != '/threads') {
                 Navigator.pushNamed(context, '/threads');
               }
             },
           ),
           ListTile(
-            leading: const Icon(Icons.add_circle_outline),
-            title: const Text('Create Agent'),
+            leading: Icon(Icons.add_circle_outline, color: mcafeePrimaryColor),
+            title: Text('Create Agent', style: TextStyle(color: mcafeeOnSurfaceColor)),
             onTap: () {
               Navigator.pop(context);
               Navigator.pushNamed(context, CreateAgentScreen.routeName);
             },
           ),
-          // TODO: Add an "Edit Agent" option, perhaps on long-press of agent items or an edit icon
           const Divider(),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             child: Text(
               'Agents',
-              style: TextStyle(fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: mcafeePrimaryColor, // Red color for section header
+                fontSize: 16,
+              ),
             ),
           ),
           agentsAsyncValue.when(
             data: (agents) {
               if (agents.isEmpty) {
-                return const ListTile(
-                  leading: Icon(Icons.info_outline),
-                  title: Text('No agents found.'),
+                return ListTile(
+                  leading: Icon(Icons.info_outline, color: mcafeeOnSurfaceColor),
+                  title: Text('No agents found.', style: TextStyle(color: mcafeeOnSurfaceColor)),
                 );
               }
               return Column(
-                children:
-                    agents
-                        .where(
-                          (agent) => agent != null,
-                        ) // Filter out potential nulls
-                        .map((agent) {
-                          // agent is now AgentListItemModel (non-nullable after filter)
-                          return ListTile(
-                            leading: const Icon(Icons.person),
-                            title: Text(
-                              agent.name,
-                            ), // Accessing name on non-null agent
-                            onTap: () {
-                              Navigator.pop(context);
-                              Navigator.pushNamed(
-                                context,
-                                '/chat/${agent.id}', // Accessing id on non-null agent
-                                arguments: agent,
-                              );
-                            },
+                children: agents
+                    .where((agent) => agent != null)
+                    .map((agent) {
+                      return ListTile(
+                        leading: Icon(Icons.person, color: mcafeePrimaryColor),
+                        title: Text(
+                          agent.name,
+                          style: TextStyle(color: mcafeeOnSurfaceColor),
+                        ),
+                        onTap: () {
+                          Navigator.pop(context);
+                          Navigator.pushNamed(
+                            context,
+                            '/chat/${agent.id}',
+                            arguments: agent,
                           );
-                        })
-                        .toList(),
+                        },
+                      );
+                    })
+                    .toList(),
               );
             },
-            loading:
-                () => const ListTile(
-                  leading: CircularProgressIndicator(),
-                  title: Text('Loading agents...'),
-                ),
-            error:
-                (err, stack) => ListTile(
-                  leading: const Icon(Icons.error_outline, color: Colors.red),
-                  title: Text(
-                    'Error loading agents: ${err.toString()}',
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                ),
+            loading: () => ListTile(
+              leading: CircularProgressIndicator(color: mcafeePrimaryColor),
+              title: Text('Loading agents...', style: TextStyle(color: mcafeeOnSurfaceColor)),
+            ),
+            error: (err, stack) => ListTile(
+              leading: Icon(Icons.error_outline, color: theme.colorScheme.error),
+              title: Text(
+                'Error loading agents: ${err.toString()}',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ),
           ),
           const Divider(),
           ListTile(
-            leading: const Icon(Icons.logout),
-            title: const Text('Logout'),
+            leading: Icon(Icons.logout, color: mcafeePrimaryColor),
+            title: Text('Logout', style: TextStyle(color: mcafeeOnSurfaceColor)),
             onTap: () {
               Navigator.pop(context);
               ref.read(authNotifierProvider.notifier).logout();
