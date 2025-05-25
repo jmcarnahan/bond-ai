@@ -194,7 +194,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             builder: (context) => AlertDialog(
               title: const Text('Start New Conversation?'),
               content: Text(
-                'This will start a new, empty conversation with ${widget.agentName}. The current chat view will be cleared.',
+                'This will clear the current conversation from view, allowing you to start fresh with ${widget.agentName}.',
               ),
               actions: [
                 TextButton(
@@ -210,12 +210,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           );
 
           if (confirm == true) {
-            await ref
-                .read(chatSessionNotifierProvider.notifier)
-                .startNewEmptyThread(
-                  name: "New chat with ${widget.agentName}",
-                );
-            ref.read(threadsProvider.notifier).fetchThreads();
+            // Deactivate current thread context locally
+            ref.read(threadsProvider.notifier).deselectThread();
+            ref.read(chatSessionNotifierProvider.notifier).clearChatSession();
+            // No API call to create a new thread or fetch threads
           }
         },
       ),
