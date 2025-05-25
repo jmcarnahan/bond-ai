@@ -46,11 +46,8 @@ class ThreadsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final threadsAsyncValue = ref.watch(threadsProvider);
-    final activeChatSessionState = ref.watch(
-      chatSessionNotifierProvider,
-    ); // Watch the full state
-    final String? activeThreadId =
-        activeChatSessionState.currentThreadId; // Get currentThreadId
+    // Get the globally selected thread ID
+    final String? globalSelectedThreadId = ref.watch(selectedThreadIdProvider); 
     final ThemeData theme = Theme.of(context); // Get theme data
     final appTheme = ref.watch(appThemeProvider); // Get appTheme for logo
     final customColors = theme.extension<CustomColors>(); // Get custom colors
@@ -136,7 +133,8 @@ class ThreadsScreen extends ConsumerWidget {
                 itemCount: threads.length,
                 itemBuilder: (context, index) {
                   final thread = threads[threads.length - 1 - index];
-                  final bool isActive = thread.id == activeThreadId;
+                  // Determine if this thread is the globally selected one
+                  final bool isActive = thread.id == globalSelectedThreadId; 
 
                   return Card( // Wrap ListTile in a Card for better separation and styling
                     elevation: isActive ? 2 : 1,
@@ -220,12 +218,11 @@ class ThreadsScreen extends ConsumerWidget {
                         },
                       ),
                       onTap: () {
-                    ref
-                        .read(chatSessionNotifierProvider.notifier)
-                        .setCurrentThread(thread.id);
-                    // Pop back to the previous screen (expected to be ChatScreen)
-                    // which will then rebuild with the new thread's context.
-                    Navigator.pop(context);
+                    // Set this thread as the globally selected one
+                    ref.read(threadsProvider.notifier).selectThread(thread.id);
+                    // Pop back to the previous screen (e.g., ChatScreen or HomeScreen)
+                    // The previous screen should react to the change in selectedThreadProvider
+                    Navigator.pop(context); 
                   },
                 ),
               );

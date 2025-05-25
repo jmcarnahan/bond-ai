@@ -35,14 +35,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.initState();
     _textFieldFocusNode.addListener(_onFocusChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.initialThreadId != null) {
-        ref
-          .read(chatSessionNotifierProvider.notifier)
-          .setCurrentThread(widget.initialThreadId!);
-      } else {
-        ref.read(chatSessionNotifierProvider.notifier).clearChatSession();
-      }
+      _initializeChatSession();
     });
+
+  }
+
+  void _initializeChatSession() {
+    final chatNotifier = ref.read(chatSessionNotifierProvider.notifier);
+    final globalSelectedThreadId = ref.read(selectedThreadIdProvider); // Read it once for this initialization
+
+    if (widget.initialThreadId != null) {
+      logger.i("[ChatScreen] Initializing with explicit threadId: ${widget.initialThreadId}");
+      chatNotifier.setCurrentThread(widget.initialThreadId!);
+      // If an explicit threadId is given, it should become the global one.
+      if (globalSelectedThreadId != widget.initialThreadId) {
+        ref.read(threadsProvider.notifier).selectThread(widget.initialThreadId!);
+      }
+    } else if (globalSelectedThreadId != null) {
+      logger.i("[ChatScreen] Initializing with global selectedThreadId: $globalSelectedThreadId");
+      // We need to check if this global thread is associated with the current agent.
+      // For now, we'll assume it is, or that setCurrentThread can handle it.
+      // This might need more sophisticated logic if threads are strictly agent-bound
+      // and the global thread might not be for widget.agentId.
+      // Also, ensure the chat session's current thread matches the global one.
+      final chatSessionCurrentThread = ref.read(chatSessionNotifierProvider).currentThreadId;
+      if (chatSessionCurrentThread != globalSelectedThreadId) {
+        chatNotifier.setCurrentThread(globalSelectedThreadId);
+      }
+    } else {
+      logger.i("[ChatScreen] No initial or global thread, clearing session.");
+      // Only clear if the session isn't already cleared or for a different (now null) thread
+      final chatSessionCurrentThread = ref.read(chatSessionNotifierProvider).currentThreadId;
+      if (chatSessionCurrentThread != null) {
+        chatNotifier.clearChatSession();
+      }
+    }
   }
 
   @override
@@ -108,20 +135,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.didUpdateWidget(oldWidget);
     if (widget.agentId != oldWidget.agentId ||
         widget.initialThreadId != oldWidget.initialThreadId) {
+      // If agentId changes, or if initialThreadId changes, re-initialize.
+      // The selectedThreadProvider might also change, but this screen primarily reacts to explicit props.
+      // If global selection changes *while on this screen*, the banner handles deselection.
+      // If we want this screen to *react* to global changes without prop changes, we'd need to watch selectedThreadProvider.
+      // For now, this covers explicit navigation changes.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (widget.initialThreadId != null) {
-          logger.i(
-            "[ChatScreen] Updating with new threadId: ${widget.initialThreadId}",
-          );
-          ref
-              .read(chatSessionNotifierProvider.notifier)
-              .setCurrentThread(widget.initialThreadId!);
-        } else {
-          ref.read(chatSessionNotifierProvider.notifier).clearChatSession();
-          logger.i(
-            "[ChatScreen] Agent/Thread changed, cleared chat session for agentId: ${widget.agentId}",
-          );
-        }
+        logger.i("[ChatScreen] didUpdateWidget: agentId or initialThreadId changed. Re-initializing.");
+        _initializeChatSession();
       });
     }
   }
@@ -142,6 +163,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _scrollToBottom();
       },
     );
+
+    // Listen to changes in the global selected thread ID
+    // If this chat screen was NOT launched for a specific initialThreadId,
+    // then it should react to global changes.
+    ref.listen<String?>(selectedThreadIdProvider, (previousId, newId) {
+      if (widget.initialThreadId == null && previousId != newId) {
+        // Schedule _initializeChatSession to run after the current build cycle
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          // Check if the widget is still mounted before calling
+          if (mounted) {
+            logger.i(
+                "[ChatScreen] Global selected thread changed from $previousId to $newId. Re-initializing session (post-frame).");
+            _initializeChatSession();
+          }
+        });
+      }
+    });
 
     return Scaffold(
       backgroundColor: colorScheme.background,

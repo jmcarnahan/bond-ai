@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:collection/collection.dart'; // Import for firstWhereOrNull
 import 'package:flutterui/data/models/thread_model.dart';
 import 'package:flutterui/data/services/thread_service.dart';
 import 'package:flutterui/providers/thread_chat/thread_chat_providers.dart' // Updated path
@@ -8,6 +9,9 @@ import '../core/utils/logger.dart';
 // This provider can be used to communicate errors from thread operations to the UI,
 // for example, by showing a SnackBar.
 final threadErrorProvider = StateProvider<String?>((ref) => null);
+
+// Provider to hold the ID of the currently selected thread
+final selectedThreadIdProvider = StateProvider<String?>((ref) => null);
 
 class ThreadsNotifier extends StateNotifier<AsyncValue<List<Thread>>> {
   final Ref _ref;
@@ -66,6 +70,13 @@ class ThreadsNotifier extends StateNotifier<AsyncValue<List<Thread>>> {
   Future<void> removeThread(String threadId) async {
     final previousState = state;
 
+    // Check if the thread to be removed is the currently selected one
+    final currentlySelectedId = _ref.read(selectedThreadIdProvider);
+    if (currentlySelectedId == threadId) {
+      // If so, deselect it
+      deselectThread();
+    }
+
     // Optimistically update the UI
     if (mounted && previousState.hasValue) {
       final currentThreads = List<Thread>.from(previousState.asData!.value);
@@ -78,14 +89,39 @@ class ThreadsNotifier extends StateNotifier<AsyncValue<List<Thread>>> {
     } catch (e) {
       if (mounted) {
         _ref.read(threadErrorProvider.notifier).state = e.toString();
-        state = previousState;
+        state = previousState; // Revert to previous state on error
       }
       logger.i('Error removing thread: $e');
     }
+  }
+
+  void selectThread(String threadId) {
+    _ref.read(selectedThreadIdProvider.notifier).state = threadId;
+  }
+
+  void deselectThread() {
+    _ref.read(selectedThreadIdProvider.notifier).state = null;
   }
 }
 
 final threadsProvider =
     StateNotifierProvider<ThreadsNotifier, AsyncValue<List<Thread>>>((ref) {
-      return ThreadsNotifier(ref);
-    });
+  return ThreadsNotifier(ref);
+});
+
+// Provider to get the currently selected Thread object
+final selectedThreadProvider = Provider<Thread?>((ref) {
+  final selectedId = ref.watch(selectedThreadIdProvider);
+  if (selectedId == null) {
+    return null;
+  }
+  final threadsAsyncValue = ref.watch(threadsProvider);
+  return threadsAsyncValue.whenOrNull(
+    data: (threads) => threads.firstWhereOrNull((t) => t.id == selectedId),
+    // If threads are loading or in error, we can't find the selected thread.
+    // It might also mean the selected thread was deleted and threadsProvider refreshed.
+    // In such cases, selectedIdProvider should ideally be reset by then.
+    loading: () => null, 
+    error: (_, __) => null,
+  );
+});

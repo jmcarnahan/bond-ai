@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/data/models/message_model.dart';
 import 'package:flutterui/data/services/thread_service.dart';
 import 'package:flutterui/data/services/chat_service.dart';
+import 'package:flutterui/providers/thread_provider.dart'; // Import for threadsProvider
 import 'chat_session_state.dart';
 import 'chat_stream_handler_mixin.dart';
 import '../../core/utils/logger.dart';
@@ -11,13 +12,14 @@ import '../../core/utils/logger.dart';
 class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStreamHandlerMixin {
   final ThreadService _threadService;
   final ChatService _chatService;
+  final Ref _ref; // Add Ref
   
   @override
   final StringBuffer currentAssistantXmlBuffer = StringBuffer();
   @override
   StreamSubscription<String>? chatStreamSubscription;
 
-  ChatSessionNotifier(this._threadService, this._chatService)
+  ChatSessionNotifier(this._threadService, this._chatService, this._ref) // Modify constructor
       : super(ChatSessionState());
 
   Future<void> setCurrentThread(String threadId) async {
@@ -56,6 +58,14 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
         currentThreadId: newThread.id,
         isLoadingMessages: false,
       );
+      // Also set this new thread as the globally selected one
+      _ref.read(threadsProvider.notifier).selectThread(newThread.id);
+      // Refresh the threads list in threadsProvider as a new one was created
+      // This might be redundant if selectThread or other mechanisms already trigger a refresh.
+      // However, explicitly fetching ensures the list is up-to-date.
+      await _ref.read(threadsProvider.notifier).fetchThreads();
+
+
       await sendMessage(
         agentId: agentIdForFirstMessage,
         prompt: firstMessagePrompt,
@@ -86,6 +96,10 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
         isLoadingMessages: false,
         isSendingMessage: false,
       );
+      // Also set this new thread as the globally selected one
+      _ref.read(threadsProvider.notifier).selectThread(newThread.id);
+      // Refresh the threads list
+      await _ref.read(threadsProvider.notifier).fetchThreads();
     } catch (e) {
       logger.i(
         "[ChatSessionNotifier] Error creating new empty thread: ${e.toString()}",

@@ -13,6 +13,7 @@ import 'package:flutterui/data/models/agent_model.dart';
 import 'package:flutterui/core/theme/app_theme.dart';
 import 'package:flutterui/core/theme/mcafee_theme.dart';
 import 'package:flutterui/core/utils/logger.dart';
+import 'package:flutterui/presentation/widgets/selected_thread_banner.dart'; // Import the banner
 
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   throw UnimplementedError('SharedPreferences not initialized');
@@ -62,6 +63,29 @@ class MyApp extends ConsumerWidget {
       title: currentTheme.name, // Use theme name for app title
       theme: currentTheme.themeData,
       home: homeWidget,
+      builder: (context, child) {
+        // Wrap the child (the current page) with a Stack to overlay the banner
+        return Stack(
+          children: [
+            if (child != null) child,
+            // Wrap SelectedThreadBanner in a Builder to get a descendant context
+            Builder(
+              builder: (BuildContext tooltipContext) {
+                // tooltipContext is now a descendant context of the MaterialApp's main context
+                return Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  // It's generally safer to pass the specific context if a widget needs it,
+                  // but SelectedThreadBanner itself doesn't take a context.
+                  // The Tooltip inside it will pick up this tooltipContext.
+                  child: SelectedThreadBanner(),
+                );
+              }
+            ),
+          ],
+        );
+      },
       onGenerateRoute: (settings) {
         logger.i(
           "[onGenerateRoute] Name: '${settings.name}', Args: ${settings.arguments}",

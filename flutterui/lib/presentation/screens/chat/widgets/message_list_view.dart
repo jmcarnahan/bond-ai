@@ -71,7 +71,8 @@ class MessageListView extends ConsumerWidget {
 
     return ListView.builder(
       controller: scrollController,
-      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 128.0),
+      // Greatly reduce horizontal padding on the ListView itself
+      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0), 
       itemCount: chatState.messages.length,
       itemBuilder: (context, index) {
         final message = chatState.messages[index];
@@ -207,16 +208,22 @@ class MessageListView extends ConsumerWidget {
                   ],
                 ),
               );
-            } else {
+            } else { // Regular assistant message
               displayContent = Flexible(
-                child: finalMessageContent,
+                child: ConstrainedBox( // Add ConstrainedBox here as well for consistency
+                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                  child: finalMessageContent,
+                ),
               );
               return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 32.0),
+                // Reduce horizontal padding here if ListView padding is already handling spacing
+                padding: const EdgeInsets.symmetric(vertical: 6.0), // Removed horizontal: 32.0
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.start,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Consider adding an avatar for assistant messages if desired, or ensure spacing
+                    // For now, just the content, assuming ListView padding gives enough edge spacing.
                     displayContent,
                   ],
                 ),
