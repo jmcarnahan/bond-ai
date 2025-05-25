@@ -19,7 +19,7 @@ class SelectedThreadBanner extends ConsumerWidget {
     }
 
     return Material(
-      elevation: 4.0, 
+      elevation: 4.0,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
         height: 50,
@@ -27,7 +27,7 @@ class SelectedThreadBanner extends ConsumerWidget {
         child: Center(
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.center, 
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Flexible(
                 child: Text(
@@ -37,7 +37,7 @@ class SelectedThreadBanner extends ConsumerWidget {
                     fontWeight: FontWeight.bold,
                   ),
                   overflow: TextOverflow.ellipsis,
-                  maxLines: 1, 
+                  maxLines: 1,
                 ),
               ),
               MouseRegion(
@@ -53,7 +53,7 @@ class SelectedThreadBanner extends ConsumerWidget {
                 ),
               )
             ],
-          ),      
+          ),
         ),
     )
     );
