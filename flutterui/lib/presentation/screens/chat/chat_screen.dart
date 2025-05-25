@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Added for keyboard event handling
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/data/models/message_model.dart';
 import 'package:flutterui/providers/thread_chat_provider.dart';
 import 'package:flutterui/providers/thread_provider.dart'; // Added import for threadsProvider
+import 'package:flutterui/core/theme/mcafee_theme.dart'; // Import McAfeeTheme for CustomColors
+import 'package:flutterui/main.dart'; // Import for appThemeProvider
+import 'package:flutterui/presentation/widgets/typing_indicator.dart'; // Import TypingIndicator
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String agentId;
@@ -24,15 +28,14 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _textFieldFocusNode = FocusNode();
+  bool _isTextFieldFocused = false;
 
   @override
   void initState() {
     super.initState();
-    // Use WidgetsBinding.instance.addPostFrameCallback to ensure providers are ready
+    _textFieldFocusNode.addListener(_onFocusChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // If an initialThreadId is provided, load its messages.
-      // Otherwise, ChatSessionNotifier starts with no currentThreadId.
-      // A new thread will be created on the first message send if no thread is active.
       if (widget.initialThreadId != null) {
         print(
           "[ChatScreen] Initializing with threadId: ${widget.initialThreadId}",
@@ -41,8 +44,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             .read(chatSessionNotifierProvider.notifier)
             .setCurrentThread(widget.initialThreadId!);
       } else {
-        // If no initial thread, ensure any previous session for this notifier instance is cleared.
-        // This is important if .autoDispose is not used or if navigating back to a chat for a new agent.
         ref.read(chatSessionNotifierProvider.notifier).clearChatSession();
         print(
           "[ChatScreen] Initializing new chat session for agentId: ${widget.agentId}",
@@ -51,25 +52,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    _textFieldFocusNode.removeListener(_onFocusChange);
+    _textFieldFocusNode.dispose();
+    _textController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChange() {
+    setState(() {
+      _isTextFieldFocused = _textFieldFocusNode.hasFocus;
+    });
+  }
+
   void _sendMessage() {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
+
+    // Prevent sending if already sending
+    final chatState = ref.read(chatSessionNotifierProvider);
+    if (chatState.isSendingMessage) return;
 
     final chatNotifier = ref.read(chatSessionNotifierProvider.notifier);
     final currentSessionState = ref.read(chatSessionNotifierProvider);
 
     if (currentSessionState.currentThreadId == null) {
-      // If no current thread, create a new one and send the first message.
       print(
         "[ChatScreen] No current thread. Creating new thread for agent ${widget.agentId} and sending message.",
       );
       chatNotifier.createAndSetNewThread(
-        // name: "Chat with ${widget.agentName}", // Optional: name for the new thread
         agentIdForFirstMessage: widget.agentId,
         firstMessagePrompt: text,
       );
     } else {
-      // If a thread is already active, just send the message.
       print(
         "[ChatScreen] Sending message to existing thread ${currentSessionState.currentThreadId}.",
       );
@@ -80,7 +97,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _scrollToBottom() {
-    // Scroll to the bottom after a short delay to allow the UI to update.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -95,8 +111,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void didUpdateWidget(covariant ChatScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // If the agentId changes (e.g., navigating from one agent chat to another directly),
-    // reset the chat session.
     if (widget.agentId != oldWidget.agentId ||
         widget.initialThreadId != oldWidget.initialThreadId) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -120,8 +134,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final chatState = ref.watch(chatSessionNotifierProvider);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    final customColors = theme.extension<CustomColors>();
+    final appBarBackgroundColor = customColors?.brandingSurface ?? McAfeeTheme.mcafeeDarkBrandingSurface;
+    final appTheme = ref.watch(appThemeProvider);
 
-    // Listen for new messages and scroll to bottom
     ref.listen(
       chatSessionNotifierProvider.select((state) => state.messages.length),
       (_, __) {
@@ -130,51 +149,66 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
 
     return Scaffold(
+      backgroundColor: colorScheme.background,
       appBar: AppBar(
-        title: Text("Chat with ${widget.agentName}"),
+        backgroundColor: appBarBackgroundColor,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(
+              appTheme.logoIcon,
+              height: 24,
+              width: 24,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              "Chat with ${widget.agentName}",
+              style: textTheme.titleLarge?.copyWith(color: Colors.white),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.forum_outlined),
+            icon: const Icon(Icons.forum_outlined, color: Colors.white),
             tooltip: 'View/Change Threads',
             onPressed: () {
               Navigator.pushNamed(context, '/threads');
             },
           ),
           IconButton(
-            icon: const Icon(Icons.add_comment_outlined),
+            icon: const Icon(Icons.add_comment_outlined, color: Colors.white),
             tooltip: 'Start New Thread',
             onPressed: () async {
-              // Optional: Show confirmation dialog
               final confirm = await showDialog<bool>(
                 context: context,
-                builder:
-                    (context) => AlertDialog(
-                      title: const Text('Start New Conversation?'),
-                      content: Text(
-                        'This will start a new, empty conversation with ${widget.agentName}. The current chat view will be cleared.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          child: const Text('Cancel'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          child: const Text('Start New'),
-                        ),
-                      ],
+                builder: (context) => AlertDialog(
+                  title: const Text('Start New Conversation?'),
+                  content: Text(
+                    'This will start a new, empty conversation with ${widget.agentName}. The current chat view will be cleared.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Cancel'),
                     ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: const Text('Start New'),
+                    ),
+                  ],
+                ),
               );
 
               if (confirm == true) {
-                // Create a default name for the new thread, perhaps with a timestamp
-                // final newThreadName = "Chat with ${widget.agentName} - ${DateTime.now().toIso8601String()}";
                 await ref
                     .read(chatSessionNotifierProvider.notifier)
                     .startNewEmptyThread(
                       name: "New chat with ${widget.agentName}",
                     );
-                // Refresh the main threads list so the new thread appears there
                 ref.read(threadsProvider.notifier).fetchThreads();
               }
             },
@@ -184,87 +218,235 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child:
-                chatState.isLoadingMessages && chatState.messages.isEmpty
-                    ? const Center(child: CircularProgressIndicator())
+            child: chatState.isLoadingMessages && chatState.messages.isEmpty
+                ? const Center(child: TypingIndicator())
+                : chatState.messages.isEmpty
+                    ? _buildEmptyChatPlaceholder(context)
                     : ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.all(8.0),
-                      itemCount: chatState.messages.length,
-                      itemBuilder: (context, index) {
-                        final message = chatState.messages[index];
-                        final isUserMessage = message.role == 'user';
-                        return Align(
-                          alignment:
-                              isUserMessage
-                                  ? Alignment.centerRight
-                                  : Alignment.centerLeft,
-                          child: Card(
-                            color:
-                                message.isError
-                                    ? Colors
-                                        .red
-                                        .shade100 // Error message background
-                                    : (isUserMessage
-                                        ? Theme.of(
-                                          context,
-                                        ).colorScheme.primaryContainer
-                                        : Theme.of(
-                                          context,
-                                        ).colorScheme.secondaryContainer),
-                            elevation: 1.0,
-                            margin: const EdgeInsets.symmetric(
-                              vertical: 4.0,
-                              horizontal: 8.0,
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(10.0),
-                              child: SelectableText(
-                                message.content,
-                                style: TextStyle(
-                                  color:
-                                      message.isError
-                                          ? Colors.red.shade900
-                                          : null,
+                        controller: _scrollController,
+                        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
+                        itemCount: chatState.messages.length,
+                    itemBuilder: (context, index) {
+                      final message = chatState.messages[index];
+                      final isUserMessage = message.role == 'user';
+                      final isError = message.isError;
+
+                      Color bubbleColor;
+                      Color textColor;
+                      BorderRadius borderRadius;
+
+                      if (isError) {
+                        bubbleColor = colorScheme.errorContainer;
+                        textColor = colorScheme.onErrorContainer;
+                        borderRadius = BorderRadius.circular(16.0);
+                      } else if (isUserMessage) {
+                        bubbleColor = colorScheme.primary; // McAfee Red
+                        textColor = colorScheme.onPrimary; // White
+                        borderRadius = BorderRadius.circular(16.0);
+                      } else { // Agent message
+                        bubbleColor = colorScheme.surfaceVariant; // Light grey
+                        textColor = colorScheme.onSurfaceVariant;
+                        borderRadius = BorderRadius.circular(16.0);
+                      }
+
+                      Widget messageContent = Card(
+                        color: bubbleColor,
+                        elevation: 0.5,
+                        shape: RoundedRectangleBorder(borderRadius: borderRadius),
+                        margin: EdgeInsets.zero,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 14.0),
+                          child: (message.role == 'assistant' &&
+                                  chatState.isSendingMessage && // Agent is "typing"
+                                  index == chatState.messages.length - 1 && // It's the last message
+                                  message.content.isEmpty) // And content hasn't arrived yet
+                              ? TypingIndicator(
+                                  dotColor: textColor.withOpacity(0.7), // Use themed color for dots
+                                )
+                              : SelectableText(
+                                  message.content,
+                                  style: textTheme.bodyMedium?.copyWith(color: textColor),
+                                ),
+                        ),
+                      );
+
+                      if (isUserMessage) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Flexible(
+                                child: ConstrainedBox( // Ensure user bubble doesn't take full width if short
+                                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                                  child: messageContent,
                                 ),
                               ),
-                            ),
+                              const SizedBox(width: 8),
+                              CircleAvatar(
+                                backgroundColor: colorScheme.primary.withOpacity(0.8),
+                                child: Icon(Icons.person_outline, color: colorScheme.onPrimary, size: 20),
+                                radius: 16,
+                              ),
+                            ],
                           ),
                         );
-                      },
-                    ),
+                      } else { // Agent or Error message
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CircleAvatar(
+                                backgroundColor: isError 
+                                    ? colorScheme.errorContainer 
+                                    : (customColors?.brandingSurface ?? McAfeeTheme.mcafeeDarkBrandingSurface),
+                                radius: 16,
+                                child: Icon(
+                                  isError ? Icons.error_outline : Icons.smart_toy_outlined,
+                                  color: isError ? colorScheme.onErrorContainer : Colors.white, // White icon on dark grey
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // If it's the typing indicator, let the Card determine its own width.
+                              // Otherwise, constrain the width for actual messages.
+                              (message.role == 'assistant' &&
+                                      chatState.isSendingMessage &&
+                                      index == chatState.messages.length - 1 &&
+                                      message.content.isEmpty)
+                                  ? messageContent // This is the Card containing TypingIndicator
+                                  : Flexible(
+                                      child: ConstrainedBox(
+                                        constraints: BoxConstraints(
+                                            maxWidth: MediaQuery.of(context)
+                                                    .size
+                                                    .width *
+                                                0.75),
+                                        child: messageContent,
+                                      ),
+                                    ),
+                            ],
+                          ),
+                        );
+                      }
+                    },
+                  ),
           ),
-          if (chatState.errorMessage != null)
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Text(
-                "Error: ${chatState.errorMessage}",
-                style: const TextStyle(color: Colors.red),
-              ),
+          // Removed standalone error message text as errors are now in bubbles
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+            decoration: BoxDecoration(
+              color: theme.scaffoldBackgroundColor, // Use scaffold background for consistency
+              boxShadow: [
+                BoxShadow(
+                  offset: const Offset(0, -1),
+                  blurRadius: 2.0,
+                  spreadRadius: 0.5,
+                  color: Colors.black.withOpacity(0.08),
+                ),
+              ],
             ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: _textController,
-                    decoration: const InputDecoration(
-                      hintText: 'Type a message...',
-                      border: OutlineInputBorder(),
+                  child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(25.0),
+                        border: _isTextFieldFocused
+                            ? Border.all(color: Colors.red, width: 2.0)
+                            : null, // No border when not focused
+                      ),
+                      child: Material(
+                        borderRadius: BorderRadius.circular(25.0),
+                        clipBehavior: Clip.antiAlias,
+                        color: colorScheme.surfaceVariant.withOpacity(0.6), // Moved fill color here
+                        child: Padding( // Added padding here for TextField
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0), // Adjusted vertical padding
+                          child: TextField(
+                            controller: _textController,
+                            focusNode: _textFieldFocusNode, // Assign the FocusNode
+                            maxLines: null, // Allows for multiline input with Shift+Enter
+                            keyboardType: TextInputType.multiline,
+                            textCapitalization: TextCapitalization.sentences,
+                            decoration: InputDecoration(
+                              hintText: chatState.isSendingMessage ? 'Waiting for response...' : 'Type a message...',
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none, // Border is now handled by DecoratedBox
+                              filled: false,
+                              contentPadding: const EdgeInsets.symmetric(vertical: 12.0),
+                            ),
+                            // onSubmitted is still useful for specific actions like 'done' on mobile keyboards
+                          // but our RawKeyboardListener handles desktop Enter.
+                          onSubmitted: (_) { // Removed extra comma here
+                            if (!chatState.isSendingMessage) {
+                              _sendMessage();
+                            }
+                          },
+                        ),
+                      ),
                     ),
-                    onSubmitted: (_) => _sendMessage(),
                   ),
                 ),
                 const SizedBox(width: 8.0),
                 chatState.isSendingMessage
-                    ? const CircularProgressIndicator()
+                    ? Padding(
+                        padding: const EdgeInsets.only(bottom: 4.0, right: 4.0), // Align with IconButton
+                        child: SizedBox(
+                          width: 28,
+                          height: 28,
+                          child: CircularProgressIndicator(strokeWidth: 2.5, color: colorScheme.primary),
+                        ),
+                      )
                     : IconButton(
-                      icon: const Icon(Icons.send),
-                      onPressed: _sendMessage,
-                      tooltip: 'Send message',
-                    ),
+                        icon: Icon(Icons.send, color: chatState.isSendingMessage ? Colors.grey : colorScheme.primary, size: 28), // Grey out icon when disabled
+                        tooltip: chatState.isSendingMessage ? 'Waiting for response' : 'Send message',
+                        padding: const EdgeInsets.only(bottom: 4.0), // Align with TextField baseline
+                        onPressed: chatState.isSendingMessage ? null : _sendMessage, // Disable button when sending
+                      ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyChatPlaceholder(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircleAvatar(
+            radius: 40,
+            backgroundColor: Colors.grey.shade200, // Light grey circle
+            child: Icon(
+              Icons.smart_toy_outlined,
+              size: 48,
+              color: Colors.grey.shade600, // Slightly darker grey icon
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'Start a conversation',
+            style: textTheme.headlineSmall?.copyWith(
+              color: Colors.grey.shade700, // Lighter grey text
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40.0),
+            child: Text(
+              'Send a message to begin your chat with ${widget.agentName}.',
+              textAlign: TextAlign.center,
+              style: textTheme.bodyLarge?.copyWith(
+                color: Colors.grey.shade500, // Even lighter grey text
+              ),
             ),
           ),
         ],
