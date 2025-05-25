@@ -72,7 +72,7 @@ class MessageListView extends ConsumerWidget {
     return ListView.builder(
       controller: scrollController,
       // Greatly reduce horizontal padding on the ListView itself
-      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0), 
+      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 72.0), 
       itemCount: chatState.messages.length,
       itemBuilder: (context, index) {
         final message = chatState.messages[index];

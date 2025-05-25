@@ -211,14 +211,14 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
                     },
                     onChanged: (value) => formNotifier.setName(value),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12.0),
                   _buildTextField(
                     controller: _descriptionController,
                     labelText: 'Description (Optional)',
                     enabled: !formState.isLoading,
                     onChanged: (value) => formNotifier.setDescription(value),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12.0),
                   _buildTextField(
                     controller: _instructionsController,
                     labelText: 'Instructions',
@@ -232,7 +232,7 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
                     },
                     onChanged: (value) => formNotifier.setInstructions(value),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20.0),
                   _buildSwitchTile(
                     title: 'Code Interpreter',
                     value: formState.enableCodeInterpreter,
@@ -266,15 +266,15 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
                     foregroundColor: colorScheme.onPrimary,
                     disabledBackgroundColor: Colors.grey.shade400,
                     disabledForegroundColor: Colors.grey.shade700,
-                    padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
                     textStyle: textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                       letterSpacing: 0.5,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12.0),
+                      borderRadius: BorderRadius.circular(8.0), // Consistent with text fields
                     ),
-                    elevation: 3.0,
+                    elevation: 2.0, // Slightly reduced elevation
                   ).copyWith(
                     mouseCursor: MaterialStateProperty.resolveWith<MouseCursor?>(
                       (Set<MaterialState> states) {
@@ -336,7 +336,8 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
           borderSide: BorderSide(color: theme.colorScheme.primary, width: 2.0),
         ),
         filled: true,
-        fillColor: enabled ? theme.colorScheme.surfaceVariant.withOpacity(0.3) : theme.colorScheme.onSurface.withOpacity(0.05),
+        // Using Material 3 surface container colors for a more defined look
+        fillColor: enabled ? theme.colorScheme.surfaceContainerLow : theme.colorScheme.onSurface.withOpacity(0.05),
         floatingLabelBehavior: FloatingLabelBehavior.auto,
       ),
       maxLines: maxLines,
@@ -353,16 +354,19 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
   }) {
     final theme = Theme.of(context);
     return Card(
-      elevation: 0.5,
-      margin: const EdgeInsets.symmetric(vertical: 6.0),
+      elevation: 0.0, // Flatter design
+      margin: const EdgeInsets.symmetric(vertical: 4.0), // Tighter margin
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8.0),
-        side: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.1))
+        // Using outlineVariant for a subtle border, consistent with M3 guidelines
+        side: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.5)),
       ),
-      color: theme.colorScheme.surface.withOpacity(0.5), // Slightly different background
+      // Using a more defined surface color from M3 palette
+      color: theme.colorScheme.surfaceContainer,
       child: SwitchListTile(
         title: Text(title, style: theme.textTheme.titleMedium?.copyWith(
-          color: onChanged == null ? theme.disabledColor : theme.colorScheme.onSurfaceVariant
+          // Ensuring text color contrasts well with the new card color
+          color: onChanged == null ? theme.disabledColor : theme.colorScheme.onSurface
         )),
         value: value,
         onChanged: onChanged,
