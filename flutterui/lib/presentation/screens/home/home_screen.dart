@@ -137,7 +137,7 @@ class HomeScreen extends ConsumerWidget {
                           crossAxisCount: crossAxisCount,
                           crossAxisSpacing: 12.0, // Reduced spacing
                           mainAxisSpacing: 12.0,  // Reduced spacing
-                          childAspectRatio: crossAxisCount == 1 ? (16 / 9) : (4 / 2.5), // Adjusted aspect ratio for wider/shorter cards
+                          childAspectRatio: crossAxisCount == 1 ? (16 / 10) : (4 / 2.8), // Made cards taller
                         ),
                         itemCount: agents.length,
                         itemBuilder: (context, index) {

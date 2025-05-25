@@ -55,9 +55,29 @@ class AgentCard extends ConsumerWidget { // Change to ConsumerWidget
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
+              // Display Created At (Moved Up)
+              if (agent.createdAtDisplay != null && agent.createdAtDisplay!.isNotEmpty) ...[
+                const SizedBox(height: 6), // Space between name and date
+                Row(
+                  mainAxisSize: MainAxisSize.min, // Row takes minimum space
+                  mainAxisAlignment: MainAxisAlignment.center, // Center row content
+                  children: [
+                    Icon(Icons.calendar_today_outlined, size: 12, color: colorScheme.onSurfaceVariant.withOpacity(0.7)),
+                    const SizedBox(width: 4),
+                    Text(
+                      agent.createdAtDisplay!,
+                      style: textTheme.bodySmall?.copyWith(
+                        fontSize: 11,
+                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              // Description section
               if (agent.description != null &&
                   agent.description!.isNotEmpty) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: 8), // Space between date and description
                 Text(
                   agent.description!,
                   textAlign: TextAlign.center, // Center text
@@ -68,28 +88,8 @@ class AgentCard extends ConsumerWidget { // Change to ConsumerWidget
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
-              // Display Created At
-              if (agent.createdAtDisplay != null && agent.createdAtDisplay!.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Row(
-                  mainAxisSize: MainAxisSize.min, // Row takes minimum space
-                  mainAxisAlignment: MainAxisAlignment.center, // Center row content
-                  children: [
-                    Icon(Icons.calendar_today_outlined, size: 12, color: colorScheme.onSurfaceVariant.withOpacity(0.7)),
-                    const SizedBox(width: 4),
-                    Text(
-                      // 'Created: ${agent.createdAtDisplay}', // Removed "Created: " prefix for brevity
-                      agent.createdAtDisplay!,
-                      style: textTheme.bodySmall?.copyWith(
-                        fontSize: 11,
-                        color: colorScheme.onSurfaceVariant.withOpacity(0.7),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-              const Spacer(), // Pushes "Tap to chat" to the bottom if there's extra space
-              const SizedBox(height: 8),
+              const Spacer(), // Pushes "Tap to chat" to the bottom
+              const SizedBox(height: 8), // Consistent small space above "Tap to chat"
               Text(
                 'Tap to chat',
                 style: textTheme.labelSmall?.copyWith(
