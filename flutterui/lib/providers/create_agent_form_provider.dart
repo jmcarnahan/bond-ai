@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/data/models/agent_model.dart'; // Added for AgentDetailModel
 import 'package:flutterui/data/services/agent_service.dart'; // Added for AgentService
 import 'package:flutterui/providers/auth_provider.dart'; // Assuming authServiceProvider is here or similar
+import '../core/utils/logger.dart';
 
 // Provider for AgentService
 // This should ideally be in a separate file or a common providers file.
@@ -139,11 +140,11 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       if (agentId == null || agentId.isEmpty) {
         // Create new agent
         await agentService.createAgent(agentData);
-        print('Agent created: ${state.name}');
+        logger.i('Agent created: ${state.name}');
       } else {
         // Update existing agent
         await agentService.updateAgent(agentId, agentData);
-        print('Agent updated: ${state.name}');
+        logger.i('Agent updated: ${state.name}');
       }
       
       state = state.copyWith(isLoading: false);
@@ -151,7 +152,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       // resetState(); 
       return true;
     } catch (e) {
-      print('Error saving agent: ${e.toString()}');
+      logger.i('Error saving agent: ${e.toString()}');
       state = state.copyWith(isLoading: false, errorMessage: e.toString());
       return false;
     }

@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import 'package:flutterui/core/constants/api_constants.dart';
 import 'package:flutterui/data/services/auth_service.dart'; // To get authenticated headers
+import '../../core/utils/logger.dart';
 
 @immutable
 class ChatService {
@@ -19,7 +20,7 @@ class ChatService {
     required String agentId,
     required String prompt,
   }) async* {
-    print(
+    logger.i(
       "[ChatService] streamChatResponse called for threadId: $threadId, agentId: $agentId",
     );
     try {
@@ -40,7 +41,7 @@ class ChatService {
 
       final http.StreamedResponse response = await _httpClient.send(request);
 
-      print(
+      logger.i(
         "[ChatService] streamChatResponse status code: ${response.statusCode}",
       );
 
@@ -53,13 +54,13 @@ class ChatService {
 
         await for (List<int> chunkBytes in response.stream) {
           final String decodedChunk = utf8.decode(chunkBytes);
-          print("[ChatService] Decoded chunk: $decodedChunk");
+          logger.i("[ChatService] Decoded chunk: $decodedChunk");
           yield decodedChunk;
         }
-        print("[ChatService] Stream finished for threadId: $threadId");
+        logger.i("[ChatService] Stream finished for threadId: $threadId");
       } else {
         final errorBody = await response.stream.bytesToString();
-        print(
+        logger.i(
           "[ChatService] Failed to stream chat response. Status: ${response.statusCode}, Body: $errorBody",
         );
         throw Exception(
@@ -67,7 +68,7 @@ class ChatService {
         );
       }
     } catch (e) {
-      print("[ChatService] Error in streamChatResponse: ${e.toString()}");
+      logger.i("[ChatService] Error in streamChatResponse: ${e.toString()}");
       throw Exception('Error streaming chat: ${e.toString()}');
     }
   }

@@ -6,6 +6,7 @@ import 'package:flutterui/core/constants/api_constants.dart';
 import 'package:flutterui/data/models/thread_model.dart';
 import 'package:flutterui/data/models/message_model.dart';
 import 'package:flutterui/data/services/auth_service.dart'; // To get authenticated headers
+import '../../core/utils/logger.dart';
 
 @immutable
 class ThreadService {
@@ -18,7 +19,7 @@ class ThreadService {
 
   // Fetch all threads for the current user
   Future<List<Thread>> getThreads() async {
-    print("[ThreadService] getThreads called.");
+    logger.i("[ThreadService] getThreads called.");
     try {
       final headers = await _authService.authenticatedHeaders;
       final response = await _httpClient.get(
@@ -26,7 +27,7 @@ class ThreadService {
         headers: headers,
       );
 
-      print(
+      logger.i(
         "[ThreadService] getThreads response status: ${response.statusCode}",
       );
       if (response.statusCode == 200) {
@@ -35,23 +36,23 @@ class ThreadService {
             data
                 .map((item) => Thread.fromJson(item as Map<String, dynamic>))
                 .toList();
-        print("[ThreadService] Parsed ${threads.length} threads.");
+        logger.i("[ThreadService] Parsed ${threads.length} threads.");
         return threads;
       } else {
-        print(
+        logger.i(
           "[ThreadService] Failed to load threads. Status: ${response.statusCode}, Body: ${response.body}",
         );
         throw Exception('Failed to load threads: ${response.statusCode}');
       }
     } catch (e) {
-      print("[ThreadService] Error in getThreads: ${e.toString()}");
+      logger.i("[ThreadService] Error in getThreads: ${e.toString()}");
       throw Exception('Failed to fetch threads: ${e.toString()}');
     }
   }
 
   // Create a new thread
   Future<Thread> createThread({String? name}) async {
-    print("[ThreadService] createThread called with name: $name");
+    logger.i("[ThreadService] createThread called with name: $name");
     try {
       final headers = await _authService.authenticatedHeaders;
       final body = json.encode({
@@ -64,25 +65,25 @@ class ThreadService {
         body: body,
       );
 
-      print(
+      logger.i(
         "[ThreadService] createThread response status: ${response.statusCode}",
       );
       if (response.statusCode == 201) {
         // Typically 201 Created
         final Map<String, dynamic> data = json.decode(response.body);
         final Thread newThread = Thread.fromJson(data);
-        print(
+        logger.i(
           "[ThreadService] Created new thread: ${newThread.id} - ${newThread.name}",
         );
         return newThread;
       } else {
-        print(
+        logger.i(
           "[ThreadService] Failed to create thread. Status: ${response.statusCode}, Body: ${response.body}",
         );
         throw Exception('Failed to create thread: ${response.statusCode}');
       }
     } catch (e) {
-      print("[ThreadService] Error in createThread: ${e.toString()}");
+      logger.i("[ThreadService] Error in createThread: ${e.toString()}");
       throw Exception('Failed to create thread: ${e.toString()}');
     }
   }
@@ -92,7 +93,7 @@ class ThreadService {
     String threadId, {
     int limit = 100,
   }) async {
-    print(
+    logger.i(
       "[ThreadService] getMessagesForThread called for threadId: $threadId, limit: $limit",
     );
     try {
@@ -104,7 +105,7 @@ class ThreadService {
         headers: headers,
       );
 
-      print(
+      logger.i(
         "[ThreadService] getMessagesForThread response status: ${response.statusCode}",
       );
       if (response.statusCode == 200) {
@@ -113,12 +114,12 @@ class ThreadService {
             data
                 .map((item) => Message.fromJson(item as Map<String, dynamic>))
                 .toList();
-        print(
+        logger.i(
           "[ThreadService] Parsed ${messages.length} messages for thread $threadId.",
         );
         return messages;
       } else {
-        print(
+        logger.i(
           "[ThreadService] Failed to load messages for thread $threadId. Status: ${response.statusCode}, Body: ${response.body}",
         );
         throw Exception(
@@ -126,7 +127,7 @@ class ThreadService {
         );
       }
     } catch (e) {
-      print(
+      logger.i(
         "[ThreadService] Error in getMessagesForThread for thread $threadId: ${e.toString()}",
       );
       throw Exception(
@@ -137,7 +138,7 @@ class ThreadService {
 
   // Delete a specific thread
   Future<void> deleteThread(String threadId) async {
-    print("[ThreadService] deleteThread called for threadId: $threadId");
+    logger.i("[ThreadService] deleteThread called for threadId: $threadId");
     try {
       final headers = await _authService.authenticatedHeaders;
       final response = await _httpClient.delete(
@@ -147,21 +148,21 @@ class ThreadService {
         headers: headers,
       );
 
-      print(
+      logger.i(
         "[ThreadService] deleteThread response status: ${response.statusCode}",
       );
       if (response.statusCode == 204) {
         // Successfully deleted
-        print("[ThreadService] Deleted thread: $threadId");
+        logger.i("[ThreadService] Deleted thread: $threadId");
         return;
       } else if (response.statusCode == 404) {
-        print(
+        logger.i(
           "[ThreadService] Failed to delete thread. Not Found. Status: ${response.statusCode}, Body: ${response.body}",
         );
         // Consider creating a specific exception type for not found
         throw Exception('Thread not found: ${response.statusCode}');
       } else {
-        print(
+        logger.i(
           "[ThreadService] Failed to delete thread. Status: ${response.statusCode}, Body: ${response.body}",
         );
         throw Exception(
@@ -169,7 +170,7 @@ class ThreadService {
         );
       }
     } catch (e) {
-      print(
+      logger.i(
         "[ThreadService] Error in deleteThread for thread $threadId: ${e.toString()}",
       );
       // Rethrow or handle more specifically if needed

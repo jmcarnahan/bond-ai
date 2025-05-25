@@ -12,6 +12,7 @@ import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/data/models/agent_model.dart';
 import 'package:flutterui/core/theme/app_theme.dart';
 import 'package:flutterui/core/theme/mcafee_theme.dart';
+import 'package:flutterui/core/utils/logger.dart';
 
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   throw UnimplementedError('SharedPreferences not initialized');
@@ -62,7 +63,7 @@ class MyApp extends ConsumerWidget {
       theme: currentTheme.themeData,
       home: homeWidget,
       onGenerateRoute: (settings) {
-        print(
+        logger.i(
           "[onGenerateRoute] Name: '${settings.name}', Args: ${settings.arguments}",
         );
         Widget? pageWidget;
@@ -78,7 +79,7 @@ class MyApp extends ConsumerWidget {
         final Uri uri = Uri.parse(effectivePath);
         effectivePath = uri.path;
 
-        print("[onGenerateRoute] Effective Path for switch: '$effectivePath'");
+        logger.i("[onGenerateRoute] Effective Path for switch: '$effectivePath'");
 
         switch (effectivePath) {
           case '/login':
@@ -102,7 +103,7 @@ class MyApp extends ConsumerWidget {
               if (parts.length >= 3) {
                 if (settings.arguments is AgentListItemModel) {
                   final agent = settings.arguments as AgentListItemModel;
-                  print(
+                  logger.i(
                     "[onGenerateRoute] Navigating to ChatScreen for agent: ${agent.name} (ID: ${agent.id})",
                   );
                   pageWidget = ChatScreen(
@@ -110,7 +111,7 @@ class MyApp extends ConsumerWidget {
                     agentName: agent.name,
                   );
                 } else {
-                  print(
+                  logger.i(
                     '[onGenerateRoute] Error: ChatScreen /chat/:id called without AgentListItemModel object as argument. Args: ${settings.arguments}',
                   );
                   pageWidget = const Scaffold(
@@ -120,7 +121,7 @@ class MyApp extends ConsumerWidget {
                   );
                 }
               } else {
-                print(
+                logger.i(
                   '[onGenerateRoute] Error: Invalid /chat/ route format: $effectivePath',
                 );
                 pageWidget = const Scaffold(
@@ -137,7 +138,7 @@ class MyApp extends ConsumerWidget {
                 final agentIdForEdit = parts[2];
                 pageWidget = CreateAgentScreen(agentId: agentIdForEdit);
               } else {
-                print(
+                logger.i(
                   '[onGenerateRoute] Error: Invalid /edit-agent/ route format: $effectivePath',
                 );
                 pageWidget = const Scaffold(
@@ -147,7 +148,7 @@ class MyApp extends ConsumerWidget {
                 );
               }
             } else {
-              print(
+              logger.i(
                 '[onGenerateRoute] Warning: Unhandled effectivePath: $effectivePath. Args: ${settings.arguments}',
               );
             }
@@ -161,7 +162,7 @@ class MyApp extends ConsumerWidget {
           );
         }
 
-        print(
+        logger.i(
           "[onGenerateRoute] Fallback: Unknown route. Name='${settings.name}', EffectivePath='$effectivePath'. Showing homeWidget.",
         );
         return MaterialPageRoute(builder: (_) => homeWidget);

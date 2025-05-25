@@ -1,10 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/data/models/thread_model.dart';
 import 'package:flutterui/data/services/thread_service.dart';
-// Import the existing threadServiceProvider from thread_chat_provider.dart
-// to ensure we use the same ThreadService instance.
-import 'package:flutterui/providers/thread_chat_provider.dart'
+import 'package:flutterui/providers/thread_chat/thread_chat_providers.dart' // Updated path
     show threadServiceProvider;
+import '../core/utils/logger.dart';
 
 // This provider can be used to communicate errors from thread operations to the UI,
 // for example, by showing a SnackBar.
@@ -60,7 +59,7 @@ class ThreadsNotifier extends StateNotifier<AsyncValue<List<Thread>>> {
         state = previousState; // Revert to previous state on error
       }
       // Optionally re-throw or handle more gracefully, e.g. logging
-      print('Error adding thread: $e');
+      logger.i('Error adding thread: $e');
     }
   }
 
@@ -76,16 +75,12 @@ class ThreadsNotifier extends StateNotifier<AsyncValue<List<Thread>>> {
 
     try {
       await _threadService.deleteThread(threadId);
-      // If delete is successful, state is already updated optimistically.
-      // Optionally, call fetchThreads() to ensure full consistency if needed,
-      // but optimistic update is usually fine.
-      // e.g. await fetchThreads();
-    } catch (e, stackTrace) {
+    } catch (e) {
       if (mounted) {
         _ref.read(threadErrorProvider.notifier).state = e.toString();
-        state = previousState; // Revert to previous state on error
+        state = previousState;
       }
-      print('Error removing thread: $e');
+      logger.i('Error removing thread: $e');
     }
   }
 }

@@ -4,7 +4,7 @@ import 'package:flutterui/core/theme/mcafee_theme.dart'; // For CustomColors
 import 'package:flutterui/data/models/thread_model.dart';
 import 'package:flutterui/main.dart'; // For appThemeProvider
 import 'package:flutterui/providers/thread_provider.dart';
-import 'package:flutterui/providers/thread_chat_provider.dart'; // For chatSessionNotifierProvider
+import 'package:flutterui/providers/thread_chat/thread_chat_providers.dart'; // For chatSessionNotifierProvider
 // Ensure your ChatScreen path is correct if you use direct navigation
 // import 'package:flutterui/presentation/screens/chat/chat_screen.dart';
 

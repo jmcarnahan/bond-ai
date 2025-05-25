@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb; // Import kIsWeb
 // Import 'dart:html' to access window.location.href, only for web.
 // Use conditional import to avoid errors on non-web platforms.
 import 'dart:html' if (dart.library.io) 'dart:io' as html_stub;
+import '../../../core/utils/logger.dart';
 
 class AuthCallbackScreen extends ConsumerStatefulWidget {
   const AuthCallbackScreen({super.key});
@@ -26,16 +27,16 @@ class _AuthCallbackScreenState extends ConsumerState<AuthCallbackScreen> {
 
   void _handleAuthCallback() async {
     // Made async
-    print("[AuthCallbackScreen] _handleAuthCallback triggered.");
+    logger.i("[AuthCallbackScreen] _handleAuthCallback triggered.");
     if (kIsWeb) {
       // Use kIsWeb for a more robust check
-      print("[AuthCallbackScreen] Running on web.");
+      logger.i("[AuthCallbackScreen] Running on web.");
       final String fullUrl = html_stub.window.location.href;
-      print("[AuthCallbackScreen] Full URL: $fullUrl");
+      logger.i("[AuthCallbackScreen] Full URL: $fullUrl");
 
       final Uri? currentUri = Uri.tryParse(fullUrl);
       if (currentUri == null) {
-        print(
+        logger.i(
           "[AuthCallbackScreen] Could not parse URI. Navigating to /login.",
         );
         if (mounted)
@@ -44,15 +45,15 @@ class _AuthCallbackScreenState extends ConsumerState<AuthCallbackScreen> {
           ).pushNamedAndRemoveUntil('/login', (route) => false);
         return;
       }
-      print("[AuthCallbackScreen] Parsed URI: $currentUri");
-      print("[AuthCallbackScreen] URI Fragment: ${currentUri.fragment}");
+      logger.i("[AuthCallbackScreen] Parsed URI: $currentUri");
+      logger.i("[AuthCallbackScreen] URI Fragment: ${currentUri.fragment}");
 
       String? token;
       if (currentUri.fragment.isNotEmpty) {
         final Uri fragmentUri = Uri.parse(
           'dummy://dummy${currentUri.fragment.startsWith('/') ? currentUri.fragment : '/${currentUri.fragment}'}',
         );
-        print("[AuthCallbackScreen] Parsed Fragment URI: $fragmentUri");
+        logger.i("[AuthCallbackScreen] Parsed Fragment URI: $fragmentUri");
         if (fragmentUri.pathSegments.contains('auth-callback') &&
             fragmentUri.queryParameters.containsKey('token')) {
           token = fragmentUri.queryParameters['token'];
@@ -60,41 +61,41 @@ class _AuthCallbackScreenState extends ConsumerState<AuthCallbackScreen> {
       }
 
       if (token == null && currentUri.queryParameters.containsKey('token')) {
-        print(
+        logger.i(
           "[AuthCallbackScreen] Token found in main query parameters (not fragment).",
         );
         token = currentUri.queryParameters['token'];
       }
-      print("[AuthCallbackScreen] Extracted Token: $token");
+      logger.i("[AuthCallbackScreen] Extracted Token: $token");
 
       if (token != null && token.isNotEmpty) {
-        print(
+        logger.i(
           "[AuthCallbackScreen] Valid token found. Calling loginWithToken...",
         );
         final bool loginSuccess = await ref
             .read(authNotifierProvider.notifier)
             .loginWithToken(token);
 
-        print(
+        logger.i(
           "[AuthCallbackScreen] loginWithToken returned: $loginSuccess, mounted: $mounted",
         ); // ADDED THIS LOG
 
         if (!mounted) {
-          print(
+          logger.i(
             "[AuthCallbackScreen] Widget unmounted after loginWithToken. No navigation.",
           );
           return;
         }
 
         if (loginSuccess) {
-          print(
+          logger.i(
             "[AuthCallbackScreen] loginWithToken succeeded. Navigating to /home.",
           );
           Navigator.of(
             context,
           ).pushNamedAndRemoveUntil('/home', (route) => false);
         } else {
-          print(
+          logger.i(
             "[AuthCallbackScreen] loginWithToken failed. Navigating to /login.",
           );
           Navigator.of(
@@ -102,7 +103,7 @@ class _AuthCallbackScreenState extends ConsumerState<AuthCallbackScreen> {
           ).pushNamedAndRemoveUntil('/login', (route) => false);
         }
       } else {
-        print(
+        logger.i(
           "[AuthCallbackScreen] Token not extracted or is empty. Navigating to /login.",
         );
         if (mounted)
@@ -111,7 +112,7 @@ class _AuthCallbackScreenState extends ConsumerState<AuthCallbackScreen> {
           ).pushNamedAndRemoveUntil('/login', (route) => false);
       }
     } else {
-      print("[AuthCallbackScreen] Not running on web. Navigating to /login.");
+      logger.i("[AuthCallbackScreen] Not running on web. Navigating to /login.");
       if (mounted)
         Navigator.of(
           context,

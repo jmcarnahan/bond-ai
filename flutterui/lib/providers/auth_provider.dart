@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutterui/data/models/user_model.dart';
 import 'package:flutterui/data/services/auth_service.dart';
 import 'package:flutterui/main.dart'; // For sharedPreferencesProvider
+import '../core/utils/logger.dart';
 
 // Define the states for authentication
 abstract class AuthState {
@@ -57,26 +58,26 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> _checkInitialAuthStatus() async {
-    print("[AuthNotifier] _checkInitialAuthStatus called.");
+    logger.i("[AuthNotifier] _checkInitialAuthStatus called.");
     state = const AuthLoading();
     try {
       final token = await _authService.retrieveToken();
-      print("[AuthNotifier] Retrieved token: $token");
+      logger.i("[AuthNotifier] Retrieved token: $token");
       if (token != null && token.isNotEmpty) {
-        print("[AuthNotifier] Token found, attempting to get current user.");
+        logger.i("[AuthNotifier] Token found, attempting to get current user.");
         final user = await _authService.getCurrentUser();
-        print(
+        logger.i(
           "[AuthNotifier] Got user: ${user.email}. Setting state to Authenticated.",
         );
         state = Authenticated(user);
       } else {
-        print(
+        logger.i(
           "[AuthNotifier] No token found. Setting state to Unauthenticated.",
         );
         state = const Unauthenticated();
       }
     } catch (e) {
-      print("[AuthNotifier] Error in _checkInitialAuthStatus: ${e.toString()}");
+      logger.i("[AuthNotifier] Error in _checkInitialAuthStatus: ${e.toString()}");
       await _authService.clearToken();
       state = Unauthenticated(message: "Session error. Please log in again.");
     }
@@ -97,20 +98,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
   // This method would be called after the app captures the token from the redirect
   Future<bool> loginWithToken(String token) async {
     // Changed to return Future<bool>
-    print("[AuthNotifier] loginWithToken called with token: $token");
+    logger.i("[AuthNotifier] loginWithToken called with token: $token");
     state = const AuthLoading();
     try {
-      print("[AuthNotifier] Storing token...");
+      logger.i("[AuthNotifier] Storing token...");
       await _authService.storeToken(token);
-      print("[AuthNotifier] Token stored. Getting current user...");
+      logger.i("[AuthNotifier] Token stored. Getting current user...");
       final user = await _authService.getCurrentUser();
-      print(
+      logger.i(
         "[AuthNotifier] Got user: ${user.email}. Setting state to Authenticated.",
       );
       state = Authenticated(user);
       return true; // Indicate success
     } catch (e) {
-      print("[AuthNotifier] Error in loginWithToken: ${e.toString()}");
+      logger.i("[AuthNotifier] Error in loginWithToken: ${e.toString()}");
       await _authService.clearToken();
       state = AuthError("Login failed: ${e.toString()}");
       return false; // Indicate failure
@@ -118,7 +119,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
-    print("[AuthNotifier] logout called.");
+    logger.i("[AuthNotifier] logout called.");
     state = const AuthLoading();
     try {
       await _authService.clearToken();

@@ -93,7 +93,14 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
       // Toggle states are already in provider via their onChanged.
 
       // Note: notifier.saveAgent internally sets isLoading = true, then false on completion/error.
-      final agentSuccessfullySaved = await notifier.saveAgent(agentId: widget.agentId); // Pass agentId here
+      final bool agentSuccessfullySaved;
+      if (widget.agentId != null) {
+        agentSuccessfullySaved = await notifier.saveAgent(agentId: widget.agentId!);
+      } else {
+        // Assumes saveAgent can be called without agentId for creation,
+        // and that agentId parameter is optional (not required).
+        agentSuccessfullySaved = await notifier.saveAgent();
+      }
 
       if (agentSuccessfullySaved) {
         // Keep loading indicator on CreateAgentScreen while HomeScreen data is fetched
