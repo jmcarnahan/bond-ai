@@ -205,12 +205,19 @@ class Metadata:
             
             # Delete all user associations for this thread_id from our DB
             deleted_rows = session.query(Thread).filter(Thread.thread_id == thread_id).delete()
-            session.commit()
+            
             if deleted_rows > 0:
-                LOGGER.info(f"Deleted {deleted_rows} DB records for thread_id: {thread_id}")
+                try:
+                    session.commit()
+                    LOGGER.info(f"Successfully committed deletion of {deleted_rows} DB records for thread_id: {thread_id}")
+                except Exception as e:
+                    LOGGER.critical(f"CRITICAL: Failed to commit DB deletion for thread_id {thread_id} after {deleted_rows} rows were marked for deletion. Error: {e}", exc_info=True)
+                    session.rollback() # Rollback the transaction
+                    raise # Re-raise the exception to signal failure
             else:
-                # This might happen if called multiple times for the same thread_id in teardown
-                LOGGER.info(f"No DB records found to delete for thread_id: {thread_id} (possibly already deleted).")
+                # This might happen if called multiple times for the same thread_id or if thread never existed in DB.
+                # No commit needed if no rows were deleted.
+                LOGGER.info(f"No DB records found to delete for thread_id: {thread_id} (possibly already deleted or never existed in DB).")
 
     def get_thread(self, thread_id: str) -> dict | None:
         with self.get_db_session() as session:

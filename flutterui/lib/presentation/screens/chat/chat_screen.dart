@@ -60,6 +60,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
+  String _generateThreadNameFromPrompt(String prompt) {
+    const maxLength = 30;
+    if (prompt.length <= maxLength) {
+      return prompt;
+    }
+    return '${prompt.substring(0, maxLength - 3)}...';
+  }
+
   void _sendMessage() {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
@@ -72,6 +80,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     if (currentSessionState.currentThreadId == null) {
       chatNotifier.createAndSetNewThread(
+        name: _generateThreadNameFromPrompt(text), // Pass generated name
         agentIdForFirstMessage: widget.agentId,
         firstMessagePrompt: text,
       );

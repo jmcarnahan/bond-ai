@@ -381,13 +381,24 @@ async def delete_thread_endpoint(
     try:
         threads_service = Threads.threads(user_id=current_user.email)
         threads_service.delete_thread(thread_id=thread_id)
-        LOGGER.info(f"User {current_user.email} deleted thread with ID: {thread_id}")
-        # HTTP 204 No Content is returned automatically
-    except Exception as e: # Be more specific with exception handling if possible
+        LOGGER.info(f"User {current_user.email} successfully initiated deletion of thread with ID: {thread_id}")
+        # HTTP 204 No Content is returned automatically if no exception is raised
+    except PermissionError as e:
+        LOGGER.warning(f"Permission denied for user {current_user.email} attempting to delete thread {thread_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except openai.NotFoundError as e: # Catching this if metadata.delete_thread re-raises it from OpenAI
+        LOGGER.warning(f"Thread {thread_id} not found on OpenAI during delete attempt by user {current_user.email}: {e}", exc_info=True)
+        # Even if not found on OpenAI, the metadata layer attempts DB cleanup.
+        # If the thread was also not in DB, it's effectively a 404 for the resource.
+        # The metadata layer's logging will indicate if DB records were found/deleted.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Thread {thread_id} not found.")
+    except Exception as e: # Catch-all for other errors, including DB commit failures from metadata layer
         LOGGER.error(f"Error deleting thread {thread_id} for user {current_user.email}: {e}", exc_info=True)
-        if "not found" in str(e).lower() or "no row was found" in str(e).lower(): # Adjust based on actual errors
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thread not found or not accessible.")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not delete thread.")
+        # Check if the error message indicates a "not found" scenario from the metadata layer itself
+        # (e.g., if get_thread_owner returned None and it proceeded to metadata.delete_thread)
+        if "not found in metadata" in str(e).lower():
+             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Thread {thread_id} not found or not accessible.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not delete thread: {str(e)}")
     
 
 @app.get("/threads/{thread_id}/messages", response_model=list[MessageRef], tags=["Messages"])
