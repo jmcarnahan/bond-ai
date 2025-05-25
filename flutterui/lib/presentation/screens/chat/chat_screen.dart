@@ -186,7 +186,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       appBar: ChatAppBar(
         agentName: widget.agentName,
         onViewThreads: () {
-          Navigator.pushNamed(context, '/threads');
+          Navigator.pushNamed(context, '/threads', arguments: {'isFromAgentChat': true});
         },
         onStartNewThread: () async {
           final confirm = await showDialog<bool>(

@@ -9,7 +9,9 @@ import 'package:flutterui/providers/thread_chat/thread_chat_providers.dart'; // 
 // import 'package:flutterui/presentation/screens/chat/chat_screen.dart';
 
 class ThreadsScreen extends ConsumerWidget {
-  const ThreadsScreen({super.key});
+  final bool isFromAgentChat;
+
+  const ThreadsScreen({super.key, this.isFromAgentChat = false});
 
   void _showCreateThreadDialog(BuildContext context, WidgetRef ref) {
     final TextEditingController nameController = TextEditingController();
@@ -178,45 +180,47 @@ class ThreadsScreen extends ConsumerWidget {
                               ),
                             )
                           : null,
-                      trailing: IconButton(
-                        icon: Icon(
-                          Icons.delete_outline,
-                          color: theme.colorScheme.error.withOpacity(0.8),
-                        ),
-                        tooltip: 'Delete Thread',
-                        onPressed: () async {
-                          final confirm = await showDialog<bool>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                                  title: const Text('Delete Thread?'),
-                                  content: Text(
-                                    'Are you sure you want to delete "${thread.name.isNotEmpty ? thread.name : "this unnamed thread"}"? This action cannot be undone.',
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.of(context).pop(false),
-                                      child: const Text('Cancel'),
+                      trailing: isFromAgentChat
+                          ? null // Hide delete button if from agent chat
+                          : IconButton(
+                              icon: Icon(
+                                Icons.delete_outline,
+                                color: theme.colorScheme.error.withOpacity(0.8),
+                              ),
+                              tooltip: 'Delete Thread',
+                              onPressed: () async {
+                                final confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: const Text('Delete Thread?'),
+                                    content: Text(
+                                      'Are you sure you want to delete "${thread.name.isNotEmpty ? thread.name : "this unnamed thread"}"? This action cannot be undone.',
                                     ),
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.of(context).pop(true),
-                                      child: Text(
-                                        'Delete',
-                                        style: TextStyle(
-                                            color: theme.colorScheme.error),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.of(context).pop(false),
+                                        child: const Text('Cancel'),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                          );
-                          if (confirm == true) {
-                            await ref
-                                .read(threadsProvider.notifier)
-                                .removeThread(thread.id);
-                          }
-                        },
-                      ),
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.of(context).pop(true),
+                                        child: Text(
+                                          'Delete',
+                                          style: TextStyle(
+                                              color: theme.colorScheme.error),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (confirm == true) {
+                                  await ref
+                                      .read(threadsProvider.notifier)
+                                      .removeThread(thread.id);
+                                }
+                              },
+                            ),
                       onTap: () {
                     // Set this thread as the globally selected one
                     ref.read(threadsProvider.notifier).selectThread(thread.id);

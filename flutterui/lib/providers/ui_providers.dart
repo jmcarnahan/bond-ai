@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/core/utils/logger.dart';
+import 'package:flutterui/providers/auth_provider.dart'; // Added for auth state
 
 // Provider to control the visibility of the thread banner
-final showThreadBannerProvider = StateProvider<bool>((ref) => true);
+final showThreadBannerProvider = StateProvider<bool>((ref) => false); // Default to false
 
 class RouteObserverForBanner extends NavigatorObserver {
   final WidgetRef _ref;
@@ -12,7 +13,7 @@ class RouteObserverForBanner extends NavigatorObserver {
 
   void _updateBannerVisibility(RouteSettings settings) {
     String? routeName = settings.name;
-    bool shouldShowBanner = true; // Default to true
+    bool shouldShowBanner = false; // Default to false
 
     if (routeName != null) {
       // Normalize routeName (mirroring logic from main.dart's onGenerateRoute)
@@ -29,17 +30,22 @@ class RouteObserverForBanner extends NavigatorObserver {
         logger.w("[RouteObserverForBanner] Error parsing routeName '$routeName' for banner visibility: $e");
         // Keep original routeName if parsing fails, might still work for simple cases
       }
-      
-      // Use null-aware operator and default to false if routeName is null
-      if (routeName?.startsWith('/chat') ?? false) {
-        shouldShowBanner = false;
-      }
     } else {
-      // If route name is null (e.g., initial unnamed route), typically show banner.
-      // This case might need refinement if initial route shouldn't show banner.
-      // For now, default to true.
-      shouldShowBanner = true;
+      // If settings.name is null, Flutter's default initial route name is '/'.
+      routeName = '/';
     }
+      
+    // Show banner ONLY on the HomeScreen
+    // HomeScreen is active if route is '/home' or if initial route '/' and authenticated.
+    if (routeName == '/home') {
+      shouldShowBanner = true;
+    } else if (routeName == '/') {
+      final authState = _ref.read(authNotifierProvider);
+      if (authState is Authenticated) {
+        shouldShowBanner = true; // Initial route is HomeScreen when authenticated
+      }
+    }
+    // For all other routes, shouldShowBanner remains false.
     
     // Only update if the state changes to avoid unnecessary rebuilds
     if (_ref.read(showThreadBannerProvider) != shouldShowBanner) {
@@ -51,28 +57,33 @@ class RouteObserverForBanner extends NavigatorObserver {
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
-    _updateBannerVisibility(route.settings);
+    if (route is PageRoute) {
+      _updateBannerVisibility(route.settings);
+    }
   }
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
-    // When a route is popped, the previousRoute becomes the current one.
-    if (previousRoute != null) {
+    // When a PageRoute is popped, the previousRoute (if also a PageRoute) becomes the current one.
+    if (previousRoute is PageRoute) {
       _updateBannerVisibility(previousRoute.settings);
-    } else {
-      // Popped to the very first route (no previousRoute), assume it's home-like.
-      if (_ref.read(showThreadBannerProvider) != true) {
-        _ref.read(showThreadBannerProvider.notifier).state = true;
+    } else if (previousRoute == null && route is PageRoute) {
+      // This case implies we popped the last PageRoute.
+      // If there's no previous route at all, or if it's not a PageRoute,
+      // it means we are likely at the root or a non-page route context.
+      // Banner should not be shown if the stack is effectively empty of PageRoutes.
+      if (_ref.read(showThreadBannerProvider)) {
+        _ref.read(showThreadBannerProvider.notifier).state = false;
       }
-      logger.i("[RouteObserverForBanner] Popped to initial route. Show Banner: true");
+      logger.i("[RouteObserverForBanner] Popped last PageRoute or to a non-PageRoute. Show Banner: false");
     }
   }
 
   @override
   void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
     super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
-    if (newRoute != null) {
+    if (newRoute is PageRoute) {
       _updateBannerVisibility(newRoute.settings);
     }
   }
