@@ -46,14 +46,14 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
     // Listen to provider state changes to update controllers
     // This is important if the state can be changed by means other than these controllers (e.g. resetState)
     ref.listenManual(createAgentFormProvider, (previous, next) {
-      if (_nameController.text != next.name) {
-        _nameController.text = next.name;
+      if (_nameController.text != (next.name ?? '')) {
+        _nameController.text = next.name ?? '';
       }
-      if (_descriptionController.text != next.description) {
-        _descriptionController.text = next.description;
+      if (_descriptionController.text != (next.description ?? '')) {
+        _descriptionController.text = next.description ?? '';
       }
-      if (_instructionsController.text != next.instructions) {
-        _instructionsController.text = next.instructions;
+      if (_instructionsController.text != (next.instructions ?? '')) {
+        _instructionsController.text = next.instructions ?? '';
       }
     });
 
