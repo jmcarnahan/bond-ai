@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/main.dart';
-import 'package:flutterui/core/theme/mcafee_theme.dart'; // Import for CustomColors
+import 'package:flutterui/core/theme/app_theme.dart'; // For AppTheme and CustomColors
 
 class LoginScreen extends ConsumerWidget {
   const LoginScreen({super.key});
@@ -14,7 +14,7 @@ class LoginScreen extends ConsumerWidget {
     final themeData = Theme.of(context);
     // Access custom colors. Ensure CustomColors is part of your theme extensions.
     final customColors = themeData.extension<CustomColors>();
-    final brandingSurfaceColor = customColors?.brandingSurface ?? McAfeeTheme.mcafeeDarkBrandingSurface; // Fallback
+    final brandingSurfaceColor = customColors?.brandingSurface ?? themeData.colorScheme.surfaceVariant; // Generic fallback
 
     ref.listen<AuthState>(authNotifierProvider, (previous, next) {
       if (next is AuthError) {

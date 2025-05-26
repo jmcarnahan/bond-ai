@@ -4,7 +4,7 @@ import 'package:flutterui/main.dart'; // Import main.dart to access appThemeProv
 import 'package:flutterui/presentation/widgets/sidebar.dart';
 import 'package:flutterui/providers/agent_provider.dart';
 import 'package:flutterui/presentation/widgets/agent_card.dart';
-import 'package:flutterui/core/theme/mcafee_theme.dart'; // Import for CustomColors
+import 'package:flutterui/core/theme/app_theme.dart'; // For AppTheme and CustomColors
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -18,7 +18,7 @@ class HomeScreen extends ConsumerWidget {
     final TextTheme textTheme = currentThemeData.textTheme;
     final ColorScheme colorScheme = currentThemeData.colorScheme;
     final CustomColors? customColors = currentThemeData.extension<CustomColors>();
-    final Color appBarBackgroundColor = customColors?.brandingSurface ?? McAfeeTheme.mcafeeDarkBrandingSurface; // Fallback
+    final Color appBarBackgroundColor = customColors?.brandingSurface ?? currentThemeData.appBarTheme.backgroundColor ?? currentThemeData.colorScheme.surface; // Generic fallback
 
     return Scaffold(
       backgroundColor: colorScheme.surface,

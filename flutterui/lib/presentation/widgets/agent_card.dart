@@ -39,7 +39,7 @@ class AgentCard extends ConsumerWidget { // Change to ConsumerWidget
             mainAxisAlignment: MainAxisAlignment.center, // Center content vertically
             children: <Widget>[
               CircleAvatar(
-                backgroundColor: colorScheme.primary, // McAfee Red
+                backgroundColor: colorScheme.primary, // McAfee Re
                 foregroundColor: colorScheme.onPrimary, // White
                 radius: 24, // Slightly larger icon
                 child: const Icon(Icons.smart_toy_outlined, size: 28), // New Icon

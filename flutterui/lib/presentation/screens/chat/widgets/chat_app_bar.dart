@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutterui/core/theme/mcafee_theme.dart';
+import 'package:flutterui/core/theme/app_theme.dart'; // For AppTheme and CustomColors
 import 'package:flutterui/main.dart'; // Import for appThemeProvider
 import 'package:flutterui/providers/thread_chat/thread_chat_providers.dart'; // Corrected import
 import 'package:flutterui/providers/thread_provider.dart';
@@ -21,7 +21,7 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final customColors = theme.extension<CustomColors>();
-    final appBarBackgroundColor = customColors?.brandingSurface ?? McAfeeTheme.mcafeeDarkBrandingSurface;
+    final appBarBackgroundColor = customColors?.brandingSurface ?? theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface; // Generic fallback
     final appTheme = ref.watch(appThemeProvider);
     final textTheme = theme.textTheme;
 

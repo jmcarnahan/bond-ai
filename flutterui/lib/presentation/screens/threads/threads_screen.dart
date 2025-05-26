@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutterui/core/theme/mcafee_theme.dart'; // For CustomColors
+import 'package:flutterui/core/theme/app_theme.dart'; // For AppTheme and CustomColors
 import 'package:flutterui/data/models/thread_model.dart';
 import 'package:flutterui/main.dart'; // For appThemeProvider
 import 'package:flutterui/providers/thread_provider.dart';
@@ -53,7 +53,7 @@ class ThreadsScreen extends ConsumerWidget {
     final ThemeData theme = Theme.of(context); // Get theme data
     final appTheme = ref.watch(appThemeProvider); // Get appTheme for logo
     final customColors = theme.extension<CustomColors>(); // Get custom colors
-    final appBarBackgroundColor = customColors?.brandingSurface ?? McAfeeTheme.mcafeeDarkBrandingSurface;
+    final appBarBackgroundColor = customColors?.brandingSurface ?? theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface; // Generic fallback
 
 
     // Listen for errors from threadProvider and show a SnackBar
@@ -96,14 +96,6 @@ class ThreadsScreen extends ConsumerWidget {
             ),
           ],
         ),
-        // centerTitle: true, // Already set in McAfeeTheme's appBarTheme
-        // Optional: Add a refresh button if desired
-        // actions: [
-        //   IconButton(
-        //     icon: const Icon(Icons.refresh, color: Colors.white),
-        //     onPressed: () => ref.read(threadsProvider.notifier).fetchThreads(),
-        //   ),
-        // ],
       ),
       body: Padding( // Added padding around the body content
         padding: const EdgeInsets.all(8.0),

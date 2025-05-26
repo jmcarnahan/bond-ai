@@ -152,10 +152,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final chatState = ref.watch(chatSessionNotifierProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final textTheme = theme.textTheme;
-    // final customColors = theme.extension<CustomColors>(); // Moved to ChatAppBar
-    // final appBarBackgroundColor = customColors?.brandingSurface ?? McAfeeTheme.mcafeeDarkBrandingSurface; // Moved to ChatAppBar
-    // final appTheme = ref.watch(appThemeProvider); // Moved to ChatAppBar
 
     ref.listen(
       chatSessionNotifierProvider.select((state) => state.messages.length),

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutterui/core/theme/mcafee_theme.dart';
+import 'package:flutterui/core/theme/app_theme.dart'; // For AppTheme and CustomColors
 import 'package:flutterui/main.dart'; // For appThemeProvider
 import 'package:flutterui/providers/create_agent_form_provider.dart';
 import '../../core/utils/logger.dart';
@@ -65,7 +65,7 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
     final customColors = theme.extension<CustomColors>();
-    final appBarBackgroundColor = customColors?.brandingSurface ?? McAfeeTheme.mcafeeDarkBrandingSurface;
+    final appBarBackgroundColor = customColors?.brandingSurface ?? theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface; // Generic fallback
     final appTheme = ref.watch(appThemeProvider);
     final formState = ref.watch(createAgentFormProvider);
 
@@ -165,8 +165,8 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
               Center(
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: colorScheme.primary, // McAfee Red
-                    foregroundColor: colorScheme.onPrimary, // White text
+                    backgroundColor: colorScheme.primary,
+                    foregroundColor: colorScheme.onPrimary,
                     padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                     textStyle: textTheme.labelLarge,
                   ),
@@ -233,7 +233,7 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
         title: Text(title, style: theme.textTheme.titleMedium),
         value: value,
         onChanged: onChanged,
-        activeColor: theme.colorScheme.primary, // McAfee Red for active toggle
+        activeColor: theme.colorScheme.primary,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
       ),
     );

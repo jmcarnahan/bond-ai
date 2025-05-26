@@ -43,3 +43,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Generated theme file
+lib/core/theme/generated_theme.dart
+
+# Theme configuration files (private)
+theme_configs/
+
+# Theme-specific assets (contents are private and provided at build time)
+assets/theme_specific/*

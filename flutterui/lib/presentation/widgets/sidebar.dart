@@ -4,7 +4,8 @@ import 'package:flutterui/providers/auth_provider.dart'; // For logout
 import 'package:flutterui/providers/agent_provider.dart'; // Import the agents provider
 // import 'package:flutterui/data/models/agent_model.dart'; // AgentListItemModel is used implicitly by agentsProvider
 import 'package:flutterui/presentation/screens/agents/create_agent_screen.dart'; // Import CreateAgentScreen
-import 'package:flutterui/core/theme/mcafee_theme.dart'; // Import McAfeeTheme for CustomColors
+import 'package:flutterui/core/theme/app_theme.dart'; // For AppTheme and CustomColors
+import 'package:flutterui/main.dart'; // For appThemeProvider
 
 class AppSidebar extends ConsumerWidget {
   const AppSidebar({super.key});
@@ -13,20 +14,23 @@ class AppSidebar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final agentsAsyncValue = ref.watch(agentsProvider);
     final theme = Theme.of(context);
-    final mcafeeTheme = theme.extension<CustomColors>();
-    final mcafeePrimaryColor = theme.primaryColor; // McAfee Red
-    final mcafeeOnPrimaryColor = theme.colorScheme.onPrimary; // White for text on red
-    final mcafeeSurfaceColor = theme.colorScheme.surface; // Light grey for drawer background
-    final mcafeeOnSurfaceColor = theme.colorScheme.onSurface; // Text color on light grey
+    final appTheme = ref.watch(appThemeProvider); // Get the current AppTheme instance
+    final customColors = theme.extension<CustomColors>();
+    
+    // Use current theme's colors
+    final currentPrimaryColor = theme.primaryColor;
+    final currentOnPrimaryColor = theme.colorScheme.onPrimary;
+    final currentSurfaceColor = theme.colorScheme.surface;
+    final currentOnSurfaceColor = theme.colorScheme.onSurface;
 
     return Drawer(
-      backgroundColor: mcafeeSurfaceColor, // Set overall drawer background
+      backgroundColor: currentSurfaceColor, // Set overall drawer background
       child: ListView(
         padding: EdgeInsets.zero,
         children: <Widget>[
           DrawerHeader(
             decoration: BoxDecoration(
-              color: mcafeeTheme?.brandingSurface ?? theme.colorScheme.primaryContainer, // Dark grey
+              color: customColors?.brandingSurface ?? theme.colorScheme.primaryContainer, // Use custom branding surface
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -35,7 +39,7 @@ class AppSidebar extends ConsumerWidget {
                 Row(
                   children: [
                     Image.asset(
-                      'assets/mcafee_shield_logo.png', // McAfee shield logo
+                      appTheme.logoIcon, // Use logoIcon from current theme
                       height: 40,
                       width: 40,
                     ),
@@ -43,7 +47,7 @@ class AppSidebar extends ConsumerWidget {
                     Text(
                       'My Agents', // Updated title
                       style: TextStyle(
-                        color: mcafeeOnPrimaryColor, // White text
+                        color: currentOnPrimaryColor, // Use current theme's onPrimary color
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                       ),
@@ -54,8 +58,8 @@ class AppSidebar extends ConsumerWidget {
             ),
           ),
           ListTile(
-            leading: Icon(Icons.home, color: mcafeePrimaryColor),
-            title: Text('Home', style: TextStyle(color: mcafeeOnSurfaceColor)),
+            leading: Icon(Icons.home, color: currentPrimaryColor),
+            title: Text('Home', style: TextStyle(color: currentOnSurfaceColor)),
             onTap: () {
               Navigator.pop(context); // Close the drawer
               if (ModalRoute.of(context)?.settings.name != '/home') {
@@ -72,8 +76,8 @@ class AppSidebar extends ConsumerWidget {
             },
           ),
           ListTile(
-            leading: Icon(Icons.forum_outlined, color: mcafeePrimaryColor),
-            title: Text('Threads', style: TextStyle(color: mcafeeOnSurfaceColor)),
+            leading: Icon(Icons.forum_outlined, color: currentPrimaryColor),
+            title: Text('Threads', style: TextStyle(color: currentOnSurfaceColor)),
             onTap: () {
               Navigator.pop(context); // Close drawer
               if (ModalRoute.of(context)?.settings.name != '/threads') {
@@ -82,8 +86,8 @@ class AppSidebar extends ConsumerWidget {
             },
           ),
           ListTile(
-            leading: Icon(Icons.add_circle_outline, color: mcafeePrimaryColor),
-            title: Text('Create Agent', style: TextStyle(color: mcafeeOnSurfaceColor)),
+            leading: Icon(Icons.add_circle_outline, color: currentPrimaryColor),
+            title: Text('Create Agent', style: TextStyle(color: currentOnSurfaceColor)),
             onTap: () {
               Navigator.pop(context);
               Navigator.pushNamed(context, CreateAgentScreen.routeName);
@@ -96,7 +100,7 @@ class AppSidebar extends ConsumerWidget {
               'Agents',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: mcafeePrimaryColor, // Red color for section header
+                color: currentPrimaryColor, // Use current theme's primary color
                 fontSize: 16,
               ),
             ),
@@ -105,8 +109,8 @@ class AppSidebar extends ConsumerWidget {
             data: (agents) {
               if (agents.isEmpty) {
                 return ListTile(
-                  leading: Icon(Icons.info_outline, color: mcafeeOnSurfaceColor),
-                  title: Text('No agents found.', style: TextStyle(color: mcafeeOnSurfaceColor)),
+                  leading: Icon(Icons.info_outline, color: currentOnSurfaceColor),
+                  title: Text('No agents found.', style: TextStyle(color: currentOnSurfaceColor)),
                 );
               }
               return Column(
@@ -114,10 +118,10 @@ class AppSidebar extends ConsumerWidget {
                     .where((agent) => agent != null)
                     .map((agent) {
                       return ListTile(
-                        leading: Icon(Icons.person, color: mcafeePrimaryColor),
+                        leading: Icon(Icons.person, color: currentPrimaryColor),
                         title: Text(
                           agent.name,
-                          style: TextStyle(color: mcafeeOnSurfaceColor),
+                          style: TextStyle(color: currentOnSurfaceColor),
                         ),
                         onTap: () {
                           Navigator.pop(context);
@@ -133,8 +137,8 @@ class AppSidebar extends ConsumerWidget {
               );
             },
             loading: () => ListTile(
-              leading: CircularProgressIndicator(color: mcafeePrimaryColor),
-              title: Text('Loading agents...', style: TextStyle(color: mcafeeOnSurfaceColor)),
+              leading: CircularProgressIndicator(color: currentPrimaryColor),
+              title: Text('Loading agents...', style: TextStyle(color: currentOnSurfaceColor)),
             ),
             error: (err, stack) => ListTile(
               leading: Icon(Icons.error_outline, color: theme.colorScheme.error),
@@ -146,8 +150,8 @@ class AppSidebar extends ConsumerWidget {
           ),
           const Divider(),
           ListTile(
-            leading: Icon(Icons.logout, color: mcafeePrimaryColor),
-            title: Text('Logout', style: TextStyle(color: mcafeeOnSurfaceColor)),
+            leading: Icon(Icons.logout, color: currentPrimaryColor),
+            title: Text('Logout', style: TextStyle(color: currentOnSurfaceColor)),
             onTap: () {
               Navigator.pop(context);
               ref.read(authNotifierProvider.notifier).logout();

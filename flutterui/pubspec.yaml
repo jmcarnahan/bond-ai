@@ -20,7 +20,10 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  args: ^2.4.2 # Added for command-line argument parsing
+
 flutter:
   uses-material-design: true
   assets:
     - assets/
+    - assets/theme_specific/

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutterui/core/theme/mcafee_theme.dart';
+import 'package:flutterui/core/theme/app_theme.dart'; // For AppTheme and CustomColors
 import 'package:flutterui/main.dart'; // For appThemeProvider
 import 'package:flutterui/providers/create_agent_form_provider.dart';
 import 'package:flutterui/providers/agent_provider.dart'; // Import agentsProvider
@@ -149,7 +149,8 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
     final customColors = theme.extension<CustomColors>();
-    final appBarBackgroundColor = customColors?.brandingSurface ?? McAfeeTheme.mcafeeDarkBrandingSurface;
+    // Use a generic fallback from the current theme if customColors or brandingSurface is not available
+    final appBarBackgroundColor = customColors?.brandingSurface ?? theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface;
     final appTheme = ref.watch(appThemeProvider);
     final formState = ref.watch(createAgentFormProvider);
     final formNotifier = ref.read(createAgentFormProvider.notifier);
