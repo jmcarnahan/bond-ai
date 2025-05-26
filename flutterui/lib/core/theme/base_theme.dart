@@ -26,72 +26,66 @@ class BaseTheme implements AppTheme {
   ThemeData get themeData {
     return ThemeData(
       brightness: Brightness.light,
-      primaryColor: baseCyan,
-
+      primaryColor: Color(0xFF1A2E5C), // Deep navy blue
       colorScheme: ColorScheme(
         brightness: Brightness.light,
-        primary: baseCyan,
+        primary: Color(0xFF1A2E5C), // Deep navy blue
         onPrimary: Colors.white,
-        secondary: baseDarkGrey, 
+        secondary: Color(0xFF8A96A3), // Cool grey
         onSecondary: Colors.white,
-        error: Color(0xFFD32F2F), // Standard Red for errors
+        error: Color(0xFFB00020),
         onError: Colors.white,
-        background: Colors.white, // White background
-        onBackground: baseTextPrimary,
-        surface: baseLightGrey, // Light grey surface
-        onSurface: baseTextPrimary,
+        background: Color(0xFFF5F6F8), // Light greyish background
+        onBackground: Color(0xFF1A2E5C),
+        surface: Colors.white,
+        onSurface: Color(0xFF1A2E5C),
       ),
-      extensions: const <ThemeExtension<dynamic>>[
-        CustomColors(brandingSurface: baseDarkBrandingSurface),
-      ],
-      scaffoldBackgroundColor: Colors.white,
-      fontFamily: 'Poppins', // Keeping Poppins for now, can be changed
+      scaffoldBackgroundColor: Color(0xFFF5F6F8),
+      fontFamily: 'Roboto',
 
       textTheme: TextTheme(
-        displayLarge: TextStyle(fontSize: 32, fontWeight: FontWeight.w600, color: baseTextPrimary),
-        displayMedium: TextStyle(fontSize: 28.8, fontWeight: FontWeight.w600, color: baseTextPrimary),
-        displaySmall: TextStyle(fontSize: 28, fontWeight: FontWeight.w600, color: baseTextPrimary),
-        headlineMedium: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: baseTextPrimary),
-        headlineSmall: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: baseTextSecondary),
-        bodyLarge: TextStyle(fontSize: 16.2, color: baseTextSecondary),
-        bodyMedium: TextStyle(fontSize: 14, color: baseTextSecondary),
-        bodySmall: TextStyle(fontSize: 12, color: baseTextSecondary),
-        labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: baseCyan), // Links
-        labelSmall: TextStyle(fontSize: 12, color: baseTextSecondary),
+        displayLarge: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF1A2E5C)),
+        displayMedium: TextStyle(fontSize: 28, fontWeight: FontWeight.w600, color: Color(0xFF1A2E5C)),
+        displaySmall: TextStyle(fontSize: 24, fontWeight: FontWeight.w500, color: Color(0xFF1A2E5C)),
+        headlineMedium: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Color(0xFF1A2E5C)),
+        headlineSmall: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: Color(0xFF1A2E5C)),
+        bodyLarge: TextStyle(fontSize: 16, color: Color(0xFF1A2E5C)),
+        bodyMedium: TextStyle(fontSize: 14, color: Color(0xFF1A2E5C)),
+        bodySmall: TextStyle(fontSize: 12, color: Color(0xFF8A96A3)),
+        labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Color(0xFF1A2E5C)),
+        labelSmall: TextStyle(fontSize: 12, color: Color(0xFF8A96A3)),
       ),
 
       appBarTheme: AppBarTheme(
-        backgroundColor: Colors.white,
-        foregroundColor: baseTextPrimary,
-        elevation: 0.5,
+        backgroundColor: Color(0xFF1A2E5C),
+        foregroundColor: Colors.white,
+        elevation: 2,
         centerTitle: true,
-        titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: baseTextPrimary),
+        titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
       ),
 
       cardTheme: CardThemeData(
         color: Colors.white,
-        elevation: 1,
+        elevation: 4,
         margin: EdgeInsets.all(12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
       ),
 
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ButtonStyle(
-          foregroundColor: WidgetStateProperty.all<Color>(Colors.white),
-          backgroundColor: WidgetStateProperty.all<Color>(baseCyan),
-          padding: WidgetStateProperty.all<EdgeInsets>(EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
-          shape: WidgetStateProperty.all<RoundedRectangleBorder>(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          foregroundColor: WidgetStatePropertyAll<Color>(Colors.white),
+          backgroundColor: WidgetStatePropertyAll<Color>(Color(0xFF1A2E5C)),
+          padding: WidgetStatePropertyAll<EdgeInsets>(EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
+          shape: WidgetStatePropertyAll<RoundedRectangleBorder>(
+            RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
           ),
         ),
       ),
 
       textButtonTheme: TextButtonThemeData(
         style: ButtonStyle(
-          foregroundColor: WidgetStateProperty.all<Color>(baseCyan),
-          textStyle: WidgetStateProperty.all<TextStyle>(
+          foregroundColor: WidgetStatePropertyAll<Color>(Color(0xFF1A2E5C)),
+          textStyle: WidgetStatePropertyAll<TextStyle>(
             TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           ),
         ),
@@ -99,12 +93,10 @@ class BaseTheme implements AppTheme {
 
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: ButtonStyle(
-          foregroundColor: WidgetStateProperty.all<Color>(baseCyan),
-          side: WidgetStateProperty.all<BorderSide>(
-            BorderSide(color: baseCyan),
-          ),
-          shape: WidgetStateProperty.all<RoundedRectangleBorder>(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          foregroundColor: WidgetStatePropertyAll<Color>(Color(0xFF1A2E5C)),
+          side: WidgetStatePropertyAll<BorderSide>(BorderSide(color: Color(0xFF1A2E5C))),
+          shape: WidgetStatePropertyAll<RoundedRectangleBorder>(
+            RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
           ),
         ),
       ),
@@ -112,40 +104,35 @@ class BaseTheme implements AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.white,
-        border: OutlineInputBorder(
-          borderSide: BorderSide(color: Color(0xFFDBDBDB), width: 0.5),
-          borderRadius: BorderRadius.circular(7.3),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
         focusedBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: baseCyan, width: 1.5),
-          borderRadius: BorderRadius.circular(7.3),
+          borderSide: BorderSide(color: Color(0xFF1A2E5C), width: 2),
+          borderRadius: BorderRadius.all(Radius.circular(8)),
         ),
-        labelStyle: TextStyle(color: baseTextSecondary),
+        labelStyle: TextStyle(color: Color(0xFF1A2E5C)),
       ),
 
       dialogTheme: DialogThemeData(
         backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-        titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: baseTextPrimary),
-        contentTextStyle: TextStyle(fontSize: 16, color: baseTextSecondary),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+        titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1A2E5C)),
+        contentTextStyle: TextStyle(fontSize: 16, color: Color(0xFF1A2E5C)),
       ),
 
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: Color(0xFFD32F2F), // Standard Red
+        backgroundColor: Color(0xFF1A2E5C),
         contentTextStyle: TextStyle(color: Colors.white),
         behavior: SnackBarBehavior.floating,
       ),
 
       iconTheme: IconThemeData(
-        color: baseCyan,
+        color: Color(0xFF1A2E5C),
       ),
 
       dividerTheme: DividerThemeData(
-        color: Color(0xFFDBDBDB),
+        color: Color(0xFF8A96A3),
         thickness: 1,
-        space: 16,
+        space: 32,
       ),
 
       useMaterial3: true,

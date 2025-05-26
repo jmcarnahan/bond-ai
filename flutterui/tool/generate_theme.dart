@@ -344,28 +344,32 @@ String _textStyleToCode(Map<String, dynamic>? config) {
 }
 
 String _edgeInsetsToCode(Map<String, dynamic>? config) {
-  if (config == null) return 'null';
+  if (config == null) return 'EdgeInsets.zero'; // Default to EdgeInsets.zero
   final type = config['type'] as String?;
-  if (type == 'all') {
+  final typeLower = type?.toLowerCase() ?? '';
+
+  if (typeLower.contains('all')) {
     return 'EdgeInsets.all(${config['value'] as num? ?? 0.0})';
-  } else if (type == 'symmetric') {
+  } else if (typeLower.contains('symmetric')) {
     final h = config['horizontal'] as num? ?? 0.0;
     final v = config['vertical'] as num? ?? 0.0;
     return 'EdgeInsets.symmetric(horizontal: $h, vertical: $v)';
-  } else if (type == 'only') {
+  } else if (typeLower.contains('only')) {
     final l = config['left'] as num? ?? 0.0;
     final t = config['top'] as num? ?? 0.0;
     final r = config['right'] as num? ?? 0.0;
     final b = config['bottom'] as num? ?? 0.0;
     return 'EdgeInsets.only(left: $l, top: $t, right: $r, bottom: $b)';
   }
-  return 'null'; // Default or throw error
+  return 'EdgeInsets.zero'; // Default or throw error
 }
 
 String _borderRadiusToCode(Map<String, dynamic>? config) {
   if (config == null) return 'BorderRadius.zero';
   final type = config['type'] as String?;
-  if (type == 'circular') {
+  final typeLower = type?.toLowerCase() ?? '';
+
+  if (typeLower.contains('circular')) {
     return 'BorderRadius.circular(${config['radius'] as num? ?? 0.0})';
   }
   // Add other types like `all`, `only` if needed
@@ -373,14 +377,16 @@ String _borderRadiusToCode(Map<String, dynamic>? config) {
 }
 
 String _shapeBorderToCode(Map<String, dynamic>? config) {
-  if (config == null) return 'null';
+  if (config == null) return 'const RoundedRectangleBorder()'; // Default to a basic RoundedRectangleBorder
   final type = config['type'] as String?;
-  if (type == 'roundedRectangle') {
+  final typeLower = type?.toLowerCase() ?? '';
+
+  if (typeLower.contains('roundedrectangle')) {
     final borderRadiusConfig = config['borderRadius'] as Map<String, dynamic>?;
     return 'RoundedRectangleBorder(borderRadius: ${_borderRadiusToCode(borderRadiusConfig)})';
   }
   // Add StadiumBorder, CircleBorder, etc.
-  return 'null';
+  return 'const RoundedRectangleBorder()'; // Default for unrecognized types
 }
 
 String _borderSideToCode(Map<String, dynamic>? config) {
