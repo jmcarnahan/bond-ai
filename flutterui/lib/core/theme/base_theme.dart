@@ -3,6 +3,8 @@ import 'package:flutterui/core/theme/app_theme.dart'; // Imports AppTheme and Cu
 
 /// Base theme implementation.
 class BaseTheme implements AppTheme {
+  const BaseTheme(); // Add const constructor
+
   static const Color baseDarkBrandingSurface = Color(0xFF424242); // Darker Grey (Colors.grey[800])
   static const Color baseCyan = Color(0xFF00BCD4); // Cyan
   static const Color baseDarkGrey = Color(0xFF616161); // Dark Grey (Colors.grey[700])
@@ -11,13 +13,13 @@ class BaseTheme implements AppTheme {
   static const Color baseTextSecondary = Color(0xFF757575); // Grey
 
   @override
-  String get name => 'BaseTheme';
+  String get name => 'Bond AI';
 
   @override
-  String get brandingMessage => 'Powered by BondAI';
+  String get brandingMessage => 'Your Enterprise Space For Managing AI Agents';
 
   @override
-  String get logo => 'assets/bond_logo_logo.png'; // Placeholder, user might need to add this
+  String get logo => 'assets/bond_logo.png'; // Placeholder, user might need to add this
 
   @override
   String get logoIcon => 'assets/bond_logo_icon.png'; // Placeholder, user might need to add this
