@@ -3,7 +3,7 @@ LOGGER = logging.getLogger(__name__)
 
 from typing import List
 from bondable.bond.functions import Functions
-from bondable.bond.pages import Pages
+
 
 
 class MySession(dict):
@@ -23,7 +23,4 @@ class MyFunctions(Functions):
         LOGGER.error(f"Error in use_numbers: {e}")
         return '{"error": "Error in use_numbers"}'
   
-class MyPages(Pages):
 
-  def get_pages(self):
-    return ['foo', 'bar']

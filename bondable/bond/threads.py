@@ -36,7 +36,11 @@ class Threads:
         thread_name = "New Thread"
         messages = self.config.get_openai_client().beta.threads.messages.list(thread_id=thread_id, limit=1, order="asc")
         if len(messages.data) > 0:
-            thread_name = messages.data[0].content[0].text.value.replace("\'", " ")
+            raw_content = messages.data[0].content[0].text.value.replace("\'", " ")
+            if len(raw_content) > 25:
+                thread_name = raw_content[:22] + "..."
+            else:
+                thread_name = raw_content
             self.metadata.update_thread_name(thread_id=thread_id, thread_name=thread_name)
         return thread_name
     
@@ -135,9 +139,18 @@ class Threads:
     #     return response_msgs
 
 
-    def delete_thread(self, thread_id) -> None:
-        self.config.get_openai_client().beta.threads.delete(thread_id=thread_id)
+    def delete_thread(self, thread_id: str) -> None:
+        owner = self.metadata.get_thread_owner(thread_id=thread_id)
+        if owner is None:
+            # If owner is None, thread_id doesn't exist in metadata.
+            # metadata.delete_thread will handle OpenAI's "not found" gracefully if it's also gone there.
+            LOGGER.warning(f"Thread {thread_id} not found in metadata during permission check for deletion by user {self.user_id}. Proceeding to metadata.delete_thread for cleanup.")
+        elif owner != self.user_id:
+            raise PermissionError(f"User {self.user_id} does not have permission to delete thread {thread_id} owned by {owner}.")
+
+        # The actual deletion (OpenAI + DB) is handled by metadata.delete_thread
         self.metadata.delete_thread(thread_id=thread_id)
+        LOGGER.info(f"Deletion process for thread {thread_id} initiated by user {self.user_id} passed to metadata layer.")
 
     def get_thread(self, thread_id):
         return self.metadata.get_thread(thread_id=thread_id)

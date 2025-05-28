@@ -1,9 +1,14 @@
 .env
 **/.metadata.db
 **/.bondcache.db
-data
+# data # Commented out to allow flutterui/lib/data to be tracked
 archive
 __pycache__
 pytest.ini
 dist
 creds
+
+### UI Specific Ignores
+*/theme_configs/*
+*/lib/core/theme/generated_theme.dart
+*/assets/theme_specific/*
