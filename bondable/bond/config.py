@@ -2,11 +2,12 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 from dotenv import load_dotenv
-from openai import OpenAI, AzureOpenAI
+# from openai import OpenAI, AzureOpenAI
 import os
 import atexit
 import json
 import base64
+import importlib
 from google.cloud import secretmanager
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
@@ -16,10 +17,13 @@ import google.auth
 
 load_dotenv()
 
-
+from typing import Type, TypeVar
+T = TypeVar("T")
 
 class Config:
     
+    provider = None
+
     # config should init with a service account
     # this should either be a base64 string or a file 
     # both coming in via a env var
@@ -47,11 +51,12 @@ class Config:
             LOGGER.error(f"Error loading GCP credentials: {e}")
             raise e
 
-        openai_api_key = self.get_secret_value(os.getenv('OPENAI_KEY_SECRET_ID', 'openai_api_key'))
-        openai_project_id = self.get_secret_value(os.getenv('OPENAI_PROJECT_SECRET_ID', 'openai_project'))
 
-        self.openai_client = OpenAI(api_key=openai_api_key, project=openai_project_id)
-        self.openai_deployment = os.getenv('OPENAI_DEPLOYMENT', 'gpt-4o')
+        # openai_api_key = self.get_secret_value(os.getenv('OPENAI_KEY_SECRET_ID', 'openai_api_key'))
+        # openai_project_id = self.get_secret_value(os.getenv('OPENAI_PROJECT_SECRET_ID', 'openai_project'))
+
+        # self.openai_client = OpenAI(api_key=openai_api_key, project=openai_project_id)
+        # self.openai_deployment = os.getenv('OPENAI_DEPLOYMENT', 'gpt-4o')
 
         # elif os.getenv('AZURE_OPENAI_API_KEY'):
         #     self.openai_client = AzureOpenAI(
@@ -78,6 +83,26 @@ class Config:
             self.secrets = None
 
 
+
+    def get_class_from_env(self, env_var: str, default: str, expected_type: Type[T]) -> T:
+        path = os.getenv(env_var, default)
+        LOGGER.info(f"Using provider class: {path}")
+
+        try:
+            module_path, class_name = path.rsplit(".", 1)
+            module = importlib.import_module(module_path)
+            cls = getattr(module, class_name)
+            LOGGER.info(f"Loaded provider class: {cls}")
+            
+            if not issubclass(cls, expected_type):
+                raise TypeError(f"Class {path} is not a subclass of {expected_type.__name__}")
+            
+            return cls
+        except (ImportError, AttributeError, TypeError) as e:
+            LOGGER.error(f"Failed to load or validate class {path}: {e}")
+            raise
+
+
     def get_secret_value(self, secret_id, default=""):
         try:
             if self.secrets is None:
@@ -93,15 +118,31 @@ class Config:
     @bond_cache
     def config(cls):
         return Config()
+    
+    def get_provider(self):
+        """
+        Have to lazy init the provider here to avoid circular imports.
+        """
+        if self.provider is None:
+            from bondable.bond.providers.provider import Provider
+            provider_class = self.get_class_from_env('BOND_PROVIDER_CLASS', 'bondable.bond.providers.openai.OAIAProvider.OAIAProvider', Provider)
+            method = getattr(provider_class, 'provider', None)
+            if method is None:
+                return False
+            self.provider = method()
+        return self.provider
 
-    def get_openai_client(self):
-        return self.openai_client
+    def get_metadata_db_url(self):
+        return os.getenv('METADATA_DB_URL', 'sqlite:////tmp/.metadata.db')
+
+    # def get_openai_client(self):
+    #     return self.openai_client
     
-    def get_openai_deployment(self):
-        return self.openai_deployment
+    # def get_openai_deployment(self):
+    #     return self.openai_deployment
     
-    def get_openai_project(self, *args, **kwargs):
-        return os.getenv('OPENAI_PROJECT')
+    # def get_openai_project(self, *args, **kwargs):
+    #     return os.getenv('OPENAI_PROJECT')
 
     def get_jwt_config(self):
         if 'JWT_SECRET_KEY' not in os.environ:
