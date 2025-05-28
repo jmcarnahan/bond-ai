@@ -9,7 +9,7 @@ import json
 import hashlib
 
 class AgentDefinition:
-    id: Optional[str] = None # Added assistant_id
+    id: Optional[str] = None 
     name: str
     description: str
     instructions: str
@@ -17,12 +17,10 @@ class AgentDefinition:
     tools: List = []
     tool_resources: Dict = {}
     metadata: Dict = {}
-    session: None # This seems unused, consider removing
-    openai_client: None # This seems unused, consider removing
 
     def __init__(self, name: str, description: str, instructions: str, 
                  tools: List = [], tool_resources: Dict = {}, metadata: Dict = {},
-                 id: Optional[str] = None): # Added id parameter
+                 id: Optional[str] = None): 
         self.id = id
         self.name = name
         self.description = description
@@ -56,9 +54,9 @@ class AgentDefinition:
             if "files" in self.tool_resources["code_interpreter"]:
                 LOGGER.info(f"Processing files for code_interpreter: {self.tool_resources['code_interpreter']['files']}")
                 for file_tuple in self.tool_resources["code_interpreter"]["files"]:
-                    file_record = self.bond_metadata.get_file_record(file_tuple=file_tuple)
-                    if file_record.file_id not in file_ids:
-                        file_ids.append(file_record.file_id)
+                    file_id = self.bond_metadata.get_file_id(file_tuple=file_tuple)
+                    if file_id not in file_ids:
+                        file_ids.append(file_id)
             self.tool_resources["code_interpreter"] = {
                 "file_ids": list(set(file_ids))
             }
@@ -72,10 +70,10 @@ class AgentDefinition:
                 vector_store_ids = self.tool_resources["file_search"]["vector_store_ids"]
             if "files" in self.tool_resources["file_search"]:
                 default_vector_store_name = f"{self.name}_file_search_vs"
-                default_vector_store = self.bond_metadata.get_vector_store(
+                default_vector_store_id = self.bond_metadata.get_vector_store_id(
                     name=default_vector_store_name, file_tuples=self.tool_resources["file_search"]["files"])
-                if default_vector_store.vector_store_id not in vector_store_ids:
-                    vector_store_ids.append(default_vector_store.vector_store_id)
+                if default_vector_store_id not in vector_store_ids:
+                    vector_store_ids.append(default_vector_store_id)
             self.tool_resources["file_search"] = {
                 "vector_store_ids": list(set(vector_store_ids))
             }
@@ -110,7 +108,7 @@ class AgentDefinition:
             tools=assistant.tools,
             tool_resources=assistant.tool_resources,
             metadata=assistant.metadata,
-            id=assistant.id # Populate the id
+            id=assistant.id
         )
         agent_def.model = assistant.model
         return agent_def

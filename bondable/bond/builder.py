@@ -34,57 +34,130 @@ class AgentBuilder:
         """This will delete all records and remove them from openai"""
         self.metadata.cleanup()
 
-    def get_agent(self, agent_def: AgentDefinition, user_id: str) -> Agent:
-        # agent_def.init_resources()
+    def get_agent_id_by_name(self, name: str) -> str:
+        """
+        Retrieves the agent ID by name from the local metadata.
+        If it does not exist it will return None. This is used primarily by notebooks
+        to handle rerunning the same cell multiple times.
+        """
         with self.metadata.get_db_session() as session:
-            agent_record = session.query(AgentRecord).filter(AgentRecord.name == agent_def.name).first()
-            agent = None
-
+            agent_record = session.query(AgentRecord).filter_by(name=name).first()
             if agent_record:
-                assistant_id = agent_record.assistant_id
-                existing_agent_def = AgentDefinition.from_assistant(assistant_id=assistant_id)
-                LOGGER.debug(f"Existing Agent Def: {existing_agent_def}")
-                LOGGER.debug(f"New Agent Def: {agent_def}")
+                return agent_record.assistant_id
+            else:
+                # not a warning if it does not exist
+                LOGGER.debug(f"Agent with name '{name}' not found in local metadata.")
+                return None
 
-                if existing_agent_def.get_hash() != agent_def.get_hash():
-                    assistant = self.openai_client.beta.assistants.update(
-                        assistant_id=assistant_id,
-                        name=agent_def.name,
+    def refresh_agent(self, agent_def: AgentDefinition, user_id: str) -> Agent:
+        """
+        Creates a new agent or updates an existing one.
+        OpenAI is the source of truth for agent existence if an ID is provided.
+        Handles local metadata synchronization.
+        """
+        openai_assistant_obj = None # Holds the final OpenAI assistant object
+
+        with self.metadata.get_db_session() as session:
+            if agent_def.id:  # ID is provided: implies update/refresh an existing agent
+                LOGGER.info(f"Agent ID '{agent_def.id}' provided. Attempting to retrieve/update.")
+                try:
+                    # Retrieve from OpenAI first - this is the source of truth for existence by ID
+                    openai_assistant_obj = self.openai_client.beta.assistants.retrieve(assistant_id=agent_def.id)
+                    LOGGER.info(f"Retrieved OpenAI assistant with ID: {agent_def.id}")
+
+                    # Check/Update local AgentRecord
+                    agent_record_db = session.query(AgentRecord).filter_by(assistant_id=agent_def.id).first()
+                    
+                    # Determine the name to use for DB record and potential OpenAI update
+                    # If agent_def.name is None, use the name from the retrieved OpenAI assistant
+                    name_to_use = agent_def.name if agent_def.name is not None else openai_assistant_obj.name
+
+                    if not agent_record_db:
+                        LOGGER.warning(f"OpenAI Assistant ID {agent_def.id} exists but no local AgentRecord found. Creating one for user {user_id} with name '{name_to_use}'.")
+                        self.metadata.create_agent_record(
+                            name=name_to_use,
+                            assistant_id=agent_def.id,
+                            user_id=user_id  # Corrected parameter name
+                        )
+                    elif agent_record_db.name != name_to_use:
+                        LOGGER.info(f"Updating local AgentRecord name for {agent_def.id} from '{agent_record_db.name}' to '{name_to_use}'.")
+                        agent_record_db.name = name_to_use
+                        session.commit()
+
+                    # Compare definitions to see if OpenAI assistant needs an update
+                    current_definition_from_openai = AgentDefinition.from_assistant(assistant_id=agent_def.id)
+                    
+                    # Construct the target definition for hash comparison
+                    # Use the resolved 'name_to_use' and other fields from the input 'agent_def'
+                    target_def_for_comparison = AgentDefinition(
+                        id=agent_def.id, # Preserve ID for correct hash exclusion
+                        name=name_to_use,
                         description=agent_def.description,
                         instructions=agent_def.instructions,
-                        model=agent_def.model,
                         tools=agent_def.tools,
                         tool_resources=agent_def.tool_resources,
                         metadata=agent_def.metadata
                     )
-                    LOGGER.debug(f"Tool Resources: {json.dumps(agent_def.tool_resources, sort_keys=True, indent=4)}")
-                    LOGGER.info(f"Updated agent [{agent_def.name}] with assistant_id: {assistant_id}")
-                else:
-                    assistant = self.openai_client.beta.assistants.retrieve(assistant_id=assistant_id)
-                    LOGGER.debug(f"Tool Resources: {json.dumps(agent_def.tool_resources, sort_keys=True, indent=4)}")
-                    LOGGER.info(f"Reusing agent [{agent_def.name}] with assistant_id: {assistant_id}")
-                agent = Agent(assistant=assistant)
-            else:
-                assistant = self.openai_client.beta.assistants.create(
+                    # If model is specified in input, use it, otherwise use the existing one from OpenAI
+                    target_def_for_comparison.model = agent_def.model if agent_def.model else current_definition_from_openai.model
+                    
+                    if current_definition_from_openai.get_hash() != target_def_for_comparison.get_hash():
+                        LOGGER.info(f"Definition changed for agent ID {agent_def.id}. Updating OpenAI assistant.")
+                        openai_assistant_obj = self.openai_client.beta.assistants.update(
+                            assistant_id=agent_def.id,
+                            name=name_to_use, # Use the resolved name
+                            description=agent_def.description,
+                            instructions=agent_def.instructions,
+                            model=target_def_for_comparison.model,
+                            tools=agent_def.tools,
+                            tool_resources=agent_def.tool_resources,
+                            metadata=agent_def.metadata
+                        )
+                        LOGGER.info(f"Successfully updated OpenAI assistant for ID: {agent_def.id}")
+                    else:
+                        LOGGER.info(f"No definition changes detected for agent ID {agent_def.id}. OpenAI assistant not updated.")
+
+                except Exception as e: # Catches openai.NotFoundError and other issues
+                    LOGGER.error(f"Error processing agent with ID {agent_def.id}: {e}", exc_info=True)
+                    raise Exception(f"Failed to retrieve or update agent with ID {agent_def.id}. Original error: {str(e)}")
+
+            else:  # No agent_def.id provided: this is a create new agent scenario
+                if not agent_def.name:
+                    raise ValueError("Agent name must be provided for creation.")
+                LOGGER.info(f"No ID provided. Attempting to create new agent named '{agent_def.name}' for user '{user_id}'.")
+
+                # Check for name uniqueness for this user in AgentRecord
+                existing_agent_record_by_name = session.query(AgentRecord).filter_by(name=agent_def.name, owner_user_id=user_id).first()
+                if existing_agent_record_by_name:
+                    LOGGER.error(f"Agent with name '{agent_def.name}' already exists for user '{user_id}' (ID: {existing_agent_record_by_name.assistant_id}).")
+                    raise Exception(f"Agent name '{agent_def.name}' already in use by you. Please choose a unique name.")
+
+                LOGGER.info(f"Creating new OpenAI assistant: {agent_def.name}")
+                openai_assistant_obj = self.openai_client.beta.assistants.create(
                     name=agent_def.name,
                     description=agent_def.description,
                     instructions=agent_def.instructions,
-                    model=agent_def.model,
+                    model=agent_def.model, # Uses default from AgentDefinition if not overridden
                     tools=agent_def.tools,
                     tool_resources=agent_def.tool_resources,
                     metadata=agent_def.metadata
                 )
-                agent = Agent(assistant=assistant)
-                agent_record = self.metadata.create_agent_record(
+                agent_def.id = openai_assistant_obj.id # Update the input agent_def with the new ID
+                
+                self.metadata.create_agent_record(
                     name=agent_def.name,
-                    assistant_id=assistant.id,
-                    user_id=user_id,
+                    assistant_id=agent_def.id,
+                    user_id=user_id # Corrected parameter name
                 )
-                LOGGER.debug(f"Tool Resources: {json.dumps(agent_def.tool_resources, sort_keys=True, indent=4)}")
-                LOGGER.info(f"Created new agent [{agent_def.name}] with assistant_id: {assistant.id}")
+                LOGGER.info(f"Successfully created new agent '{agent_def.name}' with ID '{agent_def.id}' for user '{user_id}'.")
 
-            self.context["agents"][agent_def.name] = agent
-            return agent
+        if not openai_assistant_obj:
+            # This path should ideally not be hit if logic is correct.
+            raise Exception("Critical error: OpenAI assistant object was not set after create/update logic.")
+
+        final_agent_instance = Agent(assistant=openai_assistant_obj)
+        self.context["agents"][final_agent_instance.get_name()] = final_agent_instance # Ensure context is updated
+        return final_agent_instance
 
     def get_context(self):
         return self.context
@@ -108,11 +181,13 @@ class AgentBuilder:
             LOGGER.error(f"Unknown message type {type}")
 
     def print_responses (self, user_id, prompts, agent_def: AgentDefinition):
-        thread_id = self.metadata.create_thread(user_id=user_id)
+        # Create_thread now returns an ORM object, we need its ID.
+        created_thread_orm = self.metadata.create_thread(user_id=user_id, name=f"PrintResponses for {agent_def.name}")
+        thread_id = created_thread_orm.thread_id
         try:
             broker = Broker.broker()
             conn = broker.connect(thread_id=thread_id, subscriber_id=user_id)
-            agent = self.get_agent(agent_def, user_id=user_id)
+            agent = self.refresh_agent(agent_def, user_id=user_id) # Call renamed method
             for prompt in prompts:
             
                 message = agent.create_user_message(prompt, thread_id)
@@ -136,7 +211,3 @@ class AgentBuilder:
             conn.close()
         finally:
             self.metadata.delete_thread(thread_id)
-
-
-
-
