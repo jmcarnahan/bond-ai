@@ -1,0 +1,58 @@
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any
+
+
+class AgentRef(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+
+
+class ToolResourceFilesList(BaseModel):
+    file_ids: List[str] = Field(default_factory=list)
+
+
+class ToolResourcesRequest(BaseModel):
+    code_interpreter: Optional[ToolResourceFilesList] = None
+    file_search: Optional[ToolResourceFilesList] = None
+
+
+class ToolResourcesResponse(BaseModel):
+    code_interpreter: Optional[ToolResourceFilesList] = None
+    file_search: Optional[ToolResourceFilesList] = None
+
+
+class AgentCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    instructions: Optional[str] = None
+    model: Optional[str] = None
+    tools: List[Dict[str, Any]] = Field(default_factory=list)
+    tool_resources: Optional[ToolResourcesRequest] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    instructions: Optional[str] = None
+    model: Optional[str] = None
+    tools: List[Dict[str, Any]] = Field(default_factory=list)
+    tool_resources: Optional[ToolResourcesRequest] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentResponse(BaseModel):
+    agent_id: str
+    name: str
+
+
+class AgentDetailResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    instructions: Optional[str] = None
+    model: Optional[str] = None
+    tools: List[Dict[str, Any]] = Field(default_factory=list)
+    tool_resources: Optional[ToolResourcesResponse] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
