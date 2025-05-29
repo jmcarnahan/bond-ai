@@ -39,44 +39,61 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
     final completeXmlString = currentAssistantXmlBuffer.toString();
     currentAssistantXmlBuffer.clear();
 
-    final parsedMessage =
-        BondMessageParser.parseFirstFoundBondMessage(completeXmlString);
-
-    String displayedContent;
-    bool messageIsError;
-
-    if (parsedMessage.parsingHadError) {
-      displayedContent = parsedMessage.content; // Error message from parser
-      messageIsError = true;
-      logger.i(
-        "[ChatStreamHandlerMixin] Parsing error from BondMessageParser: ${parsedMessage.content} for XML: $completeXmlString",
-      );
-    } else if (parsedMessage.role == 'assistant') {
-      displayedContent = parsedMessage.content;
-      messageIsError = parsedMessage.isErrorAttribute;
-    } else {
-      displayedContent =
-          "Error: Received non-assistant message (role: ${parsedMessage.role}). Expected assistant reply.";
-      messageIsError = true;
-      logger.i(
-        "[ChatStreamHandlerMixin] Received unexpected role '${parsedMessage.role}' instead of 'assistant' for XML: $completeXmlString",
-      );
-    }
+    // Parse all messages from the stream
+    final allMessages = BondMessageParser.parseAllBondMessages(completeXmlString);
+    
+    // Filter for assistant messages (ignore system messages per Python example)
+    final assistantMessages = allMessages.where((msg) => 
+      msg.role == 'assistant' && !msg.parsingHadError
+    ).toList();
 
     final currentMessages = List<Message>.from(state.messages);
-    if (assistantMessageIndex < currentMessages.length) {
-      currentMessages[assistantMessageIndex] =
-          currentMessages[assistantMessageIndex].copyWith(
-        content: displayedContent,
-        isError: messageIsError,
-      );
-      state = state.copyWith(
-        messages: currentMessages,
-        isSendingMessage: false,
-      );
+    
+    if (assistantMessages.isEmpty) {
+      // No assistant messages found, check if there were system error messages
+      final systemErrors = allMessages.where((msg) => 
+        msg.role == 'system' && (msg.isErrorAttribute || msg.content.toLowerCase().contains('error'))
+      ).toList();
+      
+      if (systemErrors.isNotEmpty && assistantMessageIndex < currentMessages.length) {
+        // Show system error in the assistant message placeholder
+        currentMessages[assistantMessageIndex] = currentMessages[assistantMessageIndex].copyWith(
+          content: systemErrors.first.content,
+          isError: true,
+        );
+      }
     } else {
-      state = state.copyWith(isSendingMessage: false);
+      // Process assistant messages - replace the placeholder and add additional messages
+      for (int i = 0; i < assistantMessages.length; i++) {
+        final parsedMessage = assistantMessages[i];
+        
+        if (i == 0 && assistantMessageIndex < currentMessages.length) {
+          // Replace the placeholder assistant message
+          currentMessages[assistantMessageIndex] = currentMessages[assistantMessageIndex].copyWith(
+            type: parsedMessage.type,
+            content: parsedMessage.content,
+            imageData: parsedMessage.imageData,
+            isError: parsedMessage.isErrorAttribute,
+          );
+        } else {
+          // Add additional assistant messages
+          final newMessage = Message(
+            id: (DateTime.now().millisecondsSinceEpoch + i).toString(),
+            type: parsedMessage.type,
+            role: 'assistant',
+            content: parsedMessage.content,
+            imageData: parsedMessage.imageData,
+            isError: parsedMessage.isErrorAttribute,
+          );
+          currentMessages.add(newMessage);
+        }
+      }
     }
+
+    state = state.copyWith(
+      messages: currentMessages,
+      isSendingMessage: false,
+    );
     chatStreamSubscription = null;
   }
 

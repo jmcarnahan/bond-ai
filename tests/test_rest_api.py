@@ -401,6 +401,78 @@ class TestAgents:
         assert response.status_code == 403
         assert "Access to this agent is forbidden" in response.json()["detail"]
 
+    def test_delete_agent_success(self, authenticated_client):
+        """Test deleting agent successfully."""
+        client, auth_headers, mock_provider = authenticated_client
+        
+        # Mock agent exists and user has access
+        mock_agent = MagicMock(spec=AgentABC)
+        mock_provider.agents.get_agent.return_value = mock_agent
+        mock_provider.agents.can_user_access_agent.return_value = True
+        mock_provider.agents.delete_agent.return_value = True
+        
+        response = client.delete("/agents/agent_to_delete", headers=auth_headers)
+        
+        assert response.status_code == 204
+        mock_provider.agents.get_agent.assert_called_once_with(agent_id="agent_to_delete")
+        mock_provider.agents.can_user_access_agent.assert_called_once_with(
+            user_id=TEST_USER_EMAIL, 
+            agent_id="agent_to_delete"
+        )
+        mock_provider.agents.delete_agent.assert_called_once_with(agent_id="agent_to_delete")
+
+    def test_delete_agent_not_found(self, authenticated_client):
+        """Test deleting non-existent agent."""
+        client, auth_headers, mock_provider = authenticated_client
+        
+        mock_provider.agents.get_agent.return_value = None
+        
+        response = client.delete("/agents/nonexistent", headers=auth_headers)
+        
+        assert response.status_code == 404
+        assert "Agent not found" in response.json()["detail"]
+
+    def test_delete_agent_access_forbidden(self, authenticated_client):
+        """Test deleting agent without access."""
+        client, auth_headers, mock_provider = authenticated_client
+        
+        mock_agent = MagicMock(spec=AgentABC)
+        mock_provider.agents.get_agent.return_value = mock_agent
+        mock_provider.agents.can_user_access_agent.return_value = False
+        
+        response = client.delete("/agents/forbidden_agent", headers=auth_headers)
+        
+        assert response.status_code == 403
+        assert "Access to this agent is forbidden" in response.json()["detail"]
+
+    def test_delete_agent_delete_failed(self, authenticated_client):
+        """Test deleting agent when delete operation fails."""
+        client, auth_headers, mock_provider = authenticated_client
+        
+        mock_agent = MagicMock(spec=AgentABC)
+        mock_provider.agents.get_agent.return_value = mock_agent
+        mock_provider.agents.can_user_access_agent.return_value = True
+        mock_provider.agents.delete_agent.return_value = False
+        
+        response = client.delete("/agents/delete_failed", headers=auth_headers)
+        
+        assert response.status_code == 500
+        assert "Could not delete agent" in response.json()["detail"]
+
+    def test_delete_agent_provider_error(self, authenticated_client):
+        """Test deleting agent when provider raises an error."""
+        client, auth_headers, mock_provider = authenticated_client
+        
+        mock_agent = MagicMock(spec=AgentABC)
+        mock_provider.agents.get_agent.return_value = mock_agent
+        mock_provider.agents.can_user_access_agent.return_value = True
+        mock_provider.agents.delete_agent.side_effect = Exception("Database error")
+        
+        response = client.delete("/agents/provider_error", headers=auth_headers)
+        
+        assert response.status_code == 500
+        assert "Could not delete agent" in response.json()["detail"]
+
 # --- Thread Management Tests ---
 
 class TestThreads:
@@ -815,6 +887,7 @@ class TestErrorScenarios:
             ("POST", "/agents"),
             ("GET", "/agents/test"),
             ("PUT", "/agents/test"),
+            ("DELETE", "/agents/test"),
             ("GET", "/threads"),
             ("POST", "/threads"),
             ("DELETE", "/threads/test"),
