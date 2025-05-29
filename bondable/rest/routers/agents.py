@@ -62,7 +62,8 @@ async def get_agents(
             AgentRef(
                 id=agent.get_agent_id(),
                 name=agent.get_name(),
-                description=agent.get_description()
+                description=agent.get_description(),
+                metadata=agent.get_metadata(),
             )
             for agent in agent_instances
         ]
@@ -83,8 +84,8 @@ async def create_agent(
         
         agent_def = AgentDefinition(
             name=request_data.name,
-            description=request_data.description,
-            instructions=request_data.instructions,
+            description=request_data.description or "",  # Ensure description is never None
+            instructions=request_data.instructions or "",  # Ensure instructions is never None
             tools=request_data.tools,
             tool_resources=tool_resources_payload,
             metadata=request_data.metadata,
@@ -119,8 +120,8 @@ async def update_agent(
         agent_def = AgentDefinition(
             id=agent_id,
             name=request_data.name,
-            description=request_data.description,
-            instructions=request_data.instructions,
+            description=request_data.description or "",  # Ensure description is never None
+            instructions=request_data.instructions or "",  # Ensure instructions is never None
             tools=request_data.tools,
             tool_resources=tool_resources_payload,
             metadata=request_data.metadata,
@@ -191,3 +192,33 @@ async def get_agent_details(
     except Exception as e:
         logger.error(f"Error retrieving agent details for ID '{agent_id}', user {current_user.email}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not retrieve agent details: {str(e)}")
+
+
+@router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_agent(
+    agent_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    provider: Provider = Depends(get_bond_provider)
+):
+    """Delete an agent."""
+    try:
+        # Check if agent exists and user has access
+        agent_instance = provider.agents.get_agent(agent_id=agent_id)
+        if not agent_instance:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found.")
+
+        if not provider.agents.can_user_access_agent(user_id=current_user.email, agent_id=agent_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to this agent is forbidden.")
+
+        # Delete the agent
+        success = provider.agents.delete_agent(agent_id=agent_id)
+        if not success:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not delete agent.")
+        
+        logger.info(f"Deleted agent with ID '{agent_id}' for user {current_user.email}.")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting agent ID '{agent_id}' for user {current_user.email}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not delete agent: {str(e)}")
