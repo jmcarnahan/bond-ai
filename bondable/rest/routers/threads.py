@@ -98,11 +98,31 @@ async def get_messages(
             if hasattr(msg_obj, 'clob') and msg_obj.clob:
                 actual_content = msg_obj.clob.get_content()
             
+            # Handle image messages properly
+            message_type = getattr(msg_obj, 'type', 'text')
+            image_data = None
+            
+            if message_type == 'image_file' and actual_content:
+                # Extract base64 data from data URL
+                if actual_content.startswith('data:image/png;base64,'):
+                    image_data = actual_content[len('data:image/png;base64,'):]
+                    actual_content = '[Image]'
+                elif actual_content.startswith('data:image/jpeg;base64,'):
+                    image_data = actual_content[len('data:image/jpeg;base64,'):]
+                    actual_content = '[Image]'
+                elif actual_content.startswith('data:image/'):
+                    # Handle other image formats - extract the base64 part after the comma
+                    comma_index = actual_content.find(',')
+                    if comma_index != -1 and comma_index < len(actual_content) - 1:
+                        image_data = actual_content[comma_index + 1:]
+                        actual_content = '[Image]'
+            
             message_refs.append(MessageRef(
                 id=getattr(msg_obj, 'message_id', getattr(msg_obj, 'id', "unknown_id")),
-                type=getattr(msg_obj, 'type', 'text'),
+                type=message_type,
                 role=getattr(msg_obj, 'role', 'assistant'),
-                content=actual_content
+                content=actual_content,
+                image_data=image_data
             ))
         return message_refs
         
