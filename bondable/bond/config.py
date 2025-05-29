@@ -2,7 +2,6 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 from dotenv import load_dotenv
-# from openai import OpenAI, AzureOpenAI
 import os
 import atexit
 import json
@@ -50,24 +49,6 @@ class Config:
         except Exception as e:
             LOGGER.error(f"Error loading GCP credentials: {e}")
             raise e
-
-
-        # openai_api_key = self.get_secret_value(os.getenv('OPENAI_KEY_SECRET_ID', 'openai_api_key'))
-        # openai_project_id = self.get_secret_value(os.getenv('OPENAI_PROJECT_SECRET_ID', 'openai_project'))
-
-        # self.openai_client = OpenAI(api_key=openai_api_key, project=openai_project_id)
-        # self.openai_deployment = os.getenv('OPENAI_DEPLOYMENT', 'gpt-4o')
-
-        # elif os.getenv('AZURE_OPENAI_API_KEY'):
-        #     self.openai_client = AzureOpenAI(
-        #         api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        #         azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-        #         api_version=os.getenv('AZURE_OPENAI_API_VERSION', "2024-08-01-preview"),
-        #     )
-        #     self.openai_deployment = os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4o')
-        #     LOGGER.debug("Using Azure OpenAI API")
-        # else:
-        #     raise ValueError("API key is not set. Please ensure the OPENAI_API_KEY or AZURE_OPENAI_API_KEY is set in the .env file.")
 
         atexit.register(self.__del__)
         LOGGER.info("Created Config instance")
@@ -135,15 +116,6 @@ class Config:
     def get_metadata_db_url(self):
         return os.getenv('METADATA_DB_URL', 'sqlite:////tmp/.metadata.db')
 
-    # def get_openai_client(self):
-    #     return self.openai_client
-    
-    # def get_openai_deployment(self):
-    #     return self.openai_deployment
-    
-    # def get_openai_project(self, *args, **kwargs):
-    #     return os.getenv('OPENAI_PROJECT')
-
     def get_jwt_config(self):
         if 'JWT_SECRET_KEY' not in os.environ:
             raise EnvironmentError("JWT_SECRET_KEY environment variable not set.")
@@ -173,6 +145,47 @@ class Config:
         }
         LOGGER.info(f"Google Auth: redirect_uri={redirect_uri} scopes={scopes} valid_emails={valid_emails}")
         return auth_info
+
+    def get_mcp_config(self):
+        """
+        Get MCP configuration in fastmcp format from environment variables.
+        
+        Example:
+        BOND_MCP_CONFIG='{
+            "mcpServers": {
+                "weather": {
+                    "url": "https://weather-api.example.com/mcp",
+                    "transport": "streamable-http"
+                },
+                "assistant": {
+                    "command": "python",
+                    "args": ["./my_assistant_server.py"],
+                    "env": {"DEBUG": "true"}
+                }
+            }
+        }'
+        
+        Returns:
+            Dict in fastmcp config format
+        """
+        # Default to local hello server in fastmcp config format
+        default_config = '''{
+            "mcpServers": {
+                "hello": {
+                    "command": "python",
+                    "args": ["hello_mcp_server.py"]
+                }
+            }
+        }'''
+        mcp_config_str = os.getenv('BOND_MCP_CONFIG', default_config)
+        try:
+            mcp_config = json.loads(mcp_config_str)
+            server_count = len(mcp_config.get("mcpServers", {}))
+            LOGGER.info(f"Loaded MCP config with {server_count} servers")
+            return mcp_config
+        except json.JSONDecodeError as e:
+            LOGGER.error(f"Error parsing BOND_MCP_CONFIG: {e}")
+            return {"mcpServers": {}}
 
 
 
