@@ -17,3 +17,5 @@ class MessageRef(BaseModel):
     type: str
     role: str
     content: str
+    image_data: Optional[str] = None  # Base64 image data for image_file types
+    is_error: bool = False
