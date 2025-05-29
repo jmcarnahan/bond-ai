@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from bondable.bond.providers.threads import ThreadsProvider
 from bondable.bond.providers.openai.OAIAMetadata import OAIAMetadata
-from bondable.bond.config import Config
 from bondable.bond.cache import bond_cache
 import openai
 import logging
@@ -78,7 +77,7 @@ class OAIAThreadsProvider(ThreadsProvider):
                 if part.type == "text":
                     response_msgs.append(BondMessage(thread_id=thread_id, message_id=part_id, type=part.type, role=message.role, content=part.text.value))
                 elif part.type == "image_file":
-                    image_content = self.config.get_openai_client().files.content(part.image_file.file_id)
+                    image_content = self.openai_client.files.content(part.image_file.file_id)
                     data_in_bytes = image_content.read()
                     readable_buffer = io.BytesIO(data_in_bytes)
                     img_src = 'data:image/png;base64,' + base64.b64encode(readable_buffer.getvalue()).decode('utf-8')
