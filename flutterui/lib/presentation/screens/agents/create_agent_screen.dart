@@ -4,6 +4,7 @@ import 'package:flutterui/core/theme/app_theme.dart'; // For AppTheme and Custom
 import 'package:flutterui/main.dart'; // For appThemeProvider
 import 'package:flutterui/providers/create_agent_form_provider.dart';
 import 'package:flutterui/providers/agent_provider.dart'; // Import agentsProvider
+import 'package:flutterui/presentation/screens/agents/widgets/tool_file_upload_section.dart';
 // Import AgentService if you directly call it, or rely on provider methods
 // import 'package:flutterui/data/services/agent_service.dart';
 
@@ -31,16 +32,13 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
   @override
   void initState() {
     super.initState();
-    // If editing, you would fetch agent details and populate the form.
-    // For now, we reset to ensure a clean slate for creation.
+    // Load agent data if editing, otherwise reset to clean state
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(createAgentFormProvider.notifier).resetState();
-      // If you were to support editing, you might do:
-      // if (widget.agentId != null) {
-      //   ref.read(createAgentFormProvider.notifier).loadAgentForEditing(widget.agentId!);
-      // } else {
-      //   ref.read(createAgentFormProvider.notifier).resetState();
-      // }
+      if (widget.agentId != null) {
+        ref.read(createAgentFormProvider.notifier).loadAgentForEditing(widget.agentId!);
+      } else {
+        ref.read(createAgentFormProvider.notifier).resetState();
+      }
     });
 
     // Listen to provider state changes to update controllers
@@ -239,16 +237,27 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
                     value: formState.enableCodeInterpreter,
                     onChanged: formState.isLoading ? null :(value) => formNotifier.setEnableCodeInterpreter(value),
                   ),
+                  // Code Interpreter file upload section
+                  ToolFileUploadSection(
+                    toolType: 'code_interpreter',
+                    toolName: 'Code Interpreter',
+                    isEnabled: formState.enableCodeInterpreter,
+                    files: formState.codeInterpreterFiles,
+                  ),
                   _buildSwitchTile(
                     title: 'File Search',
                     value: formState.enableFileSearch,
                     onChanged: formState.isLoading ? null : (value) => formNotifier.setEnableFileSearch(value),
                   ),
-                  // The SizedBox below was for spacing before the button,
-                  // it can be removed or adjusted if needed, but since the button is floating,
-                  // the main scroll content doesn't need to space for it anymore here.
-                  // const SizedBox(height: 32), 
-                  // Button is removed from here
+                  // File Search file upload section
+                  ToolFileUploadSection(
+                    toolType: 'file_search',
+                    toolName: 'File Search',
+                    isEnabled: formState.enableFileSearch,
+                    files: formState.fileSearchFiles,
+                  ),
+                  // Add extra spacing before any floating button
+                  const SizedBox(height: 80),
                 ],
               ),
             ),
