@@ -105,6 +105,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final chatNotifier = ref.read(chatSessionNotifierProvider.notifier);
     final currentSessionState = ref.read(chatSessionNotifierProvider);
 
+    // Start the message sending process
     if (currentSessionState.currentThreadId == null) {
       chatNotifier.createAndSetNewThread(
         name: _generateThreadNameFromPrompt(text), // Pass generated name
@@ -114,7 +115,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } else {
       chatNotifier.sendMessage(agentId: widget.agentId, prompt: text);
     }
-    _textController.clear();
+    
+    // Clear the text field after state is updated
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _textController.clear();
+    });
+    
     _scrollToBottom();
   }
 
