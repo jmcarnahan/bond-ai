@@ -10,6 +10,7 @@ class AgentListItemModel {
   final List<String>? tool_types; // Matches backend key
   final String? createdAtDisplay;
   final String? samplePrompt;
+  final Map<String, dynamic>? metadata;
 
   const AgentListItemModel({
     required this.id,
@@ -19,6 +20,7 @@ class AgentListItemModel {
     this.tool_types,
     this.createdAtDisplay,
     this.samplePrompt,
+    this.metadata,
   });
 
   factory AgentListItemModel.fromJson(Map<String, dynamic> json) {
@@ -32,6 +34,7 @@ class AgentListItemModel {
           : null,
       createdAtDisplay: json['created_at_display'] as String?,
       samplePrompt: json['sample_prompt'] as String?,
+      metadata: json['metadata'] as Map<String, dynamic>?,
     );
   }
 
@@ -44,6 +47,7 @@ class AgentListItemModel {
       'tool_types': tool_types,
       'created_at_display': createdAtDisplay,
       'sample_prompt': samplePrompt,
+      'metadata': metadata,
     };
   }
 
@@ -58,7 +62,8 @@ class AgentListItemModel {
         other.model == model &&
         other.tool_types == tool_types && // Consider list equality if needed
         other.createdAtDisplay == createdAtDisplay &&
-        other.samplePrompt == samplePrompt;
+        other.samplePrompt == samplePrompt &&
+        other.metadata == metadata;
   }
 
   @override
@@ -69,7 +74,8 @@ class AgentListItemModel {
       model.hashCode ^
       tool_types.hashCode ^
       createdAtDisplay.hashCode ^
-      samplePrompt.hashCode;
+      samplePrompt.hashCode ^
+      metadata.hashCode;
 }
 
 // --- New Models for Agent Detail Screen ---
