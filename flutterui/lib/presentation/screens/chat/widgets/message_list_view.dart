@@ -4,6 +4,7 @@ import 'package:flutterui/data/models/message_model.dart';
 import 'package:flutterui/providers/thread_chat/thread_chat_providers.dart';
 import 'package:flutterui/providers/thread_chat/chat_session_state.dart'; // Added this import
 import 'package:flutterui/presentation/widgets/typing_indicator.dart';
+import 'package:flutterui/presentation/screens/chat/widgets/image_message_widget.dart';
 
 class MessageListView extends ConsumerWidget {
   final ChatSessionState chatState;
@@ -97,7 +98,28 @@ class MessageListView extends ConsumerWidget {
           coreMessageWidget = TypingIndicator(
             dotColor: messageTextColor.withOpacity(0.7),
           );
+        } else if (message.type == 'image_file' && message.imageData != null) {
+          // Handle image messages
+          coreMessageWidget = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ImageMessageWidget(
+                base64ImageData: message.imageData!,
+                maxWidth: MediaQuery.of(context).size.width * 0.6,
+                maxHeight: 300,
+              ),
+              if (message.content.isNotEmpty && message.content != '[Image]')
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: SelectableText(
+                    message.content,
+                    style: textTheme.bodyMedium?.copyWith(color: messageTextColor),
+                  ),
+                ),
+            ],
+          );
         } else {
+          // Handle text messages
           coreMessageWidget = SelectableText(
             message.content,
             style: textTheme.bodyMedium?.copyWith(color: messageTextColor),
