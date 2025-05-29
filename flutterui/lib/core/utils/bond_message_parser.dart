@@ -6,6 +6,7 @@ class ParsedBondMessage {
   final String type;
   final String role;
   final String content;
+  final String? imageData; // Base64 image data for image_file types
   final bool isErrorAttribute; // From the is_error attribute in XML
   final bool parsingHadError; // True if the parser itself encountered an issue
 
@@ -14,6 +15,7 @@ class ParsedBondMessage {
     this.type = '',
     this.role = '',
     required this.content,
+    this.imageData,
     this.isErrorAttribute = false,
     this.parsingHadError = false,
   });
@@ -42,11 +44,36 @@ class BondMessageParser {
           doc.rootElement.findElements('_bondmessage').firstOrNull;
 
       if (firstBondMessageElement != null) {
+        String content = firstBondMessageElement.text.trim(); // Trim whitespace
+        String? imageData;
+        
+        // Check if this is an image_file type with base64 data
+        final messageType = firstBondMessageElement.getAttribute('type') ?? '';
+        if (messageType == 'image_file') {
+          if (content.startsWith('data:image/png;base64,')) {
+            // Extract base64 data after the prefix
+            imageData = content.substring('data:image/png;base64,'.length);
+            content = '[Image]';
+          } else if (content.startsWith('data:image/jpeg;base64,')) {
+            // Handle JPEG images
+            imageData = content.substring('data:image/jpeg;base64,'.length);
+            content = '[Image]';
+          } else if (content.startsWith('data:image/')) {
+            // Handle other image formats - extract the base64 part after the comma
+            final commaIndex = content.indexOf(',');
+            if (commaIndex != -1 && commaIndex < content.length - 1) {
+              imageData = content.substring(commaIndex + 1);
+              content = '[Image]';
+            }
+          }
+        }
+        
         return ParsedBondMessage(
           id: firstBondMessageElement.getAttribute('id') ?? '',
-          type: firstBondMessageElement.getAttribute('type') ?? '',
+          type: messageType,
           role: firstBondMessageElement.getAttribute('role') ?? '',
-          content: firstBondMessageElement.text,
+          content: content,
+          imageData: imageData,
           isErrorAttribute:
               firstBondMessageElement.getAttribute('is_error')?.toLowerCase() ==
               'true',
@@ -71,53 +98,120 @@ class BondMessageParser {
     }
   }
 
-  /// Extracts and cleans body content from the *first* <_bondmessage> encountered in the accumulatedXml.
-  /// This is primarily for live streaming display.
+  /// Extracts and cleans body content from the first assistant <_bondmessage> encountered in the accumulatedXml.
+  /// This is primarily for live streaming display. Ignores system messages.
   static String extractStreamingBodyContent(String accumulatedXml) {
     String stringToDisplayForUi = "..."; // Default placeholder
 
-    // Regex to find the start of any <_bondmessage ...> tag
-    final bondMessageStartTagRegex = RegExp(r'<_bondmessage[^>]*>');
-    final bondMessageStartTagMatch = bondMessageStartTagRegex.firstMatch(
-      accumulatedXml,
-    );
-
-    if (bondMessageStartTagMatch != null) {
-      int bodyStartIndex = bondMessageStartTagMatch.end;
-      if (bodyStartIndex <= accumulatedXml.length) {
-        String contentAfterStartTag = accumulatedXml.substring(bodyStartIndex);
-
-        // Regex to find the corresponding </_bondmessage> end tag
-        final bondMessageEndTagRegex = RegExp(r'</_bondmessage>');
-        final bondMessageEndTagMatch = bondMessageEndTagRegex.firstMatch(
-          contentAfterStartTag,
-        );
-
-        String rawBodyContent;
-        if (bondMessageEndTagMatch != null) {
-          // If end tag is found, take content up to it
-          rawBodyContent = contentAfterStartTag.substring(
-            0,
-            bondMessageEndTagMatch.start,
-          );
-        } else {
-          // If no end tag yet, take all content after the start tag
-          rawBodyContent = contentAfterStartTag;
-        }
-
-        // Strip any XML tags *within* this body content for display
-        String strippedContent =
-            rawBodyContent.replaceAll(RegExp(r'<[^>]*>'), '').trim();
-
-        if (strippedContent.isNotEmpty) {
-          stringToDisplayForUi = strippedContent;
-        }
-        // If strippedContent is empty (e.g., only tags were present), stringToDisplayForUi remains "..."
+    // First try to find an assistant message
+    final assistantMessageRegex = RegExp(r'<_bondmessage[^>]*role="assistant"[^>]*>(.*?)(?:</_bondmessage>|$)', dotAll: true);
+    final assistantMatch = assistantMessageRegex.firstMatch(accumulatedXml);
+    
+    if (assistantMatch != null) {
+      String rawBodyContent = assistantMatch.group(1) ?? '';
+      String strippedContent = rawBodyContent.replaceAll(RegExp(r'<[^>]*>'), '').trim();
+      
+      if (strippedContent.isNotEmpty) {
+        stringToDisplayForUi = strippedContent;
       }
-      // If bodyStartIndex is out of bounds, stringToDisplayForUi remains "..."
+    } else {
+      // Fallback: look for any message if no assistant message found yet
+      final bondMessageStartTagRegex = RegExp(r'<_bondmessage[^>]*>');
+      final bondMessageStartTagMatch = bondMessageStartTagRegex.firstMatch(accumulatedXml);
+
+      if (bondMessageStartTagMatch != null) {
+        // Check if this is a system message, and if so, skip it
+        final tagContent = bondMessageStartTagMatch.group(0) ?? '';
+        if (tagContent.contains('role="system"')) {
+          return stringToDisplayForUi; // Keep "..." for system messages
+        }
+        
+        int bodyStartIndex = bondMessageStartTagMatch.end;
+        if (bodyStartIndex <= accumulatedXml.length) {
+          String contentAfterStartTag = accumulatedXml.substring(bodyStartIndex);
+
+          final bondMessageEndTagRegex = RegExp(r'</_bondmessage>');
+          final bondMessageEndTagMatch = bondMessageEndTagRegex.firstMatch(contentAfterStartTag);
+
+          String rawBodyContent;
+          if (bondMessageEndTagMatch != null) {
+            rawBodyContent = contentAfterStartTag.substring(0, bondMessageEndTagMatch.start);
+          } else {
+            rawBodyContent = contentAfterStartTag;
+          }
+
+          String strippedContent = rawBodyContent.replaceAll(RegExp(r'<[^>]*>'), '').trim();
+
+          if (strippedContent.isNotEmpty) {
+            stringToDisplayForUi = strippedContent;
+          }
+        }
+      }
     }
-    // If no <_bondmessage ...> start tag is found, stringToDisplayForUi remains "..."
+    
     return stringToDisplayForUi;
+  }
+
+  /// Parses ALL <_bondmessage> elements found in the given xmlString.
+  /// Returns a list of ParsedBondMessage objects.
+  static List<ParsedBondMessage> parseAllBondMessages(String xmlString) {
+    final List<ParsedBondMessage> messages = [];
+    
+    if (xmlString.trim().isEmpty) {
+      return messages;
+    }
+    
+    try {
+      // Wrap to handle multiple sibling <_bondmessage> if xmlString contains them directly.
+      final wrappedXml = "<stream_wrapper>${xmlString.trim()}</stream_wrapper>";
+      final XmlDocument doc = XmlDocument.parse(wrappedXml);
+
+      // Find all <_bondmessage> elements
+      final bondMessageElements = doc.rootElement.findElements('_bondmessage');
+
+      for (final element in bondMessageElements) {
+        String content = element.text.trim();
+        String? imageData;
+        
+        // Check if this is an image_file type with base64 data
+        final messageType = element.getAttribute('type') ?? '';
+        if (messageType == 'image_file') {
+          if (content.startsWith('data:image/png;base64,')) {
+            imageData = content.substring('data:image/png;base64,'.length);
+            content = '[Image]';
+          } else if (content.startsWith('data:image/jpeg;base64,')) {
+            imageData = content.substring('data:image/jpeg;base64,'.length);
+            content = '[Image]';
+          } else if (content.startsWith('data:image/')) {
+            final commaIndex = content.indexOf(',');
+            if (commaIndex != -1 && commaIndex < content.length - 1) {
+              imageData = content.substring(commaIndex + 1);
+              content = '[Image]';
+            }
+          }
+        }
+        
+        messages.add(ParsedBondMessage(
+          id: element.getAttribute('id') ?? '',
+          type: messageType,
+          role: element.getAttribute('role') ?? '',
+          content: content,
+          imageData: imageData,
+          isErrorAttribute: element.getAttribute('is_error')?.toLowerCase() == 'true',
+          parsingHadError: false,
+        ));
+      }
+      
+    } catch (e) {
+      // If parsing fails, return a single error message
+      messages.add(ParsedBondMessage(
+        content: "Error parsing XML: ${e.toString()}",
+        parsingHadError: true,
+        isErrorAttribute: true,
+      ));
+    }
+    
+    return messages;
   }
 
   /// A utility to strip all XML tags from any given string.
