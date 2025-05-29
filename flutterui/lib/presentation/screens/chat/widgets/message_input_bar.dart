@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class MessageInputBar extends ConsumerWidget {
@@ -52,27 +53,39 @@ class MessageInputBar extends ConsumerWidget {
                 color: colorScheme.surfaceVariant.withOpacity(0.6), // Moved fill color here
                 child: Padding( // Added padding here for TextField
                   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0), // Adjusted vertical padding
-                  child: TextField(
-                    controller: textController,
-                    focusNode: focusNode, // Assign the FocusNode
-                    maxLines: null, // Allows for multiline input with Shift+Enter
-                    keyboardType: TextInputType.multiline,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: InputDecoration(
-                      hintText: isSendingMessage ? 'Waiting for response...' : 'Type a message...',
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none, // Border is now handled by DecoratedBox
-                      filled: false,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12.0),
-                    ),
-                    // onSubmitted is still useful for specific actions like 'done' on mobile keyboards
-                    // but our RawKeyboardListener handles desktop Enter.
-                    onSubmitted: (_) {
-                      if (!isSendingMessage) {
+                  child: RawKeyboardListener(
+                    focusNode: FocusNode(), // Separate focus node for keyboard listener
+                    onKey: (RawKeyEvent event) {
+                      // Handle Enter key press (but not Shift+Enter)
+                      if (event is RawKeyDownEvent && 
+                          event.logicalKey == LogicalKeyboardKey.enter &&
+                          !event.isShiftPressed &&
+                          !isSendingMessage &&
+                          textController.text.trim().isNotEmpty) {
                         onSendMessage();
                       }
                     },
+                    child: TextField(
+                      controller: textController,
+                      focusNode: focusNode, // Assign the FocusNode
+                      maxLines: null, // Allows for multiline input with Shift+Enter
+                      keyboardType: TextInputType.multiline,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: InputDecoration(
+                        hintText: isSendingMessage ? 'Waiting for response...' : 'Type a message...',
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none, // Border is now handled by DecoratedBox
+                        filled: false,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 12.0),
+                      ),
+                      // onSubmitted handles mobile keyboard 'done' action and Enter key fallback
+                      onSubmitted: (value) {
+                        if (!isSendingMessage && value.trim().isNotEmpty) {
+                          onSendMessage();
+                        }
+                      },
+                    ),
                   ),
                 ),
               ),
