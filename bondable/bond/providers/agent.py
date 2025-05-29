@@ -66,6 +66,16 @@ class Agent(ABC):
         pass
 
     @abstractmethod
+    def get_metadata(self) -> Dict[str, str]:
+        """
+        Returns the metadata associated with the agent.
+        
+        Returns:
+            Dict[str, str]: A dictionary containing metadata key-value pairs.
+        """
+        pass
+
+    @abstractmethod
     def create_user_message(self, prompt, thread_id, attachments=None, override_role="user") -> str:
         """
         Creates a user message for the agent based on the provided prompt and thread ID.
@@ -139,7 +149,7 @@ class AgentProvider(ABC):
         pass
 
     @abstractmethod
-    def create_or_update_agent_resource(self, agent_def: AgentDefinition) -> Agent:
+    def create_or_update_agent_resource(self, agent_def: AgentDefinition, owner_user_id: str) -> Agent:
         """
         Creates or updates an agent resource based on the provided agent definition.
         
@@ -198,7 +208,7 @@ class AgentProvider(ABC):
 
 
     def create_or_update_agent(self, agent_def: AgentDefinition, user_id: str) -> Agent:
-        agent: Agent = self.create_or_update_agent_resource(agent_def=agent_def)
+        agent: Agent = self.create_or_update_agent_resource(agent_def=agent_def, owner_user_id=user_id)
         with self.metadata.get_db_session() as session:
             # check to see if the agent already exists in the metadata
             agent_record: AgentRecord = session.query(AgentRecord).filter(AgentRecord.agent_id == agent.get_agent_id()).first()
@@ -247,7 +257,7 @@ class AgentProvider(ABC):
         agent_records = self.get_agent_records(user_id=user_id)
         agents = []
         for record in agent_records:
-            agent = self.get_agent(agent_id=record['agent_id'])
+            agent: Agent = self.get_agent(agent_id=record['agent_id'])
             if agent:
                 agents.append(agent)
         return agents

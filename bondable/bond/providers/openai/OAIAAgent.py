@@ -208,6 +208,12 @@ class OAIAAgent(Agent):
         else:
             return default_value
 
+    @override
+    def get_metadata(self) -> Dict[str, str]:
+        """
+        Returns the metadata of the agent.
+        """
+        return self.agent_metadata
 
     @override
     def create_user_message(self, prompt, thread_id, attachments=None, override_role="user") -> str:
@@ -328,12 +334,16 @@ class OAIAAgentProvider(AgentProvider):
 
 
     @override
-    def create_or_update_agent_resource(self, agent_def: AgentDefinition) -> Agent:
+    def create_or_update_agent_resource(self, agent_def: AgentDefinition, owner_user_id: str) -> Agent:
         """
         Creates a new agent. This method should be implemented by subclasses.
         Returns the created agent.
         """
         openai_assistant_obj = None # Holds the final OpenAI assistant object
+
+        if agent_def.metadata is None:
+            agent_def.metadata = {}
+        agent_def.metadata['owner_user_id'] = owner_user_id  # ensure the owner is set in metadata
 
         if agent_def.id:  # ID is provided: implies update an existing agent
             LOGGER.info(f"Agent ID '{agent_def.id}' provided. Attempting to retrieve/update.")
@@ -346,6 +356,7 @@ class OAIAAgentProvider(AgentProvider):
                 current_definition_from_openai = self.get_definition(assistant=openai_assistant_obj)
                 agent_def.name = agent_def.name if agent_def.name is not None else openai_assistant_obj.name
                 agent_def.model = agent_def.model if agent_def.model else current_definition_from_openai.model
+
                 
                 if current_definition_from_openai.get_hash() != agent_def.get_hash():
                     LOGGER.info(f"Definition changed for agent ID {agent_def.id}. Updating OpenAI assistant.")
