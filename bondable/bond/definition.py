@@ -28,9 +28,6 @@ class AgentDefinition:
         self.model = model
         self.metadata = metadata
         self.user_id = user_id
-
-        # self.bond_metadata = Metadata.metadata()
-        # builder = AgentBuilder.builder() # No longer needed within __init__ for file processing
         self.config = Config.config()
         self.provider = self.config.get_provider()
 
@@ -95,23 +92,6 @@ class AgentDefinition:
               obj[key] = cls.to_dict(value)
       LOGGER.debug(f"After conversion to dict: {obj}")
       return obj
-
-    # @classmethod
-    # def from_assistant(cls, assistant_id: str):
-    #     """Create an AgentDefinition from an OpenAI Assistant ID."""
-    #     openai_client = Config.config().get_openai_client()
-    #     assistant = openai_client.beta.assistants.retrieve(assistant_id)
-    #     agent_def = cls(
-    #         name=assistant.name,
-    #         description=assistant.description,
-    #         instructions=assistant.instructions,
-    #         tools=assistant.tools,
-    #         tool_resources=assistant.tool_resources,
-    #         metadata=assistant.metadata,
-    #         id=assistant.id
-    #     )
-    #     agent_def.model = assistant.model
-    #     return agent_def
 
     def __dict__(self):
         return {
