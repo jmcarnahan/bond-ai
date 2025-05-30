@@ -103,11 +103,15 @@ class AuthService {
 
   // Helper to get authenticated headers (now public)
   Future<Map<String, String>> get authenticatedHeaders async {
+    logger.i("[AuthService] Getting authenticated headers...");
     final token = await retrieveToken();
+    
     if (token == null) {
-      logger.i("[AuthService] No token found for authenticatedHeaders.");
+      logger.e("[AuthService] No token found for authenticatedHeaders.");
       throw Exception('Not authenticated for this request.');
     }
+    
+    logger.i("[AuthService] Token found for authenticatedHeaders: ${token.substring(0, 20)}...");
     return {
       'Authorization': 'Bearer $token',
       'Content-Type': 'application/json',

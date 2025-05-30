@@ -1,9 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutterui/data/models/agent_model.dart'; // Added for AgentDetailModel
-import 'package:flutterui/data/models/api_response_models.dart'; // For FileUploadResponseModel
-import 'package:flutterui/data/services/agent_service.dart'; // Added for AgentService
-import 'package:flutterui/providers/auth_provider.dart'; // Assuming authServiceProvider is here or similar
+import 'package:flutterui/providers/services/service_providers.dart';
 import '../core/utils/logger.dart';
 
 // Class to hold uploaded file information
@@ -31,12 +29,6 @@ class UploadedFileInfo {
   int get hashCode => fileId.hashCode;
 }
 
-// Provider for AgentService
-// This should ideally be in a separate file or a common providers file.
-final agentServiceProvider = Provider<AgentService>((ref) {
-  final authService = ref.watch(authServiceProvider); // Assuming authServiceProvider exists
-  return AgentService(authService: authService);
-});
 
 
 // State class for the form
