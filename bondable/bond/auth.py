@@ -56,7 +56,7 @@ class GoogleAuth:
 
     def _get_google_user_info(self, creds):
         request = requests.Request()
-        user_info = id_token.verify_oauth2_token(creds.id_token, request)
+        user_info = id_token.verify_oauth2_token(creds.id_token, request, clock_skew_in_seconds=10)
         return user_info
     
     def create_cookie(self, user_info):
