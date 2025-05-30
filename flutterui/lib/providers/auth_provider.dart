@@ -1,9 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutterui/data/models/user_model.dart';
 import 'package:flutterui/data/services/auth_service.dart';
-import 'package:flutterui/main.dart'; // For sharedPreferencesProvider
+import 'package:flutterui/providers/services/service_providers.dart';
 import '../core/utils/logger.dart';
 
 // Define the states for authentication
@@ -42,12 +41,6 @@ class AuthError extends AuthState {
   final String error;
   const AuthError(this.error);
 }
-
-// Provider for AuthService (depends on SharedPreferences)
-final authServiceProvider = Provider<AuthService>((ref) {
-  final prefs = ref.watch(sharedPreferencesProvider);
-  return AuthService(sharedPreferences: prefs);
-});
 
 // AuthNotifier manages the authentication state
 class AuthNotifier extends StateNotifier<AuthState> {
