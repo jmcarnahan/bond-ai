@@ -1,16 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/data/models/agent_model.dart';
-import 'package:flutterui/data/services/agent_service.dart';
-import 'package:flutterui/providers/auth_provider.dart'; // For authServiceProvider
+import 'package:flutterui/providers/services/service_providers.dart';
 import '../core/utils/logger.dart';
 
-// Provider for AgentService. It depends on AuthService.
-final agentServiceProvider = Provider<AgentService>((ref) {
-  final authService = ref.watch(
-    authServiceProvider,
-  ); // Depends on authServiceProvider from auth_provider.dart
-  return AgentService(authService: authService);
-});
+// Using centralized service provider from service_providers.dart
 
 // FutureProvider to fetch the list of agents.
 // This will automatically handle loading/error states for us in the UI.
@@ -19,8 +12,10 @@ final agentsProvider = FutureProvider<List<AgentListItemModel>>((ref) async {
   logger.i("[agentsProvider] Fetching agents...");
   final agentService = ref.watch(agentServiceProvider);
   try {
+    logger.i("[agentsProvider] Started ref watch...");
     final agents = await agentService.getAgents();
     logger.i("[agentsProvider] Successfully fetched ${agents.length} agents.");
+
     return agents;
   } catch (e) {
     logger.i("[agentsProvider] Error fetching agents: ${e.toString()}");

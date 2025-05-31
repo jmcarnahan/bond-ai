@@ -1,8 +1,9 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:collection/collection.dart'; // Import for firstWhereOrNull
 import 'package:flutterui/data/models/thread_model.dart';
 import 'package:flutterui/data/services/thread_service.dart';
-import 'package:flutterui/providers/thread_chat/thread_chat_providers.dart' // Updated path
+import 'package:flutterui/providers/services/service_providers.dart'
     show threadServiceProvider;
 import '../core/utils/logger.dart';
 
@@ -21,7 +22,6 @@ class ThreadsNotifier extends StateNotifier<AsyncValue<List<Thread>>> {
   ThreadsNotifier(this._ref) : super(const AsyncValue.loading()) {
     // Get the ThreadService instance from the existing provider
     _threadService = _ref.read(threadServiceProvider);
-    fetchThreads();
   }
 
   Future<void> fetchThreads() async {
@@ -106,7 +106,12 @@ class ThreadsNotifier extends StateNotifier<AsyncValue<List<Thread>>> {
 
 final threadsProvider =
     StateNotifierProvider<ThreadsNotifier, AsyncValue<List<Thread>>>((ref) {
-  return ThreadsNotifier(ref);
+  final notifier = ThreadsNotifier(ref);
+  
+  // Load threads immediately after provider creation
+  notifier.fetchThreads();
+  
+  return notifier;
 });
 
 // Provider to get the currently selected Thread object
