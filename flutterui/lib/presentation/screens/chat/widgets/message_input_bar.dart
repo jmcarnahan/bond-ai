@@ -92,6 +92,12 @@ class MessageInputBar extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: 8.0),
+          IconButton(
+            icon: Icon(Icons.attach_file, color: isSendingMessage ? Colors.grey : colorScheme.primary, size: 28), // Grey out icon when disabled
+            tooltip: 'Add a file',
+            padding: const EdgeInsets.only(bottom: 4.0), // Align with TextField baseline
+            onPressed: null,
+          ),
           isSendingMessage
               ? Padding(
                   padding: const EdgeInsets.only(bottom: 4.0, right: 4.0), // Align with IconButton
