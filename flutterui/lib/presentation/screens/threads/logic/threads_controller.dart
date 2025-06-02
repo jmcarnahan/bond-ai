@@ -40,7 +40,7 @@ class ThreadsController {
   }
 
   void selectThread(Thread thread) {
-    logger.i('Selecting thread: ${thread.name} (${thread.id})');
+    logger.i('[ThreadsController]Selecting thread: ${thread.name} (${thread.id})');
     _notifier.selectThread(thread.id);
     Navigator.of(context).pop();
   }

@@ -53,7 +53,6 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
     );
     try {
       final newThread = await _threadService.createThread(name: name);
-      logger.i("[ChatSessionNotifier] Created new thread: ${newThread.id}");
       state = state.copyWith(
         currentThreadId: newThread.id,
         isLoadingMessages: false,
