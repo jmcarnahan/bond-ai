@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutterui/core/constants/api_constants.dart';
 import 'package:flutterui/data/models/thread_model.dart';
 import 'package:flutterui/data/models/message_model.dart';
-import 'package:flutterui/data/services/auth_service.dart'; // To get authenticated headers
+import 'package:flutterui/data/services/auth_service.dart';
 import '../../core/utils/logger.dart';
 
 @immutable
@@ -17,7 +17,6 @@ class ThreadService {
     : _httpClient = httpClient ?? http.Client(),
       _authService = authService;
 
-  // Fetch all threads for the current user
   Future<List<Thread>> getThreads() async {
     logger.i("[ThreadService] getThreads called.");
     try {
@@ -50,14 +49,13 @@ class ThreadService {
     }
   }
 
-  // Create a new thread
   Future<Thread> createThread({String? name}) async {
     logger.i("[ThreadService] createThread called with name: $name");
     try {
       final headers = await _authService.authenticatedHeaders;
       final body = json.encode({
         'name': name,
-      }); // Backend expects an optional name
+      });
 
       final response = await _httpClient.post(
         Uri.parse(ApiConstants.baseUrl + ApiConstants.threadsEndpoint),
@@ -69,7 +67,6 @@ class ThreadService {
         "[ThreadService] createThread response status: ${response.statusCode}",
       );
       if (response.statusCode == 201) {
-        // Typically 201 Created
         final Map<String, dynamic> data = json.decode(response.body);
         final Thread newThread = Thread.fromJson(data);
         logger.i(
@@ -88,7 +85,6 @@ class ThreadService {
     }
   }
 
-  // Fetch messages for a specific thread
   Future<List<Message>> getMessagesForThread(
     String threadId, {
     int limit = 100,
@@ -136,7 +132,6 @@ class ThreadService {
     }
   }
 
-  // Delete a specific thread
   Future<void> deleteThread(String threadId) async {
     logger.i("[ThreadService] deleteThread called for threadId: $threadId");
     try {
@@ -152,14 +147,12 @@ class ThreadService {
         "[ThreadService] deleteThread response status: ${response.statusCode}",
       );
       if (response.statusCode == 204) {
-        // Successfully deleted
         logger.i("[ThreadService] Deleted thread: $threadId");
         return;
       } else if (response.statusCode == 404) {
         logger.i(
           "[ThreadService] Failed to delete thread. Not Found. Status: ${response.statusCode}, Body: ${response.body}",
         );
-        // Consider creating a specific exception type for not found
         throw Exception('Thread not found: ${response.statusCode}');
       } else {
         logger.i(
@@ -173,7 +166,6 @@ class ThreadService {
       logger.i(
         "[ThreadService] Error in deleteThread for thread $threadId: ${e.toString()}",
       );
-      // Rethrow or handle more specifically if needed
       throw Exception('Failed to delete thread $threadId: ${e.toString()}');
     }
   }

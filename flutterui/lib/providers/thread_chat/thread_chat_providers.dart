@@ -26,5 +26,5 @@ final chatSessionNotifierProvider =
     ) {
       final threadService = ref.watch(threadServiceProvider);
       final chatService = ref.watch(chatServiceProvider);
-      return ChatSessionNotifier(threadService, chatService, ref); // Pass ref here
+      return ChatSessionNotifier(threadService, chatService, ref);
     });

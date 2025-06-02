@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutterui/core/theme/app_theme.dart'; // For AppTheme and CustomColors
-import 'package:flutterui/main.dart'; // Import for appThemeProvider
-import 'package:flutterui/providers/thread_chat/thread_chat_providers.dart'; // Corrected import
-import 'package:flutterui/providers/thread_provider.dart';
+import 'package:flutterui/core/theme/app_theme.dart';
+import 'package:flutterui/main.dart';
 
 class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
   final String agentName;

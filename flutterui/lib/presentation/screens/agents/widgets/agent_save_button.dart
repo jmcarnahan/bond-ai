@@ -50,9 +50,9 @@ class AgentSaveButton extends StatelessWidget {
               ),
               elevation: AppElevation.sm,
             ).copyWith(
-              mouseCursor: MaterialStateProperty.resolveWith<MouseCursor?>(
-                (Set<MaterialState> states) {
-                  if (states.contains(MaterialState.disabled)) {
+              mouseCursor: WidgetStateProperty.resolveWith<MouseCursor?>(
+                (Set<WidgetState> states) {
+                  if (states.contains(WidgetState.disabled)) {
                     return SystemMouseCursors.forbidden;
                   }
                   return SystemMouseCursors.click;
