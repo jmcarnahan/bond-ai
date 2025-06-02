@@ -49,26 +49,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> _checkInitialAuthStatus() async {
-    logger.i("[AuthNotifier] _checkInitialAuthStatus called.");
     state = const AuthLoading();
     try {
       final token = await _authService.retrieveToken();
-      logger.i("[AuthNotifier] Retrieved token: $token");
       if (token != null && token.isNotEmpty) {
-        logger.i("[AuthNotifier] Token found, attempting to get current user.");
         final user = await _authService.getCurrentUser();
-        logger.i(
-          "[AuthNotifier] Got user: ${user.email}. Setting state to Authenticated.",
-        );
         state = Authenticated(user);
       } else {
-        logger.i(
-          "[AuthNotifier] No token found. Setting state to Unauthenticated.",
-        );
         state = const Unauthenticated();
       }
     } catch (e) {
-      logger.i("[AuthNotifier] Error in _checkInitialAuthStatus: ${e.toString()}");
+      logger.e("[AuthNotifier] Session error: ${e.toString()}");
       await _authService.clearToken();
       state = Unauthenticated(message: "Session error. Please log in again.");
     }
@@ -83,20 +74,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<bool> loginWithToken(String token) async {
-    logger.i("[AuthNotifier] loginWithToken called with token: $token");
     state = const AuthLoading();
     try {
-      logger.i("[AuthNotifier] Storing token...");
       await _authService.storeToken(token);
-      logger.i("[AuthNotifier] Token stored. Getting current user...");
       final user = await _authService.getCurrentUser();
-      logger.i(
-        "[AuthNotifier] Got user: ${user.email}. Setting state to Authenticated.",
-      );
       state = Authenticated(user);
       return true;
     } catch (e) {
-      logger.i("[AuthNotifier] Error in loginWithToken: ${e.toString()}");
+      logger.e("[AuthNotifier] Login failed: ${e.toString()}");
       await _authService.clearToken();
       state = AuthError("Login failed: ${e.toString()}");
       return false;
@@ -104,7 +89,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
-    logger.i("[AuthNotifier] logout called.");
     state = const AuthLoading();
     try {
       await _authService.clearToken();

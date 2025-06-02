@@ -43,7 +43,6 @@ class RouteObserverForBanner extends NavigatorObserver {
     if (_ref.read(showThreadBannerProvider) != shouldShowBanner) {
       _ref.read(showThreadBannerProvider.notifier).state = shouldShowBanner;
     }
-    logger.i("[RouteObserverForBanner] Route: ${settings.name}, Path: $routeName, Show Banner: $shouldShowBanner");
   }
 
   @override
@@ -63,7 +62,6 @@ class RouteObserverForBanner extends NavigatorObserver {
       if (_ref.read(showThreadBannerProvider)) {
         _ref.read(showThreadBannerProvider.notifier).state = false;
       }
-      logger.i("[RouteObserverForBanner] Popped last PageRoute or to a non-PageRoute. Show Banner: false");
     }
   }
 

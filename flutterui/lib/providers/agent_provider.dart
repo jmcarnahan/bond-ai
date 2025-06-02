@@ -4,16 +4,13 @@ import 'package:flutterui/providers/services/service_providers.dart';
 import '../core/utils/logger.dart';
 
 final agentsProvider = FutureProvider<List<AgentListItemModel>>((ref) async {
-  logger.i("[agentsProvider] Fetching agents...");
   final agentService = ref.watch(agentServiceProvider);
   try {
-    logger.i("[agentsProvider] Started ref watch...");
     final agents = await agentService.getAgents();
-    logger.i("[agentsProvider] Successfully fetched ${agents.length} agents.");
-
+    logger.i("[agentsProvider] Loaded ${agents.length} agents");
     return agents;
   } catch (e) {
-    logger.i("[agentsProvider] Error fetching agents: ${e.toString()}");
+    logger.e("[agentsProvider] Error fetching agents: ${e.toString()}");
     rethrow;
   }
 });
@@ -28,20 +25,15 @@ class SelectedAgentNotifier extends StateNotifier<AgentListItemModel?> {
 
   void selectAgent(AgentListItemModel agent) {
     state = agent;
-    logger.i(
-      "[SelectedAgentNotifier] Agent selected: ${agent.name} (ID: ${agent.id})",
-    );
   }
 
   void clearAgent() {
     state = null;
-    logger.i("[SelectedAgentNotifier] Agent selection cleared.");
   }
 }
 
 final agentDetailProvider = FutureProvider.autoDispose
     .family<AgentDetailModel, String>((ref, agentId) async {
       final agentService = ref.watch(agentServiceProvider);
-      logger.i("[agentDetailProvider] Fetching details for agent ID: $agentId");
       return agentService.getAgentDetails(agentId);
     });
