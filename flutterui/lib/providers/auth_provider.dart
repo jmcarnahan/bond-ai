@@ -5,7 +5,6 @@ import 'package:flutterui/data/services/auth_service.dart';
 import 'package:flutterui/providers/services/service_providers.dart';
 import '../core/utils/logger.dart';
 
-// Define the states for authentication
 abstract class AuthState {
   const AuthState();
 }
@@ -33,7 +32,7 @@ class Authenticated extends AuthState {
 }
 
 class Unauthenticated extends AuthState {
-  final String? message; // Optional message (e.g., after logout, or error)
+  final String? message;
   const Unauthenticated({this.message});
 }
 
@@ -42,7 +41,6 @@ class AuthError extends AuthState {
   const AuthError(this.error);
 }
 
-// AuthNotifier manages the authentication state
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthService _authService;
 
@@ -79,18 +77,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> initiateLogin() async {
     try {
       await _authService.launchLoginUrl();
-      // After launch, the app will lose focus.
-      // The user will be redirected back to the app after Google login.
-      // The token will need to be captured from the URL on web.
-      // For now, we don't change state here until token is confirmed.
     } catch (e) {
       state = AuthError(e.toString());
     }
   }
 
-  // This method would be called after the app captures the token from the redirect
   Future<bool> loginWithToken(String token) async {
-    // Changed to return Future<bool>
     logger.i("[AuthNotifier] loginWithToken called with token: $token");
     state = const AuthLoading();
     try {
@@ -102,12 +94,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
         "[AuthNotifier] Got user: ${user.email}. Setting state to Authenticated.",
       );
       state = Authenticated(user);
-      return true; // Indicate success
+      return true;
     } catch (e) {
       logger.i("[AuthNotifier] Error in loginWithToken: ${e.toString()}");
       await _authService.clearToken();
       state = AuthError("Login failed: ${e.toString()}");
-      return false; // Indicate failure
+      return false;
     }
   }
 
@@ -119,7 +111,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = const Unauthenticated(message: "Successfully logged out.");
     } catch (e) {
       state = AuthError(e.toString());
-      // Attempt to also clear local state to unauthenticated if service fails
       await _authService.clearToken();
       state = const Unauthenticated(
         message: "Logged out, but encountered an issue clearing session.",
@@ -128,7 +119,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 }
 
-// StateNotifierProvider for AuthNotifier
 final authNotifierProvider = StateNotifierProvider<AuthNotifier, AuthState>((
   ref,
 ) {

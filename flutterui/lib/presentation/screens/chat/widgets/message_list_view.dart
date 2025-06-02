@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutterui/data/models/message_model.dart';
-import 'package:flutterui/providers/thread_chat/thread_chat_providers.dart';
-import 'package:flutterui/providers/thread_chat/chat_session_state.dart'; // Added this import
+import 'package:flutterui/providers/thread_chat/chat_session_state.dart';
 import 'package:flutterui/presentation/widgets/typing_indicator.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/image_message_widget.dart';
 
 class MessageListView extends ConsumerWidget {
   final ChatSessionState chatState;
   final ScrollController scrollController;
-  final String agentName; // For empty placeholder
+  final String agentName;
 
   const MessageListView({
     super.key,
@@ -72,7 +70,6 @@ class MessageListView extends ConsumerWidget {
 
     return ListView.builder(
       controller: scrollController,
-      // Greatly reduce horizontal padding on the ListView itself
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 72.0), 
       itemCount: chatState.messages.length,
       itemBuilder: (context, index) {
@@ -96,10 +93,9 @@ class MessageListView extends ConsumerWidget {
             index == chatState.messages.length - 1 &&
             message.content.isEmpty) {
           coreMessageWidget = TypingIndicator(
-            dotColor: messageTextColor.withOpacity(0.7),
+            dotColor: messageTextColor.withValues(alpha: 0.7),
           );
         } else if (message.type == 'image_file' && message.imageData != null) {
-          // Handle image messages
           coreMessageWidget = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -119,7 +115,6 @@ class MessageListView extends ConsumerWidget {
             ],
           );
         } else {
-          // Handle text messages
           coreMessageWidget = SelectableText(
             message.content,
             style: textTheme.bodyMedium?.copyWith(color: messageTextColor),
@@ -175,9 +170,9 @@ class MessageListView extends ConsumerWidget {
                 ),
                 const SizedBox(width: 8),
                 CircleAvatar(
-                  backgroundColor: colorScheme.primary.withOpacity(0.8),
-                  child: Icon(Icons.person_outline, color: colorScheme.onPrimary, size: 20),
+                  backgroundColor: colorScheme.primary.withValues(alpha: 0.8),
                   radius: 16,
+                  child: Icon(Icons.person_outline, color: colorScheme.onPrimary, size: 20),
                 ),
               ],
             ),
@@ -230,22 +225,19 @@ class MessageListView extends ConsumerWidget {
                   ],
                 ),
               );
-            } else { // Regular assistant message
+            } else {
               displayContent = Flexible(
-                child: ConstrainedBox( // Add ConstrainedBox here as well for consistency
+                child: ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
                   child: finalMessageContent,
                 ),
               );
               return Padding(
-                // Reduce horizontal padding here if ListView padding is already handling spacing
-                padding: const EdgeInsets.symmetric(vertical: 6.0), // Removed horizontal: 32.0
+                padding: const EdgeInsets.symmetric(vertical: 6.0),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.start,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Consider adding an avatar for assistant messages if desired, or ensure spacing
-                    // For now, just the content, assuming ListView padding gives enough edge spacing.
                     displayContent,
                   ],
                 ),
