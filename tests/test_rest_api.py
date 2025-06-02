@@ -175,11 +175,13 @@ class TestAgents:
         mock_agent1.get_agent_id.return_value = "agent_1"
         mock_agent1.get_name.return_value = "Test Agent 1"
         mock_agent1.get_description.return_value = "Description 1"
+        mock_agent1.get_metadata.return_value = {"test": True}
         
         mock_agent2 = MagicMock(spec=AgentABC)
         mock_agent2.get_agent_id.return_value = "agent_2"
         mock_agent2.get_name.return_value = "Test Agent 2"
         mock_agent2.get_description.return_value = None
+        mock_agent2.get_metadata.return_value = {}
         
         mock_provider.agents.list_agents.return_value = [mock_agent1, mock_agent2]
         

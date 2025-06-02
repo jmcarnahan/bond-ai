@@ -7,25 +7,33 @@ Uses configuration from .env file via Config class.
 import asyncio
 import sys
 import os
+import json
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Add the project root to the path so we can import bondable
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 from bondable.bond.mcp_client import MCPClient
 from bondable.bond.config import Config
-
 
 async def test_mcp_integration():
     """Test the MCP client integration."""
     print("Testing MCP Integration...")
     print("=" * 50)
     
+    # add the mcp as a environment variable
+    BOND_MCP_CONFIG = {
+        "mcpServers": {
+            "my_client": {
+                "url": "http://localhost:5555/mcp",
+                "transport": "streamable-http"
+            }
+        }
+    }
+    os.environ['BOND_MCP_CONFIG'] = json.dumps(BOND_MCP_CONFIG)
+
     try:
-        # Test MCPClient initialization
+
         print("1. Getting MCPClient instance...")
         mcp_client = MCPClient.client()
         print(f"   ✓ MCPClient created")
@@ -44,20 +52,12 @@ async def test_mcp_integration():
         
         # Test connection and list tools
         print("\n3. Testing connection and listing tools...")
-        async with await MCPClient.get_client() as client:
+        async with await mcp_client.get_client() as client:
             tools = await client.list_tools()
             print(f"   ✓ Connected successfully")
             print(f"   ✓ Found {len(tools)} tools:")
             for tool in tools:
                 print(f"     - {tool}")
-        
-        # # Test listing resources
-        # print("\n4. Testing resource listing...")
-        # async with await MCPClient.get_client() as client:
-        #     resources = await client.list_resources()
-        #     print(f"   ✓ Found {len(resources)} resources:")
-        #     for resource in resources:
-        #         print(f"     - {resource.get('name', 'unnamed')}: {resource.get('uri', 'no uri')}")
         
         print("\n" + "=" * 50)
         print("✅ MCP Integration test completed successfully!")
