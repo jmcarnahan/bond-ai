@@ -17,7 +17,6 @@ class ThreadsController {
   ThreadsNotifier get _notifier => ref.read(threadsProvider.notifier);
 
   void initializeThreads() {
-    // Error listener is now handled in the ThreadsScreen build method
   }
 
   void showErrorSnackBar(String error) {
@@ -46,11 +45,7 @@ class ThreadsController {
     Navigator.of(context).pop();
   }
 
-  void showCreateThreadDialog() {
-    // Import and use the dialog
-    // This method is used for consistency but the actual dialog
-    // is shown from the widget level
-  }
+  void showCreateThreadDialog() {}
 
   void navigateBack() {
     Navigator.of(context).pop();
