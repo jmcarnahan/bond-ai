@@ -172,7 +172,10 @@ class AgentDetailModel {
   final List<Map<String, dynamic>> tools;
   final AgentToolResourcesModel? toolResources;
   final Map<String, dynamic>? metadata;
+  final List<String>? mcpTools;
+  final List<String>? mcpResources;
   final List<dynamic> files;
+
 
   const AgentDetailModel({
     required this.id,
@@ -183,6 +186,8 @@ class AgentDetailModel {
     required this.tools,
     this.toolResources,
     this.metadata,
+    this.mcpTools,
+    this.mcpResources,
     required this.files,
   });
 
@@ -203,7 +208,14 @@ class AgentDetailModel {
               )
               : null,
       metadata: json['metadata'] as Map<String, dynamic>?,
+      mcpTools: json['mcp_tools'] != null 
+          ? List<String>.from(json['mcp_tools'] as List<dynamic>)
+          : null,
+      mcpResources: json['mcp_resources'] != null 
+          ? List<String>.from(json['mcp_resources'] as List<dynamic>)
+          : null,
       files: json['files'] as List<dynamic>? ?? [],
+
     );
   }
 
@@ -217,6 +229,8 @@ class AgentDetailModel {
       'tools': tools,
       if (toolResources != null) 'tool_resources': toolResources!.toJson(),
       if (metadata != null) 'metadata': metadata,
+      if (mcpTools != null) 'mcp_tools': mcpTools,
+      if (mcpResources != null) 'mcp_resources': mcpResources,
       'files': files,
     };
   }
