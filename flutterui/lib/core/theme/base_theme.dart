@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutterui/core/theme/app_theme.dart'; // Imports AppTheme and CustomColors
-
-/// Base theme implementation.
+import 'package:flutterui/core/theme/app_theme.dart';
 class BaseTheme implements AppTheme {
-  const BaseTheme(); // Add const constructor
+  const BaseTheme();
 
-  static const Color baseDarkBrandingSurface = Color(0xFF424242); // Darker Grey (Colors.grey[800])
-  static const Color baseCyan = Color(0xFF00BCD4); // Cyan
-  static const Color baseDarkGrey = Color(0xFF616161); // Dark Grey (Colors.grey[700])
-  static const Color baseLightGrey = Color(0xFFF5F5F5); // Light Grey (Colors.grey[100])
-  static const Color baseTextPrimary = Color(0xFF212121); // Nearly Black
-  static const Color baseTextSecondary = Color(0xFF757575); // Grey
+  static const Color baseDarkBrandingSurface = Color(0xFF424242);
+  static const Color baseCyan = Color(0xFF00BCD4);
+  static const Color baseDarkGrey = Color(0xFF616161);
+  static const Color baseLightGrey = Color(0xFFF5F5F5);
+  static const Color baseTextPrimary = Color(0xFF212121);
+  static const Color baseTextSecondary = Color(0xFF757575);
 
   @override
   String get name => 'Bond AI';
@@ -19,27 +17,25 @@ class BaseTheme implements AppTheme {
   String get brandingMessage => 'Your Enterprise Space For Managing AI Agents';
 
   @override
-  String get logo => 'assets/bond_logo.png'; // Placeholder, user might need to add this
+  String get logo => 'assets/bond_logo.png';
 
   @override
-  String get logoIcon => 'assets/bond_logo_icon.png'; // Placeholder, user might need to add this
+  String get logoIcon => 'assets/bond_logo_icon.png';
 
   @override
   ThemeData get themeData {
     return ThemeData(
       brightness: Brightness.light,
-      primaryColor: Color(0xFF1A2E5C), // Deep navy blue
+      primaryColor: Color(0xFF1A2E5C),
       colorScheme: ColorScheme(
         brightness: Brightness.light,
-        primary: Color(0xFF1A2E5C), // Deep navy blue
+        primary: Color(0xFF1A2E5C),
         onPrimary: Colors.white,
-        secondary: Color(0xFF8A96A3), // Cool grey
+        secondary: Color(0xFF8A96A3),
         onSecondary: Colors.white,
         error: Color(0xFFB00020),
         onError: Colors.white,
-        background: Color(0xFFF5F6F8), // Light greyish background
-        onBackground: Color(0xFF1A2E5C),
-        surface: Colors.white,
+        surface: Color(0xFFF5F6F8),
         onSurface: Color(0xFF1A2E5C),
       ),
       scaffoldBackgroundColor: Color(0xFFF5F6F8),

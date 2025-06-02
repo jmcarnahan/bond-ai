@@ -79,7 +79,7 @@ class AgentToolSwitch extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: AppBorderRadius.allMd,
         side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withOpacity(0.5),
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
       color: theme.colorScheme.surfaceContainer,
@@ -95,8 +95,8 @@ class AgentToolSwitch extends StatelessWidget {
         value: value,
         onChanged: onChanged,
         activeColor: theme.colorScheme.primary,
-        inactiveThumbColor: theme.colorScheme.onSurface.withOpacity(0.4),
-        inactiveTrackColor: theme.colorScheme.onSurface.withOpacity(0.2),
+        inactiveThumbColor: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+        inactiveTrackColor: theme.colorScheme.onSurface.withValues(alpha: 0.2),
         contentPadding: AppSpacing.horizontalXl.add(AppSpacing.verticalLg),
       ),
     );

@@ -1,10 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutterui/data/models/agent_model.dart'; // Added for AgentDetailModel
+import 'package:flutterui/data/models/agent_model.dart';
 import 'package:flutterui/providers/services/service_providers.dart';
 import '../core/utils/logger.dart';
 
-// Class to hold uploaded file information
 class UploadedFileInfo {
   final String fileId;
   final String fileName;
@@ -29,9 +28,6 @@ class UploadedFileInfo {
   int get hashCode => fileId.hashCode;
 }
 
-
-
-// State class for the form
 class CreateAgentFormState {
   final String name;
   final String description;
@@ -74,7 +70,7 @@ class CreateAgentFormState {
     bool? isLoading,
     bool? isUploadingFile,
     String? errorMessage,
-    bool clearErrorMessage = false, // Utility to easily clear error
+    bool clearErrorMessage = false,
   }) {
     return CreateAgentFormState(
       name: name ?? this.name,
@@ -93,13 +89,10 @@ class CreateAgentFormState {
   }
 }
 
-// Notifier for the form state
 class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
   final Ref _ref;
-  // agentId can be passed to the constructor if this becomes a family provider
-  // final String? _agentId; 
 
-  CreateAgentFormNotifier(this._ref /*, this._agentId */) : super(CreateAgentFormState());
+  CreateAgentFormNotifier(this._ref) : super(CreateAgentFormState());
 
   void setName(String name) {
     state = state.copyWith(name: name);
@@ -113,7 +106,6 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
     state = state.copyWith(instructions: instructions);
   }
 
-  // Combined method for text field changes
   void updateField({String? name, String? description, String? instructions}) {
     state = state.copyWith(
       name: name ?? state.name,
@@ -124,7 +116,6 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
 
   void setEnableCodeInterpreter(bool enable) {
     state = state.copyWith(enableCodeInterpreter: enable);
-    // If disabling code interpreter, clear associated files
     if (!enable) {
       state = state.copyWith(codeInterpreterFiles: []);
     }
@@ -132,13 +123,12 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
 
   void setEnableFileSearch(bool enable) {
     state = state.copyWith(enableFileSearch: enable);
-    // If disabling file search, clear associated files
     if (!enable) {
       state = state.copyWith(fileSearchFiles: []);
     }
   }
 
-  void setLoading(bool isLoading) { // Added method to control loading state externally
+  void setLoading(bool isLoading) {
     state = state.copyWith(isLoading: isLoading);
   }
 
@@ -150,7 +140,6 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
     state = state.copyWith(selectedMcpResources: resources);
   }
 
-  // File management methods
   Future<void> uploadFileForTool(String toolType) async {
     if (state.isUploadingFile) return;
 
@@ -162,23 +151,22 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
 
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
-        if (file.bytes != null && file.name != null) {
+        if (file.bytes != null) {
           state = state.copyWith(isUploadingFile: true, clearErrorMessage: true);
 
           final agentService = _ref.read(agentServiceProvider);
           final uploadResponse = await agentService.uploadFile(
-            file.name!,
+            file.name,
             file.bytes!,
           );
 
           final fileInfo = UploadedFileInfo(
             fileId: uploadResponse.providerFileId,
-            fileName: file.name!,
+            fileName: file.name,
             fileSize: file.size,
             uploadedAt: DateTime.now(),
           );
 
-          // Add file to appropriate tool list
           if (toolType == 'code_interpreter') {
             final updatedFiles = [...state.codeInterpreterFiles, fileInfo];
             state = state.copyWith(codeInterpreterFiles: updatedFiles);
@@ -213,18 +201,15 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
   }
 
   void resetState() {
-    state = CreateAgentFormState(); // Resets to default values including isLoading = false
+    state = CreateAgentFormState();
   }
 
-  // Load agent data for editing
   Future<void> loadAgentForEditing(String agentId) async {
     state = state.copyWith(isLoading: true, clearErrorMessage: true);
     
     try {
       final agentService = _ref.read(agentServiceProvider);
       final agentDetail = await agentService.getAgentDetails(agentId);
-      
-      // Extract tool types and file IDs
       final bool hasCodeInterpreter = agentDetail.tools.any((tool) => tool['type'] == 'code_interpreter');
       final bool hasFileSearch = agentDetail.tools.any((tool) => tool['type'] == 'file_search');
       
@@ -232,24 +217,22 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       List<UploadedFileInfo> fileSearchFiles = [];
       
       if (agentDetail.toolResources != null) {
-        // Load code interpreter files
         if (agentDetail.toolResources!.codeInterpreter?.fileIds != null) {
           codeInterpreterFiles = agentDetail.toolResources!.codeInterpreter!.fileIds
               .map((fileId) => UploadedFileInfo(
                     fileId: fileId,
-                    fileName: 'File $fileId', // We don't have the original filename
+                    fileName: 'File $fileId',
                     fileSize: 0,
                     uploadedAt: DateTime.now(),
                   ))
               .toList();
         }
         
-        // Load file search files
         if (agentDetail.toolResources!.fileSearch?.fileIds != null) {
           fileSearchFiles = agentDetail.toolResources!.fileSearch!.fileIds
               .map((fileId) => UploadedFileInfo(
                     fileId: fileId,
-                    fileName: 'File $fileId', // We don't have the original filename
+                    fileName: 'File $fileId',
                     fileSize: 0,
                     uploadedAt: DateTime.now(),
                   ))
@@ -257,7 +240,6 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
         }
       }
       
-      // Update state with loaded data
       state = state.copyWith(
         name: agentDetail.name,
         description: agentDetail.description ?? '',
@@ -281,7 +263,6 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
     }
   }
 
-  // agentId is passed from the screen to determine create vs update
   Future<bool> saveAgent({String? agentId}) async {
     state = state.copyWith(isLoading: true, clearErrorMessage: true);
 
@@ -302,7 +283,6 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       tools.add({"type": "file_search"});
     }
 
-    // Build tool resources if files are associated
     AgentToolResourcesModel? toolResources;
     if (state.codeInterpreterFiles.isNotEmpty || state.fileSearchFiles.isNotEmpty) {
       toolResources = AgentToolResourcesModel(
@@ -317,36 +297,31 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       );
     }
 
-    // For create, ID is usually not sent or is empty. Backend generates it.
-    // For update, ID is crucial.
-    // The AgentDetailModel requires an ID, so we provide a placeholder for create.
     final agentData = AgentDetailModel(
-      id: agentId ?? '', // Use provided agentId for update, or empty for create
+      id: agentId ?? '',
       name: state.name,
       description: state.description.isNotEmpty ? state.description : null,
       instructions: state.instructions.isNotEmpty ? state.instructions : null,
-      model: "gpt-4-turbo-preview", // TODO: Make this configurable
+      model: "gpt-4-turbo-preview",
       tools: tools,
       toolResources: toolResources,
       mcpTools: state.selectedMcpTools.isNotEmpty ? state.selectedMcpTools.toList() : null,
       mcpResources: state.selectedMcpResources.isNotEmpty ? state.selectedMcpResources.toList() : null,
+      files: [],
+
     );
 
     try {
       final agentService = _ref.read(agentServiceProvider);
       if (agentId == null || agentId.isEmpty) {
-        // Create new agent
         await agentService.createAgent(agentData);
         logger.i('Agent created: ${state.name}');
       } else {
-        // Update existing agent
         await agentService.updateAgent(agentId, agentData);
         logger.i('Agent updated: ${state.name}');
       }
       
       state = state.copyWith(isLoading: false);
-      // Consider resetting form or specific fields upon successful save
-      // resetState(); 
       return true;
     } catch (e) {
       logger.i('Error saving agent: ${e.toString()}');
@@ -356,10 +331,6 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
   }
 }
 
-// Provider definition
-// If CreateAgentScreen needs to load an agent for editing using agentId,
-// this should become a family provider:
-// StateNotifierProvider.family<CreateAgentFormNotifier, CreateAgentFormState, String?>
 final createAgentFormProvider =
     StateNotifierProvider<CreateAgentFormNotifier, CreateAgentFormState>((ref) {
   return CreateAgentFormNotifier(ref);

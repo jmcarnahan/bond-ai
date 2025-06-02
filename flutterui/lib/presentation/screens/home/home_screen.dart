@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutterui/main.dart'; // Import main.dart to access appThemeProvider
+import 'package:flutterui/main.dart';
 import 'package:flutterui/presentation/widgets/sidebar.dart';
 import 'package:flutterui/providers/agent_provider.dart';
-import 'package:flutterui/presentation/widgets/agent_card.dart';
-import 'package:flutterui/core/theme/app_theme.dart'; // For AppTheme and CustomColors
+import 'package:flutterui/presentation/screens/agents/widgets/agent_card.dart';
+import 'package:flutterui/core/theme/app_theme.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -14,7 +14,7 @@ class HomeScreen extends ConsumerWidget {
     final agentsAsyncValue = ref.watch(agentsProvider);
     final appTheme = ref.watch(appThemeProvider);
     
-    final ThemeData currentThemeData = Theme.of(context); // Use Theme.of(context) for current theme
+    final ThemeData currentThemeData = Theme.of(context);
     final TextTheme textTheme = currentThemeData.textTheme;
     final ColorScheme colorScheme = currentThemeData.colorScheme;
     final CustomColors? customColors = currentThemeData.extension<CustomColors>();
@@ -23,18 +23,17 @@ class HomeScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: AppBar(
-        iconTheme: IconThemeData(color: Colors.white), // Ensure drawer icon is visible
+        iconTheme: IconThemeData(color: Colors.white),
         title: Row(
-          // mainAxisAlignment: MainAxisAlignment.center, // Keep default (usually start) or adjust as needed
           mainAxisSize: MainAxisSize.min,
           children: [
             Image.asset(
-              appTheme.logoIcon, // Use the logo from the AppTheme interface
-              height: 30, // Adjust height as needed
+              appTheme.logoIcon,
+              height: 30,
             ),
             const SizedBox(width: 10),
             Text(
-              '${appTheme.name} Agents', // App name from AppTheme interface
+              '${appTheme.name} Agents',
               style: currentThemeData.appBarTheme.titleTextStyle?.copyWith(color: Colors.white) ??
                    textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
             ),
@@ -42,7 +41,6 @@ class HomeScreen extends ConsumerWidget {
         ),
         backgroundColor: appBarBackgroundColor,
         elevation: currentThemeData.appBarTheme.elevation ?? 2.0,
-        // titleTextStyle: themeData.appBarTheme.titleTextStyle?.copyWith(color: Colors.white) ?? textTheme.headlineSmall?.copyWith(color: Colors.white),
       ),
       drawer: const AppSidebar(),
       body: Padding(
@@ -66,7 +64,7 @@ class HomeScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 16), 
             Divider(
-              color: colorScheme.outlineVariant?.withOpacity(0.5) ?? colorScheme.outline.withOpacity(0.5),
+              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
               height: 1,
             ),
             const SizedBox(height: 24), 
@@ -78,10 +76,10 @@ class HomeScreen extends ConsumerWidget {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 48.0),
                         decoration: BoxDecoration(
-                          color: colorScheme.surfaceVariant.withOpacity(0.3),
+                          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(12.0),
                           border: Border.all(
-                            color: colorScheme.outlineVariant?.withOpacity(0.5) ?? colorScheme.outline.withOpacity(0.5),
+                            color: colorScheme.outlineVariant.withValues(alpha: 0.5),
                             width: 1,
                           ),
                         ),
@@ -92,7 +90,7 @@ class HomeScreen extends ConsumerWidget {
                             Icon(
                               Icons.person_search_outlined, 
                               size: 64, 
-                              color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                             ),
                             const SizedBox(height: 24),
                             Text(
@@ -119,25 +117,25 @@ class HomeScreen extends ConsumerWidget {
                   return LayoutBuilder(
                     builder: (context, constraints) {
                       int crossAxisCount;
-                      if (constraints.maxWidth < 500) { // Adjusted breakpoint
+                      if (constraints.maxWidth < 500) {
                         crossAxisCount = 1;
-                      } else if (constraints.maxWidth < 800) { // Adjusted breakpoint
+                      } else if (constraints.maxWidth < 800) {
                         crossAxisCount = 2;
-                      } else if (constraints.maxWidth < 1100) { // Adjusted breakpoint
+                      } else if (constraints.maxWidth < 1100) {
                         crossAxisCount = 3;
-                      } else if (constraints.maxWidth < 1400) { // Adjusted breakpoint
+                      } else if (constraints.maxWidth < 1400) {
                         crossAxisCount = 4;
                       } else {
-                        crossAxisCount = 5; // Added a 5th column for very wide screens
+                        crossAxisCount = 5;
                       }
 
                       return GridView.builder(
                         padding: const EdgeInsets.only(bottom: 24.0, top: 8.0),
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: crossAxisCount,
-                          crossAxisSpacing: 12.0, // Reduced spacing
-                          mainAxisSpacing: 12.0,  // Reduced spacing
-                          childAspectRatio: crossAxisCount == 1 ? (16 / 10) : (4 / 2.8), // Made cards taller
+                          crossAxisSpacing: 12.0,
+                          mainAxisSpacing: 12.0,
+                          childAspectRatio: crossAxisCount == 1 ? (16 / 10) : (4 / 2.8),
                         ),
                         itemCount: agents.length,
                         itemBuilder: (context, index) {

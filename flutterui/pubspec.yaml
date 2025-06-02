@@ -16,11 +16,16 @@ dependencies:
   cupertino_icons: ^1.0.8
   file_picker: ^10.1.9
   logger: ^2.3.0
+  http_parser: ^4.1.2
+  web: ^1.0.0
+  collection: ^1.19.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
-  args: ^2.4.2 # Added for command-line argument parsing
+  args: ^2.4.2
+  mockito: ^5.4.4
+  build_runner: ^2.4.9
 
 flutter:
   uses-material-design: true
