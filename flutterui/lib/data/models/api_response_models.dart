@@ -47,25 +47,3 @@ class FileUploadResponseModel {
     };
   }
 }
-
-// Optional: If you need a model for the FileDeleteResponse
-// @immutable
-// class FileDeleteResponseModel {
-//   final String providerFileId;
-//   final String status;
-//   final String? message;
-
-//   const FileDeleteResponseModel({
-//     required this.providerFileId,
-//     required this.status,
-//     this.message,
-//   });
-
-//   factory FileDeleteResponseModel.fromJson(Map<String, dynamic> json) {
-//     return FileDeleteResponseModel(
-//       providerFileId: json['provider_file_id'] as String,
-//       status: json['status'] as String,
-//       message: json['message'] as String?,
-//     );
-//   }
-// }

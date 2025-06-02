@@ -26,16 +26,16 @@ class _TypingIndicatorState extends State<TypingIndicator>
     super.initState();
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600), // Reduced overall duration, though timer is main driver
+      duration: const Duration(milliseconds: 600),
     )..repeat();
 
-    _timer = Timer.periodic(const Duration(milliseconds: 200), (timer) { // Reduced dot interval
+    _timer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
       if (!mounted) {
         timer.cancel();
         return;
       }
       setState(() {
-        _dotCount = (_dotCount + 1) % 4; // 0, 1, 2, 3 (0 means no dots)
+        _dotCount = (_dotCount + 1) % 4;
       });
     });
   }
@@ -61,9 +61,9 @@ class _TypingIndicatorState extends State<TypingIndicator>
 
   @override
   Widget build(BuildContext context) {
-    final dotColor = widget.dotColor ?? Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7);
+    final dotColor = widget.dotColor ?? Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7);
     return SizedBox(
-      height: widget.dotSize * 2.5, // Provide some vertical space
+      height: widget.dotSize * 2.5,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: List.generate(3, (index) => _buildDot(index, dotColor)),

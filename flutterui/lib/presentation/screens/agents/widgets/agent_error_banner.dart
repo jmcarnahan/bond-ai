@@ -24,7 +24,7 @@ class AgentErrorBanner extends StatelessWidget {
           color: theme.colorScheme.errorContainer,
           borderRadius: AppBorderRadius.allMd,
           border: Border.all(
-            color: theme.colorScheme.error.withOpacity(0.3),
+            color: theme.colorScheme.error.withValues(alpha: 0.3),
           ),
         ),
         child: Row(

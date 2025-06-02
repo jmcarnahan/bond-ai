@@ -40,7 +40,7 @@ class ThreadListItem extends ConsumerWidget {
       ),
       child: ListTile(
         tileColor: isSelected
-            ? theme.colorScheme.primary.withOpacity(0.05)
+            ? theme.colorScheme.primary.withValues(alpha: 0.5)
             : null,
         leading: _buildLeadingIcon(theme),
         title: _buildTitle(theme),
@@ -57,7 +57,7 @@ class ThreadListItem extends ConsumerWidget {
       isSelected ? Icons.chat_bubble : Icons.chat_bubble_outline,
       color: isSelected
           ? theme.colorScheme.primary
-          : theme.colorScheme.onSurface.withOpacity(0.7),
+          : theme.colorScheme.onSurface.withValues(alpha: 0.7),
       size: AppSizes.iconLg,
     );
   }
@@ -90,7 +90,7 @@ class ThreadListItem extends ConsumerWidget {
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: theme.textTheme.bodyMedium?.copyWith(
-        color: theme.colorScheme.onSurface.withOpacity(0.7),
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
       ),
     );
   }
@@ -101,7 +101,7 @@ class ThreadListItem extends ConsumerWidget {
     return IconButton(
       icon: Icon(
         Icons.delete_outline,
-        color: theme.colorScheme.error.withOpacity(0.8),
+        color: theme.colorScheme.error.withValues(alpha: 0.8),
         size: AppSizes.iconMd,
       ),
       tooltip: 'Delete Thread',
