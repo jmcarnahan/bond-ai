@@ -4,6 +4,7 @@ import 'package:flutterui/data/services/auth_service.dart';
 import 'package:flutterui/data/services/agent_service.dart';
 import 'package:flutterui/data/services/thread_service.dart';
 import 'package:flutterui/data/services/chat_service.dart';
+import 'package:flutterui/data/services/mcp_service.dart';
 import 'package:flutterui/main.dart' show sharedPreferencesProvider;
 
 final authServiceProvider = Provider<AuthService>((ref) {
@@ -24,4 +25,9 @@ final threadServiceProvider = Provider<ThreadService>((ref) {
 final chatServiceProvider = Provider<ChatService>((ref) {
   final authService = ref.watch(authServiceProvider);
   return ChatService(authService: authService);
+});
+
+final mcpServiceProvider = Provider<McpService>((ref) {
+  final authService = ref.watch(authServiceProvider);
+  return McpService(authService: authService);
 });
