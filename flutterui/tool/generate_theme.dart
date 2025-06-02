@@ -1,9 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
-// dart:ui is not available in standalone Dart scripts. Color parsing will be done via string manipulation.
 import 'package:args/args.dart';
 
-// Default path for the generated theme file
 const String _defaultOutputPath = 'lib/core/theme/generated_theme.dart';
 
 void main(List<String> arguments) async {
@@ -17,11 +15,11 @@ void main(List<String> arguments) async {
   } catch (e) {
     stderr.writeln('Error parsing arguments: ${e.toString()}');
     stderr.writeln(parser.usage);
-    exitCode = 1; // Use exitCode for better testability
+    exitCode = 1;
     return;
   }
 
-  final configPath = argResults['config'] as String?; // Now optional
+  final configPath = argResults['config'] as String?;
   final outputPath = argResults['output'] as String;
 
   String generatedCode;
@@ -46,14 +44,13 @@ void main(List<String> arguments) async {
       return;
     }
   } else {
-    // No config path provided, generate a wrapper for BaseTheme
     generatedCode = _generateBaseThemeWrapper();
     stdout.writeln('No config path provided. Successfully generated theme file at $outputPath to use BaseTheme.');
   }
   
   try {
     final outputFile = File(outputPath);
-    await outputFile.create(recursive: true); // Ensure directory exists
+    await outputFile.create(recursive: true);
     await outputFile.writeAsString(generatedCode);
   } catch (e,s) {
     stderr.writeln('An error occurred while writing the output file: ${e.toString()}');
@@ -122,18 +119,15 @@ class AppGeneratedTheme implements AppTheme {
 }
 
 String _generateDartThemeClassFromConfig(Map<String, dynamic> config) {
-  // Class name is now fixed
   const String className = 'AppGeneratedTheme'; 
-  final themeName = config['themeName'] as String; // Still use themeName for AppTheme.name
+  final themeName = config['themeName'] as String;
 
   final brandingMessage = config['brandingMessage'] as String? ?? 'Welcome';
   
-  // Asset paths from config are relative to the 'assets/' directory.
-  final String baseAssetPath = 'assets/'; // Corrected base path
+  final String baseAssetPath = 'assets/';
   final String configLogoPath = config['logoPath'] as String? ?? 'default_logo.png';
   final String configLogoIconPath = config['logoIconPath'] as String? ?? 'default_icon.png';
   
-  // Ensure we don't double-prefix 'assets/' if config path already includes it (though current JSON doesn't)
   final logoPath = configLogoPath.startsWith('assets/') ? configLogoPath : baseAssetPath + configLogoPath;
   final logoIconPath = configLogoIconPath.startsWith('assets/') ? configLogoIconPath : baseAssetPath + configLogoIconPath;
 
@@ -153,7 +147,6 @@ String _generateDartThemeClassFromConfig(Map<String, dynamic> config) {
   final colorSchemeConfig = config['colorScheme'] as Map<String, dynamic>;
   final textThemeConfig = config['textTheme'] as Map<String, dynamic>;
   
-  // Component themes
   final appBarThemeConfig = config['appBarTheme'] as Map<String, dynamic>?;
   final cardThemeConfig = config['cardTheme'] as Map<String, dynamic>?;
   final elevatedButtonThemeConfig = config['elevatedButtonTheme'] as Map<String, dynamic>?;
@@ -192,7 +185,6 @@ String _generateDartThemeClassFromConfig(Map<String, dynamic> config) {
   }
   buffer.writeln('      useMaterial3: $useMaterial3,');
 
-  // ColorScheme
   buffer.writeln('      colorScheme: ColorScheme(');
   buffer.writeln('        brightness: $brightness,');
   buffer.writeln('        primary: ${_colorToCode(colorSchemeConfig['primary'] as String?)},');
@@ -207,14 +199,12 @@ String _generateDartThemeClassFromConfig(Map<String, dynamic> config) {
   buffer.writeln('        onSurface: ${_colorToCode(colorSchemeConfig['onSurface'] as String?)},');
   buffer.writeln('      ),');
 
-  // Extensions
   if (brandingSurfaceHex != null) {
     buffer.writeln('      extensions: <ThemeExtension<dynamic>>[');
     buffer.writeln('        CustomColors(brandingSurface: ${_colorToCode(brandingSurfaceHex)}),');
     buffer.writeln('      ],');
   }
   
-  // TextTheme
   buffer.writeln('      textTheme: TextTheme(');
   textThemeConfig.forEach((key, value) {
     if (value is Map<String, dynamic>) {
@@ -223,7 +213,6 @@ String _generateDartThemeClassFromConfig(Map<String, dynamic> config) {
   });
   buffer.writeln('      ),');
 
-  // AppBarTheme
   if (appBarThemeConfig != null) {
     buffer.writeln('      appBarTheme: AppBarTheme(');
     if (appBarThemeConfig['backgroundColor'] != null) buffer.writeln('        backgroundColor: ${_colorToCode(appBarThemeConfig['backgroundColor'] as String?)},');
@@ -236,7 +225,6 @@ String _generateDartThemeClassFromConfig(Map<String, dynamic> config) {
     buffer.writeln('      ),');
   }
 
-  // CardTheme
   if (cardThemeConfig != null) {
     buffer.writeln('      cardTheme: CardThemeData(');
     if (cardThemeConfig['color'] != null) buffer.writeln('        color: ${_colorToCode(cardThemeConfig['color'] as String?)},');
@@ -246,12 +234,10 @@ String _generateDartThemeClassFromConfig(Map<String, dynamic> config) {
     buffer.writeln('      ),');
   }
 
-  // Button Themes (Simplified: direct properties, not full ButtonStyle with WidgetStateProperty)
   _generateButtonTheme(buffer, 'elevatedButtonTheme', elevatedButtonThemeConfig);
   _generateButtonTheme(buffer, 'textButtonTheme', textButtonThemeConfig, isTextButton: true);
   _generateButtonTheme(buffer, 'outlinedButtonTheme', outlinedButtonThemeConfig, isOutlined: true);
 
-  // InputDecorationTheme
   if (inputDecorationThemeConfig != null) {
     buffer.writeln('      inputDecorationTheme: InputDecorationTheme(');
     if (inputDecorationThemeConfig['filled'] != null) buffer.writeln('        filled: ${inputDecorationThemeConfig['filled'] as bool?},');
@@ -262,7 +248,6 @@ String _generateDartThemeClassFromConfig(Map<String, dynamic> config) {
     buffer.writeln('      ),');
   }
   
-  // DialogTheme
   if (dialogThemeConfig != null) {
     buffer.writeln('      dialogTheme: DialogThemeData(');
     if (dialogThemeConfig['backgroundColor'] != null) buffer.writeln('        backgroundColor: ${_colorToCode(dialogThemeConfig['backgroundColor'] as String?)},');
@@ -272,7 +257,6 @@ String _generateDartThemeClassFromConfig(Map<String, dynamic> config) {
     buffer.writeln('      ),');
   }
 
-  // SnackBarTheme
   if (snackBarThemeConfig != null) {
     buffer.writeln('      snackBarTheme: SnackBarThemeData(');
     if (snackBarThemeConfig['backgroundColor'] != null) buffer.writeln('        backgroundColor: ${_colorToCode(snackBarThemeConfig['backgroundColor'] as String?)},');
@@ -281,14 +265,12 @@ String _generateDartThemeClassFromConfig(Map<String, dynamic> config) {
     buffer.writeln('      ),');
   }
   
-  // IconTheme
   if (iconThemeConfig != null) {
     buffer.writeln('      iconTheme: IconThemeData(');
     if (iconThemeConfig['color'] != null) buffer.writeln('        color: ${_colorToCode(iconThemeConfig['color'] as String?)},');
     buffer.writeln('      ),');
   }
 
-  // DividerTheme
   if (dividerThemeConfig != null) {
     buffer.writeln('      dividerTheme: DividerThemeData(');
     if (dividerThemeConfig['color'] != null) buffer.writeln('        color: ${_colorToCode(dividerThemeConfig['color'] as String?)},');
@@ -303,17 +285,11 @@ String _generateDartThemeClassFromConfig(Map<String, dynamic> config) {
   return buffer.toString();
 }
 
-String _capitalizeFirstLetter(String text) {
-  if (text.isEmpty) return '';
-  return '${text[0].toUpperCase()}${text.substring(1)}';
-}
-
 String _colorToCode(String? hexColor, {String defaultHex = '#FFFFFFFF', String keyName = 'color'}) {
   final intValue = _parseColorHexValue(hexColor, defaultHex: defaultHex, keyName: keyName);
   return 'Color(0x${intValue.toRadixString(16).padLeft(8, '0')})';
 }
 
-// _parseColor is removed as we now use _parseColorHexValue which returns int.
 
 String _fontWeightToCode(String? fontWeightStr) {
   if (fontWeightStr == null) return 'null';
@@ -321,15 +297,15 @@ String _fontWeightToCode(String? fontWeightStr) {
     case 'w100': return 'FontWeight.w100';
     case 'w200': return 'FontWeight.w200';
     case 'w300': return 'FontWeight.w300';
-    case 'w400': return 'FontWeight.w400'; // normal
+    case 'w400': return 'FontWeight.w400';
     case 'normal': return 'FontWeight.normal';
     case 'w500': return 'FontWeight.w500';
     case 'w600': return 'FontWeight.w600';
-    case 'w700': return 'FontWeight.w700'; // bold
+    case 'w700': return 'FontWeight.w700';
     case 'bold': return 'FontWeight.bold';
     case 'w800': return 'FontWeight.w800';
     case 'w900': return 'FontWeight.w900';
-    default: return 'null'; // Or throw error
+    default: return 'null';
   }
 }
 
@@ -339,12 +315,11 @@ String _textStyleToCode(Map<String, dynamic>? config) {
   if (config['fontSize'] != null) parts.add('fontSize: ${config['fontSize'] as num}');
   if (config['fontWeight'] != null) parts.add('fontWeight: ${_fontWeightToCode(config['fontWeight'] as String?)}');
   if (config['color'] != null) parts.add('color: ${_colorToCode(config['color'] as String?)}');
-  // Add letterSpacing, height, etc. if needed
   return 'TextStyle(${parts.join(', ')})';
 }
 
 String _edgeInsetsToCode(Map<String, dynamic>? config) {
-  if (config == null) return 'EdgeInsets.zero'; // Default to EdgeInsets.zero
+  if (config == null) return 'EdgeInsets.zero';
   final type = config['type'] as String?;
   final typeLower = type?.toLowerCase() ?? '';
 
@@ -361,7 +336,7 @@ String _edgeInsetsToCode(Map<String, dynamic>? config) {
     final b = config['bottom'] as num? ?? 0.0;
     return 'EdgeInsets.only(left: $l, top: $t, right: $r, bottom: $b)';
   }
-  return 'EdgeInsets.zero'; // Default or throw error
+  return 'EdgeInsets.zero';
 }
 
 String _borderRadiusToCode(Map<String, dynamic>? config) {
@@ -372,12 +347,12 @@ String _borderRadiusToCode(Map<String, dynamic>? config) {
   if (typeLower.contains('circular')) {
     return 'BorderRadius.circular(${config['radius'] as num? ?? 0.0})';
   }
-  // Add other types like `all`, `only` if needed
+
   return 'BorderRadius.zero';
 }
 
 String _shapeBorderToCode(Map<String, dynamic>? config) {
-  if (config == null) return 'const RoundedRectangleBorder()'; // Default to a basic RoundedRectangleBorder
+  if (config == null) return 'const RoundedRectangleBorder()';
   final type = config['type'] as String?;
   final typeLower = type?.toLowerCase() ?? '';
 
@@ -385,8 +360,7 @@ String _shapeBorderToCode(Map<String, dynamic>? config) {
     final borderRadiusConfig = config['borderRadius'] as Map<String, dynamic>?;
     return 'RoundedRectangleBorder(borderRadius: ${_borderRadiusToCode(borderRadiusConfig)})';
   }
-  // Add StadiumBorder, CircleBorder, etc.
-  return 'const RoundedRectangleBorder()'; // Default for unrecognized types
+  return 'const RoundedRectangleBorder()';
 }
 
 String _borderSideToCode(Map<String, dynamic>? config) {
@@ -394,7 +368,6 @@ String _borderSideToCode(Map<String, dynamic>? config) {
   final parts = <String>[];
   if (config['color'] != null) parts.add('color: ${_colorToCode(config['color'] as String?)}');
   if (config['width'] != null) parts.add('width: ${config['width'] as num? ?? 1.0}');
-  // Add style if needed
   return 'BorderSide(${parts.join(', ')})';
 }
 
@@ -406,14 +379,13 @@ String _inputBorderToCode(Map<String, dynamic>? config) {
     final borderRadiusConfig = config['borderRadius'] as Map<String, dynamic>?;
     return 'OutlineInputBorder(borderSide: ${_borderSideToCode(borderSideConfig)}, borderRadius: ${_borderRadiusToCode(borderRadiusConfig)})';
   }
-  // Add UnderlineInputBorder etc.
   return 'null';
 }
 
 String _snackBarBehaviorToCode(String? behaviorStr) {
   if (behaviorStr == 'floating') return 'SnackBarBehavior.floating';
   if (behaviorStr == 'fixed') return 'SnackBarBehavior.fixed';
-  return 'null'; // Default or based on ThemeData default
+  return 'null';
 }
 
 void _generateButtonTheme(StringBuffer buffer, String themeName, Map<String, dynamic>? config, {bool isTextButton = false, bool isOutlined = false}) {
@@ -429,14 +401,12 @@ void _generateButtonTheme(StringBuffer buffer, String themeName, Map<String, dyn
   if (styleConfig['overlayColor'] != null) buffer.writeln('          overlayColor: WidgetStateProperty.all<Color>(${_colorToCode(styleConfig['overlayColor'] as String?)}),');
   if (styleConfig['elevation'] != null) buffer.writeln('          elevation: WidgetStateProperty.all<double>(${styleConfig['elevation'] as num?}),');
   if (styleConfig['padding'] is Map) buffer.writeln('          padding: WidgetStateProperty.all<EdgeInsetsGeometry>(${_edgeInsetsToCode(styleConfig['padding'] as Map<String,dynamic>?)}),');
-  if (styleConfig['textStyle'] is Map && !isOutlined) { // OutlinedButton textStyle is part of its specific style
+  if (styleConfig['textStyle'] is Map && !isOutlined) {
      buffer.writeln('          textStyle: WidgetStateProperty.all<TextStyle>(${_textStyleToCode(styleConfig['textStyle'] as Map<String,dynamic>?)}),');
   }
   if (styleConfig['shape'] is Map) buffer.writeln('          shape: WidgetStateProperty.all<OutlinedBorder>(${_shapeBorderToCode(styleConfig['shape'] as Map<String,dynamic>?)}),');
   if (styleConfig['side'] is Map && isOutlined) {
     buffer.writeln('          side: WidgetStateProperty.all<BorderSide>(${_borderSideToCode(styleConfig['side'] as Map<String,dynamic>?)}),');
-  } else if (isOutlined) { // Default side for OutlinedButton if not specified
-     // buffer.writeln('          side: WidgetStateProperty.all<BorderSide>(BorderSide(color: _parseColor(config?['colorScheme']?['primary'] as String?).withOpacity(0.7), width: 1.0)),');
   }
   
   buffer.writeln('        ),');

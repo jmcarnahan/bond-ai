@@ -52,7 +52,6 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> {
     final selectedThreadId = ref.watch(selectedThreadIdProvider);
     final theme = Theme.of(context);
 
-    // Listen for thread errors and show snackbar
     ref.listen<String?>(threadErrorProvider, (previous, next) {
       if (next != null && context.mounted) {
         _controller.showErrorSnackBar(next);
