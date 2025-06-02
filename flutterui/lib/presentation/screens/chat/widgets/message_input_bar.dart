@@ -26,13 +26,13 @@ class MessageInputBar extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 24.0),
       decoration: BoxDecoration(
-        color: theme.scaffoldBackgroundColor, // Use scaffold background for consistency
+        color: theme.scaffoldBackgroundColor,
         boxShadow: [
           BoxShadow(
             offset: const Offset(0, -1),
             blurRadius: 2.0,
             spreadRadius: 0.5,
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: .08),
           ),
         ],
       ),
@@ -45,21 +45,20 @@ class MessageInputBar extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(25.0),
                 border: isTextFieldFocused
                     ? Border.all(color: Colors.red, width: 2.0)
-                    : null, // No border when not focused
+                    : null,
               ),
               child: Material(
                 borderRadius: BorderRadius.circular(25.0),
                 clipBehavior: Clip.antiAlias,
-                color: colorScheme.surfaceVariant.withOpacity(0.6), // Moved fill color here
-                child: Padding( // Added padding here for TextField
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0), // Adjusted vertical padding
-                  child: RawKeyboardListener(
-                    focusNode: FocusNode(), // Separate focus node for keyboard listener
-                    onKey: (RawKeyEvent event) {
-                      // Handle Enter key press (but not Shift+Enter)
-                      if (event is RawKeyDownEvent && 
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                child: Padding( 
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0),
+                  child: KeyboardListener(
+                    focusNode: FocusNode(),
+                    onKeyEvent: (KeyEvent event) {
+                      if (event is KeyDownEvent && 
                           event.logicalKey == LogicalKeyboardKey.enter &&
-                          !event.isShiftPressed &&
+                          !HardwareKeyboard.instance.isShiftPressed &&
                           !isSendingMessage &&
                           textController.text.trim().isNotEmpty) {
                         onSendMessage();
@@ -67,19 +66,18 @@ class MessageInputBar extends ConsumerWidget {
                     },
                     child: TextField(
                       controller: textController,
-                      focusNode: focusNode, // Assign the FocusNode
-                      maxLines: null, // Allows for multiline input with Shift+Enter
+                      focusNode: focusNode,
+                      maxLines: null,
                       keyboardType: TextInputType.multiline,
                       textCapitalization: TextCapitalization.sentences,
                       decoration: InputDecoration(
                         hintText: isSendingMessage ? 'Waiting for response...' : 'Type a message...',
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none, // Border is now handled by DecoratedBox
+                        focusedBorder: InputBorder.none,
                         filled: false,
                         contentPadding: const EdgeInsets.symmetric(vertical: 12.0),
                       ),
-                      // onSubmitted handles mobile keyboard 'done' action and Enter key fallback
                       onSubmitted: (value) {
                         if (!isSendingMessage && value.trim().isNotEmpty) {
                           onSendMessage();
@@ -94,7 +92,7 @@ class MessageInputBar extends ConsumerWidget {
           const SizedBox(width: 8.0),
           isSendingMessage
               ? Padding(
-                  padding: const EdgeInsets.only(bottom: 4.0, right: 4.0), // Align with IconButton
+                  padding: const EdgeInsets.only(bottom: 4.0, right: 4.0),
                   child: SizedBox(
                     width: 28,
                     height: 28,
@@ -104,8 +102,8 @@ class MessageInputBar extends ConsumerWidget {
               : IconButton(
                   icon: Icon(Icons.send, color: isSendingMessage ? Colors.grey : colorScheme.primary, size: 28), // Grey out icon when disabled
                   tooltip: isSendingMessage ? 'Waiting for response' : 'Send message',
-                  padding: const EdgeInsets.only(bottom: 4.0), // Align with TextField baseline
-                  onPressed: isSendingMessage ? null : onSendMessage, // Disable button when sending
+                  padding: const EdgeInsets.only(bottom: 4.0),
+                  onPressed: isSendingMessage ? null : onSendMessage,
                 ),
         ],
       ),
