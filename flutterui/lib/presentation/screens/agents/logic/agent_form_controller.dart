@@ -70,6 +70,14 @@ class AgentFormController {
     _notifier.setEnableFileSearch(value);
   }
 
+  void onMcpToolsChanged(Set<String> tools) {
+    _notifier.setSelectedMcpTools(tools);
+  }
+
+  void onMcpResourcesChanged(Set<String> resources) {
+    _notifier.setSelectedMcpResources(resources);
+  }
+
   bool get isFormValid {
     return nameController.text.isNotEmpty && 
            instructionsController.text.isNotEmpty;
