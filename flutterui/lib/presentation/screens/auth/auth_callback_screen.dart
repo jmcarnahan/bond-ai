@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart';
-import 'package:flutter/foundation.dart' show kIsWeb; // Import kIsWeb
-// Import 'dart:html' to access window.location.href, only for web.
-// Use conditional import to avoid errors on non-web platforms.
-import 'dart:html' if (dart.library.io) 'dart:io' as html_stub;
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:web/web.dart' as web if (dart.library.io) 'dart:io';
 import '../../../core/utils/logger.dart';
 
 class AuthCallbackScreen extends ConsumerStatefulWidget {
@@ -18,8 +16,6 @@ class _AuthCallbackScreenState extends ConsumerState<AuthCallbackScreen> {
   @override
   void initState() {
     super.initState();
-    // Use WidgetsBinding.instance.addPostFrameCallback to ensure context is available
-    // and to process after the first frame has been built.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _handleAuthCallback();
     });
@@ -31,7 +27,7 @@ class _AuthCallbackScreenState extends ConsumerState<AuthCallbackScreen> {
     if (kIsWeb) {
       // Use kIsWeb for a more robust check
       logger.i("[AuthCallbackScreen] Running on web.");
-      final String fullUrl = html_stub.window.location.href;
+      final String fullUrl = web.window.location.href;
       logger.i("[AuthCallbackScreen] Full URL: $fullUrl");
 
       final Uri? currentUri = Uri.tryParse(fullUrl);
@@ -39,10 +35,11 @@ class _AuthCallbackScreenState extends ConsumerState<AuthCallbackScreen> {
         logger.i(
           "[AuthCallbackScreen] Could not parse URI. Navigating to /login.",
         );
-        if (mounted)
+        if (mounted) {
           Navigator.of(
             context,
           ).pushNamedAndRemoveUntil('/login', (route) => false);
+        }
         return;
       }
       logger.i("[AuthCallbackScreen] Parsed URI: $currentUri");
@@ -106,17 +103,19 @@ class _AuthCallbackScreenState extends ConsumerState<AuthCallbackScreen> {
         logger.i(
           "[AuthCallbackScreen] Token not extracted or is empty. Navigating to /login.",
         );
-        if (mounted)
+        if (mounted) {
           Navigator.of(
             context,
           ).pushNamedAndRemoveUntil('/login', (route) => false);
+        }
       }
     } else {
       logger.i("[AuthCallbackScreen] Not running on web. Navigating to /login.");
-      if (mounted)
+      if (mounted) {
         Navigator.of(
           context,
         ).pushNamedAndRemoveUntil('/login', (route) => false);
+      }
     }
   }
 

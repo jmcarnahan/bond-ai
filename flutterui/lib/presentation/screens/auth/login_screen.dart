@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/main.dart';
-import 'package:flutterui/core/theme/app_theme.dart'; // For AppTheme and CustomColors
+import 'package:flutterui/core/theme/app_theme.dart';
 
 class LoginScreen extends ConsumerWidget {
   const LoginScreen({super.key});
@@ -10,11 +10,10 @@ class LoginScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authNotifierProvider);
-    final appTheme = ref.watch(appThemeProvider); // Renamed for clarity from currentTheme
+    final appTheme = ref.watch(appThemeProvider);
     final themeData = Theme.of(context);
-    // Access custom colors. Ensure CustomColors is part of your theme extensions.
     final customColors = themeData.extension<CustomColors>();
-    final brandingSurfaceColor = customColors?.brandingSurface ?? themeData.colorScheme.surfaceVariant; // Generic fallback
+    final brandingSurfaceColor = customColors?.brandingSurface ?? themeData.colorScheme.surfaceContainerHighest;
 
     ref.listen<AuthState>(authNotifierProvider, (previous, next) {
       if (next is AuthError) {
@@ -24,19 +23,18 @@ class LoginScreen extends ConsumerWidget {
       }
     });
 
-    // Define the content of the login form
     Widget loginFormContent = Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         Image.asset(
-          appTheme.logo, // Use appTheme
+          appTheme.logo,
           height: 80,
         ),
         const SizedBox(height: 30),
         Text(
-          'Welcome to ${appTheme.name}', // Use appTheme
+          'Welcome to ${appTheme.name}',
           textAlign: TextAlign.center,
           style: themeData.textTheme.headlineMedium?.copyWith(
             color: themeData.colorScheme.onSurface,
@@ -93,10 +91,9 @@ class LoginScreen extends ConsumerWidget {
       ],
     );
 
-    // Card widget for the login form
     Widget loginFormCard = Card(
       elevation: 4.0,
-      margin: EdgeInsets.zero, // Margin handled by parent container in two-column
+      margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 48.0),
@@ -111,33 +108,31 @@ class LoginScreen extends ConsumerWidget {
           const double breakpoint = 768.0;
 
           if (constraints.maxWidth < breakpoint) {
-            // Narrow screen layout (single column, centered card)
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 400),
-                child: SingleChildScrollView( // Ensure content scrolls if too tall
+                child: SingleChildScrollView(
                   padding: const EdgeInsets.all(20.0),
-                  child: Card( // Re-carding for mobile view with its own margin
+                  child: Card(
                     elevation: 4.0,
-                    margin: const EdgeInsets.all(0), // Padding handled by SingleChildScrollView
+                    margin: const EdgeInsets.all(0),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
-                      child: loginFormContent, // Use the extracted content
+                      child: loginFormContent,
                     ),
                   ),
                 ),
               ),
             );
           } else {
-            // Wide screen layout (two columns)
             return Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1100, maxHeight: 700), // Max height for the card
-                child: Card( // Outer card for the two-column effect with shadow
+                constraints: const BoxConstraints(maxWidth: 1100, maxHeight: 700),
+                child: Card(
                   elevation: 6.0,
-                  margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 32), // Margin for the whole 2-col layout
-                  clipBehavior: Clip.antiAlias, // Ensures Row children respect Card's rounded corners
+                  margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                  clipBehavior: Clip.antiAlias,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -145,21 +140,21 @@ class LoginScreen extends ConsumerWidget {
                       Expanded(
                         flex: 2,
                         child: Container(
-                          color: brandingSurfaceColor, // Use themed branding color
+                          color: brandingSurfaceColor,
                           padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 48.0),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: <Widget>[
                               Image.asset(
-                                appTheme.logo, // Use appTheme
+                                appTheme.logo,
                                 height: 120,
                               ),
                               const SizedBox(height: 24),
                               Text(
-                                appTheme.brandingMessage, // Use appTheme
+                                appTheme.brandingMessage,
                                 textAlign: TextAlign.center,
                                 style: themeData.textTheme.titleLarge?.copyWith(
-                                  color: Colors.white, // Text on dark branding panel
+                                  color: Colors.white,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -170,7 +165,7 @@ class LoginScreen extends ConsumerWidget {
                       Expanded(
                         flex: 3,
                         child: Container(
-                          color: themeData.colorScheme.background,
+                          color: themeData.colorScheme.surface,
                           padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 24.0),
                           child: Center(
                             child: ConstrainedBox(

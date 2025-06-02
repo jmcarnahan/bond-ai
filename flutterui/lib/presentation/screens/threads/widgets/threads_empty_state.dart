@@ -23,13 +23,13 @@ class ThreadsEmptyState extends StatelessWidget {
             Icon(
               Icons.forum_outlined,
               size: AppSizes.iconEnormous,
-              color: theme.colorScheme.onSurface.withOpacity(0.3),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.3)
             ),
             SizedBox(height: AppSpacing.xxl),
             Text(
               'No threads yet',
               style: theme.textTheme.headlineSmall?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.7),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -37,7 +37,7 @@ class ThreadsEmptyState extends StatelessWidget {
             Text(
               'Create your first thread to start chatting with agents',
               style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               ),
               textAlign: TextAlign.center,
             ),

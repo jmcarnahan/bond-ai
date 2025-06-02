@@ -94,13 +94,13 @@ class AgentTextField extends StatelessWidget {
         border: OutlineInputBorder(
           borderRadius: AppBorderRadius.allMd,
           borderSide: BorderSide(
-            color: theme.colorScheme.onSurface.withOpacity(0.3),
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
           ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: AppBorderRadius.allMd,
           borderSide: BorderSide(
-            color: theme.colorScheme.onSurface.withOpacity(0.3),
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.3),
           ),
         ),
         focusedBorder: OutlineInputBorder(
@@ -113,7 +113,7 @@ class AgentTextField extends StatelessWidget {
         filled: true,
         fillColor: enabled 
             ? theme.colorScheme.surfaceContainerLow 
-            : theme.colorScheme.onSurface.withOpacity(0.05),
+            : theme.colorScheme.onSurface.withValues(alpha: 0.05),
         floatingLabelBehavior: FloatingLabelBehavior.auto,
       ),
       maxLines: maxLines,
@@ -122,7 +122,7 @@ class AgentTextField extends StatelessWidget {
       style: TextStyle(
         color: enabled 
             ? theme.colorScheme.onSurface 
-            : theme.colorScheme.onSurface.withOpacity(0.6),
+            : theme.colorScheme.onSurface.withValues(alpha: 0.6),
       ),
     );
   }

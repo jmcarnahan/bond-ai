@@ -1,9 +1,8 @@
-import 'package:flutter/foundation.dart' show kIsWeb; // For kIsWeb
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-// Conditional import for dart:html
-import 'dart:html' if (dart.library.io) 'dart:io' as html_stub;
+import 'package:web/web.dart' as web;
 
 import 'package:flutterui/presentation/screens/home/home_screen.dart';
 import 'package:flutterui/presentation/screens/auth/login_screen.dart';
@@ -14,21 +13,16 @@ import 'package:flutterui/presentation/screens/agents/create_agent_screen.dart';
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/data/models/agent_model.dart';
 import 'package:flutterui/core/theme/app_theme.dart';
-// McAfeeTheme and BaseTheme are no longer directly used here.
-// The active theme will be provided by generated_theme.dart
-import 'package:flutterui/core/theme/generated_theme.dart'; // Will be created by the script
+import 'package:flutterui/core/theme/generated_theme.dart';
 import 'package:flutterui/core/utils/logger.dart';
-import 'package:flutterui/presentation/widgets/selected_thread_banner.dart'; // Import the banner
-import 'package:flutterui/providers/ui_providers.dart'; // Import new providers
+import 'package:flutterui/presentation/widgets/selected_thread_banner.dart';
+import 'package:flutterui/providers/ui_providers.dart';
 
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   throw UnimplementedError('SharedPreferences not initialized');
 });
 
-// Provider for the current AppTheme
 final appThemeProvider = Provider<AppTheme>((ref) {
-  // The theme is now determined by the generated_theme.dart file,
-  // which always defines a class named AppGeneratedTheme.
   return AppGeneratedTheme(); 
 });
 
@@ -62,30 +56,25 @@ class MyApp extends ConsumerWidget {
       );
     }
 
-    final AppTheme currentTheme = ref.watch(appThemeProvider); // Use the provider
+    final AppTheme currentTheme = ref.watch(appThemeProvider);
 
     if (kIsWeb) {
-      // Check if html_stub.document is not the stub (i.e., we are on web)
-      // A more robust check might be needed if 'dart:io' also had a 'document'
-      // but for typical conditional import usage, this is okay.
-      // Or, more simply, rely on kIsWeb and assume html.document is available.
       try {
-        html_stub.document.title = currentTheme.name;
+        web.document.title = currentTheme.name;
       } catch (e) {
-        // In case html_stub.document is not available or not the expected type
         logger.w("Could not set document.title: $e");
       }
     }
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: currentTheme.name, // Use theme name for app title
+      title: currentTheme.name,
       theme: currentTheme.themeData,
       home: homeWidget,
-      navigatorObservers: [RouteObserverForBanner(ref)], // Add the observer
+      navigatorObservers: [RouteObserverForBanner(ref)],
       builder: (context, child) {
-        final bool showBanner = ref.watch(showThreadBannerProvider); // Watch the provider
-        logger.i("[MaterialApp.builder] Show Banner based on provider: $showBanner"); // Log provider state
+        final bool showBanner = ref.watch(showThreadBannerProvider);
+        logger.i("[MaterialApp.builder] Show Banner based on provider: $showBanner");
 
         return Stack(
           children: [
