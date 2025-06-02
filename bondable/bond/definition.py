@@ -17,10 +17,12 @@ class AgentDefinition:
     tool_resources: Dict = {}
     metadata: Dict = {}
     user_id: str = None
+    mcp_tools: List[str] = []  # List of MCP tool identifiers
+    mcp_resources: List[str] = []  # List of MCP resource identifiers
 
     def __init__(self, user_id: str, name: str, description: str, instructions: str, model: str,
                  tools: List = [], tool_resources: Dict = {}, metadata: Dict = {},
-                 id: Optional[str] = None): 
+                 id: Optional[str] = None, mcp_tools: List[str] = [], mcp_resources: List[str] = []): 
         self.id = id
         self.name = name
         self.description = description
@@ -28,6 +30,8 @@ class AgentDefinition:
         self.model = model
         self.metadata = metadata
         self.user_id = user_id
+        self.mcp_tools = mcp_tools or []
+        self.mcp_resources = mcp_resources or []
         self.config = Config.config()
         self.provider = self.config.get_provider()
 
@@ -102,7 +106,9 @@ class AgentDefinition:
             "model": self.model,
             "tools": self.tools,
             "tool_resources": self.tool_resources,
-            "metadata": self.metadata
+            "metadata": self.metadata,
+            "mcp_tools": self.mcp_tools,
+            "mcp_resources": self.mcp_resources
         }
     
     def __str__(self):
@@ -115,5 +121,7 @@ class AgentDefinition:
             (self.name, self.description, self.instructions, self.model, 
                 json.dumps(self.metadata, sort_keys=True), 
                 json.dumps(self.tools, sort_keys=True),
-                json.dumps(self.tool_resources, sort_keys=True))
+                json.dumps(self.tool_resources, sort_keys=True),
+                json.dumps(self.mcp_tools, sort_keys=True),
+                json.dumps(self.mcp_resources, sort_keys=True))
         )
