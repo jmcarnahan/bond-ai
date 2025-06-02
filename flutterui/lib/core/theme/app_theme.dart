@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
-// Define a custom ThemeExtension for additional colors
 @immutable
 class CustomColors extends ThemeExtension<CustomColors> {
   const CustomColors({
     required this.brandingSurface,
   });
 
-  final Color brandingSurface; // Made non-nullable
+  final Color brandingSurface;
 
   @override
   CustomColors copyWith({Color? brandingSurface}) {
@@ -22,12 +21,11 @@ class CustomColors extends ThemeExtension<CustomColors> {
       return this;
     }
     return CustomColors(
-      brandingSurface: Color.lerp(brandingSurface, other.brandingSurface, t) ?? this.brandingSurface, // Ensure non-null result
+      brandingSurface: Color.lerp(brandingSurface, other.brandingSurface, t) ?? brandingSurface,
     );
   }
 
-  // Optional: A helper to easily access from Theme.of(context)
-  static CustomColors? of(BuildContext context) { // Still can be null if theme doesn't provide it
+  static CustomColors? of(BuildContext context) {
     return Theme.of(context).extension<CustomColors>();
   }
 }

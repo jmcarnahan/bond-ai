@@ -10,9 +10,8 @@ import '../../../core/utils/logger.dart';
 
 class AgentFormNotifier extends StateNotifier<AgentFormState> with ErrorHandlerMixin<AgentFormState> {
   final AgentService _agentService;
-  final Ref _ref;
 
-  AgentFormNotifier(this._agentService, this._ref) : super(const AgentFormState());
+  AgentFormNotifier(this._agentService) : super(const AgentFormState());
 
   @override
   void handleAppError(AppError error) {
@@ -72,19 +71,19 @@ class AgentFormNotifier extends StateNotifier<AgentFormState> with ErrorHandlerM
 
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
-        if (file.bytes != null && file.name != null) {
+        if (file.bytes != null) {
           state = state.copyWith(
             ui: state.ui.copyWith(isUploadingFile: true, clearError: true),
           );
 
           final uploadResponse = await _agentService.uploadFile(
-            file.name!,
+            file.name,
             file.bytes!,
           );
 
           final fileInfo = UploadedFileInfo(
             fileId: uploadResponse.providerFileId,
-            fileName: file.name!,
+            fileName: file.name,
             fileSize: file.size,
             uploadedAt: DateTime.now(),
           );
@@ -259,13 +258,14 @@ class AgentFormNotifier extends StateNotifier<AgentFormState> with ErrorHandlerM
       model: "gpt-4-turbo-preview",
       tools: tools,
       toolResources: toolResources,
+      files: [],
     );
   }
 }
 
 final agentFormProvider = StateNotifierProvider<AgentFormNotifier, AgentFormState>((ref) {
   final agentService = ref.watch(agentServiceProvider);
-  return AgentFormNotifier(agentService, ref);
+  return AgentFormNotifier(agentService);
 });
 
 final agentFormDataProvider = Provider<AgentFormData>((ref) {

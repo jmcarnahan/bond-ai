@@ -1,16 +1,13 @@
 import 'dart:async';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // Added import
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/data/models/message_model.dart';
 import 'package:flutterui/core/utils/bond_message_parser.dart';
 import 'chat_session_state.dart';
 import '../../core/utils/logger.dart';
 
-// Mixin to handle chat stream logic for ChatSessionNotifier
 mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
-  // These fields must be implemented by the class using the mixin
   abstract final StringBuffer currentAssistantXmlBuffer;
   abstract StreamSubscription<String>? chatStreamSubscription;
-  // state is available from StateNotifier<ChatSessionState>
 
   void handleStreamData(String chunk, int assistantMessageIndex) {
     currentAssistantXmlBuffer.write(chunk);
@@ -39,10 +36,8 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
     final completeXmlString = currentAssistantXmlBuffer.toString();
     currentAssistantXmlBuffer.clear();
 
-    // Parse all messages from the stream
     final allMessages = BondMessageParser.parseAllBondMessages(completeXmlString);
     
-    // Filter for assistant messages (ignore system messages per Python example)
     final assistantMessages = allMessages.where((msg) => 
       msg.role == 'assistant' && !msg.parsingHadError
     ).toList();
@@ -50,25 +45,21 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
     final currentMessages = List<Message>.from(state.messages);
     
     if (assistantMessages.isEmpty) {
-      // No assistant messages found, check if there were system error messages
       final systemErrors = allMessages.where((msg) => 
         msg.role == 'system' && (msg.isErrorAttribute || msg.content.toLowerCase().contains('error'))
       ).toList();
       
       if (systemErrors.isNotEmpty && assistantMessageIndex < currentMessages.length) {
-        // Show system error in the assistant message placeholder
         currentMessages[assistantMessageIndex] = currentMessages[assistantMessageIndex].copyWith(
           content: systemErrors.first.content,
           isError: true,
         );
       }
     } else {
-      // Process assistant messages - replace the placeholder and add additional messages
       for (int i = 0; i < assistantMessages.length; i++) {
         final parsedMessage = assistantMessages[i];
         
         if (i == 0 && assistantMessageIndex < currentMessages.length) {
-          // Replace the placeholder assistant message
           currentMessages[assistantMessageIndex] = currentMessages[assistantMessageIndex].copyWith(
             type: parsedMessage.type,
             content: parsedMessage.content,
@@ -76,7 +67,6 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
             isError: parsedMessage.isErrorAttribute,
           );
         } else {
-          // Add additional assistant messages
           final newMessage = Message(
             id: (DateTime.now().millisecondsSinceEpoch + i).toString(),
             type: parsedMessage.type,
