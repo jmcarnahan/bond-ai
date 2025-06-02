@@ -33,33 +33,23 @@ class AuthService {
   }
 
   Future<void> storeToken(String accessToken) async {
-    logger.i("[AuthService] Storing token: $accessToken");
     await _sharedPreferences.setString(_tokenStorageKey, accessToken);
-    logger.i("[AuthService] Token stored.");
   }
 
   Future<String?> retrieveToken() async {
     final token = _sharedPreferences.getString(_tokenStorageKey);
-    logger.i("[AuthService] Retrieving token: $token");
     return token;
   }
 
   Future<void> clearToken() async {
-    logger.i("[AuthService] Clearing token.");
     await _sharedPreferences.remove(_tokenStorageKey);
-    logger.i("[AuthService] Token cleared.");
   }
 
   Future<User> getCurrentUser() async {
-    logger.i("[AuthService] getCurrentUser called.");
     final token = await retrieveToken();
     if (token == null) {
-      logger.i("[AuthService] No token found for getCurrentUser.");
       throw Exception('Not authenticated: No token found.');
     }
-    logger.i(
-      "[AuthService] Token found for getCurrentUser: $token. Making API call.",
-    );
 
     final response = await _httpClient.get(
       Uri.parse(ApiConstants.baseUrl + ApiConstants.usersMeEndpoint),
@@ -69,24 +59,17 @@ class AuthService {
       },
     );
 
-    logger.i(
-      "[AuthService] getCurrentUser response status: ${response.statusCode}",
-    );
-    logger.i("[AuthService] getCurrentUser response body: ${response.body}");
 
     if (response.statusCode == 200) {
       final Map<String, dynamic> data = json.decode(response.body);
       final user = User.fromJson(data);
-      logger.i("[AuthService] User data parsed: ${user.email}");
+      logger.i("[AuthService] User authenticated: ${user.email}");
       return user;
     } else if (response.statusCode == 401) {
-      logger.i("[AuthService] Unauthorized (401) fetching user. Clearing token.");
       await clearToken();
       throw Exception('Unauthorized: Token may be invalid or expired.');
     } else {
-      logger.i(
-        "[AuthService] Failed to load user data. Status: ${response.statusCode}",
-      );
+      logger.e("[AuthService] Failed to load user data: ${response.statusCode}");
       throw Exception(
         'Failed to load user data: ${response.statusCode} ${response.body}',
       );
@@ -94,7 +77,6 @@ class AuthService {
   }
 
   Future<Map<String, String>> get authenticatedHeaders async {
-    logger.i("[AuthService] Getting authenticated headers...");
     final token = await retrieveToken();
     
     if (token == null) {
@@ -102,7 +84,6 @@ class AuthService {
       throw Exception('Not authenticated for this request.');
     }
     
-    logger.i("[AuthService] Token found for authenticatedHeaders: ${token.substring(0, 20)}...");
     return {
       'Authorization': 'Bearer $token',
       'Content-Type': 'application/json',

@@ -32,7 +32,6 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
   }
 
   void handleStreamDone(int assistantMessageIndex) {
-    logger.i("[ChatStreamHandlerMixin] Message stream done.");
     final completeXmlString = currentAssistantXmlBuffer.toString();
     currentAssistantXmlBuffer.clear();
 
