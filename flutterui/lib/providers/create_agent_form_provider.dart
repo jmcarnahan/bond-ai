@@ -40,6 +40,8 @@ class CreateAgentFormState {
   final bool enableFileSearch;
   final List<UploadedFileInfo> codeInterpreterFiles;
   final List<UploadedFileInfo> fileSearchFiles;
+  final Set<String> selectedMcpTools;
+  final Set<String> selectedMcpResources;
   final bool isLoading;
   final bool isUploadingFile;
   final String? errorMessage;
@@ -52,6 +54,8 @@ class CreateAgentFormState {
     this.enableFileSearch = false,
     this.codeInterpreterFiles = const [],
     this.fileSearchFiles = const [],
+    this.selectedMcpTools = const {},
+    this.selectedMcpResources = const {},
     this.isLoading = false,
     this.isUploadingFile = false,
     this.errorMessage,
@@ -65,6 +69,8 @@ class CreateAgentFormState {
     bool? enableFileSearch,
     List<UploadedFileInfo>? codeInterpreterFiles,
     List<UploadedFileInfo>? fileSearchFiles,
+    Set<String>? selectedMcpTools,
+    Set<String>? selectedMcpResources,
     bool? isLoading,
     bool? isUploadingFile,
     String? errorMessage,
@@ -78,6 +84,8 @@ class CreateAgentFormState {
       enableFileSearch: enableFileSearch ?? this.enableFileSearch,
       codeInterpreterFiles: codeInterpreterFiles ?? this.codeInterpreterFiles,
       fileSearchFiles: fileSearchFiles ?? this.fileSearchFiles,
+      selectedMcpTools: selectedMcpTools ?? this.selectedMcpTools,
+      selectedMcpResources: selectedMcpResources ?? this.selectedMcpResources,
       isLoading: isLoading ?? this.isLoading,
       isUploadingFile: isUploadingFile ?? this.isUploadingFile,
       errorMessage: clearErrorMessage ? null : errorMessage ?? this.errorMessage,
@@ -132,6 +140,14 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
 
   void setLoading(bool isLoading) { // Added method to control loading state externally
     state = state.copyWith(isLoading: isLoading);
+  }
+
+  void setSelectedMcpTools(Set<String> tools) {
+    state = state.copyWith(selectedMcpTools: tools);
+  }
+
+  void setSelectedMcpResources(Set<String> resources) {
+    state = state.copyWith(selectedMcpResources: resources);
   }
 
   // File management methods
@@ -250,6 +266,8 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
         enableFileSearch: hasFileSearch,
         codeInterpreterFiles: codeInterpreterFiles,
         fileSearchFiles: fileSearchFiles,
+        selectedMcpTools: {}, // TODO: Load from agent metadata if stored
+        selectedMcpResources: {}, // TODO: Load from agent metadata if stored
         isLoading: false,
       );
       
@@ -310,6 +328,8 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       model: "gpt-4-turbo-preview", // TODO: Make this configurable
       tools: tools,
       toolResources: toolResources,
+      mcpTools: state.selectedMcpTools.isNotEmpty ? state.selectedMcpTools.toList() : null,
+      mcpResources: state.selectedMcpResources.isNotEmpty ? state.selectedMcpResources.toList() : null,
     );
 
     try {
