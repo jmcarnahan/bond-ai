@@ -1,13 +1,9 @@
 import 'package:logger/logger.dart';
 
 final logger = Logger(
-  printer: PrettyPrinter(
-    methodCount: 1,
-    errorMethodCount: 5,
-    lineLength: 120,
+  printer: SimplePrinter(
     colors: true,
-    printEmojis: true,
-    dateTimeFormat: DateTimeFormat.none,
+    printTime: false,
   ),
   output: ConsoleOutput(),
 );
