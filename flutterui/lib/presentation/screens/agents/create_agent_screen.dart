@@ -6,6 +6,7 @@ import 'package:flutterui/providers/create_agent_form_provider.dart';
 import 'widgets/agent_form_app_bar.dart';
 import 'widgets/agent_form_fields.dart';
 import 'widgets/agent_tools_section.dart';
+import 'widgets/mcp_selection_section.dart';
 import 'widgets/agent_save_button.dart';
 import 'widgets/agent_loading_overlay.dart';
 import 'widgets/agent_error_banner.dart';
@@ -128,6 +129,13 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
               enabled: !formState.isLoading,
               onCodeInterpreterChanged: _controller.onCodeInterpreterChanged,
               onFileSearchChanged: _controller.onFileSearchChanged,
+            ),
+            McpSelectionSection(
+              selectedToolNames: formState.selectedMcpTools,
+              selectedResourceUris: formState.selectedMcpResources,
+              enabled: !formState.isLoading,
+              onToolsChanged: _controller.onMcpToolsChanged,
+              onResourcesChanged: _controller.onMcpResourcesChanged,
             ),
             SizedBox(height: AppSpacing.enormous), // Extra space at bottom
           ],
