@@ -49,7 +49,6 @@ class ChatService {
       if (response.statusCode == 200) {
         await for (List<int> chunkBytes in response.stream) {
           final String decodedChunk = utf8.decode(chunkBytes);
-          logger.i("[ChatService] Decoded chunk: $decodedChunk");
           yield decodedChunk;
         }
         logger.i("[ChatService] Stream finished for threadId: $threadId");
