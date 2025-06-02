@@ -37,23 +37,25 @@ async def list_mcp_tools(
         List of available MCP tools with their schemas
     """
     try:
-        async with await MCPClient.get_client() as client:
-            tools = await client.list_tools()
-        
-        return [
-            MCPToolResponse(
-                name=tool.get("name", ""),
-                description=tool.get("description", ""),
-                input_schema=tool.get("inputSchema", {})
-            )
-            for tool in tools
-        ]
+        try:
+            async with await MCPClient.client().get_client() as client:
+                tools = await client.list_tools()
+            
+            return [
+                MCPToolResponse(
+                    name=getattr(tool, "name", ""),
+                    description=getattr(tool, "description", ""),
+                    input_schema=getattr(tool, "inputSchema", {})
+                )
+                for tool in tools
+            ]
+        except (RuntimeError, OSError, ConnectionError) as e:
+            logger.warning(f"MCP connection error: {e}")
+            return []
     except Exception as e:
-        logger.error(f"Failed to list MCP tools: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list MCP tools: {str(e)}"
-        )
+        logger.warning(f"MCP tools not available: {e}")
+        # Return empty list instead of error to allow graceful degradation
+        return []
 
 
 @router.get("/resources", response_model=List[MCPResourceResponse])
@@ -67,24 +69,26 @@ async def list_mcp_resources(
         List of available MCP resources
     """
     try:
-        async with await MCPClient.get_client() as client:
-            resources = await client.list_resources()
-        
-        return [
-            MCPResourceResponse(
-                uri=resource.get("uri", ""),
-                name=resource.get("name", ""),
-                description=resource.get("description", ""),
-                mime_type=resource.get("mimeType", "")
-            )
-            for resource in resources
-        ]
+        try:
+            async with await MCPClient.client().get_client() as client:
+                resources = await client.list_resources()
+            
+            return [
+                MCPResourceResponse(
+                    uri=getattr(resource, "uri", ""),
+                    name=getattr(resource, "name", ""),
+                    description=getattr(resource, "description", ""),
+                    mime_type=getattr(resource, "mimeType", "")
+                )
+                for resource in resources
+            ]
+        except (RuntimeError, OSError, ConnectionError) as e:
+            logger.warning(f"MCP connection error: {e}")
+            return []
     except Exception as e:
-        logger.error(f"Failed to list MCP resources: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list MCP resources: {str(e)}"
-        )
+        logger.warning(f"MCP resources not available: {e}")
+        # Return empty list instead of error to allow graceful degradation
+        return []
 
 
 @router.get("/status")
@@ -99,6 +103,15 @@ async def get_mcp_status(
     """
     try:
         mcp_client = MCPClient.client()
+        
+        # Handle case where MCP client initialization failed
+        if not hasattr(mcp_client, 'client'):
+            return {
+                "servers_configured": 0,
+                "client_initialized": False,
+                "error": "MCP client not properly initialized"
+            }
+        
         mcp_config = mcp_client.config.get_mcp_config()
         
         return {
@@ -106,8 +119,9 @@ async def get_mcp_status(
             "client_initialized": mcp_client.client is not None
         }
     except Exception as e:
-        logger.error(f"Failed to get MCP status: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get MCP status: {str(e)}"
-        )
+        logger.warning(f"MCP status check failed: {e}")
+        return {
+            "servers_configured": 0,
+            "client_initialized": False,
+            "error": str(e)
+        }
