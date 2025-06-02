@@ -74,7 +74,6 @@ class MyApp extends ConsumerWidget {
       navigatorObservers: [RouteObserverForBanner(ref)],
       builder: (context, child) {
         final bool showBanner = ref.watch(showThreadBannerProvider);
-        logger.i("[MaterialApp.builder] Show Banner based on provider: $showBanner");
 
         return Stack(
           children: [

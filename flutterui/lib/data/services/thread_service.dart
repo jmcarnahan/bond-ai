@@ -18,7 +18,6 @@ class ThreadService {
       _authService = authService;
 
   Future<List<Thread>> getThreads() async {
-    logger.i("[ThreadService] getThreads called.");
     try {
       final headers = await _authService.authenticatedHeaders;
       final response = await _httpClient.get(
@@ -26,9 +25,6 @@ class ThreadService {
         headers: headers,
       );
 
-      logger.i(
-        "[ThreadService] getThreads response status: ${response.statusCode}",
-      );
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         final List<Thread> threads =
@@ -63,9 +59,6 @@ class ThreadService {
         body: body,
       );
 
-      logger.i(
-        "[ThreadService] createThread response status: ${response.statusCode}",
-      );
       if (response.statusCode == 201) {
         final Map<String, dynamic> data = json.decode(response.body);
         final Thread newThread = Thread.fromJson(data);
@@ -101,9 +94,6 @@ class ThreadService {
         headers: headers,
       );
 
-      logger.i(
-        "[ThreadService] getMessagesForThread response status: ${response.statusCode}",
-      );
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         final List<Message> messages =
@@ -143,9 +133,6 @@ class ThreadService {
         headers: headers,
       );
 
-      logger.i(
-        "[ThreadService] deleteThread response status: ${response.statusCode}",
-      );
       if (response.statusCode == 204) {
         logger.i("[ThreadService] Deleted thread: $threadId");
         return;
