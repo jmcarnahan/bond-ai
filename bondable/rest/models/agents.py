@@ -31,6 +31,8 @@ class AgentCreateRequest(BaseModel):
     tools: List[Dict[str, Any]] = Field(default_factory=list)
     tool_resources: Optional[ToolResourcesRequest] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    mcp_tools: Optional[List[str]] = None
+    mcp_resources: Optional[List[str]] = None
 
 
 class AgentUpdateRequest(BaseModel):
@@ -41,6 +43,8 @@ class AgentUpdateRequest(BaseModel):
     tools: List[Dict[str, Any]] = Field(default_factory=list)
     tool_resources: Optional[ToolResourcesRequest] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    mcp_tools: Optional[List[str]] = None
+    mcp_resources: Optional[List[str]] = None
 
 
 class AgentResponse(BaseModel):
@@ -57,3 +61,5 @@ class AgentDetailResponse(BaseModel):
     tools: List[Dict[str, Any]] = Field(default_factory=list)
     tool_resources: Optional[ToolResourcesResponse] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    mcp_tools: Optional[List[str]] = None
+    mcp_resources: Optional[List[str]] = None
