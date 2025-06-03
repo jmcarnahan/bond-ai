@@ -3,8 +3,7 @@ import 'package:flutter/foundation.dart' show immutable;
 @immutable
 class Message {
   final String id;
-  final String
-  type; // e.g., "text", "image_file", "tool_call", "tool_output" (align with backend)
+  final String type; // e.g., "text", "image_file", "tool_call", "tool_output" (align with backend)
   final String role; // e.g., "user", "assistant"
   final String content;
   final String? imageData; // Base64 image data for image_file types
