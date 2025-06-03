@@ -132,14 +132,14 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
     if (prompt.isEmpty) return;
     state = state.copyWith(isSendingMessage: true, clearErrorMessage: true);
 
-    List<String>? provideFileIds;
+    // Handle file attachments
+    List<String>? attachmentsFileIds;
     if (attachedFiles != null && attachedFiles.isNotEmpty) {
-      // Handle file attachments
       try {
         final uploadResponses = await Future.wait(
           attachedFiles.map((file) => _agentService.uploadFile(file.name, file.bytes!)),
         );
-        provideFileIds = uploadResponses.map((response) => response.providerFileId).toList(growable: false);
+        attachmentsFileIds = uploadResponses.map((response) => response.providerFileId).toList(growable: false);
       }
       catch (e) {
         logger.i("[ChatSessionNotifier] Error uploading files: ${e.toString()}");
@@ -179,6 +179,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
             threadId: state.currentThreadId!,
             agentId: agentId,
             prompt: prompt,
+            attachments: attachmentsFileIds,
           )
           .listen(
             (chunk) => handleStreamData(chunk, assistantMessageIndex),

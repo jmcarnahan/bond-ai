@@ -20,6 +20,11 @@ async def chat(
     provider: Provider = Depends(get_bond_provider)
 ):
     """Stream chat responses for a specific thread and agent."""
+
+    # TODO: Temp workaround until attachments are fully understood. (Logic to define tools entry)
+    resolved_attachements = [{ "file_id": fileId, "tools": [{"type": "file_search"}] } 
+                             for fileId in request_body.attachments] if request_body.attachments else []
+
     try:
         # Get the agent instance
         agent_instance = provider.agents.get_agent(agent_id=request_body.agent_id)
@@ -36,7 +41,8 @@ async def chat(
         def stream_response_generator():
             for response_chunk in agent_instance.stream_response(
                 thread_id=request_body.thread_id,
-                prompt=request_body.prompt
+                prompt=request_body.prompt,
+                attachments=resolved_attachements
             ):
                 yield response_chunk
 
