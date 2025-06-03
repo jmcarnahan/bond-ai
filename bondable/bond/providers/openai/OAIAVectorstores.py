@@ -78,6 +78,12 @@ class OAIAVectorStoresProvider(VectorStoresProvider):
         Adds a file to a vector store. 
         Returns True if the file was successfully added, False otherwise.
         """
+        # need to check if the file exists in the vector store first
+        vector_store_files = self.get_vector_store_file_ids(vector_store_id)
+        if file_id in vector_store_files:
+            LOGGER.info(f"File {file_id} already exists in vector store {vector_store_id}. No action taken.")
+            return True
+
         vector_store_file = self.openai_client.vector_stores.files.create_and_poll(
             vector_store_id=vector_store_id,
             file_id=file_id,
