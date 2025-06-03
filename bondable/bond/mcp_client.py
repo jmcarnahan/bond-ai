@@ -103,5 +103,107 @@ class MCPClient:
                 tools = await client.list_tools()
         """
         return self.get_pooled_client()
+    
+    # Synchronous wrapper methods for easy use from non-async code
+    
+    def _run_async(self, coro):
+        """Run an async coroutine from sync code."""
+        import concurrent.futures
+        
+        # Use ThreadPoolExecutor to run in separate thread with its own event loop
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(asyncio.run, coro)
+            return future.result()
+    
+    def list_tools_sync(self) -> list:
+        """
+        Synchronous method to list all available MCP tools.
+        
+        Returns:
+            List of available tools
+        """
+        LOGGER.info("Fetching available MCP tools from server")
+        try:
+            async def _list_tools():
+                async with await self.get_client() as client:
+                    tools = await client.list_tools()
+                    LOGGER.info(f"MCP server returned {len(tools)} tools")
+                    return tools
+            
+            result = self._run_async(_list_tools())
+            LOGGER.info(f"Successfully retrieved {len(result)} MCP tools")
+            return result
+        except Exception as e:
+            LOGGER.error(f"Error listing MCP tools: {e}", exc_info=True)
+            return []
+    
+    def list_resources_sync(self) -> list:
+        """
+        Synchronous method to list all available MCP resources.
+        
+        Returns:
+            List of available resources
+        """
+        LOGGER.info("Fetching available MCP resources from server")
+        try:
+            async def _list_resources():
+                async with await self.get_client() as client:
+                    resources = await client.list_resources()
+                    LOGGER.info(f"MCP server returned {len(resources)} resources")
+                    return resources
+            
+            result = self._run_async(_list_resources())
+            LOGGER.info(f"Successfully retrieved {len(result)} MCP resources")
+            return result
+        except Exception as e:
+            LOGGER.error(f"Error listing MCP resources: {e}", exc_info=True)
+            return []
+    
+    def call_tool_sync(self, tool_name: str, arguments: dict = None) -> str:
+        """
+        Synchronous method to call an MCP tool.
+        
+        Args:
+            tool_name: Name of the tool to call
+            arguments: Arguments to pass to the tool
+            
+        Returns:
+            String result from the tool
+        """
+        try:
+            async def _call_tool():
+                async with await self.get_client() as client:
+                    result = await client.call_tool(tool_name, arguments or {})
+                    if result and len(result) > 0:
+                        return getattr(result[0], "text", str(result[0]))
+                    return f"No result returned from tool '{tool_name}'"
+            
+            return self._run_async(_call_tool())
+        except Exception as e:
+            LOGGER.error(f"Error calling MCP tool '{tool_name}': {e}", exc_info=True)
+            return f"Error calling tool: {str(e)}"
+    
+    def read_resource_sync(self, resource_uri: str) -> str:
+        """
+        Synchronous method to read an MCP resource.
+        
+        Args:
+            resource_uri: URI of the resource to read
+            
+        Returns:
+            String content of the resource
+        """
+        try:
+            async def _read_resource():
+                async with await self.get_client() as client:
+                    content = await client.read_resource(resource_uri)
+                    if content and len(content) > 0:
+                        return getattr(content[0], "text", str(content[0]))
+                    return f"No content returned from resource"
+            
+            return self._run_async(_read_resource())
+        except Exception as e:
+            LOGGER.error(f"Error reading MCP resource '{resource_uri}': {e}", exc_info=True)
+            return f"Error reading resource: {str(e)}"
 
 
