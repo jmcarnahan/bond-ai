@@ -384,6 +384,9 @@ class OAIAAgentProvider(AgentProvider):
         LOGGER.info(f"Detected {len(mcp_tools)} MCP tools from assistant: {mcp_tools}")
         LOGGER.info(f"Detected {len(mcp_resources)} MCP resources from assistant: {mcp_resources}")
         
+        if assistant.metadata is None or 'user_id' not in assistant.metadata or not assistant.metadata['user_id']:
+            raise ValueError("Assistant metadata must contain a 'user_id' field.")
+
         agent_def = AgentDefinition(
             name=assistant.name,
             description=assistant.description,
@@ -505,7 +508,7 @@ class OAIAAgentProvider(AgentProvider):
 
         if agent_def.metadata is None:
             agent_def.metadata = {}
-        agent_def.metadata['owner_user_id'] = owner_user_id  # ensure the owner is set in metadata
+        agent_def.metadata['user_id'] = owner_user_id  # ensure the owner is set in metadata
 
         # Remove any existing MCP tools/resources from the tools list to avoid duplicates
         # This ensures we only have the MCP tools that are currently requested

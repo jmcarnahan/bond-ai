@@ -65,7 +65,23 @@ class VectorStoresProvider(ABC):
         """
         pass
 
-    def get_or_create_vector_store_id(self, name: str, user_id, file_tuples: List[Tuple[str, Optional[bytes]]]) -> str:
+    def update_vector_store_file_ids(self, vector_store_id: str, file_ids: List[str]) -> bool:
+        vector_store_file_ids = self.get_vector_store_file_ids(vector_store_id=vector_store_id)
+        for file_id in file_ids:
+            if file_id not in vector_store_file_ids:
+                if self.add_vector_store_file(vector_store_id, file_id):
+                    LOGGER.info(f"Created new vector store [{vector_store_id}] file record for file: {file_id}")
+                else:
+                    LOGGER.error(f"Error uploading file {file_id} to vector store {vector_store_id}")
+            else:
+                vector_store_file_ids.remove(file_id)
+                LOGGER.debug(f"Reusing vector store [{vector_store_id}] file record for file: {file_id}")
+                
+        for file_id in vector_store_file_ids:
+            removed = self.remove_vector_store_file(vector_store_id=vector_store_id, file_id=file_id)
+            LOGGER.info(f"Deleted vector store [{vector_store_id}] file record for file: {file_id} - Success: {removed}")
+
+    def get_or_create_vector_store_id(self, name: str, user_id) -> str:
         """
         Gets or creates a vector store ID based on the provided name and file tuples.
         Adds missing files and removes extra files from the vector store.
@@ -75,31 +91,14 @@ class VectorStoresProvider(ABC):
             if vector_store_record:
                 LOGGER.debug(f"Reusing vector store {name} with vector_store_id: {vector_store_record.vector_store_id}")
             else: 
+                LOGGER.info(f"Vector store {name} not found for user {user_id}. Creating new vector store.")
                 vector_store_id = self.create_vector_store_resource(name=name)
                 vector_store_record = VectorStore(name=name, vector_store_id=vector_store_id, owner_user_id=user_id)
                 session.add(vector_store_record)
                 session.commit()
                 LOGGER.info(f"Created new vector store {name} with vector_store_id: {vector_store_record.vector_store_id}")
 
-            vector_store_id = vector_store_record.vector_store_id
-            vector_store_file_ids = self.get_vector_store_file_ids(vector_store_id=vector_store_id)
-
-            for file_tuple in file_tuples:
-                file_id = self.get_files_provider().get_or_create_file_id(user_id=user_id, file_tuple=file_tuple)
-                if file_id not in vector_store_file_ids:
-                    if self.add_vector_store_file(vector_store_id, file_id):
-                        LOGGER.info(f"Created new vector store [{vector_store_id}] file record for file: {file_tuple[0]}")
-                    else:
-                        LOGGER.error(f"Error uploading file {file_id} to vector store {vector_store_id}")
-                else:
-                    vector_store_file_ids.remove(file_id)
-                    LOGGER.debug(f"Reusing vector store [{vector_store_id}] file record for file: {file_tuple[0]}")
-                    
-            for file_id in vector_store_file_ids:
-                removed = self.remove_vector_store_file(vector_store_id=vector_store_id, file_id=file_id)
-                LOGGER.info(f"Deleted vector store [{vector_store_id}] file record for file: {file_id} - Success: {removed}")
-
-            return vector_store_id
+            return vector_store_record.vector_store_id
         
     def delete_vector_store(self, vector_store_id: str) -> bool:
         """
