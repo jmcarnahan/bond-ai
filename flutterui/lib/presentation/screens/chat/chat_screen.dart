@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 
 import 'package:flutterui/providers/thread_chat/thread_chat_providers.dart';
 import 'package:flutterui/providers/thread_provider.dart';
@@ -29,6 +30,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _textFieldFocusNode = FocusNode();
   bool _isTextFieldFocused = false;
+
+  final _fileAttachments = <PlatformFile>[];
+  bool _hasAttachement = false;
 
   @override
   void initState() {
@@ -111,9 +115,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         name: _generateThreadNameFromPrompt(text), // Pass generated name
         agentIdForFirstMessage: widget.agentId,
         firstMessagePrompt: text,
+        attachedFiles: _hasAttachement ? _fileAttachments : null,
       );
     } else {
-      chatNotifier.sendMessage(agentId: widget.agentId, prompt: text);
+      chatNotifier.sendMessage(
+        agentId: widget.agentId, 
+        prompt: text, 
+        attachedFiles: _hasAttachement ? _fileAttachments : null);
     }
     
     // Clear the text field after state is updated
@@ -122,6 +130,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
     
     _scrollToBottom();
+  }
+
+  Future<void> _attachFile() async
+  {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(allowMultiple: false);
+    if (result != null) {
+      _fileAttachments.add(result.files.single);
+      _hasAttachement = true;
+      logger.i("[ChatScreen] File selected: ${result.files.single.name}");
+    }
+    else {
+      if (_fileAttachments.isEmpty) {
+        _hasAttachement = false;
+      }
+      logger.w("[ChatScreen] No file selected.");
+    }
   }
 
   void _scrollToBottom() {
@@ -234,6 +258,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             isTextFieldFocused: _isTextFieldFocused,
             isSendingMessage: chatState.isSendingMessage,
             onSendMessage: _sendMessage,
+            onFileAttachRequested: _attachFile,
           ),
         ],
       ),

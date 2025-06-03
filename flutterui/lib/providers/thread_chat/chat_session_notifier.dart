@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart' show PlatformFile;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/data/models/message_model.dart';
 import 'package:flutterui/data/services/thread_service.dart';
 import 'package:flutterui/data/services/chat_service.dart';
+import 'package:flutterui/data/services/agent_service.dart';
 import 'package:flutterui/providers/thread_provider.dart'; // Import for threadsProvider
 import 'chat_session_state.dart';
 import 'chat_stream_handler_mixin.dart';
@@ -12,6 +14,7 @@ import '../../core/utils/logger.dart';
 class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStreamHandlerMixin {
   final ThreadService _threadService;
   final ChatService _chatService;
+  final AgentService _agentService;
   final Ref _ref; // Add Ref
   
   @override
@@ -19,7 +22,10 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
   @override
   StreamSubscription<String>? chatStreamSubscription;
 
-  ChatSessionNotifier(this._threadService, this._chatService, this._ref) // Modify constructor
+  ChatSessionNotifier(this._threadService, 
+                      this._chatService, 
+                      this._agentService,
+                      this._ref) // Modify constructor
       : super(ChatSessionState());
 
   Future<void> setCurrentThread(String threadId) async {
@@ -44,6 +50,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
     String? name,
     required String agentIdForFirstMessage,
     required String firstMessagePrompt,
+    List<PlatformFile>? attachedFiles,
   }) async {
     state = state.copyWith(
       isLoadingMessages: true,
@@ -69,6 +76,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
       await sendMessage(
         agentId: agentIdForFirstMessage,
         prompt: firstMessagePrompt,
+        attachedFiles: attachedFiles,
       );
     } catch (e) {
       logger.i("[ChatSessionNotifier] Error creating new thread: ${e.toString()}");
@@ -115,6 +123,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
   Future<void> sendMessage({
     required String agentId,
     required String prompt,
+    List<PlatformFile>? attachedFiles
   }) async {
     if (state.currentThreadId == null) {
       state = state.copyWith(errorMessage: "No active thread selected.");
@@ -122,6 +131,25 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
     }
     if (prompt.isEmpty) return;
     state = state.copyWith(isSendingMessage: true, clearErrorMessage: true);
+
+    List<String>? provideFileIds;
+    if (attachedFiles != null && attachedFiles.isNotEmpty) {
+      // Handle file attachments
+      try {
+        final uploadResponses = await Future.wait(
+          attachedFiles.map((file) => _agentService.uploadFile(file.name, file.bytes!)),
+        );
+        provideFileIds = uploadResponses.map((response) => response.providerFileId).toList(growable: false);
+      }
+      catch (e) {
+        logger.i("[ChatSessionNotifier] Error uploading files: ${e.toString()}");
+        state = state.copyWith(
+          isSendingMessage: false,
+          errorMessage: "Failed to upload files: ${e.toString()}",
+        );
+        return;
+      }
+    }
 
     final userMessage = Message(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
