@@ -248,12 +248,14 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
         enableFileSearch: hasFileSearch,
         codeInterpreterFiles: codeInterpreterFiles,
         fileSearchFiles: fileSearchFiles,
-        selectedMcpTools: {}, // TODO: Load from agent metadata if stored
-        selectedMcpResources: {}, // TODO: Load from agent metadata if stored
+        selectedMcpTools: agentDetail.mcpTools != null ? Set<String>.from(agentDetail.mcpTools!) : {},
+        selectedMcpResources: agentDetail.mcpResources != null ? Set<String>.from(agentDetail.mcpResources!) : {},
         isLoading: false,
       );
       
       logger.i("[CreateAgentFormNotifier] Loaded agent data for editing: ${agentDetail.name}");
+      logger.i("[CreateAgentFormNotifier] MCP Tools: ${agentDetail.mcpTools}");
+      logger.i("[CreateAgentFormNotifier] MCP Resources: ${agentDetail.mcpResources}");
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -308,8 +310,10 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       mcpTools: state.selectedMcpTools.isNotEmpty ? state.selectedMcpTools.toList() : null,
       mcpResources: state.selectedMcpResources.isNotEmpty ? state.selectedMcpResources.toList() : null,
       files: [],
-
     );
+    
+    logger.i("[CreateAgentFormNotifier] Saving agent with MCP tools: ${state.selectedMcpTools}");
+    logger.i("[CreateAgentFormNotifier] Saving agent with MCP resources: ${state.selectedMcpResources}");
 
     try {
       final agentService = _ref.read(agentServiceProvider);
