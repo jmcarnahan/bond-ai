@@ -4,7 +4,29 @@ from bondable.bond.providers.metadata import Metadata, FileRecord
 from typing import List, Dict, Any, Optional, Tuple
 import logging
 import hashlib
+from magika import Magika
+from dataclasses import dataclass
+
 LOGGER = logging.getLogger(__name__)
+
+@dataclass
+class FileDetails:
+    file_id: str
+    file_path: str
+    file_hash: str
+    mime_type: str
+    owner_user_id: str
+    
+    @classmethod
+    def from_file_record(cls, file_record: FileRecord) -> 'FileDetails':
+        """Create FileDetails from a FileRecord object while in session context."""
+        return cls(
+            file_id=file_record.file_id,
+            file_path=file_record.file_path,
+            file_hash=file_record.file_hash,
+            mime_type=file_record.mime_type,
+            owner_user_id=file_record.owner_user_id
+        )
 
 class FilesProvider(ABC):
 
@@ -49,15 +71,21 @@ class FilesProvider(ABC):
                 raise e
         return io.BytesIO(file_bytes)
 
-    def get_or_create_file_id(self, user_id, file_tuple: Tuple[str, Optional[bytes]]) -> str:
+    def get_or_create_file_id(self, user_id, file_tuple: Tuple[str, Optional[bytes]]) -> FileDetails:
         """
         Ensures a file record exists in the database and the resource exists in the provider.
-        Returns the file ID string.
+        Returns a FileDetails object with the file details.
         """
         file_path  = file_tuple[0]
         file_bytes = self.get_file_bytes(file_tuple)
         file_bytes.seek(0)  
-        file_hash  = hashlib.sha256(file_bytes.read()).hexdigest()
+        content = file_bytes.read()
+        file_hash  = hashlib.sha256(content).hexdigest()
+        
+        # Detect mime type using Magika
+        magika = Magika()
+        result = magika.identify_bytes(content)
+        mime_type = result.output.mime_type
 
         with self.metadata.get_db_session() as session:
             # filter by hash and user_id to find existing records
@@ -65,24 +93,31 @@ class FilesProvider(ABC):
             if file_record:
                 if file_record.file_path == file_path:
                     LOGGER.info(f"File {file_path} (and hash) is same in the database. Reusing existing record.")
-                    return file_record.file_id
+                    # Update mime_type if it was not set before
+                    if not file_record.mime_type:
+                        file_record.mime_type = mime_type
+                        session.commit()
+                    # Access attributes while in session and return result
+                    return FileDetails.from_file_record(file_record)
                 else:
                     # Hash matches, but path is different. This implies same content from a new source path.
                     # Create a new FileRecord for the new path, but reuse the file_id from the record found by hash.
                     LOGGER.info(f"Content hash for '{file_path}' matches existing record '{file_record.file_path}' (file_id: {file_record.file_id}). Creating new path record with existing file_id.")
-                    new_path_record = FileRecord(file_path=file_path, file_hash=file_hash, file_id=file_record.file_id, owner_user_id=user_id)
+                    new_path_record = FileRecord(file_path=file_path, file_hash=file_hash, file_id=file_record.file_id, mime_type=mime_type, owner_user_id=user_id)
                     session.add(new_path_record)
                     session.commit()
-                    return new_path_record.file_id
+                    # Access attributes while in session and return result
+                    return FileDetails.from_file_record(new_path_record)
             else:
                 # If no record found by hash, or if specific logic above decided to proceed to upload:
                 file_bytes.seek(0) 
                 file_id = self.create_file_resource(file_path, file_bytes)
-                file_record = FileRecord(file_path=file_path, file_hash=file_hash, file_id=file_id, owner_user_id=user_id)
+                file_record = FileRecord(file_path=file_path, file_hash=file_hash, file_id=file_id, mime_type=mime_type, owner_user_id=user_id)
                 session.add(file_record)
                 session.commit()
-                LOGGER.info(f"Created new file record for {file_path}")
-                return file_id
+                LOGGER.info(f"Created new file record for {file_path} with mime_type: {mime_type}")
+                # Access attributes while in session and return result
+                return FileDetails.from_file_record(file_record)
 
     def delete_file(self, file_id: str) -> bool:
         """
@@ -115,11 +150,21 @@ class FilesProvider(ABC):
                 except Exception as e:
                     LOGGER.error(f"Error deleting file with file_id: {file_record.file_id}. Error: {e}")    
 
-    def get_file_paths(self, file_ids: List[str]) -> List[Dict[str, str]]:
-        """ Get the file path from the file ID. """
+
+    def get_file_details(self, file_ids: List[str]) -> List[FileDetails]:
+        """ Get the file details from the file IDs. """
         with self.metadata.get_db_session() as session:
             file_records = session.query(FileRecord).filter(FileRecord.file_id.in_(file_ids)).all()
-            file_paths = []
+            file_details = []
             for file_record in file_records:
-                file_paths.append({'file_id': file_record.file_id, 'file_path': file_record.file_path, 'vector_store_id': None})
-            return file_paths
+                file_details.append(FileDetails.from_file_record(file_record))
+            return file_details
+        
+    # def get_file_paths(self, file_ids: List[str]) -> List[Dict[str, str]]:
+    #     """ Get the file path from the file ID. """
+    #     with self.metadata.get_db_session() as session:
+    #         file_records = session.query(FileRecord).filter(FileRecord.file_id.in_(file_ids)).all()
+    #         file_paths = []
+    #         for file_record in file_records:
+    #             file_paths.append({'file_id': file_record.file_id, 'file_path': file_record.file_path, 'vector_store_id': None})
+    #         return file_paths
