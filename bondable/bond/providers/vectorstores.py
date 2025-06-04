@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional, List, Tuple
 from bondable.bond.providers.metadata import Metadata, VectorStore
-from bondable.bond.providers.files import FilesProvider
+from bondable.bond.providers.files import FilesProvider, FileDetails
 import logging
 LOGGER = logging.getLogger(__name__)
 
@@ -128,15 +128,12 @@ class VectorStoresProvider(ABC):
                 except Exception as e:
                     LOGGER.error(f"Error deleting vector store with vector_store_id: {vector_store_record.vector_store_id}. Error: {e}")
 
-    def get_vector_store_file_paths(self, vector_store_ids: List[str]) -> List[Dict[str, str]]:
+    def get_vector_store_file_details(self, vector_store_ids: List[str]) -> Dict[str, List[FileDetails]]:
         """ Get the files associated with a vector store. """
-        with self.metadata.get_db_session() as session:
-            file_paths = []
-            for vector_store_id in vector_store_ids:
-                vector_store_file_ids = self.get_vector_store_file_ids(vector_store_id=vector_store_id)
-                vs_file_paths = self.get_files_provider().get_file_paths(file_ids=vector_store_file_ids)
-                for vs_file_path in vs_file_paths:
-                    vs_file_path['vector_store_id'] = vector_store_id
-                    file_paths.append(vs_file_path)
-            return file_paths
+        vs_file_details = {}
+        for vector_store_id in vector_store_ids:
+            vector_store_file_ids = self.get_vector_store_file_ids(vector_store_id=vector_store_id)
+            file_details_list = self.get_files_provider().get_file_details(file_ids=vector_store_file_ids)
+            vs_file_details[vector_store_id] = file_details_list
+        return vs_file_details
     
