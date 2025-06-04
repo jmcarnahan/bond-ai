@@ -5,7 +5,7 @@ import 'package:flutterui/core/constants/app_constants.dart';
 import 'package:flutterui/providers/create_agent_form_provider.dart';
 import 'widgets/agent_form_app_bar.dart';
 import 'widgets/agent_form_fields.dart';
-import 'widgets/agent_tools_section.dart';
+import 'widgets/agent_files_table.dart';
 import 'widgets/mcp_selection_section.dart';
 import 'widgets/agent_save_button.dart';
 import 'widgets/agent_loading_overlay.dart';
@@ -73,6 +73,10 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
   }
 
   void _onBackPressed() {
+    // Cancel any ongoing operations and navigate back immediately
+    final formNotifier = ref.read(createAgentFormProvider.notifier);
+    formNotifier.cancelLoading();
+    
     Navigator.of(context).pop();
   }
 
@@ -122,15 +126,7 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
               onDescriptionChanged: _controller.onDescriptionChanged,
               onInstructionsChanged: _controller.onInstructionsChanged,
             ),
-            AgentToolsSection(
-              enableCodeInterpreter: formState.enableCodeInterpreter,
-              enableFileSearch: formState.enableFileSearch,
-              codeInterpreterFiles: formState.codeInterpreterFiles,
-              fileSearchFiles: formState.fileSearchFiles,
-              enabled: !formState.isLoading,
-              onCodeInterpreterChanged: _controller.onCodeInterpreterChanged,
-              onFileSearchChanged: _controller.onFileSearchChanged,
-            ),
+            const AgentFilesTable(),
             McpSelectionSection(
               selectedToolNames: formState.selectedMcpTools,
               selectedResourceUris: formState.selectedMcpResources,
