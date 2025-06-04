@@ -35,6 +35,7 @@ class FileRecord(Base):
     file_path = Column(String, primary_key=True)
     file_hash = Column(String, nullable=False)
     file_id = Column(String)
+    mime_type = Column(String)
     owner_user_id = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.now)
 class VectorStore(Base):
