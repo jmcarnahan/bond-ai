@@ -36,12 +36,36 @@ async def list_mcp_tools(
     Returns:
         List of available MCP tools with their schemas
     """
+    logger.info(f"[MCP Tools] Request received from user: {current_user.email}")
+    
     try:
+        # Get MCP client and check if it's configured
+        mcp_client = MCPClient.client()
+        logger.info(f"[MCP Tools] MCP client instance created: {mcp_client is not None}")
+        
+        if not hasattr(mcp_client, 'mcp_config') or mcp_client.mcp_config is None:
+            logger.warning("[MCP Tools] No MCP configuration found")
+            return []
+        
+        server_count = len(mcp_client.mcp_config.get("mcpServers", {}))
+        logger.info(f"[MCP Tools] MCP config found with {server_count} servers")
+        
+        if server_count == 0:
+            logger.warning("[MCP Tools] No MCP servers configured in config")
+            return []
+        
         try:
-            async with await MCPClient.client().get_client() as client:
+            logger.info("[MCP Tools] Attempting to get client connection...")
+            async with await mcp_client.get_client() as client:
+                logger.info("[MCP Tools] Client connection established, listing tools...")
                 tools = await client.list_tools()
+                logger.info(f"[MCP Tools] Raw tools response: {len(tools)} tools received")
+                
+                # Log details about each tool
+                for i, tool in enumerate(tools):
+                    logger.info(f"[MCP Tools] Tool {i+1}: name='{getattr(tool, 'name', 'NO_NAME')}', description='{getattr(tool, 'description', 'NO_DESC')[:50]}...'")
             
-            return [
+            parsed_tools = [
                 MCPToolResponse(
                     name=getattr(tool, "name", ""),
                     description=getattr(tool, "description", ""),
@@ -49,11 +73,16 @@ async def list_mcp_tools(
                 )
                 for tool in tools
             ]
+            
+            logger.info(f"[MCP Tools] Successfully parsed {len(parsed_tools)} tools for user {current_user.email}")
+            return parsed_tools
+            
         except (RuntimeError, OSError, ConnectionError) as e:
-            logger.warning(f"MCP connection error: {e}")
+            logger.warning(f"[MCP Tools] Connection error: {type(e).__name__}: {e}")
             return []
+            
     except Exception as e:
-        logger.warning(f"MCP tools not available: {e}")
+        logger.error(f"[MCP Tools] Unexpected error for user {current_user.email}: {type(e).__name__}: {e}", exc_info=True)
         # Return empty list instead of error to allow graceful degradation
         return []
 
@@ -68,12 +97,36 @@ async def list_mcp_resources(
     Returns:
         List of available MCP resources
     """
+    logger.info(f"[MCP Resources] Request received from user: {current_user.email}")
+    
     try:
+        # Get MCP client and check if it's configured
+        mcp_client = MCPClient.client()
+        logger.info(f"[MCP Resources] MCP client instance created: {mcp_client is not None}")
+        
+        if not hasattr(mcp_client, 'mcp_config') or mcp_client.mcp_config is None:
+            logger.warning("[MCP Resources] No MCP configuration found")
+            return []
+        
+        server_count = len(mcp_client.mcp_config.get("mcpServers", {}))
+        logger.info(f"[MCP Resources] MCP config found with {server_count} servers")
+        
+        if server_count == 0:
+            logger.warning("[MCP Resources] No MCP servers configured in config")
+            return []
+        
         try:
-            async with await MCPClient.client().get_client() as client:
+            logger.info("[MCP Resources] Attempting to get client connection...")
+            async with await mcp_client.get_client() as client:
+                logger.info("[MCP Resources] Client connection established, listing resources...")
                 resources = await client.list_resources()
+                logger.info(f"[MCP Resources] Raw resources response: {len(resources)} resources received")
+                
+                # Log details about each resource
+                for i, resource in enumerate(resources):
+                    logger.info(f"[MCP Resources] Resource {i+1}: uri='{getattr(resource, 'uri', 'NO_URI')}', name='{getattr(resource, 'name', 'NO_NAME')}', mime_type='{getattr(resource, 'mimeType', 'NO_MIME')}'")
             
-            return [
+            parsed_resources = [
                 MCPResourceResponse(
                     uri=getattr(resource, "uri", ""),
                     name=getattr(resource, "name", ""),
@@ -82,11 +135,16 @@ async def list_mcp_resources(
                 )
                 for resource in resources
             ]
+            
+            logger.info(f"[MCP Resources] Successfully parsed {len(parsed_resources)} resources for user {current_user.email}")
+            return parsed_resources
+            
         except (RuntimeError, OSError, ConnectionError) as e:
-            logger.warning(f"MCP connection error: {e}")
+            logger.warning(f"[MCP Resources] Connection error: {type(e).__name__}: {e}")
             return []
+            
     except Exception as e:
-        logger.warning(f"MCP resources not available: {e}")
+        logger.error(f"[MCP Resources] Unexpected error for user {current_user.email}: {type(e).__name__}: {e}", exc_info=True)
         # Return empty list instead of error to allow graceful degradation
         return []
 
@@ -101,25 +159,55 @@ async def get_mcp_status(
     Returns:
         MCP client status information
     """
+    logger.info(f"[MCP Status] Request received from user: {current_user.email}")
+    
     try:
         mcp_client = MCPClient.client()
+        logger.info(f"[MCP Status] MCP client instance created: {mcp_client is not None}")
         
-        # Handle case where MCP client initialization failed
-        if not hasattr(mcp_client, 'client'):
+        # Check if client has configuration
+        if not hasattr(mcp_client, 'config') or mcp_client.config is None:
+            logger.warning("[MCP Status] MCP client has no config attribute")
             return {
                 "servers_configured": 0,
                 "client_initialized": False,
-                "error": "MCP client not properly initialized"
+                "error": "MCP client config not found"
             }
         
-        mcp_config = mcp_client.config.get_mcp_config()
+        if not hasattr(mcp_client, 'mcp_config') or mcp_client.mcp_config is None:
+            logger.warning("[MCP Status] MCP client has no mcp_config attribute")
+            return {
+                "servers_configured": 0,
+                "client_initialized": False,
+                "error": "MCP configuration not loaded"
+            }
         
-        return {
-            "servers_configured": len(mcp_config.get("mcpServers", {})),
-            "client_initialized": mcp_client.client is not None
+        # Get the MCP configuration
+        mcp_config = mcp_client.mcp_config
+        servers = mcp_config.get("mcpServers", {})
+        server_count = len(servers)
+        
+        logger.info(f"[MCP Status] Found {server_count} configured servers")
+        
+        # Log server details
+        for server_name, server_config in servers.items():
+            logger.info(f"[MCP Status] Server '{server_name}': {server_config}")
+        
+        # Check initialization status
+        is_initialized = mcp_client._initialized
+        logger.info(f"[MCP Status] Client initialized: {is_initialized}")
+        
+        status = {
+            "servers_configured": server_count,
+            "client_initialized": is_initialized,
+            "server_details": list(servers.keys()) if servers else []
         }
+        
+        logger.info(f"[MCP Status] Status response: {status}")
+        return status
+        
     except Exception as e:
-        logger.warning(f"MCP status check failed: {e}")
+        logger.error(f"[MCP Status] Error checking status for user {current_user.email}: {type(e).__name__}: {e}", exc_info=True)
         return {
             "servers_configured": 0,
             "client_initialized": False,
