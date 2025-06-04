@@ -19,7 +19,7 @@ from bondable.bond.config import Config
 from bondable.bond.providers.provider import Provider
 from bondable.bond.providers.agent import AgentProvider, Agent as AgentABC
 from bondable.bond.providers.threads import ThreadsProvider
-from bondable.bond.providers.files import FilesProvider
+from bondable.bond.providers.files import FilesProvider, FileDetails
 from bondable.bond.providers.vectorstores import VectorStoresProvider
 
 # Test configuration
@@ -262,9 +262,9 @@ class TestAgents:
         mock_provider.agents.create_or_update_agent.return_value = mock_agent
         
         # Mock file path resolution - this is what the endpoint calls
-        mock_provider.files.get_file_paths.return_value = [
-            {"file_id": "file_1", "file_path": "/tmp/file1.pdf"},
-            {"file_id": "file_2", "file_path": "/tmp/file2.txt"}
+        mock_provider.files.get_file_details.return_value = [
+            FileDetails(file_id="file_1", file_path="/tmp/file1.pdf", file_hash="hash1", mime_type="application/pdf", owner_user_id=TEST_USER_EMAIL),
+            FileDetails(file_id="file_2", file_path="/tmp/file2.txt", file_hash="hash2", mime_type="text/plain", owner_user_id=TEST_USER_EMAIL)
         ]
         
         agent_data = {
@@ -288,7 +288,8 @@ class TestAgents:
         else:
             # If the endpoint works correctly
             assert response.status_code == 201
-            mock_provider.files.get_file_paths.assert_called_once_with(file_ids=["file_1", "file_2"])
+
+            mock_provider.files.get_file_details.assert_called_once_with(file_ids=["file_1", "file_2"])
 
     def test_create_agent_missing_name(self, authenticated_client):
         """Test creating agent without required name."""
@@ -367,8 +368,14 @@ class TestAgents:
         mock_provider.agents.can_user_access_agent.return_value = True
         
         # Mock file path data
-        mock_provider.files.get_file_paths.return_value = [
-            {"file_id": "file_1", "file_path": "/tmp/file1.txt"}
+        mock_provider.files.get_file_details.return_value = [
+            FileDetails(
+                file_id="file_1", 
+                file_path="/tmp/file1.txt",
+                file_hash="hash1",
+                mime_type="text/plain",
+                owner_user_id=TEST_USER_EMAIL
+            )
         ]
         
         response = client.get("/agents/detailed_agent", headers=auth_headers)
@@ -708,7 +715,11 @@ class TestFiles:
         """Test uploading file successfully."""
         client, auth_headers, mock_provider = authenticated_client
         
-        mock_provider.files.get_or_create_file_id.return_value = "file_123"
+        # Mock FileDetails object
+        mock_file_details = MagicMock()
+        mock_file_details.file_id = "file_123"
+        mock_file_details.mime_type = "text/plain"
+        mock_provider.files.get_or_create_file_id.return_value = mock_file_details
         
         test_file = ("test.txt", b"test content", "text/plain")
         files = {"file": test_file}
@@ -719,6 +730,8 @@ class TestFiles:
         result = response.json()
         assert result["provider_file_id"] == "file_123"
         assert result["file_name"] == "test.txt"
+        assert result["mime_type"] == "text/plain"
+        assert result["suggested_tool"] == "file_search"  # text/plain should map to file_search
         assert "processed successfully" in result["message"].lower()
         mock_provider.files.get_or_create_file_id.assert_called_once_with(
             user_id=TEST_USER_EMAIL,
@@ -732,6 +745,52 @@ class TestFiles:
         response = client.post("/files", headers=auth_headers)
         
         assert response.status_code == 422
+
+    def test_upload_csv_file_success(self, authenticated_client):
+        """Test uploading CSV file maps to code_interpreter."""
+        client, auth_headers, mock_provider = authenticated_client
+        
+        # Mock FileDetails object
+        mock_file_details = MagicMock()
+        mock_file_details.file_id = "csv_file_123"
+        mock_file_details.mime_type = "text/csv"
+        mock_provider.files.get_or_create_file_id.return_value = mock_file_details
+        
+        test_file = ("data.csv", b"name,value\ntest,123", "text/csv")
+        files = {"file": test_file}
+        
+        response = client.post("/files", headers=auth_headers, files=files)
+        
+        assert response.status_code == 200
+        result = response.json()
+        assert result["provider_file_id"] == "csv_file_123"
+        assert result["file_name"] == "data.csv"
+        assert result["mime_type"] == "text/csv"
+        assert result["suggested_tool"] == "code_interpreter"  # CSV should map to code_interpreter
+        assert "processed successfully" in result["message"].lower()
+
+    def test_upload_excel_file_success(self, authenticated_client):
+        """Test uploading Excel file maps to code_interpreter."""
+        client, auth_headers, mock_provider = authenticated_client
+        
+        # Mock FileDetails object
+        mock_file_details = MagicMock()
+        mock_file_details.file_id = "excel_file_123"
+        mock_file_details.mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        mock_provider.files.get_or_create_file_id.return_value = mock_file_details
+        
+        test_file = ("data.xlsx", b"Excel binary content", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        files = {"file": test_file}
+        
+        response = client.post("/files", headers=auth_headers, files=files)
+        
+        assert response.status_code == 200
+        result = response.json()
+        assert result["provider_file_id"] == "excel_file_123"
+        assert result["file_name"] == "data.xlsx"
+        assert result["mime_type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        assert result["suggested_tool"] == "code_interpreter"  # Excel should map to code_interpreter
+        assert "processed successfully" in result["message"].lower()
 
     def test_upload_file_provider_error(self, authenticated_client):
         """Test upload when provider raises error."""
@@ -802,6 +861,71 @@ class TestFiles:
         assert response.status_code == 404
         assert "file not found with provider" in response.json()["detail"].lower()
 
+    def test_get_file_details_success(self, authenticated_client):
+        """Test getting file details for multiple files."""
+        client, auth_headers, mock_provider = authenticated_client
+        
+        # Mock file details
+        mock_provider.files.get_file_details.return_value = [
+            FileDetails(
+                file_id="file_1",
+                file_path="/tmp/document.pdf",
+                file_hash="hash1",
+                mime_type="application/pdf",
+                owner_user_id=TEST_USER_EMAIL
+            ),
+            FileDetails(
+                file_id="file_2", 
+                file_path="/tmp/data.csv",
+                file_hash="hash2",
+                mime_type="text/csv",
+                owner_user_id=TEST_USER_EMAIL
+            )
+        ]
+        
+        response = client.get("/files/details?file_ids=file_1&file_ids=file_2", headers=auth_headers)
+        
+        assert response.status_code == 200
+        result = response.json()
+        assert len(result) == 2
+        assert result[0]["file_id"] == "file_1"
+        assert result[0]["mime_type"] == "application/pdf"
+        assert result[1]["file_id"] == "file_2"
+        assert result[1]["mime_type"] == "text/csv"
+        
+        mock_provider.files.get_file_details.assert_called_once_with(["file_1", "file_2"])
+
+    def test_get_file_details_filters_by_user(self, authenticated_client):
+        """Test that file details are filtered by current user."""
+        client, auth_headers, mock_provider = authenticated_client
+        
+        # Mock file details with mixed owners
+        mock_provider.files.get_file_details.return_value = [
+            FileDetails(
+                file_id="file_1",
+                file_path="/tmp/document.pdf",
+                file_hash="hash1",
+                mime_type="application/pdf",
+                owner_user_id=TEST_USER_EMAIL  # Current user's file
+            ),
+            FileDetails(
+                file_id="file_2", 
+                file_path="/tmp/other.csv",
+                file_hash="hash2",
+                mime_type="text/csv",
+                owner_user_id="other@example.com"  # Other user's file
+            )
+        ]
+        
+        response = client.get("/files/details?file_ids=file_1&file_ids=file_2", headers=auth_headers)
+        
+        assert response.status_code == 200
+        result = response.json()
+        # Should only return the current user's file
+        assert len(result) == 1
+        assert result[0]["file_id"] == "file_1"
+        assert result[0]["owner_user_id"] == TEST_USER_EMAIL
+
 # --- Integration Tests ---
 
 class TestIntegration:
@@ -811,7 +935,10 @@ class TestIntegration:
         client, auth_headers, mock_provider = authenticated_client
         
         # 1. Upload file
-        mock_provider.files.get_or_create_file_id.return_value = "uploaded_file"
+        mock_file_details = MagicMock()
+        mock_file_details.file_id = "uploaded_file"
+        mock_file_details.mime_type = "text/csv"
+        mock_provider.files.get_or_create_file_id.return_value = mock_file_details
         
         test_file = ("data.csv", b"name,value\ntest,123", "text/csv")
         files = {"file": test_file}
@@ -823,8 +950,8 @@ class TestIntegration:
         mock_agent.get_agent_id.return_value = "workflow_agent"
         mock_agent.get_name.return_value = "Workflow Agent"
         mock_provider.agents.create_or_update_agent.return_value = mock_agent
-        mock_provider.files.get_file_paths.return_value = [
-            {"file_id": "uploaded_file", "file_path": "/tmp/data.csv"}
+        mock_provider.files.get_file_details.return_value = [
+            FileDetails(file_id="uploaded_file", file_path="/tmp/data.csv", file_hash="hash1", mime_type="text/csv", owner_user_id=TEST_USER_EMAIL)
         ]
         
         agent_data = {

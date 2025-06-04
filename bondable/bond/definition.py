@@ -61,9 +61,9 @@ class AgentDefinition:
             if "files" in self.tool_resources["code_interpreter"]:
                 LOGGER.info(f"Processing files for code_interpreter: {self.tool_resources['code_interpreter']['files']}")
                 for file_tuple in self.tool_resources["code_interpreter"]["files"]:
-                    file_id = self.provider.files.get_or_create_file_id(user_id=user_id, file_tuple=file_tuple)
-                    if file_id not in file_ids:
-                        file_ids.append(file_id)
+                    file_details = self.provider.files.get_or_create_file_id(user_id=user_id, file_tuple=file_tuple)
+                    if file_details.file_id not in file_ids:
+                        file_ids.append(file_details.file_id)
             self.tool_resources["code_interpreter"] = {
                 "file_ids": list(set(file_ids))
             }
@@ -87,9 +87,9 @@ class AgentDefinition:
             if "files" in self.tool_resources["file_search"]:
                 file_ids = []
                 for file_tuple in self.tool_resources["file_search"]["files"]:
-                    file_id = self.provider.files.get_or_create_file_id(user_id=user_id, file_tuple=file_tuple)
-                    if file_id not in file_ids:
-                        file_ids.append(file_id)
+                    file_details = self.provider.files.get_or_create_file_id(user_id=user_id, file_tuple=file_tuple)
+                    if file_details.file_id not in file_ids:
+                        file_ids.append(file_details.file_id)
                 self.provider.vectorstores.update_vector_store_file_ids(vector_store_id=default_vector_store_id, file_ids=file_ids)
 
             self.tool_resources["file_search"] = {

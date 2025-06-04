@@ -65,7 +65,7 @@ class ToolFileUploadSection extends ConsumerWidget {
     final isUploading = formState.isUploadingFile;
     
     return ElevatedButton.icon(
-      onPressed: isUploading ? null : () => formNotifier.uploadFileForTool(toolType),
+      onPressed: isUploading ? null : () => formNotifier.uploadFile(),
       icon: isUploading 
           ? SizedBox(
               width: 16,
@@ -178,7 +178,7 @@ class ToolFileUploadSection extends ConsumerWidget {
             ),
           ),
           IconButton(
-            onPressed: () => formNotifier.removeFileFromTool(toolType, file.fileId),
+            onPressed: () => formNotifier.removeFile(file.fileId),
             icon: Icon(
               Icons.delete_outline,
               color: theme.colorScheme.error,

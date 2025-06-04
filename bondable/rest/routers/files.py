@@ -1,16 +1,32 @@
-from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
+from typing import Annotated, List
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Query
 import logging
 import openai
 
 from bondable.bond.providers.provider import Provider
 from bondable.rest.models.auth import User
-from bondable.rest.models.files import FileUploadResponse, FileDeleteResponse
+from bondable.rest.models.files import FileUploadResponse, FileDeleteResponse, FileDetailsResponse
 from bondable.rest.dependencies.auth import get_current_user
 from bondable.rest.dependencies.providers import get_bond_provider
 
 router = APIRouter(prefix="/files", tags=["File Management"])
 logger = logging.getLogger(__name__)
+
+# Mime types that should use code_interpreter
+CODE_INTERPRETER_MIME_TYPES = {
+    "text/csv",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/x-excel",
+    "application/x-msexcel",
+    "text/tab-separated-values",
+}
+
+def get_suggested_tool(mime_type: str) -> str:
+    """Determine the suggested tool based on mime type."""
+    if mime_type in CODE_INTERPRETER_MIME_TYPES:
+        return "code_interpreter"
+    return "file_search"
 
 
 @router.post("", response_model=FileUploadResponse)
@@ -24,15 +40,19 @@ async def upload_file(
         file_content = await file.read()
         file_name = file.filename
         
-        provider_file_id = provider.files.get_or_create_file_id(
+        file_details = provider.files.get_or_create_file_id(
             user_id=current_user.email,
             file_tuple=(file_name, file_content)
         )
         
-        logger.info(f"File '{file_name}' processed for user {current_user.email}. Provider File ID: {provider_file_id}")
+        suggested_tool = get_suggested_tool(file_details.mime_type)
+        
+        logger.info(f"File '{file_name}' processed for user {current_user.email}. Provider File ID: {file_details.file_id}, MIME type: {file_details.mime_type}, Suggested tool: {suggested_tool}")
         return FileUploadResponse(
-            provider_file_id=provider_file_id,
+            provider_file_id=file_details.file_id,
             file_name=file_name,
+            mime_type=file_details.mime_type,
+            suggested_tool=suggested_tool,
             message="File processed successfully."
         )
         
@@ -81,3 +101,38 @@ async def delete_file(
     except Exception as e:
         logger.error(f"Unexpected error deleting file {provider_file_id} for user {current_user.email}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not delete file: {str(e)}")
+
+
+@router.get("/details", response_model=List[FileDetailsResponse])
+async def get_file_details(
+    file_ids: List[str] = Query(..., description="List of file IDs to get details for"),
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+    provider: Provider = Depends(get_bond_provider)
+):
+    """Get file details for a list of file IDs."""
+    # TODO: we should make sure that the file_ids belong to the current user
+    try:
+        file_details_list = provider.files.get_file_details(file_ids)
+        
+        # Filter to only return files owned by the current user for security
+        user_files = [
+            details for details in file_details_list 
+            if details.owner_user_id == current_user.email
+        ]
+        
+        logger.info(f"Retrieved {len(user_files)} file details for user {current_user.email}")
+        
+        return [
+            FileDetailsResponse(
+                file_id=details.file_id,
+                file_path=details.file_path,
+                file_hash=details.file_hash,
+                mime_type=details.mime_type,
+                owner_user_id=details.owner_user_id
+            )
+            for details in user_files
+        ]
+        
+    except Exception as e:
+        logger.error(f"Error retrieving file details for user {current_user.email}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not retrieve file details: {str(e)}")

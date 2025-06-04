@@ -40,35 +40,75 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
   }
 
   Future<void> _loadMcpData() async {
-    if (_isLoading) return;
+    if (_isLoading) {
+      logger.i(
+        '[McpSelectionSection] _loadMcpData called but already loading, returning',
+      );
+      return;
+    }
 
+    logger.i('[McpSelectionSection] Starting to load MCP data...');
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
+      logger.i('[McpSelectionSection] Getting MCP service provider...');
       final mcpService = ref.read(mcpServiceProvider);
+      logger.i(
+        '[McpSelectionSection] MCP service obtained: ${mcpService != null}',
+      );
+
+      logger.i(
+        '[McpSelectionSection] Starting parallel requests for tools and resources...',
+      );
       final results = await Future.wait([
         mcpService.getTools(),
         mcpService.getResources(),
       ]);
 
+      logger.i(
+        '[McpSelectionSection] Both requests completed, processing results...',
+      );
+      final tools = results[0] as List<McpToolModel>;
+      final resources = results[1] as List<McpResourceModel>;
+
+      logger.i(
+        '[McpSelectionSection] Received ${tools.length} tools and ${resources.length} resources',
+      );
+
       setState(() {
-        _tools = results[0] as List<McpToolModel>;
-        _resources = results[1] as List<McpResourceModel>;
+        _tools = tools;
+        _resources = resources;
         _isLoading = false;
       });
 
       logger.i(
-        'Loaded ${_tools!.length} MCP tools and ${_resources!.length} MCP resources',
+        '[McpSelectionSection] Successfully loaded ${_tools!.length} MCP tools and ${_resources!.length} MCP resources',
       );
-    } catch (e) {
+
+      // Log tool details
+      for (int i = 0; i < tools.length; i++) {
+        logger.i(
+          '[McpSelectionSection] Tool ${i + 1}: ${tools[i].name} - ${tools[i].description}',
+        );
+      }
+
+      // Log resource details
+      for (int i = 0; i < resources.length; i++) {
+        logger.i(
+          '[McpSelectionSection] Resource ${i + 1}: ${resources[i].name} (${resources[i].uri})',
+        );
+      }
+    } catch (e, stackTrace) {
+      logger.e('[McpSelectionSection] Error loading MCP data: $e');
+      logger.e('[McpSelectionSection] Stack trace: $stackTrace');
+
       setState(() {
         _isLoading = false;
         _errorMessage = e.toString();
       });
-      logger.e('Error loading MCP data: $e');
     }
   }
 
@@ -105,7 +145,7 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
       children: [
         SizedBox(height: AppSpacing.xxl),
         Text(
-          'MCP Tools & Resources',
+          'Tools & Resources',
           style: theme.textTheme.titleLarge?.copyWith(
             color: theme.colorScheme.onSurface,
             fontWeight: FontWeight.w600,
@@ -113,7 +153,7 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
         ),
         SizedBox(height: AppSpacing.md),
         Text(
-          'Select MCP tools and resources to enable for this agent',
+          'Select tools and resources to enable for this agent',
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurface.withOpacity(0.7),
           ),
@@ -222,7 +262,7 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
     if (_tools == null || _tools!.isEmpty) {
       return _buildEmptyState(
         theme,
-        'No MCP tools available\n\nConfigure MCP servers in your backend to enable external tools',
+        'No tools available\n\nPlease contact the administrator to enable external tools',
       );
     }
 
@@ -246,7 +286,7 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
     if (_resources == null || _resources!.isEmpty) {
       return _buildEmptyState(
         theme,
-        'No MCP resources available\n\nConfigure MCP servers in your backend to enable external resources',
+        'No resources available\n\nPlease contact the administrator to enable external resources',
       );
     }
 

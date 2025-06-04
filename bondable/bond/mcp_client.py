@@ -17,85 +17,148 @@ class MCPClient:
     to handle concurrent requests safely.
     """
     
-    def __init__(self, pool_size: int = 5):
-        """Initialize the MCP client pool with configuration."""
+    def __init__(self):
+        """Initialize the MCP client with configuration."""
+        LOGGER.info("[MCPClient] Initializing MCP client (fresh client strategy)")
+        
         self.config = None
         self.mcp_config = None
-        self.pool_size = pool_size
-        self._clients: List[Client] = []
-        self._available: Optional[asyncio.Queue] = None
-        self._initialized = False
+        
+        # Circuit breaker state
+        self._failure_count = 0
+        self._last_failure_time = None
+        self._circuit_breaker_timeout = 60  # seconds
+        self._max_failures = 5
         
         try:
+            LOGGER.info("[MCPClient] Loading configuration...")
             self.config = Config.config()
-            self.mcp_config = self.config.get_mcp_config()
+            LOGGER.info(f"[MCPClient] Config loaded: {self.config is not None}")
             
+            self.mcp_config = self.config.get_mcp_config()
+            LOGGER.info(f"[MCPClient] MCP config loaded: {self.mcp_config is not None}")
+            
+            if not self.mcp_config:
+                LOGGER.warning("[MCPClient] MCP config is None or empty")
+                return
+                
             if not self.mcp_config.get("mcpServers"):
-                LOGGER.warning("No MCP servers configured")
+                LOGGER.warning("[MCPClient] No MCP servers configured in config")
+                LOGGER.info(f"[MCPClient] Full MCP config: {self.mcp_config}")
                 return
             
             server_count = len(self.mcp_config["mcpServers"])
-            LOGGER.info(f"MCP client configured with {server_count} servers, pool size: {pool_size}")
+            LOGGER.info(f"[MCPClient] MCP client configured with {server_count} servers")
+            
+            # Log server details
+            for server_name, server_config in self.mcp_config["mcpServers"].items():
+                LOGGER.info(f"[MCPClient] Server '{server_name}': {server_config}")
                 
         except Exception as e:
-            LOGGER.warning(f"Failed to configure MCP client: {e}")
+            LOGGER.error(f"[MCPClient] Failed to configure MCP client: {type(e).__name__}: {e}", exc_info=True)
             # Don't raise - allow graceful degradation
     
-    async def _initialize_pool(self):
-        """Initialize the connection pool."""
-        if self._initialized or self.mcp_config is None:
-            return
-            
-        try:
-            self._available = asyncio.Queue()
-            
-            for i in range(self.pool_size):
-                client = Client(self.mcp_config)
-                self._clients.append(client)
-                await self._available.put(client)
-                LOGGER.debug(f"Created MCP client {i+1}/{self.pool_size}")
-            
-            self._initialized = True
-            LOGGER.info(f"Initialized MCP client pool with {self.pool_size} clients")
-            
-        except Exception as e:
-            LOGGER.error(f"Failed to initialize MCP client pool: {e}")
-            self._initialized = False
     
     @classmethod
     @bond_cache
     def client(cls) -> "MCPClient":
         return cls()
     
+    def _is_circuit_breaker_open(self):
+        """Check if circuit breaker should prevent requests."""
+        if self._failure_count < self._max_failures:
+            return False
+            
+        if self._last_failure_time is None:
+            return False
+            
+        import time
+        time_since_failure = time.time() - self._last_failure_time
+        if time_since_failure > self._circuit_breaker_timeout:
+            LOGGER.info(f"[MCPClient] Circuit breaker timeout expired, resetting failure count")
+            self._failure_count = 0
+            self._last_failure_time = None
+            return False
+            
+        LOGGER.warning(f"[MCPClient] Circuit breaker OPEN - {self._failure_count} failures, {time_since_failure:.1f}s ago")
+        return True
+    
+    def _record_success(self):
+        """Record a successful operation."""
+        if self._failure_count > 0:
+            LOGGER.info(f"[MCPClient] Success recorded, resetting failure count from {self._failure_count}")
+            self._failure_count = 0
+            self._last_failure_time = None
+    
+    def _record_failure(self):
+        """Record a failed operation."""
+        import time
+        self._failure_count += 1
+        self._last_failure_time = time.time()
+        LOGGER.warning(f"[MCPClient] Failure recorded, count now: {self._failure_count}/{self._max_failures}")
+
     @asynccontextmanager
     async def get_pooled_client(self):
         """
-        Get a client from the pool for async operations.
+        Get a fresh client for async operations with retry logic and circuit breaker.
+        
+        Note: Due to MCP session issues, we create fresh clients and retry on failures.
         
         Usage:
             mcp_client = MCPClient.client()
             async with mcp_client.get_pooled_client() as client:
                 tools = await client.list_tools()
         """
-        if not self._initialized:
-            await self._initialize_pool()
+        LOGGER.info(f"[MCPClient] get_pooled_client called. Config available: {self.mcp_config is not None}")
         
-        if not self._initialized or self._available is None:
-            raise Exception("MCP client pool not initialized - no servers configured or initialization failed")
+        if self.mcp_config is None:
+            error_msg = "MCP client config not available - no servers configured"
+            LOGGER.error(f"[MCPClient] {error_msg}")
+            raise Exception(error_msg)
         
-        # Get a client from the pool
-        client = await self._available.get()
-        try:
-            # Use the client's own async context manager to ensure proper connection
-            async with client:
-                yield client
-        finally:
-            # Return client to pool
-            await self._available.put(client)
+        # Check circuit breaker
+        if self._is_circuit_breaker_open():
+            error_msg = f"MCP circuit breaker is OPEN - too many recent failures ({self._failure_count})"
+            LOGGER.warning(f"[MCPClient] {error_msg}")
+            raise Exception(error_msg)
+        
+        max_retries = 3
+        retry_delay = 1.0  # seconds
+        
+        for attempt in range(max_retries):
+            LOGGER.info(f"[MCPClient] Attempt {attempt + 1}/{max_retries}: Creating fresh client...")
+            
+            # Create a fresh client for this request
+            client = Client(self.mcp_config)
+            LOGGER.info(f"[MCPClient] Fresh client created: {client is not None}")
+            
+            try:
+                LOGGER.info(f"[MCPClient] Attempt {attempt + 1}: Entering client context manager...")
+                # Use the client's own async context manager to ensure proper connection
+                async with client:
+                    LOGGER.info(f"[MCPClient] Attempt {attempt + 1}: Client context established, yielding client")
+                    yield client
+                    # Record success and exit
+                    self._record_success()
+                    return
+                    
+            except Exception as e:
+                LOGGER.error(f"[MCPClient] Attempt {attempt + 1} failed: {type(e).__name__}: {e}")
+                
+                if attempt < max_retries - 1:
+                    LOGGER.info(f"[MCPClient] Retrying in {retry_delay} seconds...")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    LOGGER.error(f"[MCPClient] All {max_retries} attempts failed, giving up")
+                    self._record_failure()
+                    raise
+            finally:
+                LOGGER.info(f"[MCPClient] Attempt {attempt + 1}: Client context completed")
     
     async def get_client(self):
         """
-        Get a client from the pool for async operations.
+        Get a fresh client for async operations.
         
         Usage:
             mcp_client = MCPClient.client()
