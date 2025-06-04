@@ -69,6 +69,42 @@ class AgentFileService {
     }
   }
 
+  Future<List<FileDetailsResponseModel>> getFileDetails(List<String> fileIds) async {
+    logger.i("[AgentFileService] getFileDetails called for ${fileIds.length} files");
+    try {
+      if (fileIds.isEmpty) {
+        return [];
+      }
+
+      // Build query parameters for the file IDs
+      final queryParams = fileIds.map((id) => 'file_ids=$id').join('&');
+      final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.filesEndpoint}/details?$queryParams');
+
+      // Add timeout to prevent hanging
+      final response = await _httpClient.get(uri.toString()).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          logger.e("[AgentFileService] getFileDetails timed out after 10 seconds");
+          throw Exception('Request timed out while fetching file details');
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        final fileDetails = data.map((item) => FileDetailsResponseModel.fromJson(item)).toList();
+        logger.i("[AgentFileService] Successfully retrieved ${fileDetails.length} file details");
+        return fileDetails;
+      } else {
+        final errorMsg = 'Failed to get file details: ${response.statusCode} ${response.body}';
+        logger.e("[AgentFileService] $errorMsg");
+        throw Exception(errorMsg);
+      }
+    } catch (e) {
+      logger.e("[AgentFileService] Error in getFileDetails: ${e.toString()}");
+      throw Exception('Failed to get file details: ${e.toString()}');
+    }
+  }
+
   Future<List<FileInfoModel>> getFiles() async {
     logger.i("[AgentFileService] getFiles called");
     try {
