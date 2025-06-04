@@ -62,14 +62,6 @@ class AgentFormController {
     _notifier.setInstructions(value);
   }
 
-  void onCodeInterpreterChanged(bool value) {
-    _notifier.setEnableCodeInterpreter(value);
-  }
-
-  void onFileSearchChanged(bool value) {
-    _notifier.setEnableFileSearch(value);
-  }
-
   void onMcpToolsChanged(Set<String> tools) {
     _notifier.setSelectedMcpTools(tools);
   }
