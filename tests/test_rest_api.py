@@ -78,26 +78,26 @@ class TestAuthentication:
     
     def test_login_redirect(self, test_client):
         """Test login redirects to Google OAuth."""
-        with patch('bondable.rest.routers.auth.GoogleAuth') as mock_auth:
-            mock_instance = MagicMock()
-            mock_instance.get_auth_url.return_value = "https://accounts.google.com/oauth/authorize?..."
-            mock_auth.auth.return_value = mock_instance
+        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
+            mock_provider = MagicMock()
+            mock_provider.get_auth_url.return_value = "https://accounts.google.com/oauth/authorize?..."
+            mock_create.return_value = mock_provider
             
             response = test_client.get("/login", follow_redirects=False)
             
             assert response.status_code == 307
             assert "google" in response.headers["location"].lower()
-            mock_auth.auth.assert_called_once()
+            mock_create.assert_called_once()
 
     def test_auth_callback_success(self, test_client):
         """Test successful OAuth callback."""
-        with patch('bondable.rest.routers.auth.GoogleAuth') as mock_auth:
-            mock_instance = MagicMock()
-            mock_instance.get_user_info_from_code.return_value = {
+        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
+            mock_provider = MagicMock()
+            mock_provider.get_user_info_from_code.return_value = {
                 "email": TEST_USER_EMAIL, 
                 "name": "Test User"
             }
-            mock_auth.auth.return_value = mock_instance
+            mock_create.return_value = mock_provider
             
             response = test_client.get("/auth/google/callback?code=test_code", follow_redirects=False)
             
@@ -113,10 +113,10 @@ class TestAuthentication:
 
     def test_auth_callback_invalid_code(self, test_client):
         """Test OAuth callback with invalid code."""
-        with patch('bondable.rest.routers.auth.GoogleAuth') as mock_auth:
-            mock_instance = MagicMock()
-            mock_instance.get_user_info_from_code.side_effect = ValueError("Invalid code")
-            mock_auth.auth.return_value = mock_instance
+        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
+            mock_provider = MagicMock()
+            mock_provider.get_user_info_from_code.side_effect = ValueError("Invalid code")
+            mock_create.return_value = mock_provider
             
             response = test_client.get("/auth/google/callback?code=invalid")
             
