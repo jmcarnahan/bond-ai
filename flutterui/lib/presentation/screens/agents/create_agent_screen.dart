@@ -5,7 +5,8 @@ import 'package:flutterui/core/constants/app_constants.dart';
 import 'package:flutterui/providers/create_agent_form_provider.dart';
 import 'widgets/agent_form_app_bar.dart';
 import 'widgets/agent_form_fields.dart';
-import 'widgets/agent_tools_section.dart';
+import 'widgets/agent_files_table.dart';
+import 'widgets/mcp_selection_section.dart';
 import 'widgets/agent_save_button.dart';
 import 'widgets/agent_loading_overlay.dart';
 import 'widgets/agent_error_banner.dart';
@@ -28,13 +29,13 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _instructionsController = TextEditingController();
-  
+
   late final AgentFormController _controller;
 
   @override
   void initState() {
     super.initState();
-    
+
     _controller = AgentFormController(
       ref: ref,
       formKey: _formKey,
@@ -72,6 +73,10 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
   }
 
   void _onBackPressed() {
+    // Cancel any ongoing operations and navigate back immediately
+    final formNotifier = ref.read(createAgentFormProvider.notifier);
+    formNotifier.cancelLoading();
+    
     Navigator.of(context).pop();
   }
 
@@ -103,7 +108,8 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
         AppSpacing.xl,
         AppSpacing.xl,
         AppSpacing.xl,
-        AppSizes.buttonHeight + AppSpacing.enormous, // Space for floating button
+        AppSizes.buttonHeight +
+            AppSpacing.enormous, // Space for floating button
       ),
       child: Form(
         key: _formKey,
@@ -120,14 +126,13 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
               onDescriptionChanged: _controller.onDescriptionChanged,
               onInstructionsChanged: _controller.onInstructionsChanged,
             ),
-            AgentToolsSection(
-              enableCodeInterpreter: formState.enableCodeInterpreter,
-              enableFileSearch: formState.enableFileSearch,
-              codeInterpreterFiles: formState.codeInterpreterFiles,
-              fileSearchFiles: formState.fileSearchFiles,
+            const AgentFilesTable(),
+            McpSelectionSection(
+              selectedToolNames: formState.selectedMcpTools,
+              selectedResourceUris: formState.selectedMcpResources,
               enabled: !formState.isLoading,
-              onCodeInterpreterChanged: _controller.onCodeInterpreterChanged,
-              onFileSearchChanged: _controller.onFileSearchChanged,
+              onToolsChanged: _controller.onMcpToolsChanged,
+              onResourcesChanged: _controller.onMcpResourcesChanged,
             ),
             SizedBox(height: AppSpacing.enormous), // Extra space at bottom
           ],

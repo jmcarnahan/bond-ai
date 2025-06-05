@@ -6,7 +6,7 @@ import 'package:flutterui/data/models/message_model.dart';
 import 'package:flutterui/data/services/thread_service.dart';
 import 'package:flutterui/data/services/chat_service.dart';
 import 'package:flutterui/data/services/agent_service.dart';
-import 'package:flutterui/providers/thread_provider.dart'; // Import for threadsProvider
+import 'package:flutterui/providers/thread_provider.dart';
 import 'chat_session_state.dart';
 import 'chat_stream_handler_mixin.dart';
 import '../../core/utils/logger.dart';
@@ -15,7 +15,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
   final ThreadService _threadService;
   final ChatService _chatService;
   final AgentService _agentService;
-  final Ref _ref; // Add Ref
+  final Ref _ref;
   
   @override
   final StringBuffer currentAssistantXmlBuffer = StringBuffer();
@@ -25,7 +25,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
   ChatSessionNotifier(this._threadService, 
                       this._chatService, 
                       this._agentService,
-                      this._ref) // Modify constructor
+                      this._ref)
       : super(ChatSessionState());
 
   Future<void> setCurrentThread(String threadId) async {
@@ -60,16 +60,11 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
     );
     try {
       final newThread = await _threadService.createThread(name: name);
-      logger.i("[ChatSessionNotifier] Created new thread: ${newThread.id}");
       state = state.copyWith(
         currentThreadId: newThread.id,
         isLoadingMessages: false,
       );
-      // Also set this new thread as the globally selected one
       _ref.read(threadsProvider.notifier).selectThread(newThread.id);
-      // Refresh the threads list in threadsProvider as a new one was created
-      // This might be redundant if selectThread or other mechanisms already trigger a refresh.
-      // However, explicitly fetching ensures the list is up-to-date.
       await _ref.read(threadsProvider.notifier).fetchThreads();
 
 
@@ -104,9 +99,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
         isLoadingMessages: false,
         isSendingMessage: false,
       );
-      // Also set this new thread as the globally selected one
       _ref.read(threadsProvider.notifier).selectThread(newThread.id);
-      // Refresh the threads list
       await _ref.read(threadsProvider.notifier).fetchThreads();
     } catch (e) {
       logger.i(
@@ -197,16 +190,14 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
 
   void clearChatSession() {
     logger.i("[ChatSessionNotifier] Clearing chat session.");
-    chatStreamSubscription?.cancel(); // Use mixin's field name
-    chatStreamSubscription = null; // Use mixin's field name
-    state = ChatSessionState(); // Reset to initial empty state
+    chatStreamSubscription?.cancel();
+    chatStreamSubscription = null;
+    state = ChatSessionState();
   }
 
   @override
   void dispose() {
-    chatStreamSubscription?.cancel(); // Use mixin's field name
+    chatStreamSubscription?.cancel();
     super.dispose();
   }
-
-  // _handleStreamData, _handleStreamDone, _handleStreamError are now in ChatStreamHandlerMixin
 }

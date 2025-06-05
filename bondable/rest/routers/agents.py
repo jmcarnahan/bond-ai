@@ -34,18 +34,18 @@ def _process_tool_resources(request_data, provider: Provider, user_id: str) -> d
     # Handle file search files
     if (request_data.tool_resources.file_search and 
         request_data.tool_resources.file_search.file_ids):
-        fs_file_ids = request_data.tool_resources.file_search.file_ids
-        file_tuples_for_fs = []
+        tool_resources_payload["file_search"] = {
+            "file_ids": request_data.tool_resources.file_search.file_ids
+        }
+
+        # fs_file_ids = request_data.tool_resources.file_search.file_ids
+        # file_tuples_for_fs = []
         
-        if fs_file_ids:
-            file_path_dicts = provider.files.get_file_paths(file_ids=fs_file_ids)
-            for fpd in file_path_dicts:
-                if fpd and fpd.get('file_path'):
-                    file_tuples_for_fs.append((fpd['file_path'], None))
-                else:
-                    logger.warning(f"File ID {fpd.get('file_id', 'N/A')} has no associated path. Skipping.")
+        # # For already uploaded files, pass tuples of (file_id, None)
+        # for file_id in fs_file_ids:
+        #     file_tuples_for_fs.append((file_id, None))
         
-        tool_resources_payload["file_search"] = {"files": file_tuples_for_fs}
+        # tool_resources_payload["file_search"] = {"files": file_tuples_for_fs}
     
     return tool_resources_payload
 
@@ -79,6 +79,7 @@ async def create_agent(
     provider: Provider = Depends(get_bond_provider)
 ):
     """Create a new agent."""
+    logger.info(f"Create agent request for user {current_user.email} - MCP tools: {request_data.mcp_tools}, MCP resources: {request_data.mcp_resources}")
     try:
         tool_resources_payload = _process_tool_resources(request_data, provider, current_user.email)
         
@@ -91,7 +92,9 @@ async def create_agent(
             metadata=request_data.metadata,
             model=request_data.model or provider.get_default_model(),
             id=None,
-            user_id=current_user.email
+            user_id=current_user.email,
+            mcp_tools=request_data.mcp_tools or [],
+            mcp_resources=request_data.mcp_resources or []
         )
         
         agent_instance = provider.agents.create_or_update_agent(agent_def=agent_def, user_id=current_user.email)
@@ -114,6 +117,7 @@ async def update_agent(
     provider: Provider = Depends(get_bond_provider)
 ):
     """Update an existing agent."""
+    logger.info(f"Update agent request for agent {agent_id}, user {current_user.email} - MCP tools: {request_data.mcp_tools}, MCP resources: {request_data.mcp_resources}")
     try:
         tool_resources_payload = _process_tool_resources(request_data, provider, current_user.email)
         
@@ -126,7 +130,9 @@ async def update_agent(
             tool_resources=tool_resources_payload,
             metadata=request_data.metadata,
             model=request_data.model or provider.get_default_model(),
-            user_id=current_user.email
+            user_id=current_user.email,
+            mcp_tools=request_data.mcp_tools or [],
+            mcp_resources=request_data.mcp_resources or []
         )
         
         agent_instance = provider.agents.create_or_update_agent(agent_def=agent_def, user_id=current_user.email)
@@ -169,11 +175,12 @@ async def get_agent_details(
         if agent_def.tool_resources and "file_search" in agent_def.tool_resources:
             fs_vector_store_ids = agent_def.tool_resources["file_search"].get("vector_store_ids", [])
             if fs_vector_store_ids:
-                all_fs_files_data = provider.vectorstores.get_vector_store_file_paths(vector_store_ids=fs_vector_store_ids)
-                processed_file_ids = {
-                    fs_fp_data['file_id'] for fs_fp_data in all_fs_files_data
-                    if fs_fp_data and fs_fp_data.get('file_id') and fs_fp_data.get('file_path')
-                }
+                all_fs_files_data = provider.vectorstores.get_vector_store_file_details(vector_store_ids=fs_vector_store_ids)
+                processed_file_ids = set()
+                for vector_store_id, file_details_list in all_fs_files_data.items():
+                    for file_details in file_details_list:
+                        if file_details and file_details.file_id:
+                            processed_file_ids.add(file_details.file_id)
                 response_tool_resources.file_search = ToolResourceFilesList(file_ids=list(processed_file_ids))
 
         return AgentDetailResponse(
@@ -184,7 +191,9 @@ async def get_agent_details(
             model=agent_def.model,
             tools=agent_def.tools,
             tool_resources=response_tool_resources if (response_tool_resources.code_interpreter or response_tool_resources.file_search) else None,
-            metadata=agent_def.metadata
+            metadata=agent_def.metadata,
+            mcp_tools=agent_def.mcp_tools if agent_def.mcp_tools else None,
+            mcp_resources=agent_def.mcp_resources if agent_def.mcp_resources else None
         )
         
     except HTTPException:

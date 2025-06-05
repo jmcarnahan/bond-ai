@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutterui/providers/auth_provider.dart'; // For logout
-import 'package:flutterui/providers/agent_provider.dart'; // Import the agents provider
-// import 'package:flutterui/data/models/agent_model.dart'; // AgentListItemModel is used implicitly by agentsProvider
-import 'package:flutterui/presentation/screens/agents/create_agent_screen.dart'; // Import CreateAgentScreen
-import 'package:flutterui/core/theme/app_theme.dart'; // For AppTheme and CustomColors
-import 'package:flutterui/main.dart'; // For appThemeProvider
+import 'package:flutterui/providers/auth_provider.dart';
+import 'package:flutterui/providers/agent_provider.dart';
+import 'package:flutterui/presentation/screens/agents/create_agent_screen.dart';
+import 'package:flutterui/core/theme/app_theme.dart';
+import 'package:flutterui/main.dart';
 
 class AppSidebar extends ConsumerWidget {
   const AppSidebar({super.key});
@@ -14,23 +13,22 @@ class AppSidebar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final agentsAsyncValue = ref.watch(agentsProvider);
     final theme = Theme.of(context);
-    final appTheme = ref.watch(appThemeProvider); // Get the current AppTheme instance
+    final appTheme = ref.watch(appThemeProvider);
     final customColors = theme.extension<CustomColors>();
     
-    // Use current theme's colors
     final currentPrimaryColor = theme.primaryColor;
     final currentOnPrimaryColor = theme.colorScheme.onPrimary;
     final currentSurfaceColor = theme.colorScheme.surface;
     final currentOnSurfaceColor = theme.colorScheme.onSurface;
 
     return Drawer(
-      backgroundColor: currentSurfaceColor, // Set overall drawer background
+      backgroundColor: currentSurfaceColor,
       child: ListView(
         padding: EdgeInsets.zero,
         children: <Widget>[
           DrawerHeader(
             decoration: BoxDecoration(
-              color: customColors?.brandingSurface ?? theme.colorScheme.primaryContainer, // Use custom branding surface
+              color: customColors?.brandingSurface ?? theme.colorScheme.primaryContainer,
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -39,15 +37,15 @@ class AppSidebar extends ConsumerWidget {
                 Row(
                   children: [
                     Image.asset(
-                      appTheme.logoIcon, // Use logoIcon from current theme
+                      appTheme.logoIcon,
                       height: 40,
                       width: 40,
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      'My Agents', // Updated title
+                      'My Agents',
                       style: TextStyle(
-                        color: currentOnPrimaryColor, // Use current theme's onPrimary color
+                        color: currentOnPrimaryColor,
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                       ),
@@ -61,14 +59,11 @@ class AppSidebar extends ConsumerWidget {
             leading: Icon(Icons.home, color: currentPrimaryColor),
             title: Text('Home', style: TextStyle(color: currentOnSurfaceColor)),
             onTap: () {
-              Navigator.pop(context); // Close the drawer
+              Navigator.pop(context);
               if (ModalRoute.of(context)?.settings.name != '/home') {
-                 // Only push if not already on home or if home is not the root
-                if (Navigator.canPop(context)) { // Check if there's a screen to pop
-                    Navigator.popUntil(context, ModalRoute.withName('/')); // Pop to root
+                if (Navigator.canPop(context)) {
+                    Navigator.popUntil(context, ModalRoute.withName('/'));
                 }
-                // If already at root and it's not home, or if you want to ensure home is pushed
-                // This logic might need adjustment based on your exact navigation stack for home
                 if (ModalRoute.of(context)?.settings.name != '/home') {
                      Navigator.pushNamed(context, '/home');
                 }
@@ -79,7 +74,7 @@ class AppSidebar extends ConsumerWidget {
             leading: Icon(Icons.forum_outlined, color: currentPrimaryColor),
             title: Text('Threads', style: TextStyle(color: currentOnSurfaceColor)),
             onTap: () {
-              Navigator.pop(context); // Close drawer
+              Navigator.pop(context);
               if (ModalRoute.of(context)?.settings.name != '/threads') {
                 Navigator.pushNamed(context, '/threads');
               }
@@ -100,7 +95,7 @@ class AppSidebar extends ConsumerWidget {
               'Agents',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: currentPrimaryColor, // Use current theme's primary color
+                color: currentPrimaryColor,
                 fontSize: 16,
               ),
             ),
@@ -115,7 +110,6 @@ class AppSidebar extends ConsumerWidget {
               }
               return Column(
                 children: agents
-                    .where((agent) => agent != null)
                     .map((agent) {
                       return ListTile(
                         leading: Icon(Icons.person, color: currentPrimaryColor),
@@ -155,7 +149,6 @@ class AppSidebar extends ConsumerWidget {
             onTap: () {
               Navigator.pop(context);
               ref.read(authNotifierProvider.notifier).logout();
-              // Navigation to LoginScreen is handled by MyApp listening to AuthState
             },
           ),
         ],

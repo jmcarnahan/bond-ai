@@ -5,7 +5,6 @@ import 'package:flutterui/data/services/auth_service.dart';
 import 'package:flutterui/providers/services/service_providers.dart';
 import '../core/utils/logger.dart';
 
-// Define the states for authentication
 abstract class AuthState {
   const AuthState();
 }
@@ -33,7 +32,7 @@ class Authenticated extends AuthState {
 }
 
 class Unauthenticated extends AuthState {
-  final String? message; // Optional message (e.g., after logout, or error)
+  final String? message;
   const Unauthenticated({this.message});
 }
 
@@ -42,7 +41,6 @@ class AuthError extends AuthState {
   const AuthError(this.error);
 }
 
-// AuthNotifier manages the authentication state
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthService _authService;
 
@@ -51,75 +49,61 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> _checkInitialAuthStatus() async {
-    logger.i("[AuthNotifier] _checkInitialAuthStatus called.");
     state = const AuthLoading();
     try {
       final token = await _authService.retrieveToken();
-      logger.i("[AuthNotifier] Retrieved token: $token");
       if (token != null && token.isNotEmpty) {
-        logger.i("[AuthNotifier] Token found, attempting to get current user.");
         final user = await _authService.getCurrentUser();
-        logger.i(
-          "[AuthNotifier] Got user: ${user.email}. Setting state to Authenticated.",
-        );
         state = Authenticated(user);
       } else {
-        logger.i(
-          "[AuthNotifier] No token found. Setting state to Unauthenticated.",
-        );
         state = const Unauthenticated();
       }
     } catch (e) {
-      logger.i("[AuthNotifier] Error in _checkInitialAuthStatus: ${e.toString()}");
+      logger.e("[AuthNotifier] Session error: ${e.toString()}");
       await _authService.clearToken();
       state = Unauthenticated(message: "Session error. Please log in again.");
     }
   }
 
-  Future<void> initiateLogin() async {
+  Future<void> initiateLogin({String provider = 'google'}) async {
     try {
-      await _authService.launchLoginUrl();
-      // After launch, the app will lose focus.
-      // The user will be redirected back to the app after Google login.
-      // The token will need to be captured from the URL on web.
-      // For now, we don't change state here until token is confirmed.
+      await _authService.launchLoginUrl(provider: provider);
     } catch (e) {
       state = AuthError(e.toString());
     }
   }
 
-  // This method would be called after the app captures the token from the redirect
+  Future<List<Map<String, dynamic>>> getAvailableProviders() async {
+    try {
+      return await _authService.getAvailableProviders();
+    } catch (e) {
+      logger.e("[AuthNotifier] Failed to get providers: ${e.toString()}");
+      return [];
+    }
+  }
+
   Future<bool> loginWithToken(String token) async {
-    // Changed to return Future<bool>
-    logger.i("[AuthNotifier] loginWithToken called with token: $token");
     state = const AuthLoading();
     try {
-      logger.i("[AuthNotifier] Storing token...");
       await _authService.storeToken(token);
-      logger.i("[AuthNotifier] Token stored. Getting current user...");
       final user = await _authService.getCurrentUser();
-      logger.i(
-        "[AuthNotifier] Got user: ${user.email}. Setting state to Authenticated.",
-      );
       state = Authenticated(user);
-      return true; // Indicate success
+      return true;
     } catch (e) {
-      logger.i("[AuthNotifier] Error in loginWithToken: ${e.toString()}");
+      logger.e("[AuthNotifier] Login failed: ${e.toString()}");
       await _authService.clearToken();
       state = AuthError("Login failed: ${e.toString()}");
-      return false; // Indicate failure
+      return false;
     }
   }
 
   Future<void> logout() async {
-    logger.i("[AuthNotifier] logout called.");
     state = const AuthLoading();
     try {
       await _authService.clearToken();
       state = const Unauthenticated(message: "Successfully logged out.");
     } catch (e) {
       state = AuthError(e.toString());
-      // Attempt to also clear local state to unauthenticated if service fails
       await _authService.clearToken();
       state = const Unauthenticated(
         message: "Logged out, but encountered an issue clearing session.",
@@ -128,7 +112,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 }
 
-// StateNotifierProvider for AuthNotifier
 final authNotifierProvider = StateNotifierProvider<AuthNotifier, AuthState>((
   ref,
 ) {

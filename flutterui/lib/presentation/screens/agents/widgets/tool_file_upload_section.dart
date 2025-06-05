@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/create_agent_form_provider.dart';
 
 class ToolFileUploadSection extends ConsumerWidget {
-  final String toolType; // 'code_interpreter' or 'file_search'
-  final String toolName; // 'Code Interpreter' or 'File Search'
+  final String toolType;
+  final String toolName;
   final bool isEnabled;
   final List<UploadedFileInfo> files;
 
@@ -65,7 +65,7 @@ class ToolFileUploadSection extends ConsumerWidget {
     final isUploading = formState.isUploadingFile;
     
     return ElevatedButton.icon(
-      onPressed: isUploading ? null : () => formNotifier.uploadFileForTool(toolType),
+      onPressed: isUploading ? null : () => formNotifier.uploadFile(),
       icon: isUploading 
           ? SizedBox(
               width: 16,
@@ -89,10 +89,10 @@ class ToolFileUploadSection extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(24.0),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(8.0),
         border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.5),
+          color: theme.colorScheme.outline.withValues(alpha: 0.5),
           style: BorderStyle.solid,
         ),
       ),
@@ -145,7 +145,7 @@ class ToolFileUploadSection extends ConsumerWidget {
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(8.0),
         border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.3),
+          color: theme.colorScheme.outline.withValues(alpha: 0.3),
         ),
       ),
       child: Row(
@@ -178,7 +178,7 @@ class ToolFileUploadSection extends ConsumerWidget {
             ),
           ),
           IconButton(
-            onPressed: () => formNotifier.removeFileFromTool(toolType, file.fileId),
+            onPressed: () => formNotifier.removeFile(file.fileId),
             icon: Icon(
               Icons.delete_outline,
               color: theme.colorScheme.error,

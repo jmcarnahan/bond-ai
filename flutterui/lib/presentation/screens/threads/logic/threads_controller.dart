@@ -17,7 +17,6 @@ class ThreadsController {
   ThreadsNotifier get _notifier => ref.read(threadsProvider.notifier);
 
   void initializeThreads() {
-    // Error listener is now handled in the ThreadsScreen build method
   }
 
   void showErrorSnackBar(String error) {
@@ -41,16 +40,12 @@ class ThreadsController {
   }
 
   void selectThread(Thread thread) {
-    logger.i('Selecting thread: ${thread.name} (${thread.id})');
+    logger.i('[ThreadsController]Selecting thread: ${thread.name} (${thread.id})');
     _notifier.selectThread(thread.id);
     Navigator.of(context).pop();
   }
 
-  void showCreateThreadDialog() {
-    // Import and use the dialog
-    // This method is used for consistency but the actual dialog
-    // is shown from the widget level
-  }
+  void showCreateThreadDialog() {}
 
   void navigateBack() {
     Navigator.of(context).pop();

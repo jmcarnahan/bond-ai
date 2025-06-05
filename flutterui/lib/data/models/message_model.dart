@@ -3,12 +3,11 @@ import 'package:flutter/foundation.dart' show immutable;
 @immutable
 class Message {
   final String id;
-  final String type; // e.g., "text", "image_file", "tool_call", "tool_output" (align with backend)
-  final String role; // e.g., "user", "assistant"
+  final String type;
+  final String role;
   final String content;
-  final String? imageData; // Base64 image data for image_file types
-  final bool isError; // New field
-  // final DateTime? createdAt; // Optional: if you add timestamps
+  final String? imageData;
+  final bool isError;
 
   const Message({
     required this.id,
@@ -16,8 +15,7 @@ class Message {
     required this.role,
     required this.content,
     this.imageData,
-    this.isError = false, // Default to false
-    // this.createdAt,
+    this.isError = false,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
@@ -28,9 +26,6 @@ class Message {
       content: json['content'] as String,
       imageData: json['image_data'] as String?,
       isError: json['is_error'] as bool? ?? false,
-      // createdAt: json['created_at'] != null
-      //     ? DateTime.parse(json['created_at'] as String)
-      //     : null,
     );
   }
 
@@ -42,19 +37,16 @@ class Message {
       'content': content,
       'image_data': imageData,
       'is_error': isError,
-      // 'created_at': createdAt?.toIso8601String(),
     };
   }
 
   Message copyWith({
-    // Renamed from MessagecopyWith to copyWith
     String? id,
     String? type,
     String? role,
     String? content,
     String? imageData,
     bool? isError,
-    // DateTime? createdAt,
   }) {
     return Message(
       id: id ?? this.id,
@@ -63,7 +55,6 @@ class Message {
       content: content ?? this.content,
       imageData: imageData ?? this.imageData,
       isError: isError ?? this.isError,
-      // createdAt: createdAt ?? this.createdAt,
     );
   }
 }

@@ -15,7 +15,6 @@ class AgentCrudService {
       : _httpClient = httpClient;
 
   Future<List<AgentListItemModel>> getAgents() async {
-    logger.i("[AgentCrudService] getAgents called");
     try {
       final url = ApiConstants.baseUrl + ApiConstants.agentsEndpoint;
       final response = await _httpClient.get(url);
@@ -26,7 +25,6 @@ class AgentCrudService {
             .map((item) => AgentListItemModel.fromJson(item as Map<String, dynamic>))
             .toList();
         
-        logger.i("[AgentCrudService] Parsed ${agents.length} agents");
         return agents;
       } else {
         final errorMsg = 'Failed to load agents: ${response.statusCode}';
@@ -40,14 +38,12 @@ class AgentCrudService {
   }
 
   Future<AgentDetailModel> getAgentDetails(String agentId) async {
-    logger.i("[AgentCrudService] getAgentDetails called for ID: $agentId");
     try {
       final url = '${ApiConstants.baseUrl}${ApiConstants.agentsEndpoint}/$agentId';
       final response = await _httpClient.get(url);
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
-        logger.i("[AgentCrudService] Successfully loaded agent details for $agentId");
         return AgentDetailModel.fromJson(data);
       } else {
         final errorMsg = 'Failed to load agent details: ${response.statusCode}';
@@ -61,14 +57,13 @@ class AgentCrudService {
   }
 
   Future<AgentResponseModel> createAgent(AgentDetailModel agentData) async {
-    logger.i("[AgentCrudService] createAgent called for: ${agentData.name}");
     try {
       final url = ApiConstants.baseUrl + ApiConstants.agentsEndpoint;
       final response = await _httpClient.post(url, agentData.toJson());
 
       if (response.statusCode == 201) {
         final Map<String, dynamic> data = json.decode(response.body);
-        logger.i("[AgentCrudService] Successfully created agent: ${agentData.name}");
+        logger.i("[AgentCrudService] Created agent: ${agentData.name}");
         return AgentResponseModel.fromJson(data);
       } else {
         final errorMsg = 'Failed to create agent: ${response.statusCode} ${response.body}';
@@ -82,14 +77,13 @@ class AgentCrudService {
   }
 
   Future<AgentResponseModel> updateAgent(String agentId, AgentDetailModel agentData) async {
-    logger.i("[AgentCrudService] updateAgent called for ID: $agentId, Name: ${agentData.name}");
     try {
       final url = '${ApiConstants.baseUrl}${ApiConstants.agentsEndpoint}/$agentId';
       final response = await _httpClient.put(url, agentData.toJson());
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
-        logger.i("[AgentCrudService] Successfully updated agent: $agentId");
+        logger.i("[AgentCrudService] Updated agent: ${agentData.name}");
         return AgentResponseModel.fromJson(data);
       } else {
         final errorMsg = 'Failed to update agent: ${response.statusCode} ${response.body}';
@@ -103,13 +97,12 @@ class AgentCrudService {
   }
 
   Future<void> deleteAgent(String agentId) async {
-    logger.i("[AgentCrudService] deleteAgent called for ID: $agentId");
     try {
       final url = '${ApiConstants.baseUrl}${ApiConstants.agentsEndpoint}/$agentId';
       final response = await _httpClient.delete(url);
 
       if (response.statusCode == 200 || response.statusCode == 204) {
-        logger.i("[AgentCrudService] Successfully deleted agent: $agentId");
+        logger.i("[AgentCrudService] Deleted agent: $agentId");
         return;
       } else {
         final errorMsg = 'Failed to delete agent: ${response.statusCode} ${response.body}';

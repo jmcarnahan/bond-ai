@@ -2,12 +2,12 @@ import 'package:flutter/foundation.dart' show immutable;
 
 @immutable
 class AgentListItemModel {
-  // Renamed from Agent
   final String id;
   final String name;
   final String? description;
   final String? model;
-  final List<String>? tool_types; // Matches backend key
+  // ignore: non_constant_identifier_names
+  final List<String>? tool_types;
   final String? createdAtDisplay;
   final String? samplePrompt;
   final Map<String, dynamic>? metadata;
@@ -17,6 +17,7 @@ class AgentListItemModel {
     required this.name,
     this.description,
     this.model,
+    // ignore: non_constant_identifier_names
     this.tool_types,
     this.createdAtDisplay,
     this.samplePrompt,
@@ -55,12 +56,12 @@ class AgentListItemModel {
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
 
-    return other is AgentListItemModel && // Adjusted type check
+    return other is AgentListItemModel &&
         other.id == id &&
         other.name == name &&
         other.description == description &&
         other.model == model &&
-        other.tool_types == tool_types && // Consider list equality if needed
+        other.tool_types == tool_types &&
         other.createdAtDisplay == createdAtDisplay &&
         other.samplePrompt == samplePrompt &&
         other.metadata == metadata;
@@ -77,8 +78,6 @@ class AgentListItemModel {
       samplePrompt.hashCode ^
       metadata.hashCode;
 }
-
-// --- New Models for Agent Detail Screen ---
 
 @immutable
 class AgentFileDetailModel {
@@ -101,9 +100,8 @@ class AgentFileDetailModel {
 
 @immutable
 class ToolResourceFilesListModel {
-  final List<String> fileIds; // For request
-  final List<AgentFileDetailModel>?
-  files; // For response (optional, might only be in AgentDetailModel)
+  final List<String> fileIds;
+  final List<AgentFileDetailModel>? files;
 
   const ToolResourceFilesListModel({required this.fileIds, this.files});
 
@@ -171,9 +169,13 @@ class AgentDetailModel {
   final String? description;
   final String? instructions;
   final String? model;
-  final List<Map<String, dynamic>> tools; // e.g. [{"type": "code_interpreter"}]
+  final List<Map<String, dynamic>> tools;
   final AgentToolResourcesModel? toolResources;
   final Map<String, dynamic>? metadata;
+  final List<String>? mcpTools;
+  final List<String>? mcpResources;
+  final List<dynamic> files;
+
 
   const AgentDetailModel({
     required this.id,
@@ -184,6 +186,9 @@ class AgentDetailModel {
     required this.tools,
     this.toolResources,
     this.metadata,
+    this.mcpTools,
+    this.mcpResources,
+    required this.files,
   });
 
   factory AgentDetailModel.fromJson(Map<String, dynamic> json) {
@@ -203,13 +208,20 @@ class AgentDetailModel {
               )
               : null,
       metadata: json['metadata'] as Map<String, dynamic>?,
+      mcpTools: json['mcp_tools'] != null 
+          ? List<String>.from(json['mcp_tools'] as List<dynamic>)
+          : null,
+      mcpResources: json['mcp_resources'] != null 
+          ? List<String>.from(json['mcp_resources'] as List<dynamic>)
+          : null,
+      files: json['files'] as List<dynamic>? ?? [],
+
     );
   }
 
   Map<String, dynamic> toJson() {
-    // For sending create/update requests
     return {
-      'id': id, // Usually not sent for create, but useful for updates
+      'id': id,
       'name': name,
       if (description != null) 'description': description,
       if (instructions != null) 'instructions': instructions,
@@ -217,6 +229,9 @@ class AgentDetailModel {
       'tools': tools,
       if (toolResources != null) 'tool_resources': toolResources!.toJson(),
       if (metadata != null) 'metadata': metadata,
+      if (mcpTools != null) 'mcp_tools': mcpTools,
+      if (mcpResources != null) 'mcp_resources': mcpResources,
+      'files': files,
     };
   }
 }

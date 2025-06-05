@@ -17,7 +17,6 @@ class ImageMessageWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     try {
-      // Decode base64 to bytes
       final Uint8List imageBytes = base64Decode(base64ImageData);
       
       return Container(
@@ -35,10 +34,10 @@ class ImageMessageWidget extends StatelessWidget {
               frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
                 if (wasSynchronouslyLoaded) return child;
                 return AnimatedOpacity(
-                  child: child,
                   opacity: frame == null ? 0 : 1,
                   duration: const Duration(milliseconds: 200),
                   curve: Curves.easeOut,
+                  child: child,
                 );
               },
               errorBuilder: (context, error, stackTrace) {
@@ -105,7 +104,6 @@ class ImageMessageWidget extends StatelessWidget {
           backgroundColor: Colors.black,
           child: Stack(
             children: [
-              // Full screen image
               Center(
                 child: InteractiveViewer(
                   child: Image.memory(
@@ -114,7 +112,6 @@ class ImageMessageWidget extends StatelessWidget {
                   ),
                 ),
               ),
-              // Close button
               Positioned(
                 top: 16,
                 right: 16,

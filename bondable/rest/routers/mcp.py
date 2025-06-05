@@ -36,24 +36,55 @@ async def list_mcp_tools(
     Returns:
         List of available MCP tools with their schemas
     """
+    logger.info(f"[MCP Tools] Request received from user: {current_user.email}")
+    
     try:
-        async with await MCPClient.get_client() as client:
-            tools = await client.list_tools()
+        # Get MCP client and check if it's configured
+        mcp_client = MCPClient.client()
+        logger.info(f"[MCP Tools] MCP client instance created: {mcp_client is not None}")
         
-        return [
-            MCPToolResponse(
-                name=tool.get("name", ""),
-                description=tool.get("description", ""),
-                input_schema=tool.get("inputSchema", {})
-            )
-            for tool in tools
-        ]
+        if not hasattr(mcp_client, 'mcp_config') or mcp_client.mcp_config is None:
+            logger.warning("[MCP Tools] No MCP configuration found")
+            return []
+        
+        server_count = len(mcp_client.mcp_config.get("mcpServers", {}))
+        logger.info(f"[MCP Tools] MCP config found with {server_count} servers")
+        
+        if server_count == 0:
+            logger.warning("[MCP Tools] No MCP servers configured in config")
+            return []
+        
+        try:
+            logger.info("[MCP Tools] Attempting to get client connection...")
+            async with await mcp_client.get_client() as client:
+                logger.info("[MCP Tools] Client connection established, listing tools...")
+                tools = await client.list_tools()
+                logger.info(f"[MCP Tools] Raw tools response: {len(tools)} tools received")
+                
+                # Log details about each tool
+                for i, tool in enumerate(tools):
+                    logger.info(f"[MCP Tools] Tool {i+1}: name='{getattr(tool, 'name', 'NO_NAME')}', description='{getattr(tool, 'description', 'NO_DESC')[:50]}...'")
+            
+            parsed_tools = [
+                MCPToolResponse(
+                    name=getattr(tool, "name", ""),
+                    description=getattr(tool, "description", ""),
+                    input_schema=getattr(tool, "inputSchema", {})
+                )
+                for tool in tools
+            ]
+            
+            logger.info(f"[MCP Tools] Successfully parsed {len(parsed_tools)} tools for user {current_user.email}")
+            return parsed_tools
+            
+        except (RuntimeError, OSError, ConnectionError) as e:
+            logger.warning(f"[MCP Tools] Connection error: {type(e).__name__}: {e}")
+            return []
+            
     except Exception as e:
-        logger.error(f"Failed to list MCP tools: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list MCP tools: {str(e)}"
-        )
+        logger.error(f"[MCP Tools] Unexpected error for user {current_user.email}: {type(e).__name__}: {e}", exc_info=True)
+        # Return empty list instead of error to allow graceful degradation
+        return []
 
 
 @router.get("/resources", response_model=List[MCPResourceResponse])
@@ -66,25 +97,56 @@ async def list_mcp_resources(
     Returns:
         List of available MCP resources
     """
+    logger.info(f"[MCP Resources] Request received from user: {current_user.email}")
+    
     try:
-        async with await MCPClient.get_client() as client:
-            resources = await client.list_resources()
+        # Get MCP client and check if it's configured
+        mcp_client = MCPClient.client()
+        logger.info(f"[MCP Resources] MCP client instance created: {mcp_client is not None}")
         
-        return [
-            MCPResourceResponse(
-                uri=resource.get("uri", ""),
-                name=resource.get("name", ""),
-                description=resource.get("description", ""),
-                mime_type=resource.get("mimeType", "")
-            )
-            for resource in resources
-        ]
+        if not hasattr(mcp_client, 'mcp_config') or mcp_client.mcp_config is None:
+            logger.warning("[MCP Resources] No MCP configuration found")
+            return []
+        
+        server_count = len(mcp_client.mcp_config.get("mcpServers", {}))
+        logger.info(f"[MCP Resources] MCP config found with {server_count} servers")
+        
+        if server_count == 0:
+            logger.warning("[MCP Resources] No MCP servers configured in config")
+            return []
+        
+        try:
+            logger.info("[MCP Resources] Attempting to get client connection...")
+            async with await mcp_client.get_client() as client:
+                logger.info("[MCP Resources] Client connection established, listing resources...")
+                resources = await client.list_resources()
+                logger.info(f"[MCP Resources] Raw resources response: {len(resources)} resources received")
+                
+                # Log details about each resource
+                for i, resource in enumerate(resources):
+                    logger.info(f"[MCP Resources] Resource {i+1}: uri='{getattr(resource, 'uri', 'NO_URI')}', name='{getattr(resource, 'name', 'NO_NAME')}', mime_type='{getattr(resource, 'mimeType', 'NO_MIME')}'")
+            
+            parsed_resources = [
+                MCPResourceResponse(
+                    uri=getattr(resource, "uri", ""),
+                    name=getattr(resource, "name", ""),
+                    description=getattr(resource, "description", ""),
+                    mime_type=getattr(resource, "mimeType", "")
+                )
+                for resource in resources
+            ]
+            
+            logger.info(f"[MCP Resources] Successfully parsed {len(parsed_resources)} resources for user {current_user.email}")
+            return parsed_resources
+            
+        except (RuntimeError, OSError, ConnectionError) as e:
+            logger.warning(f"[MCP Resources] Connection error: {type(e).__name__}: {e}")
+            return []
+            
     except Exception as e:
-        logger.error(f"Failed to list MCP resources: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list MCP resources: {str(e)}"
-        )
+        logger.error(f"[MCP Resources] Unexpected error for user {current_user.email}: {type(e).__name__}: {e}", exc_info=True)
+        # Return empty list instead of error to allow graceful degradation
+        return []
 
 
 @router.get("/status")
@@ -97,17 +159,57 @@ async def get_mcp_status(
     Returns:
         MCP client status information
     """
+    logger.info(f"[MCP Status] Request received from user: {current_user.email}")
+    
     try:
         mcp_client = MCPClient.client()
-        mcp_config = mcp_client.config.get_mcp_config()
+        logger.info(f"[MCP Status] MCP client instance created: {mcp_client is not None}")
         
-        return {
-            "servers_configured": len(mcp_config.get("mcpServers", {})),
-            "client_initialized": mcp_client.client is not None
+        # Check if client has configuration
+        if not hasattr(mcp_client, 'config') or mcp_client.config is None:
+            logger.warning("[MCP Status] MCP client has no config attribute")
+            return {
+                "servers_configured": 0,
+                "client_initialized": False,
+                "error": "MCP client config not found"
+            }
+        
+        if not hasattr(mcp_client, 'mcp_config') or mcp_client.mcp_config is None:
+            logger.warning("[MCP Status] MCP client has no mcp_config attribute")
+            return {
+                "servers_configured": 0,
+                "client_initialized": False,
+                "error": "MCP configuration not loaded"
+            }
+        
+        # Get the MCP configuration
+        mcp_config = mcp_client.mcp_config
+        servers = mcp_config.get("mcpServers", {})
+        server_count = len(servers)
+        
+        logger.info(f"[MCP Status] Found {server_count} configured servers")
+        
+        # Log server details
+        for server_name, server_config in servers.items():
+            logger.info(f"[MCP Status] Server '{server_name}': {server_config}")
+        
+        # Check initialization status
+        is_initialized = mcp_client._initialized
+        logger.info(f"[MCP Status] Client initialized: {is_initialized}")
+        
+        status = {
+            "servers_configured": server_count,
+            "client_initialized": is_initialized,
+            "server_details": list(servers.keys()) if servers else []
         }
+        
+        logger.info(f"[MCP Status] Status response: {status}")
+        return status
+        
     except Exception as e:
-        logger.error(f"Failed to get MCP status: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get MCP status: {str(e)}"
-        )
+        logger.error(f"[MCP Status] Error checking status for user {current_user.email}: {type(e).__name__}: {e}", exc_info=True)
+        return {
+            "servers_configured": 0,
+            "client_initialized": False,
+            "error": str(e)
+        }

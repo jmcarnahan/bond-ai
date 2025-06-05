@@ -65,6 +65,9 @@ class AgentService {
   Future<FileInfoModel> getFileInfo(String providerFileId) => 
       _fileService.getFileInfo(providerFileId);
 
+  Future<List<FileDetailsResponseModel>> getFileDetails(List<String> fileIds) => 
+      _fileService.getFileDetails(fileIds);
+
   void dispose() {
     _httpClient.dispose();
   }
