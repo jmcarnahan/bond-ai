@@ -22,34 +22,10 @@ T = TypeVar("T")
 class Config:
     
     provider = None
+    secrets = None
+    project_id = None
 
-    # config should init with a service account
-    # this should either be a base64 string or a file 
-    # both coming in via a env var
-    def __init__(self):        
-        try:
-            if 'GCLOUD_SA_CREDS_STRING' in os.environ:
-                sa_creds_base64 = os.getenv("GCLOUD_SA_CREDS_STRING") # this is a bas64 string
-                sa_creds = base64.b64decode(sa_creds_base64).decode("utf-8")
-                self.credentials = service_account.Credentials.from_service_account_info(json.loads(sa_creds))
-                self.gcp_project_id = os.getenv('GCLOUD_PROJECT_ID', self.credentials.project_id)
-                self.secrets = secretmanager.SecretManagerServiceClient(credentials=self.credentials)
-                LOGGER.info(f"Using GCLOUD credentials from GCLOUD_SA_CREDS_STRING for project_id: {self.gcp_project_id}")
-            elif 'GCLOUD_SA_CREDS_PATH' in os.environ:
-                sa_creds_path = os.getenv('GCLOUD_SA_CREDS_PATH')
-                self.credentials = service_account.Credentials.from_service_account_file(sa_creds_path)
-                self.gcp_project_id = os.getenv('GCLOUD_PROJECT_ID', self.credentials.project_id)
-                self.secrets = secretmanager.SecretManagerServiceClient(credentials=self.credentials)
-                LOGGER.info(f"Using GCLOUD credentials from GCLOUD_SA_CREDS_PATH for project_id: {self.gcp_project_id}")
-            else:
-                self.credentials, project_id = google.auth.default()
-                self.gcp_project_id = os.getenv('GCLOUD_PROJECT_ID', project_id)
-                self.secrets = secretmanager.SecretManagerServiceClient(credentials=self.credentials)
-                LOGGER.info(f"Using GCLOUD default credentials for project_id: {self.gcp_project_id}")
-        except Exception as e:
-            LOGGER.error(f"Error loading GCP credentials: {e}")
-            raise e
-
+    def __init__(self): 
         atexit.register(self.__del__)
         LOGGER.info("Created Config instance")
 
@@ -62,6 +38,40 @@ class Config:
             LOGGER.error(f"Error closing Config instance {e}")
         finally:
             self.secrets = None
+
+    # config should init with a service account
+    # this should either be a base64 string or a file 
+    # both coming in via a env var
+    def get_secrets_client(self):
+        """Initialize GCP credentials and secrets client on first use."""
+        if self.secrets is not None:
+            return self.secrets
+        
+        try:
+            if 'GCLOUD_SA_CREDS_STRING' in os.environ:
+                sa_creds_base64 = os.getenv("GCLOUD_SA_CREDS_STRING") # this is a bas64 string
+                sa_creds = base64.b64decode(sa_creds_base64).decode("utf-8")
+                credentials = service_account.Credentials.from_service_account_info(json.loads(sa_creds))
+                self.project_id = os.getenv('GCLOUD_PROJECT_ID', credentials.project_id)
+                self.secrets = secretmanager.SecretManagerServiceClient(credentials=credentials)
+                LOGGER.info(f"Using GCLOUD credentials from GCLOUD_SA_CREDS_STRING for project_id: {self.project_id}")
+            elif 'GCLOUD_SA_CREDS_PATH' in os.environ:
+                sa_creds_path = os.getenv('GCLOUD_SA_CREDS_PATH')
+                credentials = service_account.Credentials.from_service_account_file(sa_creds_path)
+                self.project_id = os.getenv('GCLOUD_PROJECT_ID', credentials.project_id)
+                self.secrets = secretmanager.SecretManagerServiceClient(credentials=credentials)
+                LOGGER.info(f"Using GCLOUD credentials from GCLOUD_SA_CREDS_PATH for project_id: {self.project_id}")
+            else:
+                credentials, project_id = google.auth.default()
+                self.project_id = os.getenv('GCLOUD_PROJECT_ID', project_id)
+                self.secrets = secretmanager.SecretManagerServiceClient(credentials=credentials)
+                LOGGER.info(f"Using GCLOUD default credentials for project_id: {self.project_id}")
+
+            return self.secrets
+            
+        except Exception as e:
+            LOGGER.error(f"Error loading GCP credentials: {e}")
+            raise e
 
 
 
@@ -86,10 +96,9 @@ class Config:
 
     def get_secret_value(self, secret_id, default=""):
         try:
-            if self.secrets is None:
-                self.secrets = secretmanager.SecretManagerServiceClient(credentials=self.credentials)
-            secret_name = f"projects/{self.gcp_project_id}/secrets/{secret_id}/versions/latest"
-            response = self.secrets.access_secret_version(name=secret_name)
+            secrets = self.get_secrets_client()
+            secret_name = f"projects/{self.project_id}/secrets/{secret_id}/versions/latest"
+            response = secrets.access_secret_version(name=secret_name)
             return response.payload.data.decode("UTF-8")
         except Exception as e:
             LOGGER.error(f"Error getting secret value {secret_id}: {e}")
