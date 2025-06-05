@@ -21,14 +21,29 @@ class AuthService {
   }) : _httpClient = httpClient ?? http.Client(),
        _sharedPreferences = sharedPreferences;
 
-  Future<void> launchLoginUrl() async {
+  Future<void> launchLoginUrl({String provider = 'google'}) async {
     final Uri loginUri = Uri.parse(
-      ApiConstants.baseUrl + ApiConstants.loginEndpoint,
+      '${ApiConstants.baseUrl}/login/$provider',
     );
     if (await canLaunchUrl(loginUri)) {
       await launchUrl(loginUri, webOnlyWindowName: '_self');
     } else {
       throw Exception('Could not launch $loginUri');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getAvailableProviders() async {
+    final response = await _httpClient.get(
+      Uri.parse('${ApiConstants.baseUrl}/providers'),
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> data = json.decode(response.body);
+      return List<Map<String, dynamic>>.from(data['providers']);
+    } else {
+      logger.e("[AuthService] Failed to load providers: ${response.statusCode}");
+      throw Exception('Failed to load available providers');
     }
   }
 
