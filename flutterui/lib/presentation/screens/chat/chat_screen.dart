@@ -1,6 +1,6 @@
+import 'package:file_picker/file_picker.dart' show PlatformFile;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 
 import 'package:flutterui/providers/thread_chat/thread_chat_providers.dart';
 import 'package:flutterui/providers/thread_provider.dart';
@@ -30,9 +30,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _textFieldFocusNode = FocusNode();
   bool _isTextFieldFocused = false;
-
-  final _fileAttachments = <PlatformFile>[];
-  bool _hasAttachement = false;
+  List<PlatformFile> _fileAttachments = [];
 
   @override
   void initState() {
@@ -92,6 +90,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return '${prompt.substring(0, maxLength - 3)}...';
   }
 
+  void _onAttachmentsChanged(List<PlatformFile> attachments) {
+    setState(() {
+      _fileAttachments = attachments; // PlatformFiles are passed by reference FYI
+    });
+  }
+
   void _sendMessage() {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
@@ -102,41 +106,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final chatNotifier = ref.read(chatSessionNotifierProvider.notifier);
     final currentSessionState = ref.read(chatSessionNotifierProvider);
 
+    final hasAttachement = _fileAttachments.isNotEmpty;
+
     if (currentSessionState.currentThreadId == null) {
       chatNotifier.createAndSetNewThread(
         name: _generateThreadNameFromPrompt(text),
         agentIdForFirstMessage: widget.agentId,
         firstMessagePrompt: text,
-        attachedFiles: _hasAttachement ? _fileAttachments : null,
+        attachedFiles: hasAttachement ? _fileAttachments : null,
       );
     } else {
       chatNotifier.sendMessage(
         agentId: widget.agentId, 
         prompt: text, 
-        attachedFiles: _hasAttachement ? _fileAttachments : null);
+        attachedFiles: hasAttachement ? _fileAttachments : null);
     }
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _textController.clear();
+      _onAttachmentsChanged([]);
     });
     
     _scrollToBottom();
-  }
-
-  Future<void> _attachFile() async
-  {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(allowMultiple: false);
-    if (result != null) {
-      _fileAttachments.add(result.files.single);
-      _hasAttachement = true;
-      logger.i("[ChatScreen] File selected: ${result.files.single.name}");
-    }
-    else {
-      if (_fileAttachments.isEmpty) {
-        _hasAttachement = false;
-      }
-      logger.w("[ChatScreen] No file selected.");
-    }
   }
 
   void _scrollToBottom() {
@@ -237,7 +228,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             isTextFieldFocused: _isTextFieldFocused,
             isSendingMessage: chatState.isSendingMessage,
             onSendMessage: _sendMessage,
-            onFileAttachRequested: _attachFile,
+            onFileAttachmentsChanged: _onAttachmentsChanged,
+            attachments: _fileAttachments,
           ),
         ],
       ),
