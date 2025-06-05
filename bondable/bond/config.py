@@ -129,22 +129,138 @@ class Config:
         return type('JWTConfig', (object,), jwt_config)()
 
     def get_auth_info(self):
+        """
+        Legacy method for Google auth info. Use get_oauth2_config() for new implementations.
+        """
+        return self.get_oauth2_config("google")
+    
+    def get_oauth2_config(self, provider_name: str = None) -> dict:
+        """
+        Get OAuth2 configuration for the specified provider or all providers.
+        
+        Args:
+            provider_name: Specific provider to get config for, or None for all
+            
+        Returns:
+            Dictionary with OAuth2 configuration
+        """
+        # Get enabled providers from environment
+        enabled_providers = self._get_enabled_oauth2_providers()
+        
+        configs = {}
+        
+        # Only include enabled providers
+        if "google" in enabled_providers:
+            if provider_name == "google" or provider_name is None:
+                google_config = self._get_google_oauth2_config()
+                if provider_name == "google":
+                    return google_config
+                configs["google"] = google_config
+        
+        if "okta" in enabled_providers:
+            if provider_name == "okta" or provider_name is None:
+                okta_config = self._get_okta_oauth2_config()
+                if provider_name == "okta":
+                    return okta_config
+                configs["okta"] = okta_config
+        
+        if provider_name:
+            if provider_name not in configs:
+                raise ValueError(f"OAuth2 provider '{provider_name}' is not enabled or configured")
+            return configs[provider_name]
+        
+        return configs
+    
+    def _get_enabled_oauth2_providers(self) -> list:
+        """
+        Get list of enabled OAuth2 providers from environment variables.
+        
+        Environment variables:
+        - OAUTH2_ENABLED_PROVIDERS: Comma-separated list of providers (e.g., "google,okta")
+        - OAUTH2_ENABLE_GOOGLE: Enable Google OAuth2 (true/false)
+        - OAUTH2_ENABLE_OKTA: Enable Okta OAuth2 (true/false)
+        
+        Returns:
+            List of enabled provider names
+        """
+        # First check if there's an explicit list of enabled providers
+        enabled_providers_str = os.getenv('OAUTH2_ENABLED_PROVIDERS', '')
+        if enabled_providers_str:
+            providers = [p.strip().lower() for p in enabled_providers_str.split(',') if p.strip()]
+            LOGGER.info(f"OAuth2 providers from OAUTH2_ENABLED_PROVIDERS: {providers}")
+            return providers
+        
+        # Otherwise check individual provider flags
+        providers = []
+        
+        # Check Google
+        google_enabled = os.getenv('OAUTH2_ENABLE_GOOGLE', 'true').lower() in ['true', '1', 'yes', 'on']
+        if google_enabled:
+            # Only enable if credentials are configured
+            if os.getenv('GOOGLE_AUTH_CREDS_SECRET_ID') or os.getenv('GOOGLE_CLIENT_ID'):
+                providers.append('google')
+            else:
+                LOGGER.warning("Google OAuth2 enabled but no credentials configured")
+        
+        # Check Okta
+        okta_enabled = os.getenv('OAUTH2_ENABLE_OKTA', 'true').lower() in ['true', '1', 'yes', 'on']
+        if okta_enabled:
+            # Only enable if credentials are configured
+            if os.getenv('OKTA_DOMAIN') and os.getenv('OKTA_CLIENT_ID'):
+                providers.append('okta')
+            else:
+                LOGGER.warning("Okta OAuth2 enabled but not fully configured")
+        
+        # Default to at least Google if nothing is configured
+        if not providers:
+            LOGGER.warning("No OAuth2 providers enabled, defaulting to Google")
+            providers = ['google']
+        
+        LOGGER.info(f"Enabled OAuth2 providers: {providers}")
+        return providers
+    
+    def _get_google_oauth2_config(self) -> dict:
+        """Get Google OAuth2 configuration."""
         auth_creds_str = self.get_secret_value(os.getenv('GOOGLE_AUTH_CREDS_SECRET_ID', 'google_auth_creds'), "{}")
         auth_creds = json.loads(auth_creds_str)
-        redirect_uri = os.getenv('GOOGLE_AUTH_REDIRECT_URI', 'http://localhost:8080')
+        redirect_uri = os.getenv('GOOGLE_AUTH_REDIRECT_URI', 'http://localhost:8000/auth/google/callback')
         scopes_str = os.getenv('GOOGLE_AUTH_SCOPES', 'openid, https://www.googleapis.com/auth/userinfo.email, https://www.googleapis.com/auth/userinfo.profile')
         scopes = [scope.strip() for scope in scopes_str.split(",")]
         valid_emails = []
         if 'GOOGLE_AUTH_VALID_EMAILS' in os.environ:
-            valid_emails = os.getenv('GOOGLE_AUTH_VALID_EMAILS').split(",")
-        auth_info = {
+            valid_emails = [email.strip() for email in os.getenv('GOOGLE_AUTH_VALID_EMAILS').split(",")]
+        
+        config = {
             "auth_creds": auth_creds,
             "redirect_uri": redirect_uri,
             "scopes": scopes,
             "valid_emails": valid_emails
         }
-        LOGGER.info(f"Google Auth: redirect_uri={redirect_uri} scopes={scopes} valid_emails={valid_emails}")
-        return auth_info
+        LOGGER.info(f"Google OAuth2 config: redirect_uri={redirect_uri} scopes={scopes} valid_emails={len(valid_emails)} emails")
+        return config
+    
+    def _get_okta_oauth2_config(self) -> dict:
+        """Get Okta OAuth2 configuration."""
+        domain = os.getenv('OKTA_DOMAIN', '')
+        client_id = os.getenv('OKTA_CLIENT_ID', '')
+        client_secret = os.getenv('OKTA_CLIENT_SECRET', '')
+        redirect_uri = os.getenv('OKTA_REDIRECT_URI', 'http://localhost:8000/auth/okta/callback')
+        scopes_str = os.getenv('OKTA_SCOPES', 'openid, profile, email')
+        scopes = [scope.strip() for scope in scopes_str.split(",")]
+        valid_emails = []
+        if 'OKTA_VALID_EMAILS' in os.environ:
+            valid_emails = [email.strip() for email in os.getenv('OKTA_VALID_EMAILS').split(",")]
+        
+        config = {
+            "domain": domain,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+            "scopes": scopes,
+            "valid_emails": valid_emails
+        }
+        LOGGER.info(f"Okta OAuth2 config: domain={domain} redirect_uri={redirect_uri} scopes={scopes} valid_emails={len(valid_emails)} emails")
+        return config
 
     def get_mcp_config(self):
         """
