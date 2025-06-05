@@ -20,24 +20,23 @@ class OAIAProvider(Provider):
         super().__init__()
         self.config = Config.config()
 
-        openai_api_key = self.config.get_secret_value(os.getenv('OPENAI_KEY_SECRET_ID', 'openai_api_key'))
-        openai_project_id = self.config.get_secret_value(os.getenv('OPENAI_PROJECT_SECRET_ID', 'openai_project'))
-        openai_client = OpenAI(api_key=openai_api_key, project=openai_project_id)
+        # Use OpenAI by default
+        openai_client = None
+        if not os.getenv('AZURE_OPENAI_API_KEY'):
+            openai_api_key = self.config.get_secret_value(os.getenv('OPENAI_KEY_SECRET_ID', 'openai_api_key'))
+            openai_project_id = self.config.get_secret_value(os.getenv('OPENAI_PROJECT_SECRET_ID', 'openai_project'))
+            openai_client = OpenAI(api_key=openai_api_key, project=openai_project_id)
+            LOGGER.info("Using OpenAI API")
+        else:
+            openai_client = AzureOpenAI(
+                api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+                azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+                api_version=os.getenv('AZURE_OPENAI_API_VERSION', "2025-04-01-preview"),
+            )
+            openai_deployment = os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4o')
+            LOGGER.info("Using Azure OpenAI API")
+
         metadata_db_url = self.config.get_metadata_db_url()
-
-        # openai_deployment = os.getenv('OPENAI_DEPLOYMENT', 'gpt-4o')
-
-        # elif os.getenv('AZURE_OPENAI_API_KEY'):
-        #     self.openai_client = AzureOpenAI(
-        #         api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        #         azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-        #         api_version=os.getenv('AZURE_OPENAI_API_VERSION', "2024-08-01-preview"),
-        #     )
-        #     self.openai_deployment = os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4o')
-        #     LOGGER.debug("Using Azure OpenAI API")
-        # else:
-        #     raise ValueError("API key is not set. Please ensure the OPENAI_API_KEY or AZURE_OPENAI_API_KEY is set in the .env file.")
-
         self.metadata = OAIAMetadata(metadata_db_url)
         self.files = OAIAFilesProvider(openai_client, self.metadata)
         self.vectorstores = OAIAVectorStoresProvider(openai_client, self.metadata, self.files) 
