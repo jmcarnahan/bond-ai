@@ -4,11 +4,133 @@ import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/main.dart';
 import 'package:flutterui/core/theme/app_theme.dart';
 
-class LoginScreen extends ConsumerWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends ConsumerState<LoginScreen> {
+  List<Map<String, dynamic>> _providers = [];
+  bool _loadingProviders = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProviders();
+  }
+
+  Future<void> _loadProviders() async {
+    try {
+      final providers = await ref.read(authNotifierProvider.notifier).getAvailableProviders();
+      if (mounted) {
+        setState(() {
+          _providers = providers;
+          _loadingProviders = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _providers = [
+            {'name': 'google', 'login_url': '/login/google', 'callback_url': '/auth/google/callback'}
+          ];
+          _loadingProviders = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildProviderButton(Map<String, dynamic> provider, AuthState authState) {
+    final providerName = provider['name'] as String;
+    final isLoading = authState is AuthLoading;
+    
+    // Define provider-specific styling
+    final providerConfig = _getProviderConfig(providerName);
+    
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: providerConfig['backgroundColor'],
+          foregroundColor: providerConfig['textColor'],
+          padding: const EdgeInsets.symmetric(vertical: 15),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8.0),
+            side: BorderSide(color: providerConfig['borderColor']),
+          ),
+          elevation: 2.0,
+        ),
+        onPressed: isLoading ? null : () {
+          ref.read(authNotifierProvider.notifier).initiateLogin(provider: providerName);
+        },
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            if (providerConfig['iconAsset'] != null)
+              Image.asset(
+                providerConfig['iconAsset'],
+                height: 24.0,
+                width: 24.0,
+              )
+            else
+              Icon(
+                providerConfig['icon'],
+                size: 24.0,
+                color: providerConfig['iconColor'],
+              ),
+            const SizedBox(width: 12),
+            Text(
+              'Sign in with ${_capitalizeFirst(providerName)}',
+              style: TextStyle(color: providerConfig['textColor']),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Map<String, dynamic> _getProviderConfig(String providerName) {
+    switch (providerName.toLowerCase()) {
+      case 'google':
+        return {
+          'backgroundColor': Colors.white,
+          'textColor': Colors.black87,
+          'borderColor': Colors.grey.shade300,
+          'iconAsset': 'assets/google_logo.png',
+          'icon': null,
+          'iconColor': null,
+        };
+      case 'okta':
+        return {
+          'backgroundColor': const Color(0xFF0066CC), // Okta blue
+          'textColor': Colors.white,
+          'borderColor': const Color(0xFF0066CC),
+          'iconAsset': null,
+          'icon': Icons.security,
+          'iconColor': Colors.white,
+        };
+      default:
+        return {
+          'backgroundColor': Colors.grey.shade100,
+          'textColor': Colors.black87,
+          'borderColor': Colors.grey.shade300,
+          'iconAsset': null,
+          'icon': Icons.login,
+          'iconColor': Colors.black54,
+        };
+    }
+  }
+
+  String _capitalizeFirst(String text) {
+    if (text.isEmpty) return text;
+    return text[0].toUpperCase() + text.substring(1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
     final appTheme = ref.watch(appThemeProvider);
     final themeData = Theme.of(context);
@@ -41,41 +163,10 @@ class LoginScreen extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 40),
-        if (authState is AuthLoading)
+        if (authState is AuthLoading || _loadingProviders)
           const Center(child: CircularProgressIndicator())
         else
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: Colors.black87,
-              padding: const EdgeInsets.symmetric(vertical: 15),
-              textStyle:
-                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8.0),
-                side: BorderSide(color: Colors.grey.shade300),
-              ),
-              elevation: 2.0,
-            ),
-            onPressed: () {
-              ref.read(authNotifierProvider.notifier).initiateLogin();
-            },
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Image.asset(
-                  'assets/google_logo.png',
-                  height: 24.0,
-                  width: 24.0,
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Sign in with Google',
-                  style: TextStyle(color: Colors.black87),
-                ),
-              ],
-            ),
-          ),
+          ..._providers.map((provider) => _buildProviderButton(provider, authState)),
         const SizedBox(height: 20),
         if (authState is Unauthenticated && authState.message != null)
           Padding(

@@ -65,11 +65,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> initiateLogin() async {
+  Future<void> initiateLogin({String provider = 'google'}) async {
     try {
-      await _authService.launchLoginUrl();
+      await _authService.launchLoginUrl(provider: provider);
     } catch (e) {
       state = AuthError(e.toString());
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getAvailableProviders() async {
+    try {
+      return await _authService.getAvailableProviders();
+    } catch (e) {
+      logger.e("[AuthNotifier] Failed to get providers: ${e.toString()}");
+      return [];
     }
   }
 

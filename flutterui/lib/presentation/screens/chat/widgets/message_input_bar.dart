@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class MessageInputBar extends ConsumerWidget {
+class MessageInputBar extends ConsumerStatefulWidget {
   final TextEditingController textController;
   final FocusNode focusNode;
   final bool isTextFieldFocused;
@@ -19,7 +19,26 @@ class MessageInputBar extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MessageInputBar> createState() => _MessageInputBarState();
+}
+
+class _MessageInputBarState extends ConsumerState<MessageInputBar> {
+  late final FocusNode _keyboardFocusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _keyboardFocusNode = FocusNode();
+  }
+
+  @override
+  void dispose() {
+    _keyboardFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -43,7 +62,7 @@ class MessageInputBar extends ConsumerWidget {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(25.0),
-                border: isTextFieldFocused
+                border: widget.isTextFieldFocused
                     ? Border.all(color: Colors.red, width: 2.0)
                     : null,
               ),
@@ -54,24 +73,24 @@ class MessageInputBar extends ConsumerWidget {
                 child: Padding( 
                   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0),
                   child: KeyboardListener(
-                    focusNode: FocusNode(),
+                    focusNode: _keyboardFocusNode,
                     onKeyEvent: (KeyEvent event) {
                       if (event is KeyDownEvent && 
                           event.logicalKey == LogicalKeyboardKey.enter &&
                           !HardwareKeyboard.instance.isShiftPressed &&
-                          !isSendingMessage &&
-                          textController.text.trim().isNotEmpty) {
-                        onSendMessage();
+                          !widget.isSendingMessage &&
+                          widget.textController.text.trim().isNotEmpty) {
+                        widget.onSendMessage();
                       }
                     },
                     child: TextField(
-                      controller: textController,
-                      focusNode: focusNode,
+                      controller: widget.textController,
+                      focusNode: widget.focusNode,
                       maxLines: null,
                       keyboardType: TextInputType.multiline,
                       textCapitalization: TextCapitalization.sentences,
                       decoration: InputDecoration(
-                        hintText: isSendingMessage ? 'Waiting for response...' : 'Type a message...',
+                        hintText: widget.isSendingMessage ? 'Waiting for response...' : 'Type a message...',
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         focusedBorder: InputBorder.none,
@@ -79,8 +98,8 @@ class MessageInputBar extends ConsumerWidget {
                         contentPadding: const EdgeInsets.symmetric(vertical: 12.0),
                       ),
                       onSubmitted: (value) {
-                        if (!isSendingMessage && value.trim().isNotEmpty) {
-                          onSendMessage();
+                        if (!widget.isSendingMessage && value.trim().isNotEmpty) {
+                          widget.onSendMessage();
                         }
                       },
                     ),
@@ -90,7 +109,7 @@ class MessageInputBar extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: 8.0),
-          isSendingMessage
+          widget.isSendingMessage
               ? Padding(
                   padding: const EdgeInsets.only(bottom: 4.0, right: 4.0),
                   child: SizedBox(
@@ -100,10 +119,10 @@ class MessageInputBar extends ConsumerWidget {
                   ),
                 )
               : IconButton(
-                  icon: Icon(Icons.send, color: isSendingMessage ? Colors.grey : colorScheme.primary, size: 28), // Grey out icon when disabled
-                  tooltip: isSendingMessage ? 'Waiting for response' : 'Send message',
+                  icon: Icon(Icons.send, color: widget.isSendingMessage ? Colors.grey : colorScheme.primary, size: 28), // Grey out icon when disabled
+                  tooltip: widget.isSendingMessage ? 'Waiting for response' : 'Send message',
                   padding: const EdgeInsets.only(bottom: 4.0),
-                  onPressed: isSendingMessage ? null : onSendMessage,
+                  onPressed: widget.isSendingMessage ? null : widget.onSendMessage,
                 ),
         ],
       ),

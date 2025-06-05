@@ -24,12 +24,13 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Use
         payload = jwt.decode(token, jwt_config.JWT_SECRET_KEY, algorithms=[jwt_config.JWT_ALGORITHM])
         email = payload.get("sub")
         name = payload.get("name")
+        provider = payload.get("provider", "google")  # Default to google for backwards compatibility
         
         if not email:
             logger.warning("Token payload missing 'sub' (email).")
             raise credentials_exception
             
-        return User(email=email, name=name)
+        return User(email=email, name=name, provider=provider)
         
     except JWTError as e:
         logger.error(f"JWT Error during token decode: {e}", exc_info=True)
