@@ -124,7 +124,7 @@ class BondAPIDemo:
             "name": name,
             "description": description or f"Demo agent: {name}",
             "instructions": instructions or "You are a helpful assistant. Be concise and friendly.",
-            "model": "gpt-3.5-turbo",
+            "model": "gpt-4o",
             "tools": [],
             "metadata": {"demo": "true", "created_by": "api_demo_script"}
         }

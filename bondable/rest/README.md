@@ -61,7 +61,7 @@ Creates a new agent.
         "name": "My New API Agent",
         "description": "An agent created via the API for demonstration.",
         "instructions": "You are a helpful assistant that loves to talk about APIs.",
-        "model": "gpt-4-turbo-preview", // Optional, defaults to system config
+        "model": "gpt-4o", // Optional, defaults to system config
         "tools": [{"type": "code_interpreter"}],
         "tool_resources": {
             "code_interpreter": {
