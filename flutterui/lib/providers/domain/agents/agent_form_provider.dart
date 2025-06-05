@@ -8,7 +8,8 @@ import 'package:flutterui/providers/domain/base/error_handler.dart';
 import 'agent_form_state.dart';
 import '../../../core/utils/logger.dart';
 
-class AgentFormNotifier extends StateNotifier<AgentFormState> with ErrorHandlerMixin<AgentFormState> {
+class AgentFormNotifier extends StateNotifier<AgentFormState>
+    with ErrorHandlerMixin<AgentFormState> {
   final AgentService _agentService;
 
   AgentFormNotifier(this._agentService) : super(const AgentFormState());
@@ -38,10 +39,9 @@ class AgentFormNotifier extends StateNotifier<AgentFormState> with ErrorHandlerM
 
   void setEnableCodeInterpreter(bool enable) {
     final newData = state.data.copyWith(enableCodeInterpreter: enable);
-    final updatedData = !enable 
-        ? newData.copyWith(codeInterpreterFiles: [])
-        : newData;
-    
+    final updatedData =
+        !enable ? newData.copyWith(codeInterpreterFiles: []) : newData;
+
     state = state.copyWith(
       data: updatedData,
       ui: state.ui.copyWith(isDirty: true, clearError: true),
@@ -50,10 +50,9 @@ class AgentFormNotifier extends StateNotifier<AgentFormState> with ErrorHandlerM
 
   void setEnableFileSearch(bool enable) {
     final newData = state.data.copyWith(enableFileSearch: enable);
-    final updatedData = !enable 
-        ? newData.copyWith(fileSearchFiles: [])
-        : newData;
-    
+    final updatedData =
+        !enable ? newData.copyWith(fileSearchFiles: []) : newData;
+
     state = state.copyWith(
       data: updatedData,
       ui: state.ui.copyWith(isDirty: true, clearError: true),
@@ -89,30 +88,32 @@ class AgentFormNotifier extends StateNotifier<AgentFormState> with ErrorHandlerM
           );
 
           _addFileToTool(toolType, fileInfo);
-          logger.i('File uploaded successfully: ${file.name} -> ${uploadResponse.providerFileId}');
+          logger.i(
+            'File uploaded successfully: ${file.name} -> ${uploadResponse.providerFileId}',
+          );
         }
       }
     } catch (error, stackTrace) {
       handleError(error, stackTrace);
     } finally {
-      state = state.copyWith(
-        ui: state.ui.copyWith(isUploadingFile: false),
-      );
+      state = state.copyWith(ui: state.ui.copyWith(isUploadingFile: false));
     }
   }
 
   void removeFileFromTool(String toolType, String fileId) {
     List<UploadedFileInfo> updatedFiles;
-    
+
     if (toolType == 'code_interpreter') {
-      updatedFiles = state.data.codeInterpreterFiles
-          .where((file) => file.fileId != fileId)
-          .toList();
+      updatedFiles =
+          state.data.codeInterpreterFiles
+              .where((file) => file.fileId != fileId)
+              .toList();
       _updateData((data) => data.copyWith(codeInterpreterFiles: updatedFiles));
     } else if (toolType == 'file_search') {
-      updatedFiles = state.data.fileSearchFiles
-          .where((file) => file.fileId != fileId)
-          .toList();
+      updatedFiles =
+          state.data.fileSearchFiles
+              .where((file) => file.fileId != fileId)
+              .toList();
       _updateData((data) => data.copyWith(fileSearchFiles: updatedFiles));
     }
   }
@@ -129,37 +130,47 @@ class AgentFormNotifier extends StateNotifier<AgentFormState> with ErrorHandlerM
 
     try {
       final agentDetail = await _agentService.getAgentDetails(agentId);
-      
-      final hasCodeInterpreter = agentDetail.tools.any((tool) => tool['type'] == 'code_interpreter');
-      final hasFileSearch = agentDetail.tools.any((tool) => tool['type'] == 'file_search');
-      
+
+      final hasCodeInterpreter = agentDetail.tools.any(
+        (tool) => tool['type'] == 'code_interpreter',
+      );
+      final hasFileSearch = agentDetail.tools.any(
+        (tool) => tool['type'] == 'file_search',
+      );
+
       List<UploadedFileInfo> codeInterpreterFiles = [];
       List<UploadedFileInfo> fileSearchFiles = [];
-      
+
       if (agentDetail.toolResources != null) {
         if (agentDetail.toolResources!.codeInterpreter?.fileIds != null) {
-          codeInterpreterFiles = agentDetail.toolResources!.codeInterpreter!.fileIds
-              .map((fileId) => UploadedFileInfo(
-                    fileId: fileId,
-                    fileName: 'File $fileId',
-                    fileSize: 0,
-                    uploadedAt: DateTime.now(),
-                  ))
-              .toList();
+          codeInterpreterFiles =
+              agentDetail.toolResources!.codeInterpreter!.fileIds
+                  .map(
+                    (fileId) => UploadedFileInfo(
+                      fileId: fileId,
+                      fileName: 'File $fileId',
+                      fileSize: 0,
+                      uploadedAt: DateTime.now(),
+                    ),
+                  )
+                  .toList();
         }
-        
+
         if (agentDetail.toolResources!.fileSearch?.fileIds != null) {
-          fileSearchFiles = agentDetail.toolResources!.fileSearch!.fileIds
-              .map((fileId) => UploadedFileInfo(
-                    fileId: fileId,
-                    fileName: 'File $fileId',
-                    fileSize: 0,
-                    uploadedAt: DateTime.now(),
-                  ))
-              .toList();
+          fileSearchFiles =
+              agentDetail.toolResources!.fileSearch!.fileIds
+                  .map(
+                    (fileId) => UploadedFileInfo(
+                      fileId: fileId,
+                      fileName: 'File $fileId',
+                      fileSize: 0,
+                      uploadedAt: DateTime.now(),
+                    ),
+                  )
+                  .toList();
         }
       }
-      
+
       final formData = AgentFormData(
         name: agentDetail.name,
         description: agentDetail.description ?? '',
@@ -174,8 +185,10 @@ class AgentFormNotifier extends StateNotifier<AgentFormState> with ErrorHandlerM
         data: formData,
         ui: state.ui.copyWith(isLoading: false, isDirty: false),
       );
-      
-      logger.i("[AgentFormNotifier] Loaded agent data for editing: ${agentDetail.name}");
+
+      logger.i(
+        "[AgentFormNotifier] Loaded agent data for editing: ${agentDetail.name}",
+      );
     } catch (error, stackTrace) {
       handleError(error, stackTrace);
     }
@@ -190,7 +203,7 @@ class AgentFormNotifier extends StateNotifier<AgentFormState> with ErrorHandlerM
 
     try {
       final agentData = _buildAgentData();
-      
+
       if (state.isEditing) {
         await _agentService.updateAgent(state.editingAgentId!, agentData);
         logger.i('Agent updated: ${state.data.name}');
@@ -202,7 +215,7 @@ class AgentFormNotifier extends StateNotifier<AgentFormState> with ErrorHandlerM
       state = state.copyWith(
         ui: state.ui.copyWith(isLoading: false, isDirty: false),
       );
-      
+
       return true;
     } catch (error, stackTrace) {
       handleError(error, stackTrace);
@@ -237,25 +250,36 @@ class AgentFormNotifier extends StateNotifier<AgentFormState> with ErrorHandlerM
     }
 
     AgentToolResourcesModel? toolResources;
-    if (state.data.codeInterpreterFiles.isNotEmpty || state.data.fileSearchFiles.isNotEmpty) {
+    if (state.data.codeInterpreterFiles.isNotEmpty ||
+        state.data.fileSearchFiles.isNotEmpty) {
       toolResources = AgentToolResourcesModel(
-        codeInterpreter: state.data.codeInterpreterFiles.isNotEmpty
-            ? ToolResourceFilesListModel(
-                fileIds: state.data.codeInterpreterFiles.map((f) => f.fileId).toList())
-            : null,
-        fileSearch: state.data.fileSearchFiles.isNotEmpty
-            ? ToolResourceFilesListModel(
-                fileIds: state.data.fileSearchFiles.map((f) => f.fileId).toList())
-            : null,
+        codeInterpreter:
+            state.data.codeInterpreterFiles.isNotEmpty
+                ? ToolResourceFilesListModel(
+                  fileIds:
+                      state.data.codeInterpreterFiles
+                          .map((f) => f.fileId)
+                          .toList(),
+                )
+                : null,
+        fileSearch:
+            state.data.fileSearchFiles.isNotEmpty
+                ? ToolResourceFilesListModel(
+                  fileIds:
+                      state.data.fileSearchFiles.map((f) => f.fileId).toList(),
+                )
+                : null,
       );
     }
 
     return AgentDetailModel(
       id: state.editingAgentId ?? '',
       name: state.data.name,
-      description: state.data.description.isNotEmpty ? state.data.description : null,
-      instructions: state.data.instructions.isNotEmpty ? state.data.instructions : null,
-      model: "gpt-4-turbo-preview",
+      description:
+          state.data.description.isNotEmpty ? state.data.description : null,
+      instructions:
+          state.data.instructions.isNotEmpty ? state.data.instructions : null,
+      model: "gpt-4o",
       tools: tools,
       toolResources: toolResources,
       files: [],
@@ -263,10 +287,11 @@ class AgentFormNotifier extends StateNotifier<AgentFormState> with ErrorHandlerM
   }
 }
 
-final agentFormProvider = StateNotifierProvider<AgentFormNotifier, AgentFormState>((ref) {
-  final agentService = ref.watch(agentServiceProvider);
-  return AgentFormNotifier(agentService);
-});
+final agentFormProvider =
+    StateNotifierProvider<AgentFormNotifier, AgentFormState>((ref) {
+      final agentService = ref.watch(agentServiceProvider);
+      return AgentFormNotifier(agentService);
+    });
 
 final agentFormDataProvider = Provider<AgentFormData>((ref) {
   return ref.watch(agentFormProvider.select((state) => state.data));

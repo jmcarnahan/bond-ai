@@ -94,7 +94,8 @@ class CreateAgentFormState {
       selectedMcpResources: selectedMcpResources ?? this.selectedMcpResources,
       isLoading: isLoading ?? this.isLoading,
       isUploadingFile: isUploadingFile ?? this.isUploadingFile,
-      errorMessage: clearErrorMessage ? null : errorMessage ?? this.errorMessage,
+      errorMessage:
+          clearErrorMessage ? null : errorMessage ?? this.errorMessage,
     );
   }
 }
@@ -125,13 +126,14 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
   }
 
   void updateFileSelectedTool(String fileId, String selectedTool) {
-    final updatedFiles = state.uploadedFiles.map((file) {
-      if (file.fileId == fileId) {
-        return file.copyWith(selectedTool: selectedTool);
-      }
-      return file;
-    }).toList();
-    
+    final updatedFiles =
+        state.uploadedFiles.map((file) {
+          if (file.fileId == fileId) {
+            return file.copyWith(selectedTool: selectedTool);
+          }
+          return file;
+        }).toList();
+
     state = state.copyWith(uploadedFiles: updatedFiles);
   }
 
@@ -141,7 +143,11 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
 
   void cancelLoading() {
     // Cancel any ongoing operations and clear loading state
-    state = state.copyWith(isLoading: false, isUploadingFile: false, clearErrorMessage: true);
+    state = state.copyWith(
+      isLoading: false,
+      isUploadingFile: false,
+      clearErrorMessage: true,
+    );
     logger.i("[CreateAgentFormNotifier] Loading operations cancelled");
   }
 
@@ -165,7 +171,10 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
         if (file.bytes != null) {
-          state = state.copyWith(isUploadingFile: true, clearErrorMessage: true);
+          state = state.copyWith(
+            isUploadingFile: true,
+            clearErrorMessage: true,
+          );
 
           final agentService = _ref.read(agentServiceProvider);
           final uploadResponse = await agentService.uploadFile(
@@ -185,21 +194,24 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
           final updatedFiles = [...state.uploadedFiles, fileInfo];
           state = state.copyWith(uploadedFiles: updatedFiles);
 
-          logger.i('File uploaded successfully: ${file.name} -> ${uploadResponse.providerFileId}');
+          logger.i(
+            'File uploaded successfully: ${file.name} -> ${uploadResponse.providerFileId}',
+          );
         }
       }
     } catch (e) {
       logger.i('Error uploading file: ${e.toString()}');
-      state = state.copyWith(errorMessage: 'Failed to upload file: ${e.toString()}');
+      state = state.copyWith(
+        errorMessage: 'Failed to upload file: ${e.toString()}',
+      );
     } finally {
       state = state.copyWith(isUploadingFile: false);
     }
   }
 
   void removeFile(String fileId) {
-    final updatedFiles = state.uploadedFiles
-        .where((file) => file.fileId != fileId)
-        .toList();
+    final updatedFiles =
+        state.uploadedFiles.where((file) => file.fileId != fileId).toList();
     state = state.copyWith(uploadedFiles: updatedFiles);
   }
 
@@ -209,89 +221,114 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
 
   Future<void> loadAgentForEditing(String agentId) async {
     state = state.copyWith(isLoading: true, clearErrorMessage: true);
-    
+
     try {
       final agentService = _ref.read(agentServiceProvider);
       final agentDetail = await agentService.getAgentDetails(agentId);
-      
+
       List<UploadedFileInfo> uploadedFiles = [];
-      
+
       if (agentDetail.toolResources != null) {
         // Collect all file IDs from both tools
         Set<String> allFileIds = {};
         Map<String, String> fileIdToTool = {};
-        
+
         if (agentDetail.toolResources!.codeInterpreter?.fileIds != null) {
-          for (String fileId in agentDetail.toolResources!.codeInterpreter!.fileIds) {
+          for (String fileId
+              in agentDetail.toolResources!.codeInterpreter!.fileIds) {
             allFileIds.add(fileId);
             fileIdToTool[fileId] = 'code_interpreter';
           }
         }
-        
+
         if (agentDetail.toolResources!.fileSearch?.fileIds != null) {
-          for (String fileId in agentDetail.toolResources!.fileSearch!.fileIds) {
+          for (String fileId
+              in agentDetail.toolResources!.fileSearch!.fileIds) {
             allFileIds.add(fileId);
             fileIdToTool[fileId] = 'file_search';
           }
         }
-        
+
         // Fetch file details for all file IDs
         if (allFileIds.isNotEmpty) {
           try {
             final agentService = _ref.read(agentServiceProvider);
-            
+
             // Add timeout to prevent hanging on file details fetch
-            final fileDetailsList = await agentService.getFileDetails(allFileIds.toList()).timeout(
-              const Duration(seconds: 15),
-              onTimeout: () {
-                logger.w("[CreateAgentFormNotifier] File details fetch timed out, using placeholders");
-                throw Exception('File details fetch timed out');
-              },
+            final fileDetailsList = await agentService
+                .getFileDetails(allFileIds.toList())
+                .timeout(
+                  const Duration(seconds: 15),
+                  onTimeout: () {
+                    logger.w(
+                      "[CreateAgentFormNotifier] File details fetch timed out, using placeholders",
+                    );
+                    throw Exception('File details fetch timed out');
+                  },
+                );
+
+            uploadedFiles =
+                fileDetailsList.map((fileDetails) {
+                  return UploadedFileInfo(
+                    fileId: fileDetails.fileId,
+                    fileName: fileDetails.fileName,
+                    fileSize: 0, // File size not available from API
+                    mimeType: fileDetails.mimeType,
+                    selectedTool:
+                        fileIdToTool[fileDetails.fileId] ?? 'file_search',
+                    uploadedAt: DateTime.now(),
+                  );
+                }).toList();
+
+            logger.i(
+              "[CreateAgentFormNotifier] Loaded ${uploadedFiles.length} file details for editing",
             );
-            
-            uploadedFiles = fileDetailsList.map((fileDetails) {
-              return UploadedFileInfo(
-                fileId: fileDetails.fileId,
-                fileName: fileDetails.fileName,
-                fileSize: 0, // File size not available from API
-                mimeType: fileDetails.mimeType,
-                selectedTool: fileIdToTool[fileDetails.fileId] ?? 'file_search',
-                uploadedAt: DateTime.now(),
-              );
-            }).toList();
-            
-            logger.i("[CreateAgentFormNotifier] Loaded ${uploadedFiles.length} file details for editing");
           } catch (e) {
-            logger.e("[CreateAgentFormNotifier] Failed to fetch file details: $e");
+            logger.e(
+              "[CreateAgentFormNotifier] Failed to fetch file details: $e",
+            );
             // Fallback to creating placeholder entries
-            uploadedFiles = allFileIds.map((fileId) {
-              return UploadedFileInfo(
-                fileId: fileId,
-                fileName: 'File $fileId',
-                fileSize: 0,
-                mimeType: 'unknown',
-                selectedTool: fileIdToTool[fileId] ?? 'file_search',
-                uploadedAt: DateTime.now(),
-              );
-            }).toList();
-            logger.i("[CreateAgentFormNotifier] Created ${uploadedFiles.length} placeholder file entries");
+            uploadedFiles =
+                allFileIds.map((fileId) {
+                  return UploadedFileInfo(
+                    fileId: fileId,
+                    fileName: 'File $fileId',
+                    fileSize: 0,
+                    mimeType: 'unknown',
+                    selectedTool: fileIdToTool[fileId] ?? 'file_search',
+                    uploadedAt: DateTime.now(),
+                  );
+                }).toList();
+            logger.i(
+              "[CreateAgentFormNotifier] Created ${uploadedFiles.length} placeholder file entries",
+            );
           }
         }
       }
-      
+
       state = state.copyWith(
         name: agentDetail.name,
         description: agentDetail.description ?? '',
         instructions: agentDetail.instructions ?? '',
         uploadedFiles: uploadedFiles,
-        selectedMcpTools: agentDetail.mcpTools != null ? Set<String>.from(agentDetail.mcpTools!) : {},
-        selectedMcpResources: agentDetail.mcpResources != null ? Set<String>.from(agentDetail.mcpResources!) : {},
+        selectedMcpTools:
+            agentDetail.mcpTools != null
+                ? Set<String>.from(agentDetail.mcpTools!)
+                : {},
+        selectedMcpResources:
+            agentDetail.mcpResources != null
+                ? Set<String>.from(agentDetail.mcpResources!)
+                : {},
         isLoading: false,
       );
-      
-      logger.i("[CreateAgentFormNotifier] Loaded agent data for editing: ${agentDetail.name}");
+
+      logger.i(
+        "[CreateAgentFormNotifier] Loaded agent data for editing: ${agentDetail.name}",
+      );
       logger.i("[CreateAgentFormNotifier] MCP Tools: ${agentDetail.mcpTools}");
-      logger.i("[CreateAgentFormNotifier] MCP Resources: ${agentDetail.mcpResources}");
+      logger.i(
+        "[CreateAgentFormNotifier] MCP Resources: ${agentDetail.mcpResources}",
+      );
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -305,11 +342,17 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
     state = state.copyWith(isLoading: true, clearErrorMessage: true);
 
     if (state.name.isEmpty) {
-      state = state.copyWith(isLoading: false, errorMessage: "Agent name cannot be empty.");
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: "Agent name cannot be empty.",
+      );
       return false;
     }
     if (state.instructions.isEmpty) {
-      state = state.copyWith(isLoading: false, errorMessage: "Instructions cannot be empty.");
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: "Instructions cannot be empty.",
+      );
       return false;
     }
 
@@ -320,25 +363,29 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
     ];
 
     // Group files by selected tool
-    final codeInterpreterFiles = state.uploadedFiles
-        .where((file) => file.selectedTool == 'code_interpreter')
-        .map((f) => f.fileId)
-        .toList();
-    
-    final fileSearchFiles = state.uploadedFiles
-        .where((file) => file.selectedTool == 'file_search')
-        .map((f) => f.fileId)
-        .toList();
+    final codeInterpreterFiles =
+        state.uploadedFiles
+            .where((file) => file.selectedTool == 'code_interpreter')
+            .map((f) => f.fileId)
+            .toList();
+
+    final fileSearchFiles =
+        state.uploadedFiles
+            .where((file) => file.selectedTool == 'file_search')
+            .map((f) => f.fileId)
+            .toList();
 
     AgentToolResourcesModel? toolResources;
     if (codeInterpreterFiles.isNotEmpty || fileSearchFiles.isNotEmpty) {
       toolResources = AgentToolResourcesModel(
-        codeInterpreter: codeInterpreterFiles.isNotEmpty
-            ? ToolResourceFilesListModel(fileIds: codeInterpreterFiles)
-            : null,
-        fileSearch: fileSearchFiles.isNotEmpty
-            ? ToolResourceFilesListModel(fileIds: fileSearchFiles)
-            : null,
+        codeInterpreter:
+            codeInterpreterFiles.isNotEmpty
+                ? ToolResourceFilesListModel(fileIds: codeInterpreterFiles)
+                : null,
+        fileSearch:
+            fileSearchFiles.isNotEmpty
+                ? ToolResourceFilesListModel(fileIds: fileSearchFiles)
+                : null,
       );
     }
 
@@ -347,16 +394,26 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       name: state.name,
       description: state.description.isNotEmpty ? state.description : null,
       instructions: state.instructions.isNotEmpty ? state.instructions : null,
-      model: "gpt-4-turbo-preview",
+      model: "gpt-4o",
       tools: tools,
       toolResources: toolResources,
-      mcpTools: state.selectedMcpTools.isNotEmpty ? state.selectedMcpTools.toList() : null,
-      mcpResources: state.selectedMcpResources.isNotEmpty ? state.selectedMcpResources.toList() : null,
+      mcpTools:
+          state.selectedMcpTools.isNotEmpty
+              ? state.selectedMcpTools.toList()
+              : null,
+      mcpResources:
+          state.selectedMcpResources.isNotEmpty
+              ? state.selectedMcpResources.toList()
+              : null,
       files: [],
     );
-    
-    logger.i("[CreateAgentFormNotifier] Saving agent with MCP tools: ${state.selectedMcpTools}");
-    logger.i("[CreateAgentFormNotifier] Saving agent with MCP resources: ${state.selectedMcpResources}");
+
+    logger.i(
+      "[CreateAgentFormNotifier] Saving agent with MCP tools: ${state.selectedMcpTools}",
+    );
+    logger.i(
+      "[CreateAgentFormNotifier] Saving agent with MCP resources: ${state.selectedMcpResources}",
+    );
 
     try {
       final agentService = _ref.read(agentServiceProvider);
@@ -367,7 +424,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
         await agentService.updateAgent(agentId, agentData);
         logger.i('Agent updated: ${state.name}');
       }
-      
+
       state = state.copyWith(isLoading: false);
       return true;
     } catch (e) {
@@ -380,5 +437,5 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
 
 final createAgentFormProvider =
     StateNotifierProvider<CreateAgentFormNotifier, CreateAgentFormState>((ref) {
-  return CreateAgentFormNotifier(ref);
-});
+      return CreateAgentFormNotifier(ref);
+    });
