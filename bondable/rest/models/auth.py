@@ -10,4 +10,5 @@ class Token(BaseModel):
 class User(BaseModel):
     email: str
     name: Optional[str] = None
-    provider: Optional[str] = "google"  # OAuth2 provider used for authentication
+    provider: str
+    user_id: str

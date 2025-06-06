@@ -132,7 +132,7 @@ class OktaOAuth2Provider(OAuth2Provider):
             # Normalize the user info to match our expected format
             normalized_user_info = {
                 'email': user_info.get('email'),
-                'name': user_info.get('name') or user_info.get('preferred_username'),
+                'name': user_info.get('preferred_username'),
                 'sub': user_info.get('sub'),
                 'given_name': user_info.get('given_name'),
                 'family_name': user_info.get('family_name'),
