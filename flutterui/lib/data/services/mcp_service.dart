@@ -24,7 +24,7 @@ class McpService {
       final headers = await _authService.authenticatedHeaders;
       logger.i("[McpService] Headers obtained: ${headers.keys.toList()}");
       
-      final url = ApiConstants.baseUrl + '/mcp/tools';
+      final url = '${ApiConstants.baseUrl}/mcp/tools';
       logger.i("[McpService] Making request to: $url");
       
       final response = await _httpClient.get(
@@ -38,7 +38,7 @@ class McpService {
       
       if (response.statusCode == 200) {
         logger.i("[McpService] Response body length: ${response.body.length}");
-        logger.i("[McpService] Response body preview: ${response.body.length > 200 ? response.body.substring(0, 200) + '...' : response.body}");
+        logger.i("[McpService] Response body preview: ${response.body.length > 200 ? '${response.body.substring(0, 200)}...' : response.body}");
         
         final List<dynamic> data = json.decode(response.body);
         logger.i("[McpService] Decoded JSON array with ${data.length} items");
@@ -80,7 +80,7 @@ class McpService {
       final headers = await _authService.authenticatedHeaders;
       logger.i("[McpService] Headers obtained: ${headers.keys.toList()}");
       
-      final url = ApiConstants.baseUrl + '/mcp/resources';
+      final url = '${ApiConstants.baseUrl}/mcp/resources';
       logger.i("[McpService] Making request to: $url");
       
       final response = await _httpClient.get(
@@ -94,7 +94,7 @@ class McpService {
       
       if (response.statusCode == 200) {
         logger.i("[McpService] Response body length: ${response.body.length}");
-        logger.i("[McpService] Response body preview: ${response.body.length > 200 ? response.body.substring(0, 200) + '...' : response.body}");
+        logger.i("[McpService] Response body preview: ${response.body.length > 200 ? '${response.body.substring(0, 200)}...' : response.body}");
         
         final List<dynamic> data = json.decode(response.body);
         logger.i("[McpService] Decoded JSON array with ${data.length} items");

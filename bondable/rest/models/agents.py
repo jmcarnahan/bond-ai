@@ -33,6 +33,7 @@ class AgentCreateRequest(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     mcp_tools: Optional[List[str]] = None
     mcp_resources: Optional[List[str]] = None
+    group_ids: Optional[List[str]] = Field(default_factory=list)
 
 
 class AgentUpdateRequest(BaseModel):

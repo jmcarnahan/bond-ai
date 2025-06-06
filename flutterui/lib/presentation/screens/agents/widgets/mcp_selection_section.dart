@@ -57,7 +57,7 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
       logger.i('[McpSelectionSection] Getting MCP service provider...');
       final mcpService = ref.read(mcpServiceProvider);
       logger.i(
-        '[McpSelectionSection] MCP service obtained: ${mcpService != null}',
+        '[McpSelectionSection] MCP service obtained: $mcpService',
       );
 
       logger.i(
@@ -155,7 +155,7 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
         Text(
           'Select tools and resources to enable for this agent',
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurface.withOpacity(0.7),
+            color: theme.colorScheme.onSurface.withValues(alpha: .7),
           ),
         ),
         SizedBox(height: AppSpacing.lg),
@@ -177,7 +177,7 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
       shape: RoundedRectangleBorder(
         borderRadius: AppBorderRadius.allMd,
         side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withOpacity(0.5),
+          color: theme.colorScheme.outlineVariant.withValues(alpha: .5),
         ),
       ),
       color: theme.colorScheme.surfaceContainer,
@@ -210,7 +210,7 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
       margin: AppSpacing.verticalSm,
       shape: RoundedRectangleBorder(
         borderRadius: AppBorderRadius.allMd,
-        side: BorderSide(color: theme.colorScheme.error.withOpacity(0.5)),
+        side: BorderSide(color: theme.colorScheme.error.withValues(alpha: .5)),
       ),
       color: theme.colorScheme.errorContainer,
       child: Padding(
@@ -313,7 +313,7 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
       shape: RoundedRectangleBorder(
         borderRadius: AppBorderRadius.allMd,
         side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withOpacity(0.5),
+          color: theme.colorScheme.outlineVariant.withValues(alpha: .5),
         ),
       ),
       color: theme.colorScheme.surfaceContainer,
@@ -323,14 +323,14 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
           children: [
             Icon(
               Icons.info_outline,
-              color: theme.colorScheme.onSurface.withOpacity(0.5),
+              color: theme.colorScheme.onSurface.withValues(alpha: .5),
               size: 24,
             ),
             SizedBox(height: AppSpacing.sm),
             Text(
               message,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.7),
+                color: theme.colorScheme.onSurface.withValues(alpha: .7),
               ),
               textAlign: TextAlign.center,
             ),
@@ -351,13 +351,13 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
         side: BorderSide(
           color:
               isSelected
-                  ? theme.colorScheme.primary.withOpacity(0.5)
-                  : theme.colorScheme.outlineVariant.withOpacity(0.5),
+                  ? theme.colorScheme.primary.withValues(alpha: .5)
+                  : theme.colorScheme.outlineVariant.withValues(alpha: .5),
         ),
       ),
       color:
           isSelected
-              ? theme.colorScheme.primaryContainer.withOpacity(0.1)
+              ? theme.colorScheme.primaryContainer.withValues(alpha: .1)
               : theme.colorScheme.surfaceContainer,
       child: CheckboxListTile(
         title: Text(
@@ -375,7 +375,7 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
           style: theme.textTheme.bodySmall?.copyWith(
             color:
                 widget.enabled
-                    ? theme.colorScheme.onSurface.withOpacity(0.7)
+                    ? theme.colorScheme.onSurface.withValues(alpha: .7)
                     : theme.disabledColor,
           ),
         ),
@@ -402,13 +402,13 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
         side: BorderSide(
           color:
               isSelected
-                  ? theme.colorScheme.primary.withOpacity(0.5)
-                  : theme.colorScheme.outlineVariant.withOpacity(0.5),
+                  ? theme.colorScheme.primary.withValues(alpha: .5)
+                  : theme.colorScheme.outlineVariant.withValues(alpha: .5),
         ),
       ),
       color:
           isSelected
-              ? theme.colorScheme.primaryContainer.withOpacity(0.1)
+              ? theme.colorScheme.primaryContainer.withValues(alpha: .1)
               : theme.colorScheme.surfaceContainer,
       child: CheckboxListTile(
         title: Text(
@@ -429,7 +429,7 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
               style: theme.textTheme.bodySmall?.copyWith(
                 color:
                     widget.enabled
-                        ? theme.colorScheme.onSurface.withOpacity(0.7)
+                        ? theme.colorScheme.onSurface.withValues(alpha: .7)
                         : theme.disabledColor,
               ),
             ),
@@ -439,7 +439,7 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
               style: theme.textTheme.bodySmall?.copyWith(
                 color:
                     widget.enabled
-                        ? theme.colorScheme.onSurface.withOpacity(0.5)
+                        ? theme.colorScheme.onSurface.withValues(alpha: .5)
                         : theme.disabledColor,
                 fontFamily: 'monospace',
               ),

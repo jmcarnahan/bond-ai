@@ -175,6 +175,7 @@ class AgentDetailModel {
   final List<String>? mcpTools;
   final List<String>? mcpResources;
   final List<dynamic> files;
+  final List<String>? groupIds;
 
 
   const AgentDetailModel({
@@ -189,6 +190,7 @@ class AgentDetailModel {
     this.mcpTools,
     this.mcpResources,
     required this.files,
+    this.groupIds,
   });
 
   factory AgentDetailModel.fromJson(Map<String, dynamic> json) {
@@ -215,7 +217,9 @@ class AgentDetailModel {
           ? List<String>.from(json['mcp_resources'] as List<dynamic>)
           : null,
       files: json['files'] as List<dynamic>? ?? [],
-
+      groupIds: json['group_ids'] != null 
+          ? List<String>.from(json['group_ids'] as List<dynamic>)
+          : null,
     );
   }
 
@@ -232,6 +236,7 @@ class AgentDetailModel {
       if (mcpTools != null) 'mcp_tools': mcpTools,
       if (mcpResources != null) 'mcp_resources': mcpResources,
       'files': files,
+      if (groupIds != null) 'group_ids': groupIds,
     };
   }
 }

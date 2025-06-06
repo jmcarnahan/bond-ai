@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:flutterui/providers/create_agent_form_provider.dart';
 import 'package:flutterui/providers/agent_provider.dart';
+import 'package:flutterui/providers/group_provider.dart';
 import '../../../../core/utils/logger.dart';
 
 class AgentFormController {
@@ -70,6 +71,10 @@ class AgentFormController {
     _notifier.setSelectedMcpResources(resources);
   }
 
+  void onGroupSelectionChanged(Set<String> groupIds) {
+    _notifier.setSelectedGroupIds(groupIds);
+  }
+
   bool get isFormValid {
     return nameController.text.isNotEmpty && 
            instructionsController.text.isNotEmpty;
@@ -105,12 +110,18 @@ class AgentFormController {
       // Refresh the agents list
       ref.invalidate(agentsProvider);
       
+      // Refresh the groups list (to show new default group if creating agent)
+      if (!isEditing) {
+        ref.invalidate(groupsProvider);
+        ref.invalidate(groupNotifierProvider);
+      }
+      
       if (context.mounted) {
         _showSuccessMessage(context);
         Navigator.of(context).pop();
       }
     } catch (e) {
-      logger.e('Error refreshing agents list after save: $e');
+      logger.e('Error refreshing lists after save: $e');
       if (context.mounted) {
         _showPartialSuccessMessage(context, e.toString());
         Navigator.of(context).pop();
