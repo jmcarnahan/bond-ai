@@ -37,19 +37,15 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
     );
 
     if (result != null && result.files.isNotEmpty) {
-      setState(() {
-        widget.attachments.addAll(result.files);
-      });
-      widget.onFileAttachmentsChanged.call(List.unmodifiable(widget.attachments));
+      final updated = List<PlatformFile>.from(widget.attachments)..addAll(result.files);
+      widget.onFileAttachmentsChanged(List.unmodifiable(updated));
     }
   }
 
-  void _onAttachmentRemoved(PlatformFile file) {
-    setState(() {
-      widget.attachments?.remove(file);
-    });
-    widget.onFileAttachmentsChanged?.call(List.unmodifiable(widget.attachments));
-  }
+ void _onAttachmentRemoved(PlatformFile file) {
+  final updated = List<PlatformFile>.from(widget.attachments)..remove(file);
+  widget.onFileAttachmentsChanged(updated);
+}
 
   @override
   void initState() {

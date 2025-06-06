@@ -133,6 +133,19 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
           attachedFiles.map((file) => _agentService.uploadFile(file.name, file.bytes!)),
         );
         attachmentsFileIds = uploadResponses.map((response) => response.providerFileId).toList(growable: false);
+
+        for(final file in attachedFiles) {
+          final message = Message(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            type: file.extension == 'png' || file.extension == 'jpg' || file.extension == 'jpeg'
+                ? 'image_file'
+                : 'file',
+            role: 'user',
+            content: file.name,
+          );
+
+          state = state.copyWith(messages: [...state.messages, message]);
+        }
       }
       catch (e) {
         logger.i("[ChatSessionNotifier] Error uploading files: ${e.toString()}");
