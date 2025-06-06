@@ -7,6 +7,7 @@ import 'widgets/agent_form_app_bar.dart';
 import 'widgets/agent_form_fields.dart';
 import 'widgets/agent_files_table.dart';
 import 'widgets/mcp_selection_section.dart';
+import 'widgets/group_selection_section.dart';
 import 'widgets/agent_save_button.dart';
 import 'widgets/agent_loading_overlay.dart';
 import 'widgets/agent_error_banner.dart';
@@ -133,6 +134,10 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
               enabled: !formState.isLoading,
               onToolsChanged: _controller.onMcpToolsChanged,
               onResourcesChanged: _controller.onMcpResourcesChanged,
+            ),
+            GroupSelectionSection(
+              selectedGroupIds: formState.selectedGroupIds,
+              onGroupSelectionChanged: _controller.onGroupSelectionChanged,
             ),
             SizedBox(height: AppSpacing.enormous), // Extra space at bottom
           ],

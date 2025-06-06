@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, func, event, PrimaryKeyConstraint, Index, ForeignKey
+from sqlalchemy import ForeignKey, create_engine, Column, String, DateTime, func, PrimaryKeyConstraint
 from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
 from sqlalchemy.sql import text
 import logging
@@ -45,12 +45,20 @@ class VectorStore(Base):
     created_at = Column(DateTime, default=datetime.datetime.now)
 class AgentGroup(Base):
     __tablename__ = "agent_groups"
-    agent_id = Column(String, primary_key=True)
-    group_id = Column(String, primary_key=True)
+    agent_id = Column(String, ForeignKey('agents.agent_id'), primary_key=True)
+    group_id = Column(String, ForeignKey('groups.id'), primary_key=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
+class Group(Base):
+    __tablename__ = "groups"
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    description = Column(String)
+    owner_user_id = Column(String, ForeignKey('users.id'), nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 class GroupUser(Base):
     __tablename__ = "group_users"
-    group_id = Column(String, primary_key=True)
+    group_id = Column(String, ForeignKey('groups.id'), primary_key=True)
     user_id = Column(String, ForeignKey('users.id'), primary_key=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
 class User(Base):
