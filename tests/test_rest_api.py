@@ -215,7 +215,7 @@ class TestAgents:
             "name": "New Agent",
             "description": "A test agent",
             "instructions": "Be helpful",
-            "model": "gpt-4",
+            "model": "gpt-4o",
             "tools": [{"type": "code_interpreter"}],
             "metadata": {"test": True}
         }
