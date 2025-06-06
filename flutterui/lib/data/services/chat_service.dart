@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show immutable;
 import 'package:flutterui/core/constants/api_constants.dart';
 import 'package:flutterui/data/services/auth_service.dart';
+import 'package:flutterui/data/models/chat_models.dart';
 import 'package:http/http.dart' as http;
 
 import '../../core/utils/logger.dart';
@@ -20,7 +21,7 @@ class ChatService {
     required String threadId,
     required String agentId,
     required String prompt,
-    List<String>? attachments,
+    List<ChatAttachment>? attachments,
   }) async* {
     logger.i(
       "[ChatService] streamChatResponse called for threadId: $threadId, agentId: $agentId",
@@ -31,7 +32,7 @@ class ChatService {
         'thread_id': threadId,
         'agent_id': agentId,
         'prompt': prompt,
-        'attachments': attachments,
+        'attachments': attachments?.map((attachment) => attachment.toJson()).toList(),
       });
 
       final request =
