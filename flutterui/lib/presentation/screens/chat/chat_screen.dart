@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart' show PlatformFile;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -29,6 +30,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _textFieldFocusNode = FocusNode();
   bool _isTextFieldFocused = false;
+  List<PlatformFile> _fileAttachments = [];
 
   @override
   void initState() {
@@ -88,6 +90,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return '${prompt.substring(0, maxLength - 3)}...';
   }
 
+  void _onAttachmentsChanged(List<PlatformFile> attachments) {
+    setState(() {
+      _fileAttachments = attachments; // PlatformFiles are passed by reference FYI
+    });
+  }
+
   void _sendMessage() {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
@@ -98,18 +106,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final chatNotifier = ref.read(chatSessionNotifierProvider.notifier);
     final currentSessionState = ref.read(chatSessionNotifierProvider);
 
+    final hasAttachement = _fileAttachments.isNotEmpty;
+
     if (currentSessionState.currentThreadId == null) {
       chatNotifier.createAndSetNewThread(
         name: _generateThreadNameFromPrompt(text),
         agentIdForFirstMessage: widget.agentId,
         firstMessagePrompt: text,
+        attachedFiles: hasAttachement ? _fileAttachments : null,
       );
     } else {
-      chatNotifier.sendMessage(agentId: widget.agentId, prompt: text);
+      chatNotifier.sendMessage(
+        agentId: widget.agentId, 
+        prompt: text, 
+        attachedFiles: hasAttachement ? _fileAttachments : null);
     }
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _textController.clear();
+      _onAttachmentsChanged([]);
     });
     
     _scrollToBottom();
@@ -213,6 +228,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             isTextFieldFocused: _isTextFieldFocused,
             isSendingMessage: chatState.isSendingMessage,
             onSendMessage: _sendMessage,
+            onFileAttachmentsChanged: _onAttachmentsChanged,
+            attachments: _fileAttachments,
           ),
         ],
       ),
