@@ -1,14 +1,17 @@
 from typing import Annotated
-from datetime import timedelta
+from datetime import timedelta, datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import RedirectResponse
 import logging
+import uuid
 
 from bondable.bond.auth import OAuth2ProviderFactory
 from bondable.bond.config import Config
+from bondable.bond.providers.metadata import User as UserModel
 from bondable.rest.models.auth import User
 from bondable.rest.dependencies.auth import get_current_user
-from bondable.rest.utils.auth import create_access_token
+from bondable.rest.dependencies.providers import get_bond_provider
+from bondable.rest.utils.auth import create_access_token, get_or_create_user
 
 router = APIRouter(tags=["Authentication"])
 logger = logging.getLogger(__name__)
@@ -48,13 +51,13 @@ async def login_provider(provider: str):
 
 
 @router.get("/auth/google/callback")
-async def auth_callback(request: Request):
+async def auth_callback(request: Request, bond_provider = Depends(get_bond_provider)):
     """Handle Google OAuth2 callback (legacy endpoint)."""
-    return await auth_callback_provider("google", request)
+    return await auth_callback_provider("google", request, bond_provider)
 
 
 @router.get("/auth/{provider}/callback")
-async def auth_callback_provider(provider: str, request: Request):
+async def auth_callback_provider(provider: str, request: Request, bond_provider = Depends(get_bond_provider)):
     """Handle OAuth2 callback for specified provider."""
     auth_code = request.query_params.get('code')
     if not auth_code:
@@ -73,19 +76,35 @@ async def auth_callback_provider(provider: str, request: Request):
         
         logger.info(f"Successfully authenticated user with {provider}: {user_info.get('email')}")
 
-        # Create JWT with provider information
+        db_session = bond_provider.metadata.get_db_session()
+        try:
+            user_id, is_new = get_or_create_user(
+                db_session,
+                email=user_info.get("email"),
+                name=user_info.get("name"),
+                sign_in_method=provider
+            )
+
+            if is_new:
+                logger.info(f"Created new user: {user_info.get('email')} (id: {user_id})")
+            else:
+                logger.info(f"Updated existing user: {user_info.get('email')} (id: {user_id})")
+
+        finally:
+            db_session.close()
+
         access_token_expires = timedelta(minutes=jwt_config.ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
             data={
                 "sub": user_info.get("email"), 
                 "name": user_info.get("name"),
-                "provider": provider
+                "provider": provider,
+                "user_id": user_id
             },
             expires_delta=access_token_expires
         )
         logger.info(f"Generated JWT for user: {user_info.get('email')} (provider: {provider})")
 
-        # Redirect to Flutter app
         flutter_redirect_url = f"{jwt_config.JWT_REDIRECT_URI}/#/auth-callback?token={access_token}"
         return RedirectResponse(url=flutter_redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
