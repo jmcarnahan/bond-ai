@@ -176,8 +176,8 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
             clearErrorMessage: true,
           );
 
-          final agentService = _ref.read(agentServiceProvider);
-          final uploadResponse = await agentService.uploadFile(
+          final fileService = _ref.read(fileServiceProvider);
+          final uploadResponse = await fileService.uploadFile(
             file.name,
             file.bytes!,
           );
@@ -252,10 +252,10 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
         // Fetch file details for all file IDs
         if (allFileIds.isNotEmpty) {
           try {
-            final agentService = _ref.read(agentServiceProvider);
+            final fileService = _ref.read(fileServiceProvider);
 
             // Add timeout to prevent hanging on file details fetch
-            final fileDetailsList = await agentService
+            final fileDetailsList = await fileService
                 .getFileDetails(allFileIds.toList())
                 .timeout(
                   const Duration(seconds: 15),

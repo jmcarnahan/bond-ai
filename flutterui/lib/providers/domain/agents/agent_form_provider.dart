@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 
 import 'package:flutterui/data/models/agent_model.dart';
 import 'package:flutterui/data/services/agent_service.dart';
+import 'package:flutterui/data/services/file_service.dart';
 import 'package:flutterui/providers/services/service_providers.dart';
 import 'package:flutterui/providers/domain/base/error_handler.dart';
 import 'agent_form_state.dart';
@@ -11,8 +12,9 @@ import '../../../core/utils/logger.dart';
 class AgentFormNotifier extends StateNotifier<AgentFormState>
     with ErrorHandlerMixin<AgentFormState> {
   final AgentService _agentService;
+  final FileService _fileService;
 
-  AgentFormNotifier(this._agentService) : super(const AgentFormState());
+  AgentFormNotifier(this._agentService, this._fileService) : super(const AgentFormState());
 
   @override
   void handleAppError(AppError error) {
@@ -75,7 +77,7 @@ class AgentFormNotifier extends StateNotifier<AgentFormState>
             ui: state.ui.copyWith(isUploadingFile: true, clearError: true),
           );
 
-          final uploadResponse = await _agentService.uploadFile(
+          final uploadResponse = await _fileService.uploadFile(
             file.name,
             file.bytes!,
           );
@@ -290,7 +292,8 @@ class AgentFormNotifier extends StateNotifier<AgentFormState>
 final agentFormProvider =
     StateNotifierProvider<AgentFormNotifier, AgentFormState>((ref) {
       final agentService = ref.watch(agentServiceProvider);
-      return AgentFormNotifier(agentService);
+      final fileService = ref.watch(fileServiceProvider);
+      return AgentFormNotifier(agentService, fileService);
     });
 
 final agentFormDataProvider = Provider<AgentFormData>((ref) {

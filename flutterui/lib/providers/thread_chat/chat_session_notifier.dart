@@ -3,9 +3,10 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart' show PlatformFile;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/data/models/message_model.dart';
+import 'package:flutterui/data/models/chat_models.dart';
 import 'package:flutterui/data/services/thread_service.dart';
 import 'package:flutterui/data/services/chat_service.dart';
-import 'package:flutterui/data/services/agent_service.dart';
+import 'package:flutterui/data/services/file_service.dart';
 import 'package:flutterui/providers/thread_provider.dart';
 import 'chat_session_state.dart';
 import 'chat_stream_handler_mixin.dart';
@@ -14,7 +15,7 @@ import '../../core/utils/logger.dart';
 class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStreamHandlerMixin {
   final ThreadService _threadService;
   final ChatService _chatService;
-  final AgentService _agentService;
+  final FileService _fileService;
   final Ref _ref;
   
   @override
@@ -24,7 +25,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
 
   ChatSessionNotifier(this._threadService, 
                       this._chatService, 
-                      this._agentService,
+                      this._fileService,
                       this._ref)
       : super(ChatSessionState());
 
@@ -126,13 +127,16 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
     state = state.copyWith(isSendingMessage: true, clearErrorMessage: true);
 
     // Handle file attachments
-    List<String>? attachmentsFileIds;
+    List<ChatAttachment>? chatAttachments;
     if (attachedFiles != null && attachedFiles.isNotEmpty) {
       try {
         final uploadResponses = await Future.wait(
-          attachedFiles.map((file) => _agentService.uploadFile(file.name, file.bytes!)),
+          attachedFiles.map((file) => _fileService.uploadFile(file.name, file.bytes!)),
         );
-        attachmentsFileIds = uploadResponses.map((response) => response.providerFileId).toList(growable: false);
+        chatAttachments = uploadResponses.map((response) => ChatAttachment(
+          fileId: response.providerFileId,
+          suggestedTool: response.suggestedTool,
+        )).toList(growable: false);
 
         for(final file in attachedFiles) {
           final message = Message(
@@ -185,7 +189,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
             threadId: state.currentThreadId!,
             agentId: agentId,
             prompt: prompt,
-            attachments: attachmentsFileIds,
+            attachments: chatAttachments,
           )
           .listen(
             (chunk) => handleStreamData(chunk, assistantMessageIndex),

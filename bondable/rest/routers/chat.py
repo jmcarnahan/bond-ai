@@ -21,9 +21,15 @@ async def chat(
 ):
     """Stream chat responses for a specific thread and agent."""
 
-    # Need a way to determine tool set for each attachment if applicable
-    resolved_attachements = [{ "file_id": fileId, "tools": [{"type": "file_search"}] } 
-                             for fileId in request_body.attachments] if request_body.attachments else []
+    # Build resolved attachments with appropriate tools based on suggested_tool
+    resolved_attachements = []
+    if request_body.attachments:
+        for attachment in request_body.attachments:
+            tool_type = attachment.suggested_tool if attachment.suggested_tool in ["file_search", "code_interpreter"] else "file_search"
+            resolved_attachements.append({
+                "file_id": attachment.file_id, 
+                "tools": [{"type": tool_type}]
+            })
 
     try:
         # Get the agent instance

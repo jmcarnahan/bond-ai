@@ -5,19 +5,33 @@ import 'package:http_parser/http_parser.dart';
 
 import 'package:flutterui/core/constants/api_constants.dart';
 import 'package:flutterui/data/models/api_response_models.dart';
-import 'package:flutterui/data/services/file_service.dart';
-import 'agent_http_client.dart';
-import '../../../core/utils/logger.dart';
+import 'package:flutterui/data/services/http_client.dart';
+import 'package:flutterui/data/services/auth_service.dart';
+import '../../core/utils/logger.dart';
 
+/// Service for handling file operations across the application
 @immutable
-class AgentFileService {
-  final AgentHttpClient _httpClient;
+class FileService {
+  final AuthenticatedHttpClient _httpClient;
 
-  const AgentFileService({required AgentHttpClient httpClient})
+  const FileService({required AuthenticatedHttpClient httpClient})
       : _httpClient = httpClient;
 
+  factory FileService.fromAuthService({
+    http.Client? httpClient,
+    required AuthService authService,
+  }) {
+    final authenticatedHttpClient = AuthenticatedHttpClient(
+      httpClient: httpClient,
+      authService: authService,
+    );
+    
+    return FileService(httpClient: authenticatedHttpClient);
+  }
+
+  /// Upload a file and return the provider file ID and metadata
   Future<FileUploadResponseModel> uploadFile(String fileName, Uint8List fileBytes) async {
-    logger.i("[AgentFileService] uploadFile called for: $fileName");
+    logger.i("[FileService] uploadFile called for: $fileName");
     try {
       final request = http.MultipartRequest(
         'POST',
@@ -37,41 +51,43 @@ class AgentFileService {
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
-        logger.i("[AgentFileService] Successfully uploaded file: $fileName");
+        logger.i("[FileService] Successfully uploaded file: $fileName");
         return FileUploadResponseModel.fromJson(data);
       } else {
         final errorMsg = 'Failed to upload file: ${response.statusCode} ${response.body}';
-        logger.e("[AgentFileService] $errorMsg for $fileName");
+        logger.e("[FileService] $errorMsg for $fileName");
         throw Exception(errorMsg);
       }
     } catch (e) {
-      logger.e("[AgentFileService] Error in uploadFile for $fileName: ${e.toString()}");
+      logger.e("[FileService] Error in uploadFile for $fileName: ${e.toString()}");
       throw Exception('Failed to upload file: ${e.toString()}');
     }
   }
 
+  /// Delete a file by its provider file ID
   Future<void> deleteFile(String providerFileId) async {
-    logger.i("[AgentFileService] deleteFile called for ID: $providerFileId");
+    logger.i("[FileService] deleteFile called for ID: $providerFileId");
     try {
       final url = '${ApiConstants.baseUrl}${ApiConstants.filesEndpoint}/$providerFileId';
       final response = await _httpClient.delete(url);
 
       if (response.statusCode == 200 || response.statusCode == 204) {
-        logger.i("[AgentFileService] Successfully deleted file: $providerFileId");
+        logger.i("[FileService] Successfully deleted file: $providerFileId");
         return;
       } else {
         final errorMsg = 'Failed to delete file: ${response.statusCode} ${response.body}';
-        logger.e("[AgentFileService] $errorMsg for $providerFileId");
+        logger.e("[FileService] $errorMsg for $providerFileId");
         throw Exception(errorMsg);
       }
     } catch (e) {
-      logger.e("[AgentFileService] Error in deleteFile for $providerFileId: ${e.toString()}");
+      logger.e("[FileService] Error in deleteFile for $providerFileId: ${e.toString()}");
       throw Exception('Failed to delete file: ${e.toString()}');
     }
   }
 
+  /// Get details for multiple files by their IDs
   Future<List<FileDetailsResponseModel>> getFileDetails(List<String> fileIds) async {
-    logger.i("[AgentFileService] getFileDetails called for ${fileIds.length} files");
+    logger.i("[FileService] getFileDetails called for ${fileIds.length} files");
     try {
       if (fileIds.isEmpty) {
         return [];
@@ -85,7 +101,7 @@ class AgentFileService {
       final response = await _httpClient.get(uri.toString()).timeout(
         const Duration(seconds: 10),
         onTimeout: () {
-          logger.e("[AgentFileService] getFileDetails timed out after 10 seconds");
+          logger.e("[FileService] getFileDetails timed out after 10 seconds");
           throw Exception('Request timed out while fetching file details');
         },
       );
@@ -93,21 +109,22 @@ class AgentFileService {
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         final fileDetails = data.map((item) => FileDetailsResponseModel.fromJson(item)).toList();
-        logger.i("[AgentFileService] Successfully retrieved ${fileDetails.length} file details");
+        logger.i("[FileService] Successfully retrieved ${fileDetails.length} file details");
         return fileDetails;
       } else {
         final errorMsg = 'Failed to get file details: ${response.statusCode} ${response.body}';
-        logger.e("[AgentFileService] $errorMsg");
+        logger.e("[FileService] $errorMsg");
         throw Exception(errorMsg);
       }
     } catch (e) {
-      logger.e("[AgentFileService] Error in getFileDetails: ${e.toString()}");
+      logger.e("[FileService] Error in getFileDetails: ${e.toString()}");
       throw Exception('Failed to get file details: ${e.toString()}');
     }
   }
 
+  /// Get a list of all files
   Future<List<FileInfoModel>> getFiles() async {
-    logger.i("[AgentFileService] getFiles called");
+    logger.i("[FileService] getFiles called");
     try {
       final url = ApiConstants.baseUrl + ApiConstants.filesEndpoint;
       final response = await _httpClient.get(url);
@@ -118,38 +135,81 @@ class AgentFileService {
             .map((item) => FileInfoModel.fromJson(item as Map<String, dynamic>))
             .toList();
         
-        logger.i("[AgentFileService] Retrieved ${files.length} files");
+        logger.i("[FileService] Retrieved ${files.length} files");
         return files;
       } else {
         final errorMsg = 'Failed to get files: ${response.statusCode}';
-        logger.e("[AgentFileService] $errorMsg, Body: ${response.body}");
+        logger.e("[FileService] $errorMsg, Body: ${response.body}");
         throw Exception(errorMsg);
       }
     } catch (e) {
-      logger.e("[AgentFileService] Error in getFiles: ${e.toString()}");
+      logger.e("[FileService] Error in getFiles: ${e.toString()}");
       throw Exception('Failed to fetch files: ${e.toString()}');
     }
   }
 
+  /// Get information for a single file by its provider file ID
   Future<FileInfoModel> getFileInfo(String providerFileId) async {
-    logger.i("[AgentFileService] getFileInfo called for ID: $providerFileId");
+    logger.i("[FileService] getFileInfo called for ID: $providerFileId");
     try {
       final url = '${ApiConstants.baseUrl}${ApiConstants.filesEndpoint}/$providerFileId';
       final response = await _httpClient.get(url);
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
-        logger.i("[AgentFileService] Successfully retrieved file info: $providerFileId");
+        logger.i("[FileService] Successfully retrieved file info: $providerFileId");
         return FileInfoModel.fromJson(data);
       } else {
         final errorMsg = 'Failed to get file info: ${response.statusCode}';
-        logger.e("[AgentFileService] $errorMsg for $providerFileId, Body: ${response.body}");
+        logger.e("[FileService] $errorMsg for $providerFileId, Body: ${response.body}");
         throw Exception(errorMsg);
       }
     } catch (e) {
-      logger.e("[AgentFileService] Error in getFileInfo for $providerFileId: ${e.toString()}");
+      logger.e("[FileService] Error in getFileInfo for $providerFileId: ${e.toString()}");
       throw Exception('Failed to fetch file info: ${e.toString()}');
     }
   }
+
+  void dispose() {
+    _httpClient.dispose();
+  }
 }
 
+/// Model for file information (moved from agent_file_service.dart)
+class FileInfoModel {
+  final String id;
+  final String fileName;
+  final int fileSize;
+  final DateTime createdAt;
+  final String? contentType;
+
+  const FileInfoModel({
+    required this.id,
+    required this.fileName,
+    required this.fileSize,
+    required this.createdAt,
+    this.contentType,
+  });
+
+  factory FileInfoModel.fromJson(Map<String, dynamic> json) {
+    return FileInfoModel(
+      id: json['id'] as String,
+      fileName: json['fileName'] as String,
+      fileSize: json['fileSize'] as int,
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      contentType: json['contentType'] as String?,
+    );
+  }
+
+  String get providerFileId => id;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'fileName': fileName,
+      'fileSize': fileSize,
+      'createdAt': createdAt.toIso8601String(),
+      'contentType': contentType,
+    };
+  }
+}
