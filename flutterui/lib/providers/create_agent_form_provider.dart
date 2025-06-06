@@ -57,6 +57,7 @@ class CreateAgentFormState {
   final List<UploadedFileInfo> uploadedFiles;
   final Set<String> selectedMcpTools;
   final Set<String> selectedMcpResources;
+  final Set<String> selectedGroupIds;
   final bool isLoading;
   final bool isUploadingFile;
   final String? errorMessage;
@@ -68,6 +69,7 @@ class CreateAgentFormState {
     this.uploadedFiles = const [],
     this.selectedMcpTools = const {},
     this.selectedMcpResources = const {},
+    this.selectedGroupIds = const {},
     this.isLoading = false,
     this.isUploadingFile = false,
     this.errorMessage,
@@ -80,6 +82,7 @@ class CreateAgentFormState {
     List<UploadedFileInfo>? uploadedFiles,
     Set<String>? selectedMcpTools,
     Set<String>? selectedMcpResources,
+    Set<String>? selectedGroupIds,
     bool? isLoading,
     bool? isUploadingFile,
     String? errorMessage,
@@ -92,6 +95,7 @@ class CreateAgentFormState {
       uploadedFiles: uploadedFiles ?? this.uploadedFiles,
       selectedMcpTools: selectedMcpTools ?? this.selectedMcpTools,
       selectedMcpResources: selectedMcpResources ?? this.selectedMcpResources,
+      selectedGroupIds: selectedGroupIds ?? this.selectedGroupIds,
       isLoading: isLoading ?? this.isLoading,
       isUploadingFile: isUploadingFile ?? this.isUploadingFile,
       errorMessage:
@@ -157,6 +161,10 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
 
   void setSelectedMcpResources(Set<String> resources) {
     state = state.copyWith(selectedMcpResources: resources);
+  }
+
+  void setSelectedGroupIds(Set<String> groupIds) {
+    state = state.copyWith(selectedGroupIds: groupIds);
   }
 
   Future<void> uploadFile() async {
@@ -406,6 +414,10 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
               ? state.selectedMcpResources.toList()
               : null,
       files: [],
+      groupIds:
+          state.selectedGroupIds.isNotEmpty
+              ? state.selectedGroupIds.toList()
+              : null,
     );
 
     logger.i(
