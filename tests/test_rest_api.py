@@ -61,8 +61,13 @@ def authenticated_client(test_client, mock_provider):
     # Override provider dependency
     app.dependency_overrides[get_bond_provider] = lambda: mock_provider
     
-    # Create valid JWT token
-    token_data = {"sub": TEST_USER_EMAIL, "name": "Test User"}
+    # Create valid JWT token with required fields
+    token_data = {
+        "sub": TEST_USER_EMAIL, 
+        "name": "Test User",
+        "provider": "google",
+        "user_id": "test-user-id-123"
+    }
     access_token = create_access_token(data=token_data, expires_delta=timedelta(minutes=15))
     auth_headers = {"Authorization": f"Bearer {access_token}"}
     
@@ -656,7 +661,8 @@ class TestChat:
         assert response.text == "".join(mock_chunks)
         mock_agent.stream_response.assert_called_once_with(
             thread_id="test_thread", 
-            prompt="Hello"
+            prompt="Hello",
+            attachments=[]
         )
 
     def test_chat_agent_not_found(self, authenticated_client):
@@ -706,6 +712,45 @@ class TestChat:
         response = test_client.post("/chat", json=chat_data)
         
         assert response.status_code == 401
+
+    def test_chat_with_attachments_tool_assignment(self, authenticated_client):
+        """Test chat with attachments uses correct tools based on file type."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        # Mock agent
+        mock_agent = MagicMock(spec=AgentABC)
+        mock_chunks = ["Processing CSV file..."]
+        mock_agent.stream_response.return_value = iter(mock_chunks)
+
+        mock_provider.agents.get_agent.return_value = mock_agent
+        mock_provider.agents.can_user_access_agent.return_value = True
+
+        # Test with CSV file (should use code_interpreter) and text file (should use file_search)
+        chat_data = {
+            "thread_id": "test_thread",
+            "agent_id": "test_agent",
+            "prompt": "Analyze this data",
+            "attachments": [
+                {"file_id": "csv_file_123", "suggested_tool": "code_interpreter"},
+                {"file_id": "text_file_456", "suggested_tool": "file_search"}
+            ]
+        }
+
+        response = client.post("/chat", headers=auth_headers, json=chat_data)
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+
+        # Verify the attachments were passed with correct tool assignments
+        expected_attachments = [
+            {"file_id": "csv_file_123", "tools": [{"type": "code_interpreter"}]},
+            {"file_id": "text_file_456", "tools": [{"type": "file_search"}]}
+        ]
+        mock_agent.stream_response.assert_called_once_with(
+            thread_id="test_thread",
+            prompt="Analyze this data",
+            attachments=expected_attachments
+        )
 
 # --- File Management Tests ---
 
