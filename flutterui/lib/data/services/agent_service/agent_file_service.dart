@@ -5,6 +5,7 @@ import 'package:http_parser/http_parser.dart';
 
 import 'package:flutterui/core/constants/api_constants.dart';
 import 'package:flutterui/data/models/api_response_models.dart';
+import 'package:flutterui/data/services/file_service.dart';
 import 'agent_http_client.dart';
 import '../../../core/utils/logger.dart';
 
@@ -152,40 +153,3 @@ class AgentFileService {
   }
 }
 
-class FileInfoModel {
-  final String id;
-  final String fileName;
-  final int fileSize;
-  final DateTime createdAt;
-  final String? contentType;
-
-  const FileInfoModel({
-    required this.id,
-    required this.fileName,
-    required this.fileSize,
-    required this.createdAt,
-    this.contentType,
-  });
-
-  factory FileInfoModel.fromJson(Map<String, dynamic> json) {
-    return FileInfoModel(
-      id: json['id'] as String,
-      fileName: json['fileName'] as String,
-      fileSize: json['fileSize'] as int,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      contentType: json['contentType'] as String?,
-    );
-  }
-
-  get providerFileId => null;
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'fileName': fileName,
-      'fileSize': fileSize,
-      'createdAt': createdAt.toIso8601String(),
-      'contentType': contentType,
-    };
-  }
-}
