@@ -114,6 +114,28 @@ class MessageListView extends ConsumerWidget {
                 ),
             ],
           );
+        } else if (message.type == 'file') {
+          coreMessageWidget = Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.description, // Use Icons.insert_drive_file for a generic file
+                color: messageTextColor, // maybe a different color?
+                size: 22,
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  message.content,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: messageTextColor,
+                    fontStyle: FontStyle.italic,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          );
         } else {
           coreMessageWidget = SelectableText(
             message.content,
