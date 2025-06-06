@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, func, event, PrimaryKeyConstraint
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, func, event, PrimaryKeyConstraint, Index
 from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
 from sqlalchemy.sql import text
 import logging
@@ -54,6 +54,14 @@ class GroupUser(Base):
     group_id = Column(String, primary_key=True)
     user_id = Column(String, primary_key=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
+class User(Base):
+    __tablename__ = "users"
+    id = Column(String, primary_key=True, nullable=False)
+    email = Column(String, nullable=False, unique=True, index=True)
+    sign_in_method = Column(String, nullable=False)
+    name = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
 
 
