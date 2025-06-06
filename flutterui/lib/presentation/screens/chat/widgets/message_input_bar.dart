@@ -1,6 +1,8 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutterui/presentation/screens/chat/widgets/message_attachment_bar.dart';
 
 class MessageInputBar extends ConsumerStatefulWidget {
   final TextEditingController textController;
@@ -8,6 +10,8 @@ class MessageInputBar extends ConsumerStatefulWidget {
   final bool isTextFieldFocused;
   final bool isSendingMessage;
   final VoidCallback onSendMessage;
+  final void Function(List<PlatformFile>) onFileAttachmentsChanged;
+  final List<PlatformFile> attachments;
 
   const MessageInputBar({
     super.key,
@@ -16,6 +20,8 @@ class MessageInputBar extends ConsumerStatefulWidget {
     required this.isTextFieldFocused,
     required this.isSendingMessage,
     required this.onSendMessage,
+    required this.onFileAttachmentsChanged,
+    required this.attachments
   });
 
   @override
@@ -24,6 +30,22 @@ class MessageInputBar extends ConsumerStatefulWidget {
 
 class _MessageInputBarState extends ConsumerState<MessageInputBar> {
   late final FocusNode _keyboardFocusNode;
+
+  Future<void> _pickFiles() async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+    );
+
+    if (result != null && result.files.isNotEmpty) {
+      final updated = List<PlatformFile>.from(widget.attachments)..addAll(result.files);
+      widget.onFileAttachmentsChanged(List.unmodifiable(updated));
+    }
+  }
+
+ void _onAttachmentRemoved(PlatformFile file) {
+  final updated = List<PlatformFile>.from(widget.attachments)..remove(file);
+  widget.onFileAttachmentsChanged(updated);
+}
 
   @override
   void initState() {
@@ -55,77 +77,93 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
           ),
         ],
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 8.0,
         children: [
-          Expanded(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(25.0),
-                border: widget.isTextFieldFocused
-                    ? Border.all(color: Colors.red, width: 2.0)
-                    : null,
-              ),
-              child: Material(
-                borderRadius: BorderRadius.circular(25.0),
-                clipBehavior: Clip.antiAlias,
-                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-                child: Padding( 
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0),
-                  child: KeyboardListener(
-                    focusNode: _keyboardFocusNode,
-                    onKeyEvent: (KeyEvent event) {
-                      if (event is KeyDownEvent && 
-                          event.logicalKey == LogicalKeyboardKey.enter &&
-                          !HardwareKeyboard.instance.isShiftPressed &&
-                          !widget.isSendingMessage &&
-                          widget.textController.text.trim().isNotEmpty) {
-                        widget.onSendMessage();
-                      }
-                    },
-                    child: TextField(
-                      controller: widget.textController,
-                      focusNode: widget.focusNode,
-                      maxLines: null,
-                      keyboardType: TextInputType.multiline,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: InputDecoration(
-                        hintText: widget.isSendingMessage ? 'Waiting for response...' : 'Type a message...',
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        filled: false,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 12.0),
+          MessageAttachmentBar(
+            attachments: widget.attachments,
+            onAttachmentRemoved: _onAttachmentRemoved
+          ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(25.0),
+                  border: widget.isTextFieldFocused
+                      ? Border.all(color: Colors.red, width: 2.0)
+                      : null,
+                  ),
+                  child: Material(
+                    borderRadius: BorderRadius.circular(25.0),
+                    clipBehavior: Clip.antiAlias,
+                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                    child: Padding( 
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0),
+                      child: KeyboardListener(
+                        focusNode: _keyboardFocusNode,
+                        onKeyEvent: (KeyEvent event) {
+                          if (event is KeyDownEvent && 
+                            event.logicalKey == LogicalKeyboardKey.enter &&
+                            !HardwareKeyboard.instance.isShiftPressed &&
+                            !widget.isSendingMessage &&
+                            widget.textController.text.trim().isNotEmpty) {
+                              widget.onSendMessage();
+                          }
+                        },
+                        child: TextField(
+                          controller: widget.textController,
+                          focusNode: widget.focusNode,
+                          maxLines: null,
+                          keyboardType: TextInputType.multiline,
+                          textCapitalization: TextCapitalization.sentences,
+                          decoration: InputDecoration(
+                            hintText: widget.isSendingMessage ? 'Waiting for response...' : 'Type a message...',
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            filled: false,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 12.0),
+                          ),
+                          onSubmitted: (value) {
+                            if (!widget.isSendingMessage && value.trim().isNotEmpty) {
+                              widget.onSendMessage();
+                            }
+                          },
+                        ),
                       ),
-                      onSubmitted: (value) {
-                        if (!widget.isSendingMessage && value.trim().isNotEmpty) {
-                          widget.onSendMessage();
-                        }
-                      },
                     ),
                   ),
                 ),
               ),
-            ),
+              const SizedBox(width: 8.0),
+              IconButton(
+                icon: Icon(Icons.attach_file, color: widget.isSendingMessage ? Colors.grey : colorScheme.primary, size: 28), // Grey out icon when disabled
+                tooltip: 'Add a file',
+                padding: const EdgeInsets.only(bottom: 4.0), // Align with TextField baseline
+                onPressed: _pickFiles,
+              ),
+              widget.isSendingMessage
+                  ? Padding(
+                      padding: const EdgeInsets.only(bottom: 4.0, right: 4.0),
+                      child: SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(strokeWidth: 2.5, color: colorScheme.primary),
+                      ),
+                    )
+                  : IconButton(
+                      icon: Icon(Icons.send, color: widget.isSendingMessage ? Colors.grey : colorScheme.primary, size: 28), // Grey out icon when disabled
+                      tooltip: widget.isSendingMessage ? 'Waiting for response' : 'Send message',
+                      padding: const EdgeInsets.only(bottom: 4.0),
+                      onPressed: widget.isSendingMessage ? null : widget.onSendMessage,
+                    ),
+               ],
           ),
-          const SizedBox(width: 8.0),
-          widget.isSendingMessage
-              ? Padding(
-                  padding: const EdgeInsets.only(bottom: 4.0, right: 4.0),
-                  child: SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: CircularProgressIndicator(strokeWidth: 2.5, color: colorScheme.primary),
-                  ),
-                )
-              : IconButton(
-                  icon: Icon(Icons.send, color: widget.isSendingMessage ? Colors.grey : colorScheme.primary, size: 28), // Grey out icon when disabled
-                  tooltip: widget.isSendingMessage ? 'Waiting for response' : 'Send message',
-                  padding: const EdgeInsets.only(bottom: 4.0),
-                  onPressed: widget.isSendingMessage ? null : widget.onSendMessage,
-                ),
         ],
-      ),
+      )
     );
   }
 }

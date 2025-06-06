@@ -20,6 +20,7 @@ class ChatService {
     required String threadId,
     required String agentId,
     required String prompt,
+    List<String>? attachments,
   }) async* {
     logger.i(
       "[ChatService] streamChatResponse called for threadId: $threadId, agentId: $agentId",
@@ -30,6 +31,7 @@ class ChatService {
         'thread_id': threadId,
         'agent_id': agentId,
         'prompt': prompt,
+        'attachments': attachments,
       });
 
       final request =

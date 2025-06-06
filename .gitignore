@@ -12,3 +12,7 @@ creds
 */theme_configs/*
 */lib/core/theme/generated_theme.dart
 */assets/theme_specific/*
+
+# VS Code
+.vscode/
+*.code-workspace
