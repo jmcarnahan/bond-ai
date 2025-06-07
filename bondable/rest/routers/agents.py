@@ -108,6 +108,8 @@ async def create_agent(
             name=request_data.name,
             description=request_data.description or "",  # Ensure description is never None
             instructions=request_data.instructions or "",  # Ensure instructions is never None
+            introduction=request_data.introduction or "",  # New field
+            reminder=request_data.reminder or "",  # New field
             tools=request_data.tools,
             tool_resources=tool_resources_payload,
             metadata=request_data.metadata,
@@ -164,6 +166,8 @@ async def update_agent(
 ):
     """Update an existing agent."""
     LOGGER.info(f"Update agent request for agent {agent_id}, user {current_user.user_id} ({current_user.email}) - MCP tools: {request_data.mcp_tools}, MCP resources: {request_data.mcp_resources}")
+    LOGGER.info(f"Update request - introduction: '{request_data.introduction[:50] if request_data.introduction else 'None'}'...")
+    LOGGER.info(f"Update request - reminder: '{request_data.reminder[:50] if request_data.reminder else 'None'}'...")
     try:
         tool_resources_payload = _process_tool_resources(request_data, provider, current_user.user_id)
         
@@ -172,6 +176,8 @@ async def update_agent(
             name=request_data.name,
             description=request_data.description or "",  # Ensure description is never None
             instructions=request_data.instructions or "",  # Ensure instructions is never None
+            introduction=request_data.introduction or "",  # New field
+            reminder=request_data.reminder or "",  # New field
             tools=request_data.tools,
             tool_resources=tool_resources_payload,
             metadata=request_data.metadata,
@@ -229,11 +235,16 @@ async def get_agent_details(
                             processed_file_ids.add(file_details.file_id)
                 response_tool_resources.file_search = ToolResourceFilesList(file_ids=list(processed_file_ids))
 
+        LOGGER.info(f"Returning agent details - introduction: '{agent_def.introduction[:50] if agent_def.introduction else 'None'}'...")
+        LOGGER.info(f"Returning agent details - reminder: '{agent_def.reminder[:50] if agent_def.reminder else 'None'}'...")
+        
         return AgentDetailResponse(
             id=agent_instance.get_agent_id(),
             name=agent_def.name,
             description=agent_def.description,
             instructions=agent_def.instructions,
+            introduction=agent_def.introduction,
+            reminder=agent_def.reminder,
             model=agent_def.model,
             tools=agent_def.tools,
             tool_resources=response_tool_resources if (response_tool_resources.code_interpreter or response_tool_resources.file_search) else None,
