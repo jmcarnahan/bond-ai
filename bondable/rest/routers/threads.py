@@ -94,6 +94,12 @@ async def get_messages(
         
         message_refs = []
         for msg_obj in messages_dict.values():
+            # Skip system messages - they should not be returned to the client
+            msg_role = getattr(msg_obj, 'role', 'assistant')
+            if msg_role == 'system':
+                logger.debug(f"Filtering out system message: {getattr(msg_obj, 'message_id', 'unknown')}")
+                continue
+                
             actual_content = ""
             if hasattr(msg_obj, 'clob') and msg_obj.clob:
                 actual_content = msg_obj.clob.get_content()
@@ -120,7 +126,7 @@ async def get_messages(
             message_refs.append(MessageRef(
                 id=getattr(msg_obj, 'message_id', getattr(msg_obj, 'id', "unknown_id")),
                 type=message_type,
-                role=getattr(msg_obj, 'role', 'assistant'),
+                role=msg_role,
                 content=actual_content,
                 image_data=image_data
             ))
