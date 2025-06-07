@@ -54,6 +54,18 @@ class ThreadsProvider(ABC):
             else:
                 LOGGER.error(f"Thread {thread_id} not found for user {user_id}. Cannot update name.")
 
+    def update_thread(self, thread_id: str, user_id: str, name: str) -> bool:
+        """Update a thread's metadata for a specific user."""
+        with self.metadata.get_db_session() as session:  
+            thread = session.query(Thread).filter_by(thread_id=thread_id, user_id=user_id).first()
+            if thread:
+                thread.name = name
+                session.commit()  
+                return True
+            else:
+                LOGGER.error(f"Thread {thread_id} not found for user {user_id}. Cannot update.")
+                return False
+
 
     def get_current_threads(self, user_id: str, count: int = 10) -> list:
         with self.metadata.get_db_session() as session:  
@@ -127,6 +139,15 @@ class ThreadsProvider(ABC):
                 except Exception as e:
                     LOGGER.error(f"Error deleting thread with thread_id: {thread_id}. Error: {e}")
 
+
+    def get_thread(self, thread_id: str, user_id: str) -> Optional[Thread]:
+        """Get a thread record for a specific user."""
+        with self.metadata.get_db_session() as session:
+            thread = session.query(Thread).filter_by(thread_id=thread_id, user_id=user_id).first()
+            if thread:
+                # Detach from session so it can be used outside the session
+                session.expunge(thread)
+            return thread
 
     def get_thread_owner(self, thread_id: str) -> Optional[str]:
         with self.metadata.get_db_session() as session:
