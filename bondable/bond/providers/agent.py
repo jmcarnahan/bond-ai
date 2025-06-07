@@ -216,15 +216,27 @@ class AgentProvider(ABC):
             if agent_record:
                 # if it exists, update the name, introduction, reminder and owner_user_id if necessary
                 LOGGER.info(f"Agent record already exists for agent_id: {agent.get_agent_id()}")
-                existing_agent_def = agent.get_agent_definition()
-                # check the hash here to see if we need to update the record
-                if existing_agent_def.get_hash() != agent_def.get_hash():
-                    LOGGER.info(f"Agent definition has changed for agent_id: {agent.get_agent_id()}. Updating record.")
-                    # update the existing record with the new values
-                    agent_record.name = agent_def.name
+                
+                # Define fields to check and update
+                fields_to_check = ['name', 'introduction', 'reminder']
+                needs_update = False
+                
+                # Check each field for changes
+                for field in fields_to_check:
+                    old_value = getattr(agent_record, field, None)
+                    new_value = getattr(agent_def, field, None)
+                    
+                    if old_value != new_value:
+                        needs_update = True
+                        break
+                
+                if needs_update:
+                    LOGGER.info(f"Updating agent record for agent_id: {agent.get_agent_id()}")
+                    # Update all tracked fields
+                    for field in fields_to_check:
+                        setattr(agent_record, field, getattr(agent_def, field, None))
+                    # Always update owner_user_id
                     agent_record.owner_user_id = user_id
-                    agent_record.introduction = agent_def.introduction
-                    agent_record.reminder = agent_def.reminder
                     session.commit()
                     LOGGER.info(f"Updated existing agent record for agent_id: {agent.get_agent_id()}")
             else:
