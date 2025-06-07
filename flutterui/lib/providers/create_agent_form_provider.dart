@@ -54,6 +54,8 @@ class CreateAgentFormState {
   final String name;
   final String description;
   final String instructions;
+  final String introduction;
+  final String reminder;
   final List<UploadedFileInfo> uploadedFiles;
   final Set<String> selectedMcpTools;
   final Set<String> selectedMcpResources;
@@ -66,6 +68,8 @@ class CreateAgentFormState {
     this.name = '',
     this.description = '',
     this.instructions = '',
+    this.introduction = '',
+    this.reminder = '',
     this.uploadedFiles = const [],
     this.selectedMcpTools = const {},
     this.selectedMcpResources = const {},
@@ -79,6 +83,8 @@ class CreateAgentFormState {
     String? name,
     String? description,
     String? instructions,
+    String? introduction,
+    String? reminder,
     List<UploadedFileInfo>? uploadedFiles,
     Set<String>? selectedMcpTools,
     Set<String>? selectedMcpResources,
@@ -92,6 +98,8 @@ class CreateAgentFormState {
       name: name ?? this.name,
       description: description ?? this.description,
       instructions: instructions ?? this.instructions,
+      introduction: introduction ?? this.introduction,
+      reminder: reminder ?? this.reminder,
       uploadedFiles: uploadedFiles ?? this.uploadedFiles,
       selectedMcpTools: selectedMcpTools ?? this.selectedMcpTools,
       selectedMcpResources: selectedMcpResources ?? this.selectedMcpResources,
@@ -121,11 +129,21 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
     state = state.copyWith(instructions: instructions);
   }
 
-  void updateField({String? name, String? description, String? instructions}) {
+  void setIntroduction(String introduction) {
+    state = state.copyWith(introduction: introduction);
+  }
+
+  void setReminder(String reminder) {
+    state = state.copyWith(reminder: reminder);
+  }
+
+  void updateField({String? name, String? description, String? instructions, String? introduction, String? reminder}) {
     state = state.copyWith(
       name: name ?? state.name,
       description: description ?? state.description,
       instructions: instructions ?? state.instructions,
+      introduction: introduction ?? state.introduction,
+      reminder: reminder ?? state.reminder,
     );
   }
 
@@ -318,6 +336,8 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
         name: agentDetail.name,
         description: agentDetail.description ?? '',
         instructions: agentDetail.instructions ?? '',
+        introduction: agentDetail.introduction ?? '',
+        reminder: agentDetail.reminder ?? '',
         uploadedFiles: uploadedFiles,
         selectedMcpTools:
             agentDetail.mcpTools != null
@@ -402,6 +422,8 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       name: state.name,
       description: state.description.isNotEmpty ? state.description : null,
       instructions: state.instructions.isNotEmpty ? state.instructions : null,
+      introduction: state.introduction.isNotEmpty ? state.introduction : null,
+      reminder: state.reminder.isNotEmpty ? state.reminder : null,
       model: "gpt-4o",
       tools: tools,
       toolResources: toolResources,
