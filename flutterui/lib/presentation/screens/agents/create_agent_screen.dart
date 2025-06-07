@@ -30,6 +30,8 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _instructionsController = TextEditingController();
+  final _introductionController = TextEditingController();
+  final _reminderController = TextEditingController();
 
   late final AgentFormController _controller;
 
@@ -43,6 +45,8 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
       nameController: _nameController,
       descriptionController: _descriptionController,
       instructionsController: _instructionsController,
+      introductionController: _introductionController,
+      reminderController: _reminderController,
       agentId: widget.agentId,
     );
 
@@ -122,10 +126,14 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
               nameController: _nameController,
               descriptionController: _descriptionController,
               instructionsController: _instructionsController,
+              introductionController: _introductionController,
+              reminderController: _reminderController,
               enabled: !formState.isLoading,
               onNameChanged: _controller.onNameChanged,
               onDescriptionChanged: _controller.onDescriptionChanged,
               onInstructionsChanged: _controller.onInstructionsChanged,
+              onIntroductionChanged: _controller.onIntroductionChanged,
+              onReminderChanged: _controller.onReminderChanged,
             ),
             const AgentFilesTable(),
             McpSelectionSection(
