@@ -117,7 +117,7 @@ class EventHandler(AssistantEventHandler):
             if function_name.startswith("mcp_resource_"):
                 # Handle MCP resource read
                 resource_name = function_name[13:]  # Remove "mcp_resource_" prefix
-                LOGGER.info(f"Reading MCP resource: {resource_name}")
+                LOGGER.debug(f"Reading MCP resource: {resource_name}")
                 
                 # Find resource URI
                 resources = mcp_client.list_resources_sync()
@@ -273,17 +273,26 @@ class OAIAAgent(Agent):
         return msg.id
 
     @override
-    def stream_response(self, prompt=None, thread_id=None, attachments=None) -> Generator[str, None, None]:
+    def stream_response(self, prompt=None, thread_id=None, attachments=None, override_role="user") -> Generator[str, None, None]:
         LOGGER.debug(f"Agent streaming response using assistant id: {self.assistant_id}")
 
         if prompt is not None:
-            user_message_id = self.create_user_message(prompt=prompt, thread_id=thread_id, attachments=attachments)
-            LOGGER.debug(f"Created new user message: {user_message_id}")
+            LOGGER.info(f"stream_response called with override_role='{override_role}', prompt length={len(prompt)}")
+            if override_role == "system":
+                LOGGER.debug(f"System message (introduction) content: {prompt[:200]}...")
+            user_message_id = self.create_user_message(prompt=prompt, thread_id=thread_id, attachments=attachments, override_role=override_role)
+            LOGGER.debug(f"Created new message with role '{override_role}': {user_message_id}")
         message_queue = Queue()
+
+        # Use reminder as additional_instructions
+        additional_instructions = self.agent_def.reminder or ""
+        if additional_instructions:
+            LOGGER.info(f"Agent [{self.agent_def.name}] using reminder as additional_instructions: \"{additional_instructions}\"")
 
         with self.openai_client.beta.threads.runs.stream(
             thread_id=thread_id,
             assistant_id=self.assistant_id,
+            additional_instructions=additional_instructions,
             event_handler=EventHandler(
                 message_queue=message_queue,
                 openai_client=self.openai_client,
@@ -381,16 +390,30 @@ class OAIAAgentProvider(AgentProvider):
                     tool_name = function_name[4:]  # Remove "mcp_"
                     mcp_tools.append(tool_name)
         
-        LOGGER.info(f"Detected {len(mcp_tools)} MCP tools from assistant: {mcp_tools}")
-        LOGGER.info(f"Detected {len(mcp_resources)} MCP resources from assistant: {mcp_resources}")
+        LOGGER.debug(f"Detected {len(mcp_tools)} MCP tools from assistant: {mcp_tools}")
+        LOGGER.debug(f"Detected {len(mcp_resources)} MCP resources from assistant: {mcp_resources}")
         
         if assistant.metadata is None or 'user_id' not in assistant.metadata or not assistant.metadata['user_id']:
             raise ValueError("Assistant metadata must contain a 'user_id' field.")
+
+        # Get introduction and reminder from AgentRecord if available
+        introduction = ""
+        reminder = ""
+        try:
+            agent_record = self.get_agent_record(agent_id=assistant.id)
+            if agent_record:
+                introduction = agent_record.introduction or ""
+                reminder = agent_record.reminder or ""
+                LOGGER.debug(f"Retrieved introduction and reminder from AgentRecord for agent {assistant.id}")
+        except Exception as e:
+            LOGGER.warning(f"Could not retrieve AgentRecord for agent {assistant.id}: {e}")
 
         agent_def = AgentDefinition(
             name=assistant.name,
             description=assistant.description,
             instructions=assistant.instructions,
+            introduction=introduction,
+            reminder=reminder,
             tools=assistant.tools,
             tool_resources=assistant.tool_resources,
             metadata=assistant.metadata,
@@ -405,18 +428,18 @@ class OAIAAgentProvider(AgentProvider):
     def _fetch_and_convert_mcp_tools(self, mcp_tool_names: List[str]) -> List[Dict]:
         """Fetch MCP tools and convert them to OpenAI function calling format."""
         if not mcp_tool_names:
-            LOGGER.info("No MCP tools to convert")
+            LOGGER.debug("No MCP tools to convert")
             return []
             
-        LOGGER.info(f"Starting MCP tool conversion for tools: {mcp_tool_names}")
+        LOGGER.debug(f"Starting MCP tool conversion for tools: {mcp_tool_names}")
         try:
             mcp_client = MCPClient.client()
             available_tools = mcp_client.list_tools_sync()
-            LOGGER.info(f"Retrieved {len(available_tools)} available MCP tools from server")
+            LOGGER.debug(f"Retrieved {len(available_tools)} available MCP tools from server")
             
             # Map available tools by name
             tool_map = {getattr(tool, "name", ""): tool for tool in available_tools}
-            LOGGER.info(f"Available MCP tool names: {list(tool_map.keys())}")
+            LOGGER.debug(f"Available MCP tool names: {list(tool_map.keys())}")
             
             # Convert requested tools
             openai_tools = []
@@ -454,18 +477,18 @@ class OAIAAgentProvider(AgentProvider):
     def _fetch_and_convert_mcp_resources(self, mcp_resource_names: List[str]) -> List[Dict]:
         """Fetch MCP resources and convert them to OpenAI function calling format."""
         if not mcp_resource_names:
-            LOGGER.info("No MCP resources to convert")
+            LOGGER.debug("No MCP resources to convert")
             return []
             
-        LOGGER.info(f"Starting MCP resource conversion for resources: {mcp_resource_names}")
+        LOGGER.debug(f"Starting MCP resource conversion for resources: {mcp_resource_names}")
         try:
             mcp_client = MCPClient.client()
             available_resources = mcp_client.list_resources_sync()
-            LOGGER.info(f"Retrieved {len(available_resources)} available MCP resources from server")
+            LOGGER.debug(f"Retrieved {len(available_resources)} available MCP resources from server")
             
             # Map available resources by name
             resource_map = {getattr(r, "name", ""): r for r in available_resources}
-            LOGGER.info(f"Available MCP resource names: {list(resource_map.keys())}")
+            LOGGER.debug(f"Available MCP resource names: {list(resource_map.keys())}")
             
             # Convert requested resources
             openai_tools = []
@@ -520,7 +543,7 @@ class OAIAAgentProvider(AgentProvider):
                 if not func_name.startswith('mcp_'):
                     filtered_tools.append(tool)
                 else:
-                    LOGGER.info(f"Removing existing MCP tool from tools list: {func_name}")
+                    LOGGER.debug(f"Removing existing MCP tool from tools list: {func_name}")
             else:
                 # Keep non-function tools (like code_interpreter, file_search)
                 filtered_tools.append(tool)
@@ -528,49 +551,49 @@ class OAIAAgentProvider(AgentProvider):
         agent_def.tools = filtered_tools
         
         # Log initial tool state after filtering
-        LOGGER.info(f"Initial tools count (after filtering MCP): {len(agent_def.tools)}")
-        LOGGER.info(f"Initial tools: {[t.get('function', {}).get('name', 'unknown') if isinstance(t, dict) else str(t) for t in agent_def.tools]}")
+        LOGGER.debug(f"Initial tools count (after filtering MCP): {len(agent_def.tools)}")
+        LOGGER.debug(f"Initial tools: {[t.get('function', {}).get('name', 'unknown') if isinstance(t, dict) else str(t) for t in agent_def.tools]}")
         
         # Process MCP tools if specified
         if agent_def.mcp_tools:
-            LOGGER.info(f"Processing {len(agent_def.mcp_tools)} MCP tools: {agent_def.mcp_tools}")
+            LOGGER.debug(f"Processing {len(agent_def.mcp_tools)} MCP tools: {agent_def.mcp_tools}")
             try:
                 mcp_tools_converted = self._fetch_and_convert_mcp_tools(agent_def.mcp_tools)
                 # Merge MCP tools with existing tools
                 agent_def.tools.extend(mcp_tools_converted)
                 LOGGER.info(f"Added {len(mcp_tools_converted)} MCP tools to agent definition")
-                LOGGER.info(f"Tools after MCP tool addition: {len(agent_def.tools)}")
+                LOGGER.debug(f"Tools after MCP tool addition: {len(agent_def.tools)}")
             except Exception as e:
                 LOGGER.error(f"Failed to process MCP tools: {e}", exc_info=True)
                 # Continue without MCP tools rather than failing the entire operation
         else:
-            LOGGER.info("No MCP tools specified in agent definition")
+            LOGGER.debug("No MCP tools specified in agent definition")
         
         # Process MCP resources if specified
         if agent_def.mcp_resources:
-            LOGGER.info(f"Processing {len(agent_def.mcp_resources)} MCP resources: {agent_def.mcp_resources}")
+            LOGGER.debug(f"Processing {len(agent_def.mcp_resources)} MCP resources: {agent_def.mcp_resources}")
             try:
                 mcp_resources_converted = self._fetch_and_convert_mcp_resources(agent_def.mcp_resources)
                 # Merge MCP resources with existing tools
                 agent_def.tools.extend(mcp_resources_converted)
                 LOGGER.info(f"Added {len(mcp_resources_converted)} MCP resources to agent definition")
-                LOGGER.info(f"Tools after MCP resource addition: {len(agent_def.tools)}")
+                LOGGER.debug(f"Tools after MCP resource addition: {len(agent_def.tools)}")
             except Exception as e:
                 LOGGER.error(f"Failed to process MCP resources: {e}", exc_info=True)
                 # Continue without MCP resources rather than failing the entire operation
         else:
-            LOGGER.info("No MCP resources specified in agent definition")
+            LOGGER.debug("No MCP resources specified in agent definition")
         
         # Log final tool state
         LOGGER.info(f"Final tools count before assistant create/update: {len(agent_def.tools)}")
-        LOGGER.info(f"Final tool names: {[t.get('function', {}).get('name', 'unknown') if isinstance(t, dict) else str(t) for t in agent_def.tools]}")
+        LOGGER.debug(f"Final tool names: {[t.get('function', {}).get('name', 'unknown') if isinstance(t, dict) else str(t) for t in agent_def.tools]}")
 
         if agent_def.id:  # ID is provided: implies update an existing agent
-            LOGGER.info(f"Agent ID '{agent_def.id}' provided. Attempting to retrieve/update.")
+            LOGGER.debug(f"Agent ID '{agent_def.id}' provided. Attempting to retrieve/update.")
             try:
                 # Retrieve from OpenAI first - this is the source of truth for existence by ID
                 openai_assistant_obj = self.openai_client.beta.assistants.retrieve(assistant_id=agent_def.id)
-                LOGGER.info(f"Retrieved OpenAI assistant with ID: {agent_def.id}")
+                LOGGER.debug(f"Retrieved OpenAI assistant with ID: {agent_def.id}")
 
                 # Compare definitions to see if OpenAI assistant needs an update
                 current_definition_from_openai = self.get_definition(assistant=openai_assistant_obj)
@@ -578,15 +601,15 @@ class OAIAAgentProvider(AgentProvider):
                 agent_def.model = agent_def.model if agent_def.model else current_definition_from_openai.model
 
                 # Log hash comparison details
-                LOGGER.info(f"Current definition hash: {current_definition_from_openai.get_hash()}")
-                LOGGER.info(f"New definition hash: {agent_def.get_hash()}")
-                LOGGER.info(f"Current tools count: {len(current_definition_from_openai.tools)}")
-                LOGGER.info(f"New tools count: {len(agent_def.tools)}")
+                LOGGER.debug(f"Current definition hash: {current_definition_from_openai.get_hash()}")
+                LOGGER.debug(f"New definition hash: {agent_def.get_hash()}")
+                LOGGER.debug(f"Current tools count: {len(current_definition_from_openai.tools)}")
+                LOGGER.debug(f"New tools count: {len(agent_def.tools)}")
                 
                 if current_definition_from_openai.get_hash() != agent_def.get_hash():
-                    LOGGER.info(f"Definition changed for agent ID {agent_def.id}. Updating OpenAI assistant.")
-                    LOGGER.info(f"Updating assistant with {len(agent_def.tools)} tools")
-                    LOGGER.info(f"Tools being sent to OpenAI for update: {json.dumps(agent_def.tools, indent=2)}")
+                    LOGGER.debug(f"Definition changed for agent ID {agent_def.id}. Updating OpenAI assistant.")
+                    LOGGER.debug(f"Updating assistant with {len(agent_def.tools)} tools")
+                    LOGGER.debug(f"Tools being sent to OpenAI for update: {json.dumps(agent_def.tools, indent=2)}")
                     openai_assistant_obj = self.openai_client.beta.assistants.update(
                         assistant_id=agent_def.id,
                         name=agent_def.name,
@@ -599,7 +622,7 @@ class OAIAAgentProvider(AgentProvider):
                     )
                     LOGGER.info(f"Successfully updated OpenAI assistant for ID: {agent_def.id}")
                     LOGGER.info(f"Updated assistant has {len(openai_assistant_obj.tools)} tools")
-                    LOGGER.info(f"Assistant tools after update: {[t.model_dump() if hasattr(t, 'model_dump') else t for t in openai_assistant_obj.tools]}")
+                    LOGGER.debug(f"Assistant tools after update: {[t.model_dump() if hasattr(t, 'model_dump') else t for t in openai_assistant_obj.tools]}")
                 else:
                     LOGGER.info(f"No definition changes detected for agent ID {agent_def.id}. OpenAI assistant not updated.")
 
@@ -612,9 +635,9 @@ class OAIAAgentProvider(AgentProvider):
                 raise ValueError("Agent name must be provided for creation.")
             LOGGER.info(f"No ID provided. Attempting to create new agent named '{agent_def.name}'")
 
-            LOGGER.info(f"Creating new OpenAI assistant: {agent_def.name}")
-            LOGGER.info(f"Creating new assistant with {len(agent_def.tools)} tools")
-            LOGGER.info(f"Tools being sent to OpenAI: {json.dumps(agent_def.tools, indent=2)}")
+            LOGGER.debug(f"Creating new OpenAI assistant: {agent_def.name}")
+            LOGGER.debug(f"Creating new assistant with {len(agent_def.tools)} tools")
+            LOGGER.debug(f"Tools being sent to OpenAI: {json.dumps(agent_def.tools, indent=2)}")
             openai_assistant_obj = self.openai_client.beta.assistants.create(
                 name=agent_def.name,
                 description=agent_def.description,
@@ -628,7 +651,7 @@ class OAIAAgentProvider(AgentProvider):
 
             LOGGER.info(f"Successfully created new agent '{agent_def.name}' with ID '{agent_def.id}'.")
             LOGGER.info(f"Created assistant has {len(openai_assistant_obj.tools)} tools")
-            LOGGER.info(f"Assistant tools: {[t.model_dump() if hasattr(t, 'model_dump') else t for t in openai_assistant_obj.tools]}")
+            LOGGER.debug(f"Assistant tools: {[t.model_dump() if hasattr(t, 'model_dump') else t for t in openai_assistant_obj.tools]}")
 
         if not openai_assistant_obj:
             # This path should ideally not be hit if logic is correct.
