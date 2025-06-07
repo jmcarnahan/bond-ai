@@ -18,14 +18,16 @@ class ChatService {
       _authService = authService;
 
   Stream<String> streamChatResponse({
-    required String threadId,
+    String? threadId,  // Now nullable
     required String agentId,
     required String prompt,
     List<ChatAttachment>? attachments,
+    String overrideRole = "user",
   }) async* {
     logger.i(
-      "[ChatService] streamChatResponse called for threadId: $threadId, agentId: $agentId",
+      "[ChatService] streamChatResponse called for threadId: $threadId, agentId: $agentId, overrideRole: $overrideRole",
     );
+    logger.i("[ChatService] Prompt: $prompt");
     try {
       final headers = await _authService.authenticatedHeaders;
       final body = jsonEncode({
@@ -33,6 +35,7 @@ class ChatService {
         'agent_id': agentId,
         'prompt': prompt,
         'attachments': attachments?.map((attachment) => attachment.toJson()).toList(),
+        'override_role': overrideRole,
       });
 
       final request =
