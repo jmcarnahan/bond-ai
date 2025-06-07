@@ -5,6 +5,7 @@ class ChatSessionState {
   final List<Message> messages;
   final bool isLoadingMessages;
   final bool isSendingMessage;
+  final bool isSendingIntroduction;
   final String? errorMessage;
 
   ChatSessionState({
@@ -12,6 +13,7 @@ class ChatSessionState {
     this.messages = const [],
     this.isLoadingMessages = false,
     this.isSendingMessage = false,
+    this.isSendingIntroduction = false,
     this.errorMessage,
   });
 
@@ -21,6 +23,7 @@ class ChatSessionState {
     List<Message>? messages,
     bool? isLoadingMessages,
     bool? isSendingMessage,
+    bool? isSendingIntroduction,
     String? errorMessage,
     bool? clearErrorMessage,
   }) {
@@ -32,6 +35,7 @@ class ChatSessionState {
       messages: messages ?? this.messages,
       isLoadingMessages: isLoadingMessages ?? this.isLoadingMessages,
       isSendingMessage: isSendingMessage ?? this.isSendingMessage,
+      isSendingIntroduction: isSendingIntroduction ?? this.isSendingIntroduction,
       errorMessage:
           clearErrorMessage == true ? null : errorMessage ?? this.errorMessage,
     );
