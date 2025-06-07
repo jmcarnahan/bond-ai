@@ -222,6 +222,8 @@ class TestAgents:
             "name": "New Agent",
             "description": "A test agent",
             "instructions": "Be helpful",
+            "introduction": "Hello, I'm a new agent",
+            "reminder": "Remember to be helpful",
             "model": "gpt-4o",
             "tools": [{"type": "code_interpreter"}],
             "metadata": {"test": True}
@@ -363,6 +365,8 @@ class TestAgents:
         mock_definition.name = "Detailed Agent"
         mock_definition.description = "A detailed agent"
         mock_definition.instructions = "Be very detailed"
+        mock_definition.introduction = "Hello, I'm a detailed agent"
+        mock_definition.reminder = "Remember to be detailed"
         mock_definition.model = "gpt-4"
         mock_definition.tools = [{"type": "code_interpreter"}]
         mock_definition.tool_resources = {
@@ -664,7 +668,8 @@ class TestChat:
         mock_agent.stream_response.assert_called_once_with(
             thread_id="test_thread", 
             prompt="Hello",
-            attachments=[]
+            attachments=[],
+            override_role="user"
         )
 
     def test_chat_agent_not_found(self, authenticated_client):
@@ -751,7 +756,81 @@ class TestChat:
         mock_agent.stream_response.assert_called_once_with(
             thread_id="test_thread",
             prompt="Analyze this data",
-            attachments=expected_attachments
+            attachments=expected_attachments,
+            override_role="user"
+        )
+
+    def test_chat_with_system_override_role(self, authenticated_client):
+        """Test chat with override_role set to system."""
+        client, auth_headers, mock_provider = authenticated_client
+        
+        # Mock agent
+        mock_agent = MagicMock(spec=AgentABC)
+        mock_chunks = ["Introduction message..."]
+        mock_agent.stream_response.return_value = iter(mock_chunks)
+        
+        mock_provider.agents.get_agent.return_value = mock_agent
+        mock_provider.agents.can_user_access_agent.return_value = True
+        
+        chat_data = {
+            "thread_id": "test_thread",
+            "agent_id": "test_agent",
+            "prompt": "This is the agent introduction",
+            "override_role": "system"
+        }
+        
+        response = client.post("/chat", headers=auth_headers, json=chat_data)
+        
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+        mock_agent.stream_response.assert_called_once_with(
+            thread_id="test_thread", 
+            prompt="This is the agent introduction",
+            attachments=[],
+            override_role="system"
+        )
+
+    def test_chat_with_null_thread_id(self, authenticated_client):
+        """Test chat with null thread_id creates new thread."""
+        client, auth_headers, mock_provider = authenticated_client
+        
+        # Mock thread creation
+        mock_thread = MagicMock()
+        mock_thread.thread_id = "new_thread_123"
+        mock_provider.threads.create_thread.return_value = mock_thread
+        
+        # Mock agent
+        mock_agent = MagicMock(spec=AgentABC)
+        mock_chunks = ["Introduction message..."]
+        mock_agent.stream_response.return_value = iter(mock_chunks)
+        
+        mock_provider.agents.get_agent.return_value = mock_agent
+        mock_provider.agents.can_user_access_agent.return_value = True
+        
+        chat_data = {
+            "thread_id": None,
+            "agent_id": "test_agent", 
+            "prompt": "This is the agent introduction",
+            "override_role": "system"
+        }
+        
+        response = client.post("/chat", headers=auth_headers, json=chat_data)
+        
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
+        
+        # Verify thread was created with correct name
+        mock_provider.threads.create_thread.assert_called_once_with(
+            user_id="test@example.com",
+            name="New Conversation"  # System message should use generic name
+        )
+        
+        # Verify agent was called with new thread_id
+        mock_agent.stream_response.assert_called_once_with(
+            thread_id="new_thread_123",
+            prompt="This is the agent introduction", 
+            attachments=[],
+            override_role="system"
         )
 
 # --- File Management Tests ---
