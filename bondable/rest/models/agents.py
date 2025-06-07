@@ -27,6 +27,8 @@ class AgentCreateRequest(BaseModel):
     name: str
     description: Optional[str] = None
     instructions: Optional[str] = None
+    introduction: Optional[str] = None
+    reminder: Optional[str] = None
     model: Optional[str] = None
     tools: List[Dict[str, Any]] = Field(default_factory=list)
     tool_resources: Optional[ToolResourcesRequest] = None
@@ -40,6 +42,8 @@ class AgentUpdateRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     instructions: Optional[str] = None
+    introduction: Optional[str] = None
+    reminder: Optional[str] = None
     model: Optional[str] = None
     tools: List[Dict[str, Any]] = Field(default_factory=list)
     tool_resources: Optional[ToolResourcesRequest] = None
@@ -58,6 +62,8 @@ class AgentDetailResponse(BaseModel):
     name: str
     description: Optional[str] = None
     instructions: Optional[str] = None
+    introduction: Optional[str] = None
+    reminder: Optional[str] = None
     model: Optional[str] = None
     tools: List[Dict[str, Any]] = Field(default_factory=list)
     tool_resources: Optional[ToolResourcesResponse] = None
