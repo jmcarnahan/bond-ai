@@ -168,6 +168,8 @@ class AgentDetailModel {
   final String name;
   final String? description;
   final String? instructions;
+  final String? introduction;
+  final String? reminder;
   final String? model;
   final List<Map<String, dynamic>> tools;
   final AgentToolResourcesModel? toolResources;
@@ -183,6 +185,8 @@ class AgentDetailModel {
     required this.name,
     this.description,
     this.instructions,
+    this.introduction,
+    this.reminder,
     this.model,
     required this.tools,
     this.toolResources,
@@ -199,6 +203,8 @@ class AgentDetailModel {
       name: json['name'] as String,
       description: json['description'] as String?,
       instructions: json['instructions'] as String?,
+      introduction: json['introduction'] as String?,
+      reminder: json['reminder'] as String?,
       model: json['model'] as String?,
       tools: List<Map<String, dynamic>>.from(
         json['tools'] as List<dynamic>? ?? [],
@@ -229,6 +235,8 @@ class AgentDetailModel {
       'name': name,
       if (description != null) 'description': description,
       if (instructions != null) 'instructions': instructions,
+      if (introduction != null) 'introduction': introduction,
+      if (reminder != null) 'reminder': reminder,
       if (model != null) 'model': model,
       'tools': tools,
       if (toolResources != null) 'tool_resources': toolResources!.toJson(),
