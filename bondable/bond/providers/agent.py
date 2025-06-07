@@ -93,7 +93,7 @@ class Agent(ABC):
         pass
 
     @abstractmethod
-    def stream_response(self, prompt=None, thread_id=None, attachments=None) -> Generator[str, None, None]:
+    def stream_response(self, prompt=None, thread_id=None, attachments=None, override_role="user") -> Generator[str, None, None]:
         """
         Streams the response from the agent based on the provided prompt and thread ID.
         This method should be implemented by subclasses.
@@ -101,6 +101,7 @@ class Agent(ABC):
             prompt (Optional[str]): The prompt to send to the agent.
             thread_id (Optional[str]): The ID of the thread to which the message belongs.
             attachments (Optional[List[str]]): List of file IDs to attach to the message.
+            override_role (str): The role to use for the message (default: "user").
         Yields:
             str: The streamed response from the agent.
         """
@@ -213,21 +214,39 @@ class AgentProvider(ABC):
             # check to see if the agent already exists in the metadata
             agent_record: AgentRecord = session.query(AgentRecord).filter(AgentRecord.agent_id == agent.get_agent_id()).first()
             if agent_record:
-                # if it exists, update the name and owner_user_id if necessary
+                # if it exists, update the name, introduction, reminder and owner_user_id if necessary
                 LOGGER.info(f"Agent record already exists for agent_id: {agent.get_agent_id()}")
-                if agent_record.name != agent.get_name() or agent_record.owner_user_id != user_id:
-                    agent_record.name = agent.get_name()
+                existing_agent_def = agent.get_agent_definition()
+                # check the hash here to see if we need to update the record
+                if existing_agent_def.get_hash() != agent_def.get_hash():
+                    LOGGER.info(f"Agent definition has changed for agent_id: {agent.get_agent_id()}. Updating record.")
+                    # update the existing record with the new values
+                    agent_record.name = agent_def.name
                     agent_record.owner_user_id = user_id
+                    agent_record.introduction = agent_def.introduction
+                    agent_record.reminder = agent_def.reminder
                     session.commit()
                     LOGGER.info(f"Updated existing agent record for agent_id: {agent.get_agent_id()}")
             else:
                 # if it does not exist, create a new record
                 LOGGER.info(f"Creating new agent record for agent_id: {agent.get_agent_id()}")
-                agent_record = AgentRecord(name=agent.get_name(), agent_id=agent.get_agent_id(), owner_user_id=user_id)
+                agent_def = agent.get_agent_definition()
+                agent_record = AgentRecord(
+                    name=agent.get_name(), 
+                    agent_id=agent.get_agent_id(), 
+                    owner_user_id=user_id,
+                    introduction=agent_def.introduction,
+                    reminder=agent_def.reminder
+                )
                 session.add(agent_record)
                 session.commit()  
         return agent     
 
+
+    def get_agent_record(self, agent_id: str) -> Optional[AgentRecord]:
+        """Retrieve a specific agent record by its agent_id."""
+        with self.metadata.get_db_session() as session:
+            return session.query(AgentRecord).filter(AgentRecord.agent_id == agent_id).first()
 
     def get_agent_records(self, user_id: str) -> List[Dict[str, str]]:
         with self.metadata.get_db_session() as session:
