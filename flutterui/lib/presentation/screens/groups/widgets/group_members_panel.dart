@@ -23,6 +23,24 @@ class GroupMembersPanel extends ConsumerStatefulWidget {
 class GroupMembersPanelState extends ConsumerState<GroupMembersPanel> {
   final Set<String> _pendingAdditions = {};
   final Set<String> _pendingRemovals = {};
+  Set<String> _originalMemberIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadOriginalMembers();
+    });
+  }
+
+  void _loadOriginalMembers() {
+    final groupWithMembersAsync = ref.read(groupProvider(widget.group.id));
+    groupWithMembersAsync.whenData((groupWithMembers) {
+      setState(() {
+        _originalMemberIds = groupWithMembers.members.map((m) => m.userId).toSet();
+      });
+    });
+  }
 
   bool get hasChanges {
     final hasChanges = _pendingAdditions.isNotEmpty || _pendingRemovals.isNotEmpty;
@@ -32,7 +50,10 @@ class GroupMembersPanelState extends ConsumerState<GroupMembersPanel> {
   void _addPendingMember(GroupMember user) {
     setState(() {
       _pendingRemovals.remove(user.userId);
-      _pendingAdditions.add(user.userId);
+      
+      if (!_originalMemberIds.contains(user.userId)) {
+        _pendingAdditions.add(user.userId);
+      }
     });
     widget.onChanged?.call();
   }
@@ -89,6 +110,8 @@ class GroupMembersPanelState extends ConsumerState<GroupMembersPanel> {
       });
 
       ref.invalidate(groupProvider(widget.group.id));
+      
+      _loadOriginalMembers();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

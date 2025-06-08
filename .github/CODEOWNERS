@@ -1,0 +1,13 @@
+# Model configuration files - require owner approval for ANY changes
+# These files contain model deployment settings that directly impact costs
+/bondable/bond/providers/openai/OAIAProvider.py @jmcarnahan
+/flutterui/lib/providers/domain/agents/agent_form_provider.dart @jmcarnahan
+/flutterui/lib/providers/create_agent_form_provider.dart @jmcarnahan
+
+# Additional protection for any OpenAI provider files
+/bondable/bond/providers/openai/ @jmcarnahan
+
+# Test files that reference models (lower risk but still protected)
+/tests/test_bond_providers.py @jmcarnahan
+/tests/test_rest_api.py @jmcarnahan
+/scripts/api_demo.py @jmcarnahan
