@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/main.dart';
 import 'package:flutterui/core/theme/app_theme.dart';
+import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -11,7 +12,7 @@ class LoginScreen extends ConsumerStatefulWidget {
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends ConsumerState<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> with ErrorHandlingMixin {
   List<Map<String, dynamic>> _providers = [];
   bool _loadingProviders = true;
 
@@ -32,6 +33,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
     } catch (e) {
       if (mounted) {
+        handleServiceError(e, ref, customMessage: 'Failed to load auth providers');
         setState(() {
           _providers = [
             {'name': 'google', 'login_url': '/login/google', 'callback_url': '/auth/google/callback'}
@@ -139,9 +141,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     ref.listen<AuthState>(authNotifierProvider, (previous, next) {
       if (next is AuthError) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Login Error: ${next.error}')),
-        );
+        handleServiceError(next.error, ref, customMessage: 'Login failed');
       }
     });
 

@@ -163,7 +163,7 @@ def test_simple_agent(provider_fixture, user_id_session):
         id=get_first_agent_id(provider_fixture, "Test Simple Agent"),
         description="Pirate Agent for testing.",
         instructions="Answer requests from user like a pirate. Be very brief.",
-        model="gpt-4o", # Consider using a faster/cheaper model for tests if available
+        model="gpt-4o-nano", # Consider using a faster/cheaper model for tests if available
         metadata={'visible': 'True'},
         tools=[{"type": "code_interpreter"}], # Added CI as per notebook, though not strictly used by pirate
         user_id=user_id_session
@@ -189,7 +189,7 @@ def test_function_agent(provider_fixture, user_id_session, builtin_functions_ses
         instructions="Call the simple method 'hello' with the name provided by the user. If no name is provided, ask the user to provide a name.",
         metadata={'visible': 'True'},
         tools=[builtin_functions_session.hello],
-        model="gpt-4o",
+        model="gpt-4o-nano",
         user_id=user_id_session
     )
     responses = run_agent_interaction_test(
@@ -213,7 +213,7 @@ def test_synth_agent_code_interpreter(provider_fixture, user_id_session, caplog)
         instructions="When you begin you should create a synthetic data set that has the weight and height of 100 people. You should answer questions about the data set.",
         tools=[{"type": "code_interpreter"}],
         metadata={'visible': 'True', 'initial_prompt': 'Generate the data set of 100 people and confirm.'},
-        model="gpt-4o",
+        model="gpt-4o-nano",
         user_id=user_id_session
     )
     
@@ -285,7 +285,7 @@ def test_file_agent_csv_code_interpreter(provider_fixture, user_id_session, tmp_
         tools=[{"type": "code_interpreter"}],
         tool_resources={"code_interpreter": {"files": [(str(data_file_path), None)]}},
         metadata={'visible': 'True', 'initial_prompt': initial_prompt},
-        model="gpt-4o",
+        model="gpt-4o-nano",
         user_id=user_id_session
     )
     responses = run_agent_interaction_test(
@@ -319,7 +319,7 @@ def test_file_agent_html_file_search(provider_fixture, user_id_session, tmp_path
         tools=[{"type": "file_search"}], # Changed from code_interpreter to file_search as per notebook
         tool_resources={"file_search": {"files": [(str(html_file_path), None)]}},
         metadata={'visible': 'True', 'initial_prompt': initial_prompt},
-        model="gpt-4o", # Ensure model supports file_search or is general purpose
+        model="gpt-4o-nano", # Ensure model supports file_search or is general purpose
         user_id=user_id_session
     )
     responses = run_agent_interaction_test(

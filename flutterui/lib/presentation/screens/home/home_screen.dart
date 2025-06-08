@@ -5,12 +5,18 @@ import 'package:flutterui/presentation/widgets/sidebar.dart';
 import 'package:flutterui/providers/agent_provider.dart';
 import 'package:flutterui/presentation/screens/agents/widgets/agent_card.dart';
 import 'package:flutterui/core/theme/app_theme.dart';
+import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin {
+  @override
+  Widget build(BuildContext context) {
     final agentsAsyncValue = ref.watch(agentsProvider);
     final appTheme = ref.watch(appThemeProvider);
     
@@ -162,6 +168,12 @@ class HomeScreen extends ConsumerWidget {
                   ),
                 ),
                 error: (err, stack) { 
+                  // Handle agent loading error as a service error (show snackbar, don't navigate)
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    handleServiceError(err, ref, customMessage: 'Failed to load agents');
+                  });
+                  
+                  // Show a fallback UI with retry button
                   return Center(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 40.0),
@@ -169,31 +181,27 @@ class HomeScreen extends ConsumerWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            Icons.error_outline_rounded,
-                            size: 80,
-                            color: colorScheme.error,
+                            Icons.refresh,
+                            size: 64,
+                            color: colorScheme.primary,
                           ),
                           const SizedBox(height: 20),
                           Text(
-                            'Error Loading Agents',
+                            'Unable to Load Agents',
                             style: textTheme.headlineSmall?.copyWith(
-                              color: colorScheme.error,
+                              color: colorScheme.onSurface,
                             ),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            err.toString(),
+                            'Tap below to try again',
                             textAlign: TextAlign.center,
                             style: textTheme.bodyMedium?.copyWith(
-                              color: colorScheme.onErrorContainer,
+                              color: colorScheme.onSurfaceVariant,
                             ),
                           ),
                           const SizedBox(height: 20),
                           ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: colorScheme.errorContainer,
-                              foregroundColor: colorScheme.onErrorContainer,
-                            ),
                             icon: const Icon(Icons.refresh),
                             label: const Text('Retry'),
                             onPressed: () {
