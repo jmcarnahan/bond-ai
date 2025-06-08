@@ -14,7 +14,8 @@ class AgentFormNotifier extends StateNotifier<AgentFormState>
   final AgentService _agentService;
   final FileService _fileService;
 
-  AgentFormNotifier(this._agentService, this._fileService) : super(const AgentFormState());
+  AgentFormNotifier(this._agentService, this._fileService)
+    : super(const AgentFormState());
 
   @override
   void handleAppError(AppError error) {
@@ -281,7 +282,7 @@ class AgentFormNotifier extends StateNotifier<AgentFormState>
           state.data.description.isNotEmpty ? state.data.description : null,
       instructions:
           state.data.instructions.isNotEmpty ? state.data.instructions : null,
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       tools: tools,
       toolResources: toolResources,
       files: [],

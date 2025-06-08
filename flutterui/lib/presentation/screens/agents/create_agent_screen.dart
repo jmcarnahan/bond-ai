@@ -12,6 +12,7 @@ import 'widgets/agent_save_button.dart';
 import 'widgets/agent_loading_overlay.dart';
 import 'widgets/agent_error_banner.dart';
 import 'logic/agent_form_controller.dart';
+import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 
 class CreateAgentScreen extends ConsumerStatefulWidget {
   static const String routeName = '/create-agent';
@@ -25,7 +26,7 @@ class CreateAgentScreen extends ConsumerStatefulWidget {
   ConsumerState<CreateAgentScreen> createState() => _CreateAgentScreenState();
 }
 
-class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> {
+class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with ErrorHandlingMixin {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();

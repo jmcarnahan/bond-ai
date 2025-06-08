@@ -42,6 +42,7 @@ class AuthenticatedHttpClient {
         headers: headers,
       );
       
+      _checkAuthenticationError(response);
       return response;
     } catch (e) {
       logger.e("[AuthenticatedHttpClient] GET error for $url: ${e.toString()}");
@@ -59,6 +60,7 @@ class AuthenticatedHttpClient {
         body: json.encode(data),
       );
       
+      _checkAuthenticationError(response);
       return response;
     } catch (e) {
       logger.e("[AuthenticatedHttpClient] POST error for $url: ${e.toString()}");
@@ -76,6 +78,7 @@ class AuthenticatedHttpClient {
         body: json.encode(data),
       );
       
+      _checkAuthenticationError(response);
       return response;
     } catch (e) {
       logger.e("[AuthenticatedHttpClient] PUT error for $url: ${e.toString()}");
@@ -92,6 +95,7 @@ class AuthenticatedHttpClient {
         headers: headers,
       );
       
+      _checkAuthenticationError(response);
       return response;
     } catch (e) {
       logger.e("[AuthenticatedHttpClient] DELETE error for $url: ${e.toString()}");
@@ -112,6 +116,7 @@ class AuthenticatedHttpClient {
       final streamedResponse = await _httpClient.send(request);
       final response = await http.Response.fromStream(streamedResponse);
       
+      _checkAuthenticationError(response);
       return response;
     } catch (e) {
       logger.e("[AuthenticatedHttpClient] Multipart request error: ${e.toString()}");
@@ -121,5 +126,11 @@ class AuthenticatedHttpClient {
 
   void dispose() {
     _httpClient.close();
+  }
+  
+  void _checkAuthenticationError(http.Response response) {
+    if (response.statusCode == 401) {
+      throw Exception('401 Unauthorized: Authentication token expired or invalid');
+    }
   }
 }
