@@ -10,7 +10,7 @@ from bondable.rest.dependencies.auth import get_current_user
 from bondable.rest.dependencies.providers import get_bond_provider
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
 @router.post("")
@@ -35,12 +35,12 @@ async def chat(
         # Get the agent instance
         agent_instance = provider.agents.get_agent(agent_id=request_body.agent_id)
         if not agent_instance:
-            logger.warning(f"Agent {request_body.agent_id} not found for chat.")
+            LOGGER.warning(f"Agent {request_body.agent_id} not found for chat.")
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found.")
 
         # Validate user access to agent
-        if not provider.agents.can_user_access_agent(user_id=current_user.email, agent_id=request_body.agent_id):
-            logger.warning(f"User {current_user.email} attempted to access agent {request_body.agent_id} without permission for chat.")
+        if not provider.agents.can_user_access_agent(user_id=current_user.user_id, agent_id=request_body.agent_id):
+            LOGGER.warning(f"User {current_user.user_id} ({current_user.email}) attempted to access agent {request_body.agent_id} without permission for chat.")
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to this agent is forbidden.")
 
         # Stream response generator
@@ -57,5 +57,5 @@ async def chat(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error during chat streaming for thread {request_body.thread_id}, agent {request_body.agent_id}: {e}", exc_info=True)
+        LOGGER.error(f"Error during chat streaming for thread {request_body.thread_id}, agent {request_body.agent_id}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not stream chat responses.")
