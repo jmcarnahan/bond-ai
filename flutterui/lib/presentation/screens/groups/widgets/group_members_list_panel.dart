@@ -40,13 +40,13 @@ class GroupMembersListPanel extends ConsumerWidget {
     
     for (final userId in pendingAdditions) {
       if (userId != groupWithMembers.ownerUserId) {
-        final user = allUsers.firstWhere((u) => u.userId == userId);
-        currentMembers.add(user);
+        final alreadyInList = currentMembers.any((member) => member.userId == userId);
+        if (!alreadyInList) {
+          final user = allUsers.firstWhere((u) => u.userId == userId);
+          currentMembers.add(user);
+        }
       }
     }
-    
-    currentMembers.removeWhere((member) => 
-      pendingRemovals.contains(member.userId) && member.userId != groupWithMembers.ownerUserId);
     
     return currentMembers;
   }
