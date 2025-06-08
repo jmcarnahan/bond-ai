@@ -6,6 +6,7 @@ import 'package:flutterui/presentation/screens/groups/widgets/group_members_pane
 import 'package:flutterui/presentation/screens/groups/widgets/available_users_panel.dart';
 import 'package:flutterui/providers/group_provider.dart';
 import 'package:flutterui/presentation/widgets/success_banner.dart';
+import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 
 class EditGroupScreen extends ConsumerStatefulWidget {
   static const String routeName = '/groups/:id/edit';
@@ -21,7 +22,7 @@ class EditGroupScreen extends ConsumerStatefulWidget {
   ConsumerState<EditGroupScreen> createState() => _EditGroupScreenState();
 }
 
-class _EditGroupScreenState extends ConsumerState<EditGroupScreen> {
+class _EditGroupScreenState extends ConsumerState<EditGroupScreen> with ErrorHandlingMixin {
   final GlobalKey<EditGroupFormState> _formKey = GlobalKey<EditGroupFormState>();
   final GlobalKey<GroupMembersPanelState> _membersKey = GlobalKey<GroupMembersPanelState>();
 
@@ -56,9 +57,7 @@ class _EditGroupScreenState extends ConsumerState<EditGroupScreen> {
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving changes: $error')),
-        );
+        handleServiceError(error, ref, customMessage: 'Failed to save group changes');
       }
     }
   }
