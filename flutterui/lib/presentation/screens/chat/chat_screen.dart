@@ -9,6 +9,7 @@ import '../../../core/utils/logger.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/chat_app_bar.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/message_input_bar.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/message_list_view.dart';
+import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String agentId;
@@ -26,7 +27,7 @@ class ChatScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends ConsumerState<ChatScreen> {
+class _ChatScreenState extends ConsumerState<ChatScreen> with ErrorHandlingMixin {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _textFieldFocusNode = FocusNode();
@@ -74,26 +75,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   void _checkAndSendIntroductionIfNeeded() async {
     logger.i("[ChatScreen] Checking if agent has introduction for auto-send");
-    try {
-      // Get agent service from providers  
-      final agentService = ref.read(agentServiceProvider);
-      final agentDetails = await agentService.getAgentDetails(widget.agentId);
-      
-      if (agentDetails.introduction != null && agentDetails.introduction!.trim().isNotEmpty) {
-        logger.i("[ChatScreen] Agent has introduction, auto-sending it");
-        final chatNotifier = ref.read(chatSessionNotifierProvider.notifier);
+    
+    await withErrorHandling(
+      operation: () async {
+        // Get agent service from providers  
+        final agentService = ref.read(agentServiceProvider);
+        final agentDetails = await agentService.getAgentDetails(widget.agentId);
         
-        // Send introduction with null thread_id (backend will create thread)
-        await chatNotifier.sendIntroduction(
-          agentId: widget.agentId,
-          introduction: agentDetails.introduction!.trim(),
-        );
-      } else {
-        logger.i("[ChatScreen] Agent has no introduction, waiting for user to start conversation");
-      }
-    } catch (e) {
-      logger.i("[ChatScreen] Error checking agent introduction: $e");
-    }
+        if (agentDetails.introduction != null && agentDetails.introduction!.trim().isNotEmpty) {
+          logger.i("[ChatScreen] Agent has introduction, auto-sending it");
+          final chatNotifier = ref.read(chatSessionNotifierProvider.notifier);
+          
+          // Send introduction with null thread_id (backend will create thread)
+          await chatNotifier.sendIntroduction(
+            agentId: widget.agentId,
+            introduction: agentDetails.introduction!.trim(),
+          );
+        } else {
+          logger.i("[ChatScreen] Agent has no introduction, waiting for user to start conversation");
+        }
+      },
+      ref: ref,
+      errorMessage: 'Failed to load agent information.',
+      isCritical: false,  // This is a service error, not critical
+    );
   }
 
   @override
