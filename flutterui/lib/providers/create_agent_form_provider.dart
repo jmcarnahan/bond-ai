@@ -137,7 +137,13 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
     state = state.copyWith(reminder: reminder);
   }
 
-  void updateField({String? name, String? description, String? instructions, String? introduction, String? reminder}) {
+  void updateField({
+    String? name,
+    String? description,
+    String? instructions,
+    String? introduction,
+    String? reminder,
+  }) {
     state = state.copyWith(
       name: name ?? state.name,
       description: description ?? state.description,
@@ -424,7 +430,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       instructions: state.instructions.isNotEmpty ? state.instructions : null,
       introduction: state.introduction.isNotEmpty ? state.introduction : null,
       reminder: state.reminder.isNotEmpty ? state.reminder : null,
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       tools: tools,
       toolResources: toolResources,
       mcpTools:
