@@ -20,6 +20,7 @@ from bondable.bond.auth import OAuth2ProviderFactory, OAuth2Provider, OAuth2User
 # Test configuration
 jwt_config = Config.config().get_jwt_config()
 TEST_USER_EMAIL = "test@example.com"
+TEST_USER_ID = "test-user-id-123"
 
 @pytest.fixture(scope="session", autouse=True)
 def cleanup_test_db():
@@ -270,6 +271,7 @@ class TestAuthenticationRoutes:
         with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
             mock_provider = MagicMock()
             mock_provider.get_user_info_from_code.return_value = {
+                "sub": TEST_USER_ID,
                 "email": TEST_USER_EMAIL,
                 "name": "Test User"
             }
@@ -321,11 +323,12 @@ class TestJWTWithProvider:
     
     def test_get_current_user_with_provider(self, test_client):
         """Test getting current user with provider information."""
-        # Create token with provider
+        # Create token with provider and user_id
         token_data = {
             "sub": TEST_USER_EMAIL,
             "name": "Test User",
-            "provider": "google"
+            "provider": "google",
+            "user_id": TEST_USER_ID
         }
         access_token = create_access_token(data=token_data, expires_delta=timedelta(minutes=15))
         auth_headers = {"Authorization": f"Bearer {access_token}"}
@@ -339,22 +342,21 @@ class TestJWTWithProvider:
         assert user_data["provider"] == "google"
     
     def test_get_current_user_legacy_token(self, test_client):
-        """Test getting current user with legacy token (no provider field)."""
-        # Create token without provider (legacy format)
+        """Test getting current user with legacy token (no user_id field)."""
+        # Create token without user_id (legacy format)
         token_data = {
             "sub": TEST_USER_EMAIL,
-            "name": "Test User"
+            "name": "Test User",
+            "provider": "google"
         }
         access_token = create_access_token(data=token_data, expires_delta=timedelta(minutes=15))
         auth_headers = {"Authorization": f"Bearer {access_token}"}
         
         response = test_client.get("/users/me", headers=auth_headers)
         
-        assert response.status_code == 200
-        user_data = response.json()
-        assert user_data["email"] == TEST_USER_EMAIL
-        assert user_data["name"] == "Test User"
-        assert user_data["provider"] == "google"  # Should default to google
+        # Should fail because user_id is required now
+        assert response.status_code == 401
+        assert "Could not validate credentials" in response.json()["detail"]
 
 class TestBackwardsCompatibility:
     """Test backwards compatibility with existing GoogleAuth."""
@@ -381,6 +383,7 @@ class TestBackwardsCompatibility:
         with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
             mock_provider = MagicMock()
             mock_provider.get_user_info_from_code.return_value = {
+                "sub": TEST_USER_ID,
                 "email": TEST_USER_EMAIL,
                 "name": "Test User"
             }

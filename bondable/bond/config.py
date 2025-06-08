@@ -120,6 +120,13 @@ class Config:
             if method is None:
                 return False
             self.provider = method()
+            # Initialize Groups and Users if not already done
+            if self.provider.groups is None:
+                from bondable.bond.groups import Groups
+                self.provider.groups = Groups(self.provider.metadata)
+            if self.provider.users is None:
+                from bondable.bond.users import Users
+                self.provider.users = Users(self.provider.metadata)
         return self.provider
 
     def get_metadata_db_url(self):

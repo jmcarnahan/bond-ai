@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, func, event, PrimaryKeyConstraint, Index, ForeignKey
+from sqlalchemy import ForeignKey, create_engine, Column, String, DateTime, func, PrimaryKeyConstraint, UniqueConstraint
 from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
 from sqlalchemy.sql import text
 import logging
@@ -31,26 +31,43 @@ class AgentRecord(Base):
     created_at = Column(DateTime, default=datetime.datetime.now)
 class FileRecord(Base):
     __tablename__ = "files"
-    file_path = Column(String, primary_key=True)
+    file_id = Column(String, primary_key=True)  # Unique file ID from provider
+    file_path = Column(String, nullable=False)
     file_hash = Column(String, nullable=False)
-    file_id = Column(String)
     mime_type = Column(String)
     owner_user_id = Column(String, ForeignKey('users.id'), nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.now)
+    
+    # Unique constraint on file_path + file_hash + owner_user_id
+    # This allows same user to upload different versions of same file
+    # and different users to upload same file
+    __table_args__ = (UniqueConstraint('file_path', 'file_hash', 'owner_user_id', name='_file_path_hash_user_uc'),)
 class VectorStore(Base):
     __tablename__ = "vector_stores"
-    name = Column(String, primary_key=True)
-    vector_store_id = Column(String, nullable=False)
+    vector_store_id = Column(String, primary_key=True)  # Use vector_store_id as primary key
+    name = Column(String, nullable=False)
     owner_user_id = Column(String, ForeignKey('users.id'), nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.now)
+    
+    # Unique constraint on name + owner_user_id
+    # This allows different users to have vector stores with the same name
+    __table_args__ = (UniqueConstraint('name', 'owner_user_id', name='_vector_store_name_user_uc'),)
 class AgentGroup(Base):
     __tablename__ = "agent_groups"
-    agent_id = Column(String, primary_key=True)
-    group_id = Column(String, primary_key=True)
+    agent_id = Column(String, ForeignKey('agents.agent_id'), primary_key=True)
+    group_id = Column(String, ForeignKey('groups.id'), primary_key=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
+class Group(Base):
+    __tablename__ = "groups"
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    description = Column(String)
+    owner_user_id = Column(String, ForeignKey('users.id'), nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 class GroupUser(Base):
     __tablename__ = "group_users"
-    group_id = Column(String, primary_key=True)
+    group_id = Column(String, ForeignKey('groups.id'), primary_key=True)
     user_id = Column(String, ForeignKey('users.id'), primary_key=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
 class User(Base):
@@ -79,6 +96,13 @@ class Metadata(ABC):
     def create_all(self):
         # This method should be overriden by subclasses to create all necessary tables
         return Base.metadata.create_all(self.engine)
+    
+    def drop_and_recreate_all(self):
+        """Drop all tables and recreate them. Use with caution - this deletes all data!"""
+        LOGGER.warning("Dropping all tables and recreating schema. All data will be lost!")
+        Base.metadata.drop_all(self.engine)
+        Base.metadata.create_all(self.engine)
+        LOGGER.info("Schema recreated successfully")
         
     def get_db_session(self) -> scoped_session:
         if not self.engine:

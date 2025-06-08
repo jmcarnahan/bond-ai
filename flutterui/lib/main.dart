@@ -10,8 +10,11 @@ import 'package:flutterui/presentation/screens/auth/auth_callback_screen.dart';
 import 'package:flutterui/presentation/screens/chat/chat_screen.dart';
 import 'package:flutterui/presentation/screens/threads/threads_screen.dart';
 import 'package:flutterui/presentation/screens/agents/create_agent_screen.dart';
+import 'package:flutterui/presentation/screens/groups/groups_screen.dart';
+import 'package:flutterui/presentation/screens/groups/edit_group_screen.dart';
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/data/models/agent_model.dart';
+import 'package:flutterui/data/models/group_model.dart';
 import 'package:flutterui/core/theme/app_theme.dart';
 import 'package:flutterui/core/theme/generated_theme.dart';
 import 'package:flutterui/core/utils/logger.dart';
@@ -131,8 +134,20 @@ class MyApp extends ConsumerWidget {
           case CreateAgentScreen.routeName:
             pageWidget = const CreateAgentScreen();
             break;
+          case GroupsScreen.routeName:
+            pageWidget = const GroupsScreen();
+            break;
           default:
-            if (effectivePath.startsWith('/chat/')) {
+            if (effectivePath.startsWith('/groups/') && effectivePath.endsWith('/edit')) {
+              final parts = effectivePath.split('/');
+              if (parts.length >= 3 && settings.arguments is Group) {
+                final group = settings.arguments as Group;
+                pageWidget = EditGroupScreen(group: group);
+              } else {
+                logger.e('[onGenerateRoute] Error: EditGroupScreen called without Group argument');
+                pageWidget = const GroupsScreen();
+              }
+            } else if (effectivePath.startsWith('/chat/')) {
               final parts = effectivePath.split('/');
               if (parts.length >= 3) {
                 if (settings.arguments is AgentListItemModel) {

@@ -6,11 +6,12 @@ from jose import jwt
 from datetime import timedelta
 import logging
 # from bondable.rest.main import app, create_access_token, JWT_SECRET_KEY as MAIN_JWT_SECRET, JWT_ALGORITHM, ThreadRef
-from bondable.rest.main import app, create_access_token, ThreadRef, MessageRef, AgentResponse, AgentCreateRequest, AgentUpdateRequest, ToolResourcesRequest, ToolResourceCodeInterpreterRequest, ToolResourceFileSearchRequest # Added ToolResourceFileSearchRequest
+from bondable.rest.main import app, create_access_token
+from bondable.rest.models.threads import ThreadRef, MessageRef
+from bondable.rest.models.agents import AgentResponse, AgentCreateRequest, AgentUpdateRequest, ToolResourcesRequest, ToolResourceFilesList
 from bondable.bond.config import Config
-from bondable.bond.agent import Agent # Needed for mocking
-from bondable.bond.threads import Threads # Needed for mocking
-from bondable.bond.builder import AgentBuilder # Added for mocking AgentBuilder
+from bondable.bond.providers.agent import Agent # Needed for mocking
+from bondable.bond.providers.threads import ThreadsProvider # Needed for mocking
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -19,9 +20,10 @@ jwt_config = Config.config().get_jwt_config()
 
 # --- Configuration ---
 TEST_USER_EMAIL = "jmcarny@gmail.com"
+TEST_USER_ID = "test-user-id-456"
 # Mock paths for dependencies called by endpoints
 MOCK_AGENT_LIST_PATH = "bondable.rest.main.Agent.list_agents"
-MOCK_THREADS_LIST_PATH = "bondable.rest.main.Threads.threads" # Added for /threads endpoint
+MOCK_THREADS_LIST_PATH = "bondable.rest.main.ThreadsProvider.threads" # Added for /threads endpoint
 MOCK_AGENT_GET_PATH = "bondable.rest.main.Agent.get_agent" # Added for /chat endpoint
 MOCK_AGENT_BUILDER_GET_AGENT_PATH = "bondable.rest.main.AgentBuilder.builder" # For new agent endpoints
 
@@ -43,7 +45,7 @@ def authenticated_client(test_client: TestClient) -> tuple[TestClient, dict]:
     Function-scoped for test isolation (fresh token per test).
     Returns a tuple: (client, auth_headers)
     """
-    token_data = {"sub": TEST_USER_EMAIL, "name": "Test User"}
+    token_data = {"sub": TEST_USER_EMAIL, "name": "Test User", "provider": "google", "user_id": TEST_USER_ID}
     access_token = create_access_token(data=token_data, expires_delta=timedelta(minutes=15))
     auth_headers = {"Authorization": f"Bearer {access_token}"}
     yield (test_client, auth_headers)
@@ -83,7 +85,7 @@ def test_get_agents_success(mock_list_agents, authenticated_client):
     ]
     assert response.json() == expected_json
 
-    mock_list_agents.assert_called_once_with(user_id=TEST_USER_EMAIL)
+    mock_list_agents.assert_called_once_with(user_id=TEST_USER_ID)
 
 
 @patch(MOCK_THREADS_LIST_PATH)
@@ -125,7 +127,7 @@ def test_get_threads_success(mock_threads_cls, authenticated_client):
     assert response.json() == expected_json
 
     # Verify that the mocked class method was called correctly
-    mock_threads_cls.assert_called_once_with(user_id=TEST_USER_EMAIL)
+    mock_threads_cls.assert_called_once_with(user_id=TEST_USER_ID)
     # Verify the chained method call on the returned instance
     mock_threads_instance.get_current_threads.assert_called_once()
 
@@ -167,7 +169,7 @@ def test_get_messages_success(mock_threads_cls, authenticated_client):
     assert response.json() == expected_json
 
     # Verify that Threads.threads(user_id=...) was called
-    mock_threads_cls.assert_called_once_with(user_id=TEST_USER_EMAIL)
+    mock_threads_cls.assert_called_once_with(user_id=TEST_USER_ID)
     
     # Verify that get_messages(thread_id=...) was called on the instance with correct parameters
     # The endpoint defaults limit to 100
@@ -226,7 +228,7 @@ def test_chat_success(mock_get_agent, authenticated_client):
     
     # Verify that validate_user_access was called on the agent instance
     mock_agent_instance.validate_user_access.assert_called_once_with(
-        user_id=TEST_USER_EMAIL, agent_id=test_agent_id # Changed to test_agent_id
+        user_id=TEST_USER_ID, agent_id=test_agent_id # Changed to test_agent_id
     )
     
     # Verify that stream_response was called on the agent instance
@@ -273,7 +275,7 @@ def test_create_new_thread_success(mock_threads_cls, authenticated_client):
     assert response.json() == expected_json
 
     # Verify that Threads.threads(user_id=...) was called
-    mock_threads_cls.assert_called_once_with(user_id=TEST_USER_EMAIL)
+    mock_threads_cls.assert_called_once_with(user_id=TEST_USER_ID)
     
     # Verify that create_thread() was called on the instance with the specified name
     mock_threads_instance.create_thread.assert_called_once_with(name=test_thread_name)
@@ -319,7 +321,7 @@ def test_create_new_thread_success_no_name(mock_threads_cls, authenticated_clien
         "description": None,
     }
     assert response.json() == expected_json
-    mock_threads_cls.assert_called_once_with(user_id=TEST_USER_EMAIL)
+    mock_threads_cls.assert_called_once_with(user_id=TEST_USER_ID)
     # create_thread in the service layer should be called with name=None
     mock_threads_instance.create_thread.assert_called_once_with(name=None) 
     mock_threads_instance.update_thread_name.assert_not_called()
@@ -336,7 +338,7 @@ def test_create_agent_endpoint(mock_builder_factory, authenticated_client):
         instructions="Be helpful and new.",
         tools=[{"type": "code_interpreter"}],
         tool_resources=ToolResourcesRequest(
-            code_interpreter=ToolResourceCodeInterpreterRequest(file_ids=["file-newapi123"])
+            code_interpreter=ToolResourceFilesList(file_ids=["file-newapi123"])
         ),
         metadata={"version": "1.0"}
     ).model_dump(exclude_none=True) # Use .model_dump() for Pydantic v2+
@@ -376,7 +378,7 @@ def test_update_agent_endpoint(mock_builder_factory, authenticated_client):
         instructions="Be helpful and very updated.",
         tools=[{"type": "file_search"}],
         tool_resources=ToolResourcesRequest(
-            file_search=ToolResourceFileSearchRequest(vector_store_ids=["vs-apiupdate456"])
+            file_search=ToolResourceFilesList(file_ids=["vs-apiupdate456"])
         ),
         metadata={"version": "2.0"}
     ).model_dump(exclude_none=True) # Use .model_dump()

@@ -9,7 +9,7 @@ from bondable.rest.dependencies.auth import get_current_user
 from bondable.rest.dependencies.providers import get_bond_provider
 
 router = APIRouter(prefix="/threads", tags=["Thread"])
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
 @router.get("", response_model=List[ThreadRef])
@@ -19,7 +19,7 @@ async def get_threads(
 ):
     """Get list of threads for the authenticated user."""
     try:
-        thread_data_list = provider.threads.get_current_threads(user_id=current_user.email)
+        thread_data_list = provider.threads.get_current_threads(user_id=current_user.user_id)
         return [
             ThreadRef(
                 id=thread_data['thread_id'],
@@ -29,7 +29,7 @@ async def get_threads(
             for thread_data in thread_data_list
         ]
     except Exception as e:
-        logger.error(f"Error fetching threads for user {current_user.email}: {e}", exc_info=True)
+        LOGGER.error(f"Error fetching threads for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not fetch threads.")
 
 
@@ -42,18 +42,18 @@ async def create_thread(
     """Create a new thread for the authenticated user."""
     try:
         created_thread_orm = provider.threads.create_thread(
-            user_id=current_user.email,
+            user_id=current_user.user_id,
             name=request_body.name
         )
         
-        logger.info(f"User {current_user.email} created new thread with ID: {created_thread_orm.thread_id} and name: {created_thread_orm.name}")
+        LOGGER.info(f"User {current_user.user_id} ({current_user.email}) created new thread with ID: {created_thread_orm.thread_id} and name: {created_thread_orm.name}")
         return ThreadRef(
             id=created_thread_orm.thread_id,
             name=created_thread_orm.name,
             description=None
         )
     except Exception as e:
-        logger.error(f"Error creating thread for user {current_user.email}: {e}", exc_info=True)
+        LOGGER.error(f"Error creating thread for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not create new thread.")
 
 
@@ -65,11 +65,11 @@ async def delete_thread(
 ):
     """Delete a specific thread for the authenticated user."""
     try:
-        deleted = provider.threads.delete_thread(thread_id=thread_id, user_id=current_user.email)
+        deleted = provider.threads.delete_thread(thread_id=thread_id, user_id=current_user.user_id)
         if deleted:
-            logger.info(f"User {current_user.email} successfully initiated deletion for thread with ID: {thread_id}")
+            LOGGER.info(f"User {current_user.user_id} ({current_user.email}) successfully initiated deletion for thread with ID: {thread_id}")
         else:
-            logger.warning(f"Attempt to delete thread {thread_id} by user {current_user.email} did not result in deletion.")
+            LOGGER.warning(f"Attempt to delete thread {thread_id} by user {current_user.user_id} ({current_user.email}) did not result in deletion.")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Thread not found or not accessible for deletion by this user."
@@ -77,7 +77,7 @@ async def delete_thread(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting thread {thread_id} for user {current_user.email}: {e}", exc_info=True)
+        LOGGER.error(f"Error deleting thread {thread_id} for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not delete thread.")
 
 
@@ -127,7 +127,7 @@ async def get_messages(
         return message_refs
         
     except Exception as e:
-        logger.error(f"Error fetching messages for thread {thread_id}: {e}", exc_info=True)
+        LOGGER.error(f"Error fetching messages for thread {thread_id}: {e}", exc_info=True)
         if "not found" in str(e).lower():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
