@@ -7,14 +7,13 @@ import uuid
 
 from bondable.bond.auth import OAuth2ProviderFactory
 from bondable.bond.config import Config
-from bondable.bond.providers.metadata import User as UserModel
 from bondable.rest.models.auth import User
 from bondable.rest.dependencies.auth import get_current_user
 from bondable.rest.dependencies.providers import get_bond_provider
-from bondable.rest.utils.auth import create_access_token, get_or_create_user
+from bondable.rest.utils.auth import create_access_token
 
 router = APIRouter(tags=["Authentication"])
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 jwt_config = Config.config().get_jwt_config()
 
 
@@ -34,16 +33,16 @@ async def login_provider(provider: str):
         oauth_provider = OAuth2ProviderFactory.create_provider(provider, provider_config)
         authorization_url = oauth_provider.get_auth_url()
         
-        logger.info(f"Redirecting user to {provider} for authentication: {authorization_url}")
+        LOGGER.info(f"Redirecting user to {provider} for authentication: {authorization_url}")
         return RedirectResponse(url=authorization_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
     except ValueError as e:
-        logger.error(f"Invalid OAuth2 provider '{provider}': {e}")
+        LOGGER.error(f"Invalid OAuth2 provider '{provider}': {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid OAuth2 provider: {provider}"
         )
     except Exception as e:
-        logger.error(f"Error generating {provider} auth URL: {e}", exc_info=True)
+        LOGGER.error(f"Error generating {provider} auth URL: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not initiate authentication flow."
@@ -61,7 +60,7 @@ async def auth_callback_provider(provider: str, request: Request, bond_provider 
     """Handle OAuth2 callback for specified provider."""
     auth_code = request.query_params.get('code')
     if not auth_code:
-        logger.error(f"Authorization code not found in {provider} callback request.")
+        LOGGER.error(f"Authorization code not found in {provider} callback request.")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Authorization code missing."
@@ -74,24 +73,19 @@ async def auth_callback_provider(provider: str, request: Request, bond_provider 
         oauth_provider = OAuth2ProviderFactory.create_provider(provider, provider_config)
         user_info = oauth_provider.get_user_info_from_code(auth_code)
         
-        logger.info(f"Successfully authenticated user with {provider}: {user_info.get('email')}")
+        LOGGER.info(f"Successfully authenticated user with {provider}: {user_info.get('email')}")
 
-        db_session = bond_provider.metadata.get_db_session()
-        try:
-            user_id, is_new = get_or_create_user(
-                db_session,
-                email=user_info.get("email"),
-                name=user_info.get("name"),
-                sign_in_method=provider
-            )
+        user_id, is_new = bond_provider.users.get_or_create_user(
+            user_id=user_info.get("sub"),
+            email=user_info.get("email"),
+            name=user_info.get("name"),
+            sign_in_method=provider
+        )
 
-            if is_new:
-                logger.info(f"Created new user: {user_info.get('email')} (id: {user_id})")
-            else:
-                logger.info(f"Updated existing user: {user_info.get('email')} (id: {user_id})")
-
-        finally:
-            db_session.close()
+        if is_new:
+            LOGGER.info(f"Created new user: {user_info.get('email')} (id: {user_id})")
+        else:
+            LOGGER.info(f"Updated existing user: {user_info.get('email')} (id: {user_id})")
 
         access_token_expires = timedelta(minutes=jwt_config.ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
@@ -103,16 +97,16 @@ async def auth_callback_provider(provider: str, request: Request, bond_provider 
             },
             expires_delta=access_token_expires
         )
-        logger.info(f"Generated JWT for user: {user_info.get('email')} (provider: {provider})")
+        LOGGER.info(f"Generated JWT for user: {user_info.get('email')} (provider: {provider})")
 
         flutter_redirect_url = f"{jwt_config.JWT_REDIRECT_URI}/#/auth-callback?token={access_token}"
         return RedirectResponse(url=flutter_redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
     except ValueError as e:
-        logger.error(f"Authentication failed for {provider}: {e}", exc_info=True)
+        LOGGER.error(f"Authentication failed for {provider}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
     except Exception as e:
-        logger.error(f"Error processing {provider} callback: {e}", exc_info=True)
+        LOGGER.error(f"Error processing {provider} callback: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Authentication failed.")
 
 
@@ -134,7 +128,7 @@ async def list_auth_providers():
                     "callback_url": info["callback_path"]
                 })
             except Exception as e:
-                logger.warning(f"Could not get info for provider {provider_name}: {e}")
+                LOGGER.warning(f"Could not get info for provider {provider_name}: {e}")
         
         # Set default to first enabled provider or google if available
         default_provider = "google" if "google" in enabled_configs else (
@@ -146,7 +140,7 @@ async def list_auth_providers():
             "default": default_provider
         }
     except Exception as e:
-        logger.error(f"Error listing auth providers: {e}", exc_info=True)
+        LOGGER.error(f"Error listing auth providers: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not list authentication providers."
@@ -156,5 +150,5 @@ async def list_auth_providers():
 @router.get("/users/me", response_model=User)
 async def read_users_me(current_user: Annotated[User, Depends(get_current_user)]):
     """Get current authenticated user information."""
-    logger.info(f"Access granted to /users/me for user: {current_user.email}")
+    LOGGER.info(f"Access granted to /users/me for user: {current_user.user_id} ({current_user.email})")
     return current_user
