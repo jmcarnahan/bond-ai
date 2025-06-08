@@ -1,4 +1,5 @@
 import os
+import uuid
 from typing import Annotated, List
 from fastapi import APIRouter, Depends, HTTPException, status
 import logging
@@ -14,7 +15,9 @@ from bondable.rest.dependencies.auth import get_current_user
 from bondable.rest.dependencies.providers import get_bond_provider
 
 router = APIRouter(prefix="/agents", tags=["Agent"])
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
+
+
 
 
 def _process_tool_resources(request_data, provider: Provider, user_id: str) -> dict:
@@ -57,7 +60,7 @@ async def get_agents(
 ):
     """Get list of agents for the authenticated user."""
     try:
-        agent_instances = provider.agents.list_agents(user_id=current_user.email)
+        agent_instances = provider.agents.list_agents(user_id=current_user.user_id)
         return [
             AgentRef(
                 id=agent.get_agent_id(),
@@ -68,8 +71,26 @@ async def get_agents(
             for agent in agent_instances
         ]
     except Exception as e:
-        logger.error(f"Error fetching agents for user {current_user.email}: {e}", exc_info=True)
+        LOGGER.error(f"Error fetching agents for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not fetch agents.")
+
+
+@router.get("/available-groups", response_model=List[dict])
+async def get_available_groups_for_agent(
+    current_user: Annotated[User, Depends(get_current_user)],
+    provider: Provider = Depends(get_bond_provider),
+    agent_id: str = None  # Optional - for editing existing agents
+):
+    """Get groups available for agent association (groups user owns/belongs to, excluding those already associated)."""
+    try:
+        available_groups = provider.groups.get_available_groups_for_agent(
+            user_id=current_user.user_id,
+            agent_id=agent_id
+        )
+        return available_groups
+    except Exception as e:
+        LOGGER.error(f"Error fetching available groups for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not fetch available groups.")
 
 
 @router.post("", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
@@ -79,9 +100,9 @@ async def create_agent(
     provider: Provider = Depends(get_bond_provider)
 ):
     """Create a new agent."""
-    logger.info(f"Create agent request for user {current_user.email} - MCP tools: {request_data.mcp_tools}, MCP resources: {request_data.mcp_resources}")
+    LOGGER.info(f"Create agent request for user {current_user.user_id} ({current_user.email}) - MCP tools: {request_data.mcp_tools}, MCP resources: {request_data.mcp_resources}")
     try:
-        tool_resources_payload = _process_tool_resources(request_data, provider, current_user.email)
+        tool_resources_payload = _process_tool_resources(request_data, provider, current_user.user_id)
         
         agent_def = AgentDefinition(
             name=request_data.name,
@@ -92,18 +113,43 @@ async def create_agent(
             metadata=request_data.metadata,
             model=request_data.model or provider.get_default_model(),
             id=None,
-            user_id=current_user.email,
+            user_id=current_user.user_id,
             mcp_tools=request_data.mcp_tools or [],
             mcp_resources=request_data.mcp_resources or []
         )
         
-        agent_instance = provider.agents.create_or_update_agent(agent_def=agent_def, user_id=current_user.email)
+        agent_instance = provider.agents.create_or_update_agent(agent_def=agent_def, user_id=current_user.user_id)
         
-        logger.info(f"Created agent '{agent_instance.get_name()}' with ID '{agent_instance.get_agent_id()}' for user {current_user.email}.")
+        # Create default group for the agent and associate them
+        try:
+            group_id = provider.groups.create_default_group_and_associate(
+                agent_name=request_data.name,
+                agent_id=agent_instance.get_agent_id(),
+                user_id=current_user.user_id
+            )
+            LOGGER.info(f"Created and associated default group '{group_id}' for agent '{agent_instance.get_name()}'")
+        except Exception as group_error:
+            LOGGER.error(f"Failed to create default group for agent '{request_data.name}': {group_error}")
+            # Don't fail the agent creation if group creation fails, just log the error
+        
+        # Associate agent with additional selected groups
+        if request_data.group_ids:
+            try:
+                for group_id in request_data.group_ids:
+                    provider.groups.associate_agent_with_group(
+                        agent_id=agent_instance.get_agent_id(),
+                        group_id=group_id
+                    )
+                LOGGER.info(f"Associated agent '{agent_instance.get_agent_id()}' with {len(request_data.group_ids)} additional groups")
+            except Exception as group_error:
+                LOGGER.error(f"Failed to associate agent with additional groups: {group_error}")
+                # Don't fail the agent creation if additional group associations fail
+        
+        LOGGER.info(f"Created agent '{agent_instance.get_name()}' with ID '{agent_instance.get_agent_id()}' for user {current_user.user_id} ({current_user.email}).")
         return AgentResponse(agent_id=agent_instance.get_agent_id(), name=agent_instance.get_name())
         
     except Exception as e:
-        logger.error(f"Error creating agent '{request_data.name}' for user {current_user.email}: {e}", exc_info=True)
+        LOGGER.error(f"Error creating agent '{request_data.name}' for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         if "already exists" in str(e).lower():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not create agent: {str(e)}")
@@ -117,9 +163,9 @@ async def update_agent(
     provider: Provider = Depends(get_bond_provider)
 ):
     """Update an existing agent."""
-    logger.info(f"Update agent request for agent {agent_id}, user {current_user.email} - MCP tools: {request_data.mcp_tools}, MCP resources: {request_data.mcp_resources}")
+    LOGGER.info(f"Update agent request for agent {agent_id}, user {current_user.user_id} ({current_user.email}) - MCP tools: {request_data.mcp_tools}, MCP resources: {request_data.mcp_resources}")
     try:
-        tool_resources_payload = _process_tool_resources(request_data, provider, current_user.email)
+        tool_resources_payload = _process_tool_resources(request_data, provider, current_user.user_id)
         
         agent_def = AgentDefinition(
             id=agent_id,
@@ -130,18 +176,18 @@ async def update_agent(
             tool_resources=tool_resources_payload,
             metadata=request_data.metadata,
             model=request_data.model or provider.get_default_model(),
-            user_id=current_user.email,
+            user_id=current_user.user_id,
             mcp_tools=request_data.mcp_tools or [],
             mcp_resources=request_data.mcp_resources or []
         )
         
-        agent_instance = provider.agents.create_or_update_agent(agent_def=agent_def, user_id=current_user.email)
+        agent_instance = provider.agents.create_or_update_agent(agent_def=agent_def, user_id=current_user.user_id)
         
-        logger.info(f"Updated agent '{agent_instance.get_name()}' with ID '{agent_instance.get_agent_id()}' for user {current_user.email}.")
+        LOGGER.info(f"Updated agent '{agent_instance.get_name()}' with ID '{agent_instance.get_agent_id()}' for user {current_user.user_id} ({current_user.email}).")
         return AgentResponse(agent_id=agent_instance.get_agent_id(), name=agent_instance.get_name())
         
     except Exception as e:
-        logger.error(f"Error updating agent ID '{agent_id}' for user {current_user.email}: {e}", exc_info=True)
+        LOGGER.error(f"Error updating agent ID '{agent_id}' for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         if "not found" in str(e).lower():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not update agent: {str(e)}")
@@ -159,7 +205,7 @@ async def get_agent_details(
         if not agent_instance:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found.")
 
-        if not provider.agents.can_user_access_agent(user_id=current_user.email, agent_id=agent_id):
+        if not provider.agents.can_user_access_agent(user_id=current_user.user_id, agent_id=agent_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to this agent is forbidden.")
 
         agent_def = agent_instance.get_agent_definition()
@@ -199,7 +245,7 @@ async def get_agent_details(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error retrieving agent details for ID '{agent_id}', user {current_user.email}: {e}", exc_info=True)
+        LOGGER.error(f"Error retrieving agent details for ID '{agent_id}', user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not retrieve agent details: {str(e)}")
 
 
@@ -216,7 +262,7 @@ async def delete_agent(
         if not agent_instance:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found.")
 
-        if not provider.agents.can_user_access_agent(user_id=current_user.email, agent_id=agent_id):
+        if not provider.agents.can_user_access_agent(user_id=current_user.user_id, agent_id=agent_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to this agent is forbidden.")
 
         # Delete the agent
@@ -224,10 +270,10 @@ async def delete_agent(
         if not success:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not delete agent.")
         
-        logger.info(f"Deleted agent with ID '{agent_id}' for user {current_user.email}.")
+        LOGGER.info(f"Deleted agent with ID '{agent_id}' for user {current_user.user_id} ({current_user.email}).")
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting agent ID '{agent_id}' for user {current_user.email}: {e}", exc_info=True)
+        LOGGER.error(f"Error deleting agent ID '{agent_id}' for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not delete agent: {str(e)}")

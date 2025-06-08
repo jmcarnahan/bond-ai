@@ -3,6 +3,8 @@ from bondable.bond.providers.files import FilesProvider
 from bondable.bond.providers.vectorstores import VectorStoresProvider
 from bondable.bond.providers.threads import ThreadsProvider
 from bondable.bond.providers.agent import AgentProvider
+from bondable.bond.groups import Groups
+from bondable.bond.users import Users
 import logging
 LOGGER = logging.getLogger(__name__)
 
@@ -12,6 +14,8 @@ class Provider(ABC):
     vectorstores: VectorStoresProvider = None
     threads: ThreadsProvider = None
     agents: AgentProvider = None
+    groups: Groups = None
+    users: Users = None
 
     @abstractmethod
     def get_default_model(self) -> str:

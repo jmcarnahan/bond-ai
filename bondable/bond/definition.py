@@ -74,7 +74,7 @@ class AgentDefinition:
         if "file_search" in self.tool_resources and self.tool_resources["file_search"] is not None:
             vector_store_ids = []
 
-            default_vector_store_name = f"{self.name}_file_search_vs"
+            default_vector_store_name = f"{self.id}_file_search_vs"
             default_vector_store_id = self.provider.vectorstores.get_or_create_vector_store_id(user_id=user_id, name=default_vector_store_name)
             vector_store_ids.append(default_vector_store_id)
 
