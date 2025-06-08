@@ -11,10 +11,9 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
 
   void handleStreamData(String chunk, int assistantMessageIndex) {
     currentAssistantXmlBuffer.write(chunk);
-    String stringToDisplayForUi =
-        BondMessageParser.extractStreamingBodyContent(
-          currentAssistantXmlBuffer.toString(),
-        );
+    String stringToDisplayForUi = BondMessageParser.extractStreamingBodyContent(
+      currentAssistantXmlBuffer.toString(),
+    );
 
     final currentMessages = List<Message>.from(state.messages);
     if (assistantMessageIndex < currentMessages.length) {
@@ -33,38 +32,70 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
 
   void handleStreamDone(int assistantMessageIndex) {
     final completeXmlString = currentAssistantXmlBuffer.toString();
+    logger.i(
+      "[ChatStreamHandler] Stream done. Total XML length: ${completeXmlString.length} chars",
+    );
     currentAssistantXmlBuffer.clear();
 
-    final allMessages = BondMessageParser.parseAllBondMessages(completeXmlString);
-    
-    final assistantMessages = allMessages.where((msg) => 
-      msg.role == 'assistant' && !msg.parsingHadError
-    ).toList();
+    final allMessages = BondMessageParser.parseAllBondMessages(
+      completeXmlString,
+    );
+    logger.i(
+      "[ChatStreamHandler] Parsed ${allMessages.length} messages from XML",
+    );
+
+    // Extract thread_id from the most recent message if we don't have one
+    if (state.currentThreadId == null && allMessages.isNotEmpty) {
+      final lastMessage = allMessages.last;
+      if (lastMessage.threadId.isNotEmpty) {
+        logger.i(
+          "[ChatStreamHandler] Extracted thread_id from most recent response: ${lastMessage.threadId}",
+        );
+        state = state.copyWith(currentThreadId: lastMessage.threadId);
+      }
+    }
+
+    final assistantMessages =
+        allMessages
+            .where((msg) => msg.role == 'assistant' && !msg.parsingHadError)
+            .toList();
+    logger.i(
+      "[ChatStreamHandler] Found ${assistantMessages.length} assistant messages",
+    );
 
     final currentMessages = List<Message>.from(state.messages);
-    
+
     if (assistantMessages.isEmpty) {
-      final systemErrors = allMessages.where((msg) => 
-        msg.role == 'system' && (msg.isErrorAttribute || msg.content.toLowerCase().contains('error'))
-      ).toList();
-      
-      if (systemErrors.isNotEmpty && assistantMessageIndex < currentMessages.length) {
-        currentMessages[assistantMessageIndex] = currentMessages[assistantMessageIndex].copyWith(
-          content: systemErrors.first.content,
-          isError: true,
-        );
+      final systemErrors =
+          allMessages
+              .where(
+                (msg) =>
+                    msg.role == 'system' &&
+                    (msg.isErrorAttribute ||
+                        msg.content.toLowerCase().contains('error')),
+              )
+              .toList();
+
+      if (systemErrors.isNotEmpty &&
+          assistantMessageIndex < currentMessages.length) {
+        currentMessages[assistantMessageIndex] =
+            currentMessages[assistantMessageIndex].copyWith(
+              content: systemErrors.first.content,
+              isError: true,
+            );
       }
     } else {
       for (int i = 0; i < assistantMessages.length; i++) {
         final parsedMessage = assistantMessages[i];
-        
+
         if (i == 0 && assistantMessageIndex < currentMessages.length) {
-          currentMessages[assistantMessageIndex] = currentMessages[assistantMessageIndex].copyWith(
-            type: parsedMessage.type,
-            content: parsedMessage.content,
-            imageData: parsedMessage.imageData,
-            isError: parsedMessage.isErrorAttribute,
-          );
+          currentMessages[assistantMessageIndex] =
+              currentMessages[assistantMessageIndex].copyWith(
+                type: parsedMessage.type,
+                content: parsedMessage.content,
+                imageData: parsedMessage.imageData,
+                isError: parsedMessage.isErrorAttribute,
+              );
         } else {
           final newMessage = Message(
             id: (DateTime.now().millisecondsSinceEpoch + i).toString(),
@@ -79,10 +110,7 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
       }
     }
 
-    state = state.copyWith(
-      messages: currentMessages,
-      isSendingMessage: false,
-    );
+    state = state.copyWith(messages: currentMessages, isSendingMessage: false);
     chatStreamSubscription = null;
   }
 
@@ -120,9 +148,9 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
     if (assistantMessageIndex < currentMessages.length) {
       currentMessages[assistantMessageIndex] =
           currentMessages[assistantMessageIndex].copyWith(
-        content: errorDisplayContent,
-        isError: true,
-      );
+            content: errorDisplayContent,
+            isError: true,
+          );
     }
     state = state.copyWith(
       messages: currentMessages,

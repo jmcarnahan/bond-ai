@@ -7,7 +7,6 @@ import 'package:flutterui/data/models/chat_models.dart';
 import 'package:flutterui/data/services/thread_service.dart';
 import 'package:flutterui/data/services/chat_service.dart';
 import 'package:flutterui/data/services/file_service.dart';
-import 'package:flutterui/providers/thread_provider.dart';
 import 'chat_session_state.dart';
 import 'chat_stream_handler_mixin.dart';
 import '../../core/utils/logger.dart';
@@ -16,7 +15,6 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
   final ThreadService _threadService;
   final ChatService _chatService;
   final FileService _fileService;
-  final Ref _ref;
   
   @override
   final StringBuffer currentAssistantXmlBuffer = StringBuffer();
@@ -25,8 +23,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
 
   ChatSessionNotifier(this._threadService, 
                       this._chatService, 
-                      this._fileService,
-                      this._ref)
+                      this._fileService)
       : super(ChatSessionState());
 
   Future<void> setCurrentThread(String threadId) async {
@@ -47,82 +44,12 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
     }
   }
 
-  Future<void> createAndSetNewThread({
-    String? name,
-    required String agentIdForFirstMessage,
-    required String firstMessagePrompt,
-    List<PlatformFile>? attachedFiles,
-  }) async {
-    state = state.copyWith(
-      isLoadingMessages: true,
-      isSendingMessage: true,
-      clearErrorMessage: true,
-      messages: [],
-    );
-    try {
-      final newThread = await _threadService.createThread(name: name);
-      state = state.copyWith(
-        currentThreadId: newThread.id,
-        isLoadingMessages: false,
-      );
-      _ref.read(threadsProvider.notifier).selectThread(newThread.id);
-      await _ref.read(threadsProvider.notifier).fetchThreads();
-
-
-      await sendMessage(
-        agentId: agentIdForFirstMessage,
-        prompt: firstMessagePrompt,
-        attachedFiles: attachedFiles,
-      );
-    } catch (e) {
-      logger.i("[ChatSessionNotifier] Error creating new thread: ${e.toString()}");
-      state = state.copyWith(
-        errorMessage: e.toString(),
-        isLoadingMessages: false,
-        isSendingMessage: false,
-      );
-    }
-  }
-
-  Future<void> startNewEmptyThread({String? name}) async {
-    state = state.copyWith(
-      isLoadingMessages: true,
-      isSendingMessage: false,
-      clearErrorMessage: true,
-      messages: [],
-    );
-    try {
-      final newThread = await _threadService.createThread(name: name);
-      logger.i("[ChatSessionNotifier] Created new empty thread: ${newThread.id}");
-      state = state.copyWith(
-        currentThreadId: newThread.id,
-        messages: [],
-        isLoadingMessages: false,
-        isSendingMessage: false,
-      );
-      _ref.read(threadsProvider.notifier).selectThread(newThread.id);
-      await _ref.read(threadsProvider.notifier).fetchThreads();
-    } catch (e) {
-      logger.i(
-        "[ChatSessionNotifier] Error creating new empty thread: ${e.toString()}",
-      );
-      state = state.copyWith(
-        errorMessage: e.toString(),
-        isLoadingMessages: false,
-        isSendingMessage: false,
-      );
-    }
-  }
-
   Future<void> sendMessage({
     required String agentId,
     required String prompt,
-    List<PlatformFile>? attachedFiles
+    List<PlatformFile>? attachedFiles,
+    String overrideRole = "user"
   }) async {
-    if (state.currentThreadId == null) {
-      state = state.copyWith(errorMessage: "No active thread selected.");
-      return;
-    }
     if (prompt.isEmpty) return;
     state = state.copyWith(isSendingMessage: true, clearErrorMessage: true);
 
@@ -161,16 +88,18 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
       }
     }
 
-    final userMessage = Message(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      type: 'text',
-      role: 'user',
-      content: prompt,
-    );
-    state = state.copyWith(messages: [...state.messages, userMessage]);
+    // Add user message to UI (unless it's a system message)
+    if (overrideRole != "system") {
+      final userMessage = Message(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        type: 'text',
+        role: 'user',
+        content: prompt,
+      );
+      state = state.copyWith(messages: [...state.messages, userMessage]);
+    }
 
-    final assistantMessageId =
-        (DateTime.now().millisecondsSinceEpoch + 1).toString();
+    final assistantMessageId = (DateTime.now().millisecondsSinceEpoch + 1).toString();
     Message assistantMessage = Message(
       id: assistantMessageId,
       type: 'text',
@@ -186,10 +115,11 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
       chatStreamSubscription?.cancel();
       chatStreamSubscription = _chatService
           .streamChatResponse(
-            threadId: state.currentThreadId!,
+            threadId: state.currentThreadId,  // Can be null - backend will create thread
             agentId: agentId,
             prompt: prompt,
             attachments: chatAttachments,
+            overrideRole: overrideRole,
           )
           .listen(
             (chunk) => handleStreamData(chunk, assistantMessageIndex),
@@ -203,6 +133,20 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
         errorMessage: e.toString(),
       );
     }
+  }
+
+  // Simple helper for sending introductions
+  Future<void> sendIntroduction({
+    required String agentId,
+    required String introduction,
+  }) async {
+    state = state.copyWith(isSendingIntroduction: true);
+    await sendMessage(
+      agentId: agentId,
+      prompt: introduction,
+      overrideRole: "system",
+    );
+    state = state.copyWith(isSendingIntroduction: false);
   }
 
   void clearChatSession() {

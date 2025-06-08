@@ -8,7 +8,8 @@ class ChatAttachment(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    thread_id: str
+    thread_id: Optional[str] = None  # Can be None to create a new thread
     agent_id: str
     prompt: str
     attachments: Optional[List[ChatAttachment]] = None  # List of attachments with tool info
+    override_role: Optional[str] = "user"  # Default to "user", can be "system" for introduction messages

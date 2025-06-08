@@ -12,6 +12,8 @@ class AgentDefinition:
     name: str
     description: str
     instructions: str
+    introduction: str
+    reminder: str
     model: str
     tools: List = []
     tool_resources: Dict = {}
@@ -22,11 +24,14 @@ class AgentDefinition:
 
     def __init__(self, user_id: str, name: str, description: str, instructions: str, model: str,
                  tools: List = [], tool_resources: Dict = {}, metadata: Dict = {},
-                 id: Optional[str] = None, mcp_tools: List[str] = [], mcp_resources: List[str] = []): 
+                 id: Optional[str] = None, introduction: str = "", reminder: str = "",
+                 mcp_tools: List[str] = [], mcp_resources: List[str] = []): 
         self.id = id
         self.name = name
         self.description = description
         self.instructions = instructions
+        self.introduction = introduction
+        self.reminder = reminder
         self.model = model
         self.metadata = metadata
         self.user_id = user_id
@@ -118,6 +123,8 @@ class AgentDefinition:
             "name": self.name,
             "description": self.description,
             "instructions": self.instructions,
+            "introduction": self.introduction,
+            "reminder": self.reminder,
             "model": self.model,
             "tools": self.tools,
             "tool_resources": self.tool_resources,
@@ -133,7 +140,7 @@ class AgentDefinition:
         # The hash should represent the configuration, not the ID.
         # So, self.id is intentionally excluded from the hash.
         return hash(
-            (self.name, self.description, self.instructions, self.model, 
+            (self.name, self.description, self.instructions, self.introduction, self.reminder, self.model, 
                 json.dumps(self.metadata, sort_keys=True), 
                 json.dumps(self.tools, sort_keys=True),
                 json.dumps(self.tool_resources, sort_keys=True),
