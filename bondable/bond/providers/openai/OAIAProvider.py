@@ -20,7 +20,6 @@ class OAIAProvider(Provider):
         super().__init__()
         self.config = Config.config()
 
-        # Use OpenAI by default
         openai_client = None
         if not os.getenv('AZURE_OPENAI_API_KEY'):
             openai_api_key = self.config.get_secret_value(os.getenv('OPENAI_KEY_SECRET_ID', 'openai_api_key'))
