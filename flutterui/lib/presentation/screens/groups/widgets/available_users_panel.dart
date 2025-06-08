@@ -46,13 +46,10 @@ class _AvailableUsersPanelState extends ConsumerState<AvailableUsersPanel> {
       final isOwner = user.userId == groupWithMembers.ownerUserId;
       final isCurrentMember = currentMemberIds.contains(user.userId);
       final isPendingRemoval = widget.pendingRemovals.contains(user.userId);
-      final isPendingAddition = widget.pendingAdditions.contains(user.userId);
       
       if (isOwner) return false;
       
-      final shouldShow = !isCurrentMember || isPendingRemoval || isPendingAddition;
-      
-      if (!shouldShow) return false;
+      if (isCurrentMember && !isPendingRemoval) return false;
       
       if (_searchQuery.isEmpty) return true;
       
