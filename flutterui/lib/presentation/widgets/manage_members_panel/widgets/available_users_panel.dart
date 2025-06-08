@@ -2,12 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/data/models/group_model.dart';
 import 'package:flutterui/providers/group_provider.dart';
-import 'package:flutterui/presentation/screens/groups/widgets/user_tile.dart';
-
-final allUsersProvider = FutureProvider<List<GroupMember>>((ref) async {
-  final groupService = ref.watch(groupServiceProvider);
-  return groupService.getAllUsers();
-});
+import 'package:flutterui/presentation/widgets/manage_members_panel/widgets/user_tile.dart';
+import 'package:flutterui/presentation/widgets/manage_members_panel/providers/manage_members_provider.dart';
 
 class AvailableUsersPanel extends ConsumerStatefulWidget {
   final String groupId;
