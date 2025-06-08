@@ -10,7 +10,7 @@ from bondable.rest.dependencies.auth import get_current_user
 from bondable.rest.dependencies.providers import get_bond_provider
 
 router = APIRouter(prefix="/files", tags=["File Management"])
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 # Mime types that should use code_interpreter
 CODE_INTERPRETER_MIME_TYPES = {
@@ -41,13 +41,13 @@ async def upload_file(
         file_name = file.filename
         
         file_details = provider.files.get_or_create_file_id(
-            user_id=current_user.email,
+            user_id=current_user.user_id,
             file_tuple=(file_name, file_content)
         )
         
         suggested_tool = get_suggested_tool(file_details.mime_type)
         
-        logger.info(f"File '{file_name}' processed for user {current_user.email}. Provider File ID: {file_details.file_id}, MIME type: {file_details.mime_type}, Suggested tool: {suggested_tool}")
+        LOGGER.info(f"File '{file_name}' processed for user {current_user.user_id} ({current_user.email}). Provider File ID: {file_details.file_id}, MIME type: {file_details.mime_type}, Suggested tool: {suggested_tool}")
         return FileUploadResponse(
             provider_file_id=file_details.file_id,
             file_name=file_name,
@@ -57,10 +57,10 @@ async def upload_file(
         )
         
     except openai.APIError as e:
-        logger.error(f"File provider API error while uploading file '{file.filename}' for user {current_user.email}: {e}", exc_info=True)
+        LOGGER.error(f"File provider API error while uploading file '{file.filename}' for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"File provider error: {str(e)}")
     except Exception as e:
-        logger.error(f"Error uploading file '{file.filename}' for user {current_user.email}: {e}", exc_info=True)
+        LOGGER.error(f"Error uploading file '{file.filename}' for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not process file: {str(e)}")
 
 
@@ -75,21 +75,21 @@ async def delete_file(
         success = provider.files.delete_file(file_id=provider_file_id)
         
         if success:
-            logger.info(f"File {provider_file_id} deletion process completed by user {current_user.email}.")
+            LOGGER.info(f"File {provider_file_id} deletion process completed by user {current_user.user_id} ({current_user.email}).")
             return FileDeleteResponse(
                 provider_file_id=provider_file_id,
                 status="deleted",
                 message="File deletion process completed."
             )
         else:
-            logger.warning(f"File {provider_file_id} not found in local records for deletion by user {current_user.email}.")
+            LOGGER.warning(f"File {provider_file_id} not found in local records for deletion by user {current_user.user_id} ({current_user.email}).")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="File not found in local records."
             )
 
     except openai.APIError as e:
-        logger.error(f"File provider API Error while deleting file {provider_file_id} for user {current_user.email}: {e}", exc_info=True)
+        LOGGER.error(f"File provider API Error while deleting file {provider_file_id} for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         if hasattr(e, 'status_code') and e.status_code == 404:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -99,7 +99,7 @@ async def delete_file(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error deleting file {provider_file_id} for user {current_user.email}: {e}", exc_info=True)
+        LOGGER.error(f"Unexpected error deleting file {provider_file_id} for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not delete file: {str(e)}")
 
 
@@ -117,10 +117,10 @@ async def get_file_details(
         # Filter to only return files owned by the current user for security
         user_files = [
             details for details in file_details_list 
-            if details.owner_user_id == current_user.email
+            if details.owner_user_id == current_user.user_id
         ]
         
-        logger.info(f"Retrieved {len(user_files)} file details for user {current_user.email}")
+        LOGGER.info(f"Retrieved {len(user_files)} file details for user {current_user.user_id} ({current_user.email})")
         
         return [
             FileDetailsResponse(
@@ -134,5 +134,5 @@ async def get_file_details(
         ]
         
     except Exception as e:
-        logger.error(f"Error retrieving file details for user {current_user.email}: {e}", exc_info=True)
+        LOGGER.error(f"Error retrieving file details for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not retrieve file details: {str(e)}")
