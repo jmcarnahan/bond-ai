@@ -20,6 +20,7 @@ import 'package:flutterui/core/theme/generated_theme.dart';
 import 'package:flutterui/core/utils/logger.dart';
 import 'package:flutterui/presentation/widgets/selected_thread_banner.dart';
 import 'package:flutterui/providers/ui_providers.dart';
+import 'package:flutterui/core/error_handling/error_handler.dart';
 
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   throw UnimplementedError('SharedPreferences not initialized');
@@ -43,9 +44,6 @@ Future<void> main() async {
 
 class MyApp extends ConsumerWidget {
   const MyApp({super.key});
-
-  // Add a static GlobalKey to prevent conflicts
-  static final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -73,7 +71,8 @@ class MyApp extends ConsumerWidget {
     }
 
     return MaterialApp(
-      navigatorKey: _navigatorKey,
+      navigatorKey: ErrorHandlerService.navigatorKey,
+      scaffoldMessengerKey: ErrorHandlerService.scaffoldMessengerKey,
       debugShowCheckedModeBanner: false,
       title: currentTheme.name,
       theme: currentTheme.themeData,
@@ -163,21 +162,33 @@ class MyApp extends ConsumerWidget {
                   logger.i(
                     '[onGenerateRoute] Error: ChatScreen /chat/:id called without AgentListItemModel object as argument. Args: ${settings.arguments}',
                   );
-                  pageWidget = const Scaffold(
-                    body: Center(
-                      child: Text('Error: Missing agent details for chat.'),
-                    ),
-                  );
+                  // Handle critical error - missing required data
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    ErrorHandlerService.handleError(
+                      AppError.critical(
+                        'Unable to load chat. Required information is missing.',
+                        details: 'Missing agent details for chat route',
+                      ),
+                      ref: ref,
+                    );
+                  });
+                  return MaterialPageRoute(builder: (_) => homeWidget);
                 }
               } else {
                 logger.i(
                   '[onGenerateRoute] Error: Invalid /chat/ route format: $effectivePath',
                 );
-                pageWidget = const Scaffold(
-                  body: Center(
-                    child: Text('Error: Invalid chat route format.'),
-                  ),
-                );
+                // Handle critical error - invalid route
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  ErrorHandlerService.handleError(
+                    AppError.critical(
+                      'Invalid page requested.',
+                      details: 'Invalid chat route format: $effectivePath',
+                    ),
+                    ref: ref,
+                  );
+                });
+                return MaterialPageRoute(builder: (_) => homeWidget);
               }
             } else if (effectivePath.startsWith(
               CreateAgentScreen.editRouteNamePattern.split(':')[0],
@@ -190,11 +201,17 @@ class MyApp extends ConsumerWidget {
                 logger.i(
                   '[onGenerateRoute] Error: Invalid /edit-agent/ route format: $effectivePath',
                 );
-                pageWidget = const Scaffold(
-                  body: Center(
-                    child: Text('Error: Invalid edit agent route format.'),
-                  ),
-                );
+                // Handle critical error - invalid route
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  ErrorHandlerService.handleError(
+                    AppError.critical(
+                      'Invalid page requested.',
+                      details: 'Invalid edit agent route format: $effectivePath',
+                    ),
+                    ref: ref,
+                  );
+                });
+                return MaterialPageRoute(builder: (_) => homeWidget);
               }
             } else {
               logger.i(
