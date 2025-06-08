@@ -48,7 +48,7 @@ LOGGING_CONFIG = {
 }
 
 logging.config.dictConfig(LOGGING_CONFIG)
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
@@ -71,7 +71,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-logger.info(f"CORSMiddleware added with origins: {origins}")
+LOGGER.info(f"CORSMiddleware added with origins: {origins}")
 
 # Include routers
 app.include_router(auth.router)
