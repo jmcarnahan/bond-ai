@@ -1,4 +1,6 @@
 import logging.config
+import yaml
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -9,45 +11,24 @@ load_dotenv()
 # Import routers
 from bondable.rest.routers import auth, agents, threads, chat, files, mcp, groups
 
-# Configure logging
-LOGGING_CONFIG = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "default": {
-            "format": "[%(asctime)s] %(levelname)s - %(name)s - %(message)s",
-        },
-    },
-    "handlers": {
-        "default": {
-            "class": "logging.StreamHandler",
-            "formatter": "default",
-        },
-    },
-    "root": {
-        "level": "INFO",
-        "handlers": ["default"],
-    },
-    "loggers": {
-        "uvicorn": {
-            "level": "INFO",
-            "handlers": ["default"],
-            "propagate": False,
-        },
-        "uvicorn.error": {
-            "level": "INFO",
-            "handlers": ["default"],
-            "propagate": False,
-        },
-        "uvicorn.access": {
-            "level": "WARNING",
-            "handlers": ["default"],
-            "propagate": False,
-        },
-    },
-}
+# Configure logging from YAML file
+def setup_logging():
+    """Load logging configuration from YAML file"""
+    config_path = os.path.join(os.path.dirname(__file__), "logging_config.yaml")
+    
+    if os.path.exists(config_path):
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+            logging.config.dictConfig(config)
+    else:
+        # Fallback to basic configuration if file not found
+        logging.basicConfig(
+            level=logging.INFO,
+            format="[%(asctime)s] %(levelname)s - %(name)s - %(message)s"
+        )
+        logging.warning(f"Logging configuration file not found at {config_path}, using default configuration")
 
-logging.config.dictConfig(LOGGING_CONFIG)
+setup_logging()
 LOGGER = logging.getLogger(__name__)
 
 # Create FastAPI app

@@ -19,7 +19,7 @@ class MCPClient:
     
     def __init__(self):
         """Initialize the MCP client with configuration."""
-        LOGGER.info("[MCPClient] Initializing MCP client (fresh client strategy)")
+        LOGGER.debug("[MCPClient] Initializing MCP client (fresh client strategy)")
         
         self.config = None
         self.mcp_config = None
@@ -31,12 +31,12 @@ class MCPClient:
         self._max_failures = 5
         
         try:
-            LOGGER.info("[MCPClient] Loading configuration...")
+            LOGGER.debug("[MCPClient] Loading configuration...")
             self.config = Config.config()
-            LOGGER.info(f"[MCPClient] Config loaded: {self.config is not None}")
+            LOGGER.debug(f"[MCPClient] Config loaded: {self.config is not None}")
             
             self.mcp_config = self.config.get_mcp_config()
-            LOGGER.info(f"[MCPClient] MCP config loaded: {self.mcp_config is not None}")
+            LOGGER.debug(f"[MCPClient] MCP config loaded: {self.mcp_config is not None}")
             
             if not self.mcp_config:
                 LOGGER.warning("[MCPClient] MCP config is None or empty")
@@ -75,7 +75,7 @@ class MCPClient:
         import time
         time_since_failure = time.time() - self._last_failure_time
         if time_since_failure > self._circuit_breaker_timeout:
-            LOGGER.info(f"[MCPClient] Circuit breaker timeout expired, resetting failure count")
+            LOGGER.warning(f"[MCPClient] Circuit breaker timeout expired, resetting failure count")
             self._failure_count = 0
             self._last_failure_time = None
             return False
@@ -86,7 +86,7 @@ class MCPClient:
     def _record_success(self):
         """Record a successful operation."""
         if self._failure_count > 0:
-            LOGGER.info(f"[MCPClient] Success recorded, resetting failure count from {self._failure_count}")
+            LOGGER.debug(f"[MCPClient] Success recorded, resetting failure count from {self._failure_count}")
             self._failure_count = 0
             self._last_failure_time = None
     
@@ -109,7 +109,7 @@ class MCPClient:
             async with mcp_client.get_pooled_client() as client:
                 tools = await client.list_tools()
         """
-        LOGGER.info(f"[MCPClient] get_pooled_client called. Config available: {self.mcp_config is not None}")
+        LOGGER.debug(f"[MCPClient] get_pooled_client called. Config available: {self.mcp_config is not None}")
         
         if self.mcp_config is None:
             error_msg = "MCP client config not available - no servers configured"
@@ -126,14 +126,14 @@ class MCPClient:
         retry_delay = 1.0  # seconds
         
         for attempt in range(max_retries):
-            LOGGER.info(f"[MCPClient] Attempt {attempt + 1}/{max_retries}: Creating fresh client...")
+            LOGGER.debug(f"[MCPClient] Attempt {attempt + 1}/{max_retries}: Creating fresh client...")
             
             # Create a fresh client for this request
             client = Client(self.mcp_config)
-            LOGGER.info(f"[MCPClient] Fresh client created: {client is not None}")
+            LOGGER.debug(f"[MCPClient] Fresh client created: {client is not None}")
             
             try:
-                LOGGER.info(f"[MCPClient] Attempt {attempt + 1}: Entering client context manager...")
+                LOGGER.debug(f"[MCPClient] Attempt {attempt + 1}: Entering client context manager...")
                 # Use the client's own async context manager to ensure proper connection
                 async with client:
                     LOGGER.info(f"[MCPClient] Attempt {attempt + 1}: Client context established, yielding client")
@@ -146,7 +146,7 @@ class MCPClient:
                 LOGGER.error(f"[MCPClient] Attempt {attempt + 1} failed: {type(e).__name__}: {e}")
                 
                 if attempt < max_retries - 1:
-                    LOGGER.info(f"[MCPClient] Retrying in {retry_delay} seconds...")
+                    LOGGER.warning(f"[MCPClient] Retrying in {retry_delay} seconds...")
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
                 else:
@@ -154,7 +154,7 @@ class MCPClient:
                     self._record_failure()
                     raise
             finally:
-                LOGGER.info(f"[MCPClient] Attempt {attempt + 1}: Client context completed")
+                LOGGER.debug(f"[MCPClient] Attempt {attempt + 1}: Client context completed")
     
     async def get_client(self):
         """
@@ -185,12 +185,12 @@ class MCPClient:
         Returns:
             List of available tools
         """
-        LOGGER.info("Fetching available MCP tools from server")
+        LOGGER.debug("Fetching available MCP tools from server")
         try:
             async def _list_tools():
                 async with await self.get_client() as client:
                     tools = await client.list_tools()
-                    LOGGER.info(f"MCP server returned {len(tools)} tools")
+                    LOGGER.debug(f"MCP server returned {len(tools)} tools")
                     return tools
             
             result = self._run_async(_list_tools())
@@ -207,12 +207,12 @@ class MCPClient:
         Returns:
             List of available resources
         """
-        LOGGER.info("Fetching available MCP resources from server")
+        LOGGER.debug("Fetching available MCP resources from server")
         try:
             async def _list_resources():
                 async with await self.get_client() as client:
                     resources = await client.list_resources()
-                    LOGGER.info(f"MCP server returned {len(resources)} resources")
+                    LOGGER.debug(f"MCP server returned {len(resources)} resources")
                     return resources
             
             result = self._run_async(_list_resources())

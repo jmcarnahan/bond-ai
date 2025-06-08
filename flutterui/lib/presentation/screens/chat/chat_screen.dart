@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:flutterui/providers/thread_chat/thread_chat_providers.dart';
 import 'package:flutterui/providers/thread_provider.dart';
+import 'package:flutterui/providers/services/service_providers.dart';
 import '../../../core/utils/logger.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/chat_app_bar.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/message_input_bar.dart';
@@ -43,27 +44,55 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _initializeChatSession() {
+    logger.i("[ChatScreen] _initializeChatSession called - agentId: ${widget.agentId}, agentName: ${widget.agentName}");
     final chatNotifier = ref.read(chatSessionNotifierProvider.notifier);
     final globalSelectedThreadId = ref.read(selectedThreadIdProvider);
 
     if (widget.initialThreadId != null) {
-      logger.i("[ChatScreen] Initializing with explicit threadId: ${widget.initialThreadId}");
+      logger.i("[ChatScreen] Initializing with explicit threadId: ${widget.initialThreadId}, agentId: ${widget.agentId}");
       chatNotifier.setCurrentThread(widget.initialThreadId!);
       if (globalSelectedThreadId != widget.initialThreadId) {
         ref.read(threadsProvider.notifier).selectThread(widget.initialThreadId!);
       }
     } else if (globalSelectedThreadId != null) {
-      logger.i("[ChatScreen] Initializing with global selectedThreadId: $globalSelectedThreadId");
+      logger.i("[ChatScreen] Initializing with global selectedThreadId: $globalSelectedThreadId, agentId: ${widget.agentId}");
       final chatSessionCurrentThread = ref.read(chatSessionNotifierProvider).currentThreadId;
       if (chatSessionCurrentThread != globalSelectedThreadId) {
         chatNotifier.setCurrentThread(globalSelectedThreadId);
       }
     } else {
-      logger.i("[ChatScreen] No initial or global thread, clearing session.");
+      logger.i("[ChatScreen] No initial or global thread, checking if should auto-send introduction.");
       final chatSessionCurrentThread = ref.read(chatSessionNotifierProvider).currentThreadId;
       if (chatSessionCurrentThread != null) {
         chatNotifier.clearChatSession();
       }
+      
+      // Check if agent has introduction and auto-send it
+      _checkAndSendIntroductionIfNeeded();
+    }
+  }
+
+  void _checkAndSendIntroductionIfNeeded() async {
+    logger.i("[ChatScreen] Checking if agent has introduction for auto-send");
+    try {
+      // Get agent service from providers  
+      final agentService = ref.read(agentServiceProvider);
+      final agentDetails = await agentService.getAgentDetails(widget.agentId);
+      
+      if (agentDetails.introduction != null && agentDetails.introduction!.trim().isNotEmpty) {
+        logger.i("[ChatScreen] Agent has introduction, auto-sending it");
+        final chatNotifier = ref.read(chatSessionNotifierProvider.notifier);
+        
+        // Send introduction with null thread_id (backend will create thread)
+        await chatNotifier.sendIntroduction(
+          agentId: widget.agentId,
+          introduction: agentDetails.introduction!.trim(),
+        );
+      } else {
+        logger.i("[ChatScreen] Agent has no introduction, waiting for user to start conversation");
+      }
+    } catch (e) {
+      logger.i("[ChatScreen] Error checking agent introduction: $e");
     }
   }
 
@@ -82,13 +111,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
-  String _generateThreadNameFromPrompt(String prompt) {
-    const maxLength = 30;
-    if (prompt.length <= maxLength) {
-      return prompt;
-    }
-    return '${prompt.substring(0, maxLength - 3)}...';
-  }
 
   void _onAttachmentsChanged(List<PlatformFile> attachments) {
     setState(() {
@@ -104,23 +126,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (chatState.isSendingMessage) return;
 
     final chatNotifier = ref.read(chatSessionNotifierProvider.notifier);
-    final currentSessionState = ref.read(chatSessionNotifierProvider);
-
     final hasAttachement = _fileAttachments.isNotEmpty;
 
-    if (currentSessionState.currentThreadId == null) {
-      chatNotifier.createAndSetNewThread(
-        name: _generateThreadNameFromPrompt(text),
-        agentIdForFirstMessage: widget.agentId,
-        firstMessagePrompt: text,
-        attachedFiles: hasAttachement ? _fileAttachments : null,
-      );
-    } else {
-      chatNotifier.sendMessage(
-        agentId: widget.agentId, 
-        prompt: text, 
-        attachedFiles: hasAttachement ? _fileAttachments : null);
-    }
+    // Just send the message - backend will create thread if needed
+    chatNotifier.sendMessage(
+      agentId: widget.agentId, 
+      prompt: text, 
+      attachedFiles: hasAttachement ? _fileAttachments : null,
+    );
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _textController.clear();
@@ -164,6 +177,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       chatSessionNotifierProvider.select((state) => state.messages.length),
       (_, __) {
         _scrollToBottom();
+      },
+    );
+
+    // Also scroll when streaming message content changes
+    ref.listen(
+      chatSessionNotifierProvider.select((state) => 
+        state.messages.isNotEmpty && state.isSendingMessage 
+          ? state.messages.last.content 
+          : null
+      ),
+      (_, __) {
+        if (chatState.isSendingMessage) {
+          _scrollToBottom();
+        }
       },
     );
 

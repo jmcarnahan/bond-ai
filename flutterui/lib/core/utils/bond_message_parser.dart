@@ -2,6 +2,7 @@ import 'package:xml/xml.dart';
 
 class ParsedBondMessage {
   final String id;
+  final String threadId;
   final String type;
   final String role;
   final String content;
@@ -11,6 +12,7 @@ class ParsedBondMessage {
 
   ParsedBondMessage({
     this.id = '',
+    this.threadId = '',
     this.type = '',
     this.role = '',
     required this.content,
@@ -58,6 +60,7 @@ class BondMessageParser {
         
         return ParsedBondMessage(
           id: firstBondMessageElement.getAttribute('id') ?? '',
+          threadId: firstBondMessageElement.getAttribute('thread_id') ?? '',
           type: messageType,
           role: firstBondMessageElement.getAttribute('role') ?? '',
           content: content,
@@ -167,6 +170,7 @@ class BondMessageParser {
         
         messages.add(ParsedBondMessage(
           id: element.getAttribute('id') ?? '',
+          threadId: element.getAttribute('thread_id') ?? '',
           type: messageType,
           role: element.getAttribute('role') ?? '',
           content: content,
