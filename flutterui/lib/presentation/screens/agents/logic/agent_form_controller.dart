@@ -4,9 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/create_agent_form_provider.dart';
 import 'package:flutterui/providers/agent_provider.dart';
 import 'package:flutterui/providers/group_provider.dart';
+import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 import '../../../../core/utils/logger.dart';
 
-class AgentFormController {
+class AgentFormController with ErrorHandlingMixin {
   final WidgetRef ref;
   final GlobalKey<FormState> formKey;
   final TextEditingController nameController;
@@ -139,7 +140,8 @@ class AgentFormController {
     } catch (e) {
       logger.e('Error refreshing lists after save: $e');
       if (context.mounted) {
-        _showPartialSuccessMessage(context, e.toString());
+        // Handle as service error - the save succeeded but refresh failed
+        handleServiceError(e, ref, customMessage: 'Agent saved, but failed to refresh lists');
         Navigator.of(context).pop();
       }
     } finally {
@@ -160,16 +162,6 @@ class AgentFormController {
     );
   }
 
-  void _showPartialSuccessMessage(BuildContext context, String error) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Agent saved, but error refreshing list: $error',
-        ),
-        backgroundColor: Colors.orange,
-      ),
-    );
-  }
 
   void dispose() {
     nameController.dispose();
