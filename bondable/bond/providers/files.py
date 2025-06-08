@@ -88,36 +88,55 @@ class FilesProvider(ABC):
         mime_type = result.output.mime_type
 
         with self.metadata.get_db_session() as session:
-            # filter by hash and user_id to find existing records
-            file_record = session.query(FileRecord).filter_by(file_hash=file_hash, owner_user_id=user_id).first()
-            if file_record:
-                if file_record.file_path == file_path:
-                    LOGGER.info(f"File {file_path} (and hash) is same in the database. Reusing existing record.")
-                    # Update mime_type if it was not set before
-                    if not file_record.mime_type:
-                        file_record.mime_type = mime_type
-                        session.commit()
-                    # Access attributes while in session and return result
-                    return FileDetails.from_file_record(file_record)
-                else:
-                    # Hash matches, but path is different. This implies same content from a new source path.
-                    # Create a new FileRecord for the new path, but reuse the file_id from the record found by hash.
-                    LOGGER.info(f"Content hash for '{file_path}' matches existing record '{file_record.file_path}' (file_id: {file_record.file_id}). Creating new path record with existing file_id.")
-                    new_path_record = FileRecord(file_path=file_path, file_hash=file_hash, file_id=file_record.file_id, mime_type=mime_type, owner_user_id=user_id)
-                    session.add(new_path_record)
+            # First check if exact same file (path + hash + user) already exists
+            exact_match = session.query(FileRecord).filter_by(
+                file_path=file_path, 
+                file_hash=file_hash, 
+                owner_user_id=user_id
+            ).first()
+            
+            if exact_match:
+                LOGGER.info(f"Exact file match found for {file_path}. Reusing existing record with file_id: {exact_match.file_id}")
+                # Update mime_type if it was not set before
+                if not exact_match.mime_type:
+                    exact_match.mime_type = mime_type
                     session.commit()
-                    # Access attributes while in session and return result
-                    return FileDetails.from_file_record(new_path_record)
-            else:
-                # If no record found by hash, or if specific logic above decided to proceed to upload:
-                file_bytes.seek(0) 
-                file_id = self.create_file_resource(file_path, file_bytes)
-                file_record = FileRecord(file_path=file_path, file_hash=file_hash, file_id=file_id, mime_type=mime_type, owner_user_id=user_id)
-                session.add(file_record)
+                return FileDetails.from_file_record(exact_match)
+            
+            # Check if same content (hash) exists for this user with different path
+            content_match = session.query(FileRecord).filter_by(
+                file_hash=file_hash, 
+                owner_user_id=user_id
+            ).first()
+            
+            if content_match:
+                # Same content exists with different path - reuse file_id but create new record
+                LOGGER.info(f"Content hash for '{file_path}' matches existing record '{content_match.file_path}' (file_id: {content_match.file_id}). Creating new path record with existing file_id.")
+                new_record = FileRecord(
+                    file_path=file_path, 
+                    file_hash=file_hash, 
+                    file_id=content_match.file_id,  # Reuse existing file_id
+                    mime_type=mime_type, 
+                    owner_user_id=user_id
+                )
+                session.add(new_record)
                 session.commit()
-                LOGGER.info(f"Created new file record for {file_path} with mime_type: {mime_type}")
-                # Access attributes while in session and return result
-                return FileDetails.from_file_record(file_record)
+                return FileDetails.from_file_record(new_record)
+            
+            # No existing content found - create new file
+            file_bytes.seek(0) 
+            file_id = self.create_file_resource(file_path, file_bytes)
+            file_record = FileRecord(
+                file_path=file_path, 
+                file_hash=file_hash, 
+                file_id=file_id, 
+                mime_type=mime_type, 
+                owner_user_id=user_id
+            )
+            session.add(file_record)
+            session.commit()
+            LOGGER.info(f"Created new file record for {file_path} with mime_type: {mime_type}")
+            return FileDetails.from_file_record(file_record)
 
     def delete_file(self, file_id: str) -> bool:
         """
