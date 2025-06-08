@@ -25,6 +25,7 @@ from bondable.bond.providers.vectorstores import VectorStoresProvider
 # Test configuration
 jwt_config = Config.config().get_jwt_config()
 TEST_USER_EMAIL = "test@example.com"
+TEST_USER_ID = "test-user-id-123"
 
 # --- Fixtures ---
 
@@ -66,7 +67,7 @@ def authenticated_client(test_client, mock_provider):
         "sub": TEST_USER_EMAIL, 
         "name": "Test User",
         "provider": "google",
-        "user_id": "test-user-id-123"
+        "user_id": TEST_USER_ID
     }
     access_token = create_access_token(data=token_data, expires_delta=timedelta(minutes=15))
     auth_headers = {"Authorization": f"Bearer {access_token}"}
@@ -99,6 +100,7 @@ class TestAuthentication:
         with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
             mock_provider = MagicMock()
             mock_provider.get_user_info_from_code.return_value = {
+                "sub": TEST_USER_ID,
                 "email": TEST_USER_EMAIL, 
                 "name": "Test User"
             }
@@ -198,7 +200,7 @@ class TestAgents:
         assert agents[0]["id"] == "agent_1"
         assert agents[0]["name"] == "Test Agent 1"
         assert agents[1]["description"] is None
-        mock_provider.agents.list_agents.assert_called_once_with(user_id=TEST_USER_EMAIL)
+        mock_provider.agents.list_agents.assert_called_once_with(user_id=TEST_USER_ID)
 
     def test_get_agents_unauthorized(self, test_client):
         """Test listing agents without authentication."""
@@ -268,8 +270,8 @@ class TestAgents:
         
         # Mock file path resolution - this is what the endpoint calls
         mock_provider.files.get_file_details.return_value = [
-            FileDetails(file_id="file_1", file_path="/tmp/file1.pdf", file_hash="hash1", mime_type="application/pdf", owner_user_id=TEST_USER_EMAIL),
-            FileDetails(file_id="file_2", file_path="/tmp/file2.txt", file_hash="hash2", mime_type="text/plain", owner_user_id=TEST_USER_EMAIL)
+            FileDetails(file_id="file_1", file_path="/tmp/file1.pdf", file_hash="hash1", mime_type="application/pdf", owner_user_id=TEST_USER_ID),
+            FileDetails(file_id="file_2", file_path="/tmp/file2.txt", file_hash="hash2", mime_type="text/plain", owner_user_id=TEST_USER_ID)
         ]
         
         agent_data = {
@@ -379,7 +381,7 @@ class TestAgents:
                 file_path="/tmp/file1.txt",
                 file_hash="hash1",
                 mime_type="text/plain",
-                owner_user_id=TEST_USER_EMAIL
+                owner_user_id=TEST_USER_ID
             )
         ]
         
@@ -430,7 +432,7 @@ class TestAgents:
         assert response.status_code == 204
         mock_provider.agents.get_agent.assert_called_once_with(agent_id="agent_to_delete")
         mock_provider.agents.can_user_access_agent.assert_called_once_with(
-            user_id=TEST_USER_EMAIL, 
+            user_id=TEST_USER_ID, 
             agent_id="agent_to_delete"
         )
         mock_provider.agents.delete_agent.assert_called_once_with(agent_id="agent_to_delete")
@@ -524,7 +526,7 @@ class TestThreads:
         assert result["id"] == "new_thread_id"
         assert result["name"] == "My Thread"
         mock_provider.threads.create_thread.assert_called_once_with(
-            user_id=TEST_USER_EMAIL, 
+            user_id=TEST_USER_ID, 
             name="My Thread"
         )
 
@@ -552,7 +554,7 @@ class TestThreads:
         assert response.status_code == 204
         mock_provider.threads.delete_thread.assert_called_once_with(
             thread_id="thread_to_delete", 
-            user_id=TEST_USER_EMAIL
+            user_id=TEST_USER_ID
         )
 
     def test_delete_thread_not_found(self, authenticated_client):
@@ -779,7 +781,7 @@ class TestFiles:
         assert result["suggested_tool"] == "file_search"  # text/plain should map to file_search
         assert "processed successfully" in result["message"].lower()
         mock_provider.files.get_or_create_file_id.assert_called_once_with(
-            user_id=TEST_USER_EMAIL,
+            user_id=TEST_USER_ID,
             file_tuple=("test.txt", b"test content")
         )
 
@@ -917,14 +919,14 @@ class TestFiles:
                 file_path="/tmp/document.pdf",
                 file_hash="hash1",
                 mime_type="application/pdf",
-                owner_user_id=TEST_USER_EMAIL
+                owner_user_id=TEST_USER_ID
             ),
             FileDetails(
                 file_id="file_2", 
                 file_path="/tmp/data.csv",
                 file_hash="hash2",
                 mime_type="text/csv",
-                owner_user_id=TEST_USER_EMAIL
+                owner_user_id=TEST_USER_ID
             )
         ]
         
@@ -951,7 +953,7 @@ class TestFiles:
                 file_path="/tmp/document.pdf",
                 file_hash="hash1",
                 mime_type="application/pdf",
-                owner_user_id=TEST_USER_EMAIL  # Current user's file
+                owner_user_id=TEST_USER_ID  # Current user's file
             ),
             FileDetails(
                 file_id="file_2", 
@@ -969,7 +971,7 @@ class TestFiles:
         # Should only return the current user's file
         assert len(result) == 1
         assert result[0]["file_id"] == "file_1"
-        assert result[0]["owner_user_id"] == TEST_USER_EMAIL
+        assert result[0]["owner_user_id"] == TEST_USER_ID
 
 # --- Integration Tests ---
 

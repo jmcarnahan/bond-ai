@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutterui/core/constants/api_constants.dart';
 import 'package:flutterui/data/models/agent_model.dart';
 import 'package:flutterui/data/models/api_response_models.dart';
+import 'package:flutterui/data/models/group_model.dart';
 import 'agent_http_client.dart';
 import '../../../core/utils/logger.dart';
 
@@ -112,6 +113,30 @@ class AgentCrudService {
     } catch (e) {
       logger.e("[AgentCrudService] Error in deleteAgent for $agentId: ${e.toString()}");
       throw Exception('Failed to delete agent: ${e.toString()}');
+    }
+  }
+
+  Future<List<AvailableGroup>> getAvailableGroups([String? agentId]) async {
+    try {
+      final url = '${ApiConstants.baseUrl}${ApiConstants.agentsEndpoint}/available-groups';
+      final response = await _httpClient.get(url);
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        final List<AvailableGroup> groups = data
+            .map((item) => AvailableGroup.fromJson(item as Map<String, dynamic>))
+            .toList();
+        
+        logger.i("[AgentCrudService] Fetched ${groups.length} available groups");
+        return groups;
+      } else {
+        final errorMsg = 'Failed to load available groups: ${response.statusCode}';
+        logger.e("[AgentCrudService] $errorMsg, Body: ${response.body}");
+        throw Exception(errorMsg);
+      }
+    } catch (e) {
+      logger.e("[AgentCrudService] Error in getAvailableGroups: ${e.toString()}");
+      throw Exception('Failed to fetch available groups: ${e.toString()}');
     }
   }
 }

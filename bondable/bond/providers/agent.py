@@ -236,20 +236,27 @@ class AgentProvider(ABC):
             agent_records = [
                 {"name": record.name, "agent_id": record.agent_id, "owned": True} for record in results
             ]
+            
+            # Get owned agent IDs to avoid duplicates
+            owned_agent_ids = {record.agent_id for record in results}
 
             # then get the agent records that are shared with the user via groups
+            # exclude agents that the user already owns
             shared_results: List[AgentRecord] = (
                 session.query(AgentRecord)
                 .join(AgentGroup, AgentRecord.agent_id == AgentGroup.agent_id)
                 .join(GroupUser, AgentGroup.group_id == GroupUser.group_id)
-                .filter(GroupUser.user_id == user_id)
+                .filter(
+                    GroupUser.user_id == user_id,
+                    ~AgentRecord.agent_id.in_(owned_agent_ids)  # Exclude owned agents
+                )
                 .all()
             )
             shared_agent_records = [
                 {"name": agent.name, "agent_id": agent.agent_id, "owned": False} for agent in shared_results
             ]
 
-            # combine owned and shared agent records
+            # combine owned and shared agent records (no duplicates now)
             agent_records.extend(shared_agent_records)
             return agent_records
         
@@ -291,23 +298,4 @@ class AgentProvider(ABC):
                 .exists()
             )
             return session.query(access_query).scalar()
-
-    def create_group(self, group_id: str, group_name: str, agent_id: str, user_ids: Optional[List[str]] = None) -> None:
-        """
-        Creates a group for sharing an agent and optionally associates users with the group.
-        TODO: do something with the group name
-        """
-        with self.metadata.get_db_session() as session:
-            # Create the group and associate it with the assistant
-            agent_group = AgentGroup(agent_id=agent_id, group_id=group_id)
-            session.add(agent_group)
-
-            # Add users to the group if provided
-            if user_ids:
-                for user_id in user_ids:
-                    group_user = GroupUser(group_id=group_id, user_id=user_id)
-                    session.add(group_user)
-
-            session.commit()
-            LOGGER.info(f"Created group with group_id: {group_id} for agent_id: {agent_id}")
 

@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import routers
-from bondable.rest.routers import auth, agents, threads, chat, files, mcp
+from bondable.rest.routers import auth, agents, threads, chat, files, mcp, groups
 
 # Configure logging
 LOGGING_CONFIG = {
@@ -48,7 +48,7 @@ LOGGING_CONFIG = {
 }
 
 logging.config.dictConfig(LOGGING_CONFIG)
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
@@ -71,7 +71,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-logger.info(f"CORSMiddleware added with origins: {origins}")
+LOGGER.info(f"CORSMiddleware added with origins: {origins}")
 
 # Include routers
 app.include_router(auth.router)
@@ -80,6 +80,7 @@ app.include_router(threads.router)
 app.include_router(chat.router)
 app.include_router(files.router)
 app.include_router(mcp.router)
+app.include_router(groups.router)
 
 # Health check endpoint
 @app.get("/health")

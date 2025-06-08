@@ -81,6 +81,14 @@ class AppSidebar extends ConsumerWidget {
             },
           ),
           ListTile(
+            leading: Icon(Icons.group, color: currentPrimaryColor),
+            title: Text('Groups', style: TextStyle(color: currentOnSurfaceColor)),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.pushNamed(context, '/groups');
+            },
+          ),
+          ListTile(
             leading: Icon(Icons.add_circle_outline, color: currentPrimaryColor),
             title: Text('Create Agent', style: TextStyle(color: currentOnSurfaceColor)),
             onTap: () {
