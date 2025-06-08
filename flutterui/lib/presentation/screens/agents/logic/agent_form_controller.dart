@@ -12,6 +12,8 @@ class AgentFormController {
   final TextEditingController nameController;
   final TextEditingController descriptionController;
   final TextEditingController instructionsController;
+  final TextEditingController introductionController;
+  final TextEditingController reminderController;
   final String? agentId;
 
   AgentFormController({
@@ -20,6 +22,8 @@ class AgentFormController {
     required this.nameController,
     required this.descriptionController,
     required this.instructionsController,
+    required this.introductionController,
+    required this.reminderController,
     this.agentId,
   });
 
@@ -42,6 +46,8 @@ class AgentFormController {
       _updateControllerIfNeeded(nameController, next.name);
       _updateControllerIfNeeded(descriptionController, next.description);
       _updateControllerIfNeeded(instructionsController, next.instructions);
+      _updateControllerIfNeeded(introductionController, next.introduction);
+      _updateControllerIfNeeded(reminderController, next.reminder);
     });
   }
 
@@ -61,6 +67,14 @@ class AgentFormController {
 
   void onInstructionsChanged(String value) {
     _notifier.setInstructions(value);
+  }
+
+  void onIntroductionChanged(String value) {
+    _notifier.setIntroduction(value);
+  }
+
+  void onReminderChanged(String value) {
+    _notifier.setReminder(value);
   }
 
   void onMcpToolsChanged(Set<String> tools) {
@@ -93,6 +107,8 @@ class AgentFormController {
     _notifier.setName(nameController.text);
     _notifier.setDescription(descriptionController.text);
     _notifier.setInstructions(instructionsController.text);
+    _notifier.setIntroduction(introductionController.text);
+    _notifier.setReminder(reminderController.text);
 
     final bool success = await _notifier.saveAgent(agentId: agentId);
 
@@ -159,5 +175,7 @@ class AgentFormController {
     nameController.dispose();
     descriptionController.dispose();
     instructionsController.dispose();
+    introductionController.dispose();
+    reminderController.dispose();
   }
 }

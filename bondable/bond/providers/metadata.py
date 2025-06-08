@@ -27,6 +27,8 @@ class AgentRecord(Base):
     __tablename__ = "agents"
     agent_id = Column(String, primary_key=True)
     name = Column(String, nullable=False)
+    introduction = Column(String, nullable=True, default="")
+    reminder = Column(String, nullable=True, default="")
     owner_user_id = Column(String, ForeignKey('users.id'), nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.now)
 class FileRecord(Base):

@@ -16,8 +16,37 @@ class MessageListView extends ConsumerWidget {
     required this.agentName,
   });
 
-  Widget _buildEmptyChatPlaceholder(BuildContext context, String agentName) {
+  Widget _buildEmptyChatPlaceholder(BuildContext context, String agentName, bool isSendingIntroduction) {
     final textTheme = Theme.of(context).textTheme;
+    
+    if (isSendingIntroduction) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircleAvatar(
+              radius: 40,
+              backgroundColor: Colors.grey.shade200,
+              child: Icon(
+                Icons.smart_toy_outlined,
+                size: 48,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Starting a conversation with $agentName',
+              style: textTheme.headlineSmall?.copyWith(
+                color: Colors.grey.shade700,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const TypingIndicator(),
+          ],
+        ),
+      );
+    }
+    
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -65,7 +94,7 @@ class MessageListView extends ConsumerWidget {
     }
 
     if (chatState.messages.isEmpty) {
-      return _buildEmptyChatPlaceholder(context, agentName);
+      return _buildEmptyChatPlaceholder(context, agentName, chatState.isSendingIntroduction);
     }
 
     return ListView.builder(
