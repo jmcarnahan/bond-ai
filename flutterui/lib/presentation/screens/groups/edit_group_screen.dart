@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/data/models/group_model.dart';
 import 'package:flutterui/presentation/screens/groups/widgets/edit_group_form.dart';
-import 'package:flutterui/presentation/screens/groups/widgets/group_members_panel.dart';
-import 'package:flutterui/presentation/screens/groups/widgets/available_users_panel.dart';
+import 'package:flutterui/presentation/widgets/manage_members_panel/manage_members_panel.dart';
 import 'package:flutterui/providers/group_provider.dart';
 import 'package:flutterui/presentation/widgets/success_banner.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
@@ -24,7 +23,7 @@ class EditGroupScreen extends ConsumerStatefulWidget {
 
 class _EditGroupScreenState extends ConsumerState<EditGroupScreen> with ErrorHandlingMixin {
   final GlobalKey<EditGroupFormState> _formKey = GlobalKey<EditGroupFormState>();
-  final GlobalKey<GroupMembersPanelState> _membersKey = GlobalKey<GroupMembersPanelState>();
+  final GlobalKey<ManageMembersPanelState> _membersKey = GlobalKey<ManageMembersPanelState>();
 
   bool get _hasAnyChanges {
     final formHasChanges = _formKey.currentState?.hasChanges ?? false;
@@ -47,7 +46,6 @@ class _EditGroupScreenState extends ConsumerState<EditGroupScreen> with ErrorHan
       // Reset providers to ensure fresh data
       ref.invalidate(groupsProvider);
       ref.invalidate(groupProvider(widget.group.id));
-      ref.invalidate(allUsersProvider);
       ref.invalidate(groupNotifierProvider);
 
       // Show success message and navigate back
@@ -82,7 +80,7 @@ class _EditGroupScreenState extends ConsumerState<EditGroupScreen> with ErrorHan
             const SizedBox(height: 16),
             Expanded(
               flex: 3,
-              child: GroupMembersPanel(
+              child: ManageMembersPanel(
                 key: _membersKey,
                 group: widget.group,
                 onChanged: () => setState(() {}),
