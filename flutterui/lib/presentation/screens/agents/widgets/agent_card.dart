@@ -16,15 +16,15 @@ class AgentCard extends ConsumerWidget {
     final colorScheme = themeData.colorScheme;
     final textTheme = themeData.textTheme;
     final authState = ref.watch(authNotifierProvider);
-    String? currentUserEmail;
+    String? currentUserId;
     if (authState is Authenticated) {
-      currentUserEmail = authState.user.email;
+      currentUserId = authState.user.userId;
     }
     
-    final bool isOwner = currentUserEmail != null && 
+    final bool isOwner = currentUserId != null && 
         agent.metadata != null && 
-        (agent.metadata!['owner_user_id'] == currentUserEmail ||
-         agent.metadata!['user_id'] == currentUserEmail);
+        (agent.metadata!['owner_user_id'] == currentUserId ||
+         agent.metadata!['user_id'] == currentUserId);
 
     return Card(
       elevation: 2.0,
