@@ -148,11 +148,11 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
   Widget _buildFormContent(CreateAgentFormState formState) {
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
-        AppSpacing.xl,
-        AppSpacing.xl,
-        AppSpacing.xl,
+        AppSpacing.xxl,
+        AppSpacing.xxl,
+        AppSpacing.xxl,
         AppSizes.buttonHeight +
-            AppSpacing.enormous, // Space for floating button
+            AppSpacing.enormous,
       ),
       child: Form(
         key: _formKey,
@@ -186,7 +186,7 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
               selectedGroupIds: formState.selectedGroupIds,
               onGroupSelectionChanged: _controller.onGroupSelectionChanged,
             ),
-            SizedBox(height: AppSpacing.enormous), // Extra space at bottom
+            SizedBox(height: AppSpacing.enormous),
           ],
         ),
       ),

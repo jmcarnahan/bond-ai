@@ -24,42 +24,59 @@ class AgentSaveButton extends StatelessWidget {
 
     return Align(
       alignment: Alignment.bottomCenter,
-      child: Padding(
-        padding: EdgeInsets.only(
-          bottom: AppSpacing.xxxl,
-          left: AppSpacing.xl,
-          right: AppSpacing.xl,
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          border: Border(
+            top: BorderSide(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+              width: 1,
+            ),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: colorScheme.shadow.withValues(alpha: 0.1),
+              blurRadius: 8,
+              offset: const Offset(0, -2),
+            ),
+          ],
         ),
-        child: SizedBox(
-          width: double.infinity,
-          height: AppSizes.buttonHeight,
-          child: ElevatedButton(
-            onPressed: (isLoading || !isFormValid) ? null : onPressed,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: colorScheme.primary,
-              foregroundColor: colorScheme.onPrimary,
-              disabledBackgroundColor: Colors.grey.shade400,
-              disabledForegroundColor: Colors.grey.shade700,
-              padding: AppSpacing.horizontalMassive.add(AppSpacing.verticalLg),
-              textStyle: textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: AppBorderRadius.allMd,
-              ),
-              elevation: AppElevation.sm,
-            ).copyWith(
-              mouseCursor: WidgetStateProperty.resolveWith<MouseCursor?>(
-                (Set<WidgetState> states) {
-                  if (states.contains(WidgetState.disabled)) {
-                    return SystemMouseCursors.forbidden;
-                  }
-                  return SystemMouseCursors.click;
-                },
+        child: SafeArea(
+          child: Padding(
+            padding: EdgeInsets.all(AppSpacing.xxl),
+            child: SizedBox(
+              width: double.infinity,
+              height: AppSizes.buttonHeight,
+              child: ElevatedButton(
+                onPressed: (isLoading || !isFormValid) ? null : onPressed,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colorScheme.primary,
+                  foregroundColor: colorScheme.onPrimary,
+                  disabledBackgroundColor: Colors.grey.shade400,
+                  disabledForegroundColor: Colors.grey.shade700,
+                  padding: AppSpacing.horizontalMassive.add(AppSpacing.verticalLg),
+                  textStyle: textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: AppBorderRadius.allMd,
+                  ),
+                  elevation: AppElevation.sm,
+                ).copyWith(
+                  mouseCursor: WidgetStateProperty.resolveWith<MouseCursor?>(
+                    (Set<WidgetState> states) {
+                      if (states.contains(WidgetState.disabled)) {
+                        return SystemMouseCursors.forbidden;
+                      }
+                      return SystemMouseCursors.click;
+                    },
+                  ),
+                ),
+                child: Text(isEditing ? 'Save Changes' : 'Create Agent'),
               ),
             ),
-            child: Text(isEditing ? 'Save Changes' : 'Create Agent'),
           ),
         ),
       ),
