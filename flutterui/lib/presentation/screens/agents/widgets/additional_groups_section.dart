@@ -34,9 +34,6 @@ class _AdditionalGroupsSectionState extends ConsumerState<AdditionalGroupsSectio
   @override
   void didUpdateWidget(AdditionalGroupsSection oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.agentName != widget.agentName) {
-      _loadAvailableGroups();
-    }
   }
 
   Future<void> _loadAvailableGroups() async {

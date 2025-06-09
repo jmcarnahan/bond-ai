@@ -20,11 +20,39 @@ class AgentMembersSection extends ConsumerStatefulWidget {
 class _AgentMembersSectionState extends ConsumerState<AgentMembersSection> {
   Group? _cachedDefaultGroup;
   String? _lastAgentName;
-
+  List<Group>? _cachedGroups;
+  
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadGroups();
+    });
+    
+    ref.listenManual(groupsProvider, (previous, next) {
+      _loadGroups();
+    });
+  }
+  
+  Future<void> _loadGroups() async {
+    try {
+      final groups = await ref.read(groupsProvider.future);
+      if (mounted) {
+        setState(() {
+          _cachedGroups = groups;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _cachedGroups = null;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final groupsAsync = ref.watch(groupsProvider);
 
     return Card(
       child: Padding(
@@ -55,42 +83,16 @@ class _AgentMembersSectionState extends ConsumerState<AgentMembersSection> {
                   ),
                 ),
               )
+            else if (_cachedGroups == null)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32.0),
+                  child: CircularProgressIndicator(),
+                ),
+              )
             else
-              groupsAsync.when(
-                loading: () => const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(32.0),
-                    child: CircularProgressIndicator(),
-                  ),
-                ),
-                error: (error, stack) => Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32.0),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.error_outline,
-                          color: Theme.of(context).colorScheme.error,
-                          size: 48,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Failed to load groups: $error',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 8),
-                        ElevatedButton(
-                          onPressed: () => ref.invalidate(groupsProvider),
-                          child: const Text('Retry'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                data: (groups) {
+              Builder(builder: (context) {
+                final groups = _cachedGroups!;
                   final agentName = widget.agentName!;
                   final defaultGroupName = '$agentName Default Group';
                   
@@ -138,8 +140,7 @@ class _AgentMembersSectionState extends ConsumerState<AgentMembersSection> {
                       ),
                     );
                   }
-                },
-              ),
+                }),
           ],
         ),
       ),

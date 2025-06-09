@@ -26,6 +26,11 @@ class _EditGroupScreenState extends ConsumerState<EditGroupScreen> with ErrorHan
   final GlobalKey<EditGroupFormState> _formKey = GlobalKey<EditGroupFormState>();
   final GlobalKey<ManageMembersPanelState> _membersKey = GlobalKey<ManageMembersPanelState>();
 
+  @override
+  void initState() {
+    super.initState();
+  }
+
   bool get _hasAnyChanges {
     final formHasChanges = _formKey.currentState?.hasChanges ?? false;
     final membersHaveChanges = _membersKey.currentState?.hasChanges ?? false;

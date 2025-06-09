@@ -14,7 +14,6 @@ from bondable.bond.providers.metadata import User, Base
 def seed_test_users():
     """Seed test users into the database."""
     
-    # Test users data
     test_users = [
         {
             "id": "00us5pzixgemQF8c0697",
@@ -54,11 +53,9 @@ def seed_test_users():
         }
     ]
     
-    # Get database configuration
     config = Config.config()
     database_url = config.get_metadata_db_url()
     
-    # Create engine and session
     engine = create_engine(database_url, echo=True)
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
@@ -66,7 +63,6 @@ def seed_test_users():
     
     try:
         for user_data in test_users:
-            # Check if user with this email already exists
             existing_user = session.query(User).filter(
                 User.email == user_data["email"]
             ).first()
@@ -75,7 +71,6 @@ def seed_test_users():
                 print(f"User with email {user_data['email']} already exists, skipping...")
                 continue
             
-            # Create new user
             new_user = User(
                 id=user_data["id"],
                 email=user_data["email"],

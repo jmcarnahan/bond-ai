@@ -129,6 +129,13 @@ class ManageMembersNotifier extends StateNotifier<ManageMembersState> {
   }
 }
 
-final manageMembersProvider = StateNotifierProvider.family<ManageMembersNotifier, ManageMembersState, String>((ref, groupId) {
+final manageMembersProvider = StateNotifierProvider.family.autoDispose<ManageMembersNotifier, ManageMembersState, String>((ref, groupId) {
+  ref.onDispose(() {
+    ref.notifier.reset();
+  });
   return ManageMembersNotifier(groupId, ref);
 });
+
+void resetManageMembersProvider(WidgetRef ref, String groupId) {
+  ref.read(manageMembersProvider(groupId).notifier).reset();
+}

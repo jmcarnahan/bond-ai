@@ -98,6 +98,24 @@ class AgentFormController with ErrorHandlingMixin {
 
   bool get isEditing => agentId != null;
 
+  Future<void> _saveMemberChanges() async {
+    final agentName = nameController.text;
+    if (agentName.isEmpty) return;
+    
+    try {
+      final defaultGroupName = '$agentName Default Group';
+      final groups = await ref.read(groupsProvider.future);
+      final defaultGroup = groups.where((g) => g.name == defaultGroupName).firstOrNull;
+      
+      if (defaultGroup != null) {
+        final memberNotifier = ref.read(manageMembersProvider(defaultGroup.id).notifier);
+        await memberNotifier.saveChanges();
+      }
+    } catch (e) {
+      logger.e('Error saving member changes: $e');
+    }
+  }
+
   Future<bool> saveAgent(BuildContext context) async {
     if (!formKey.currentState!.validate()) {
       return false;
@@ -115,6 +133,7 @@ class AgentFormController with ErrorHandlingMixin {
     final bool success = await _notifier.saveAgent(agentId: agentId);
 
     if (success && context.mounted) {
+      await _saveMemberChanges();
       await _handleSuccessfulSave(context);
     }
 
