@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutterui/providers/thread_chat/chat_session_state.dart';
 import 'package:flutterui/presentation/widgets/typing_indicator.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/image_message_widget.dart';
@@ -15,6 +16,60 @@ class MessageListView extends ConsumerWidget {
     required this.scrollController,
     required this.agentName,
   });
+
+  /// Creates a markdown stylesheet with consistent theming
+  MarkdownStyleSheet _createMarkdownStyleSheet(TextTheme textTheme, Color messageTextColor) {
+    return MarkdownStyleSheet(
+      p: textTheme.bodyMedium?.copyWith(color: messageTextColor),
+      h1: textTheme.headlineLarge?.copyWith(color: messageTextColor),
+      h2: textTheme.headlineMedium?.copyWith(color: messageTextColor),
+      h3: textTheme.headlineSmall?.copyWith(color: messageTextColor),
+      h4: textTheme.titleLarge?.copyWith(color: messageTextColor),
+      h5: textTheme.titleMedium?.copyWith(color: messageTextColor),
+      h6: textTheme.titleSmall?.copyWith(color: messageTextColor),
+      em: textTheme.bodyMedium?.copyWith(color: messageTextColor, fontStyle: FontStyle.italic),
+      strong: textTheme.bodyMedium?.copyWith(color: messageTextColor, fontWeight: FontWeight.bold),
+      del: textTheme.bodyMedium?.copyWith(color: messageTextColor, decoration: TextDecoration.lineThrough),
+      blockquote: textTheme.bodyMedium?.copyWith(color: messageTextColor),
+      img: textTheme.bodyMedium?.copyWith(color: messageTextColor),
+      checkbox: textTheme.bodyMedium?.copyWith(color: messageTextColor),
+      blockSpacing: 8,
+      listIndent: 24,
+      listBullet: textTheme.bodyMedium?.copyWith(color: messageTextColor),
+      tableHead: textTheme.bodyMedium?.copyWith(color: messageTextColor, fontWeight: FontWeight.bold),
+      tableBody: textTheme.bodyMedium?.copyWith(color: messageTextColor),
+      tableHeadAlign: TextAlign.center,
+      tableBorder: TableBorder.all(color: messageTextColor.withValues(alpha: 0.3), width: 1),
+      tableColumnWidth: const FlexColumnWidth(),
+      blockquotePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      blockquoteDecoration: BoxDecoration(
+        color: messageTextColor.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(4),
+        border: Border(
+          left: BorderSide(color: messageTextColor.withValues(alpha: 0.5), width: 4),
+        ),
+      ),
+      codeblockPadding: const EdgeInsets.all(12),
+      codeblockDecoration: BoxDecoration(
+        color: messageTextColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      code: textTheme.bodyMedium?.copyWith(
+        color: messageTextColor,
+        fontFamily: 'monospace',
+        backgroundColor: messageTextColor.withValues(alpha: 0.08),
+      ),
+    );
+  }
+
+  /// Creates a styled markdown widget
+  Widget _buildMarkdownWidget(String content, TextTheme textTheme, Color messageTextColor) {
+    return MarkdownBody(
+      data: content,
+      styleSheet: _createMarkdownStyleSheet(textTheme, messageTextColor),
+      selectable: true,
+    );
+  }
 
   Widget _buildEmptyChatPlaceholder(BuildContext context, String agentName, bool isSendingIntroduction) {
     final textTheme = Theme.of(context).textTheme;
@@ -124,7 +179,7 @@ class MessageListView extends ConsumerWidget {
           coreMessageWidget = TypingIndicator(
             dotColor: messageTextColor.withValues(alpha: 0.7),
           );
-        } else if (message.type == 'image_file' && message.imageData != null) {
+        } else if ((message.type == 'image_file' || message.type == 'image') && message.imageData != null) {
           coreMessageWidget = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -136,10 +191,7 @@ class MessageListView extends ConsumerWidget {
               if (message.content.isNotEmpty && message.content != '[Image]')
                 Padding(
                   padding: const EdgeInsets.only(top: 8.0),
-                  child: SelectableText(
-                    message.content,
-                    style: textTheme.bodyMedium?.copyWith(color: messageTextColor),
-                  ),
+                  child: _buildMarkdownWidget(message.content, textTheme, messageTextColor),
                 ),
             ],
           );
@@ -166,10 +218,15 @@ class MessageListView extends ConsumerWidget {
             ],
           );
         } else {
-          coreMessageWidget = SelectableText(
-            message.content,
-            style: textTheme.bodyMedium?.copyWith(color: messageTextColor),
-          );
+          // Use MarkdownBody for text messages to render markdown properly
+          if (message.type == 'text' && !isUserMessage) {
+            coreMessageWidget = _buildMarkdownWidget(message.content, textTheme, messageTextColor);
+          } else {
+            coreMessageWidget = SelectableText(
+              message.content,
+              style: textTheme.bodyMedium?.copyWith(color: messageTextColor),
+            );
+          }
         }
 
         Widget finalMessageContent;
