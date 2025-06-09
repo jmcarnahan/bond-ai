@@ -9,13 +9,11 @@ import 'package:flutterui/presentation/widgets/manage_members_panel/widgets/conf
 class ManageMembersPanel extends ConsumerStatefulWidget {
   final Group group;
   final VoidCallback? onChanged;
-  final String? title;
 
   const ManageMembersPanel({
     super.key,
     required this.group,
     this.onChanged,
-    this.title,
   });
 
   @override
@@ -90,16 +88,8 @@ class ManageMembersPanelState extends ConsumerState<ManageMembersPanel> {
   Widget build(BuildContext context) {
     final state = ref.watch(manageMembersProvider(widget.group.id));
 
-    return Column(
+    return Row(
       children: [
-        Text(
-          widget.title ?? 'Manage Members',
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: Row(
-            children: [
               Expanded(
                 child: AvailableUsersPanel(
                   groupId: widget.group.id,
@@ -120,9 +110,6 @@ class ManageMembersPanelState extends ConsumerState<ManageMembersPanel> {
                 ),
               ),
             ],
-          ),
-        ),
-      ],
     );
   }
 }

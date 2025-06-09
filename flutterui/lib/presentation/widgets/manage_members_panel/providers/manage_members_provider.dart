@@ -44,12 +44,13 @@ class ManageMembersNotifier extends StateNotifier<ManageMembersState> {
   }
 
   void _loadOriginalMembers() {
-    final groupWithMembersAsync = ref.read(groupProvider(groupId));
-    groupWithMembersAsync.whenData((groupWithMembers) {
-      state = state.copyWith(
-        originalMemberIds: groupWithMembers.members.map((m) => m.userId).toSet(),
-      );
-    });
+    ref.listen(groupProvider(groupId), (previous, next) {
+      next.whenData((groupWithMembers) {
+        state = state.copyWith(
+          originalMemberIds: groupWithMembers.members.map((m) => m.userId).toSet(),
+        );
+      });
+    }, fireImmediately: true);
   }
 
   void addPendingMember(GroupMember user) {
