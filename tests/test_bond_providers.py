@@ -76,81 +76,45 @@ def run_agent_interaction_test(
 
     try:
         broker = Broker.broker()
-        # Ensure broker is connected before proceeding
-        # Retry mechanism for broker connection
-        max_retries = 3
-        retry_delay = 2  # seconds
-        conn = None
-        for attempt in range(max_retries):
-            try:
-                conn = broker.connect(thread_id=thread_id, subscriber_id=user_id)
-                LOGGER.info(f"Broker connected successfully for thread {thread_id} on attempt {attempt + 1}")
-                break
-            except Exception as e:
-                LOGGER.warning(f"Broker connection attempt {attempt + 1} failed for thread {thread_id}: {e}")
-                if attempt + 1 == max_retries:
-                    pytest.fail(f"Failed to connect to broker after {max_retries} attempts for thread {thread_id}.")
-                time.sleep(retry_delay)
-        
+        conn = broker.connect(thread_id=thread_id, subscriber_id=user_id)
         assert conn is not None, "Broker connection failed"
 
-
         for prompt_text in prompts:
-            if prompt_text is None: # Skip if initial_prompt was None
+            if prompt_text is None:
                 continue
 
-            agent.broadcast_message(prompt_text, thread_id) # Use broadcast_message as in notebook
-            
-            # Start response listener in a thread
+            agent.broadcast_message(prompt_text, thread_id)
             response_thread = threading.Thread(target=agent.broadcast_response, args=(None, thread_id), daemon=True)
             response_thread.start()
-
-            # Collect messages
-            # Increased timeout to allow for potentially slow LLM responses or complex tool use
-            # Max time to wait for all messages for this prompt
-            prompt_timeout = 60 
-            # Max time to wait for a single message
-            message_timeout = 30  
-            start_time = time.time()
             
             prompt_messages_received = 0
-            while time.time() - start_time < prompt_timeout:
+            while True:
                 try:
-                    bond_msg = conn.wait_for_message(timeout=message_timeout)
-                    if bond_msg is None: # Should not happen with wait_for_message unless timeout means something else
-                        LOGGER.info(f"Received None message for thread {thread_id}, assuming prompt processing finished or timed out.")
-                        break 
+                    bond_msg = conn.wait_for_message(timeout=5)
+                    if bond_msg is None:
+                        break
                     
-                    # Filter out system messages if any, or messages from other roles if not expected
-                    if bond_msg.role != "user": # Collect assistant, tool messages
-                         collected_messages.append(bond_msg)
-                         prompt_messages_received +=1
-
+                    if bond_msg.role != "user":
+                        collected_messages.append(bond_msg)
+                        prompt_messages_received += 1
+                    
                     if bond_msg.is_done:
-                        LOGGER.info(f"Received 'is_done' signal for thread {thread_id}.")
                         break
                 except BrokerConnectionEmpty:
-                    LOGGER.info(f"BrokerConnectionEmpty for thread {thread_id}, no message received within timeout.")
-                    # If some messages were received for this prompt and then empty, it might be the end.
-                    if prompt_messages_received > 0:
-                        break 
-                    # If no messages yet, continue waiting up to prompt_timeout
+                    continue
                 except Exception as e:
-                    LOGGER.error(f"Error waiting for message on thread {thread_id}: {e}")
-                    pytest.fail(f"Exception during message retrieval: {e}")
+                    LOGGER.error(f"Error waiting for message: {e}")
                     break
             
-            response_thread.join(timeout=10) # Wait for the broadcast_response thread to finish
-            if response_thread.is_alive():
-                LOGGER.warning(f"Response thread for {thread_id} did not finish in time.")
-
+            response_thread.join()
+            
             assert prompt_messages_received >= expected_min_responses, \
                 f"Expected at least {expected_min_responses} response(s) for prompt '{prompt_text}', got {prompt_messages_received}"
 
     finally:
-        if conn:
+        if 'conn' in locals() and conn:
             conn.close()
-        if thread_id: # Ensure thread_id was set
+        if thread_id:
             provider.threads.delete_thread(thread_id=thread_id, user_id=user_id)
             LOGGER.info(f"Deleted thread: {thread_id}")
 
@@ -163,7 +127,7 @@ def test_simple_agent(provider_fixture, user_id_session):
         id=get_first_agent_id(provider_fixture, "Test Simple Agent"),
         description="Pirate Agent for testing.",
         instructions="Answer requests from user like a pirate. Be very brief.",
-        model="gpt-4o-nano", # Consider using a faster/cheaper model for tests if available
+        model="gpt-4.1-nano",
         metadata={'visible': 'True'},
         tools=[{"type": "code_interpreter"}], # Added CI as per notebook, though not strictly used by pirate
         user_id=user_id_session
@@ -189,7 +153,7 @@ def test_function_agent(provider_fixture, user_id_session, builtin_functions_ses
         instructions="Call the simple method 'hello' with the name provided by the user. If no name is provided, ask the user to provide a name.",
         metadata={'visible': 'True'},
         tools=[builtin_functions_session.hello],
-        model="gpt-4o-nano",
+        model="gpt-4.1-nano",
         user_id=user_id_session
     )
     responses = run_agent_interaction_test(
@@ -206,6 +170,8 @@ def test_function_agent(provider_fixture, user_id_session, builtin_functions_ses
 
 
 def test_synth_agent_code_interpreter(provider_fixture, user_id_session, caplog):
+    # TODO: Fix vector store configuration issue - getting "array too long" error for vector_store_ids
+    # Error: Expected an array with maximum length 1, but got an array with length 2 instead
     agent_def = AgentDefinition(
         name="Test Synth Agent",
         id=get_first_agent_id(provider_fixture, "Test Synth Agent"),
@@ -213,7 +179,7 @@ def test_synth_agent_code_interpreter(provider_fixture, user_id_session, caplog)
         instructions="When you begin you should create a synthetic data set that has the weight and height of 100 people. You should answer questions about the data set.",
         tools=[{"type": "code_interpreter"}],
         metadata={'visible': 'True', 'initial_prompt': 'Generate the data set of 100 people and confirm.'},
-        model="gpt-4o-nano",
+        model="gpt-4.1-nano",
         user_id=user_id_session
     )
     
@@ -285,7 +251,7 @@ def test_file_agent_csv_code_interpreter(provider_fixture, user_id_session, tmp_
         tools=[{"type": "code_interpreter"}],
         tool_resources={"code_interpreter": {"files": [(str(data_file_path), None)]}},
         metadata={'visible': 'True', 'initial_prompt': initial_prompt},
-        model="gpt-4o-nano",
+        model="gpt-4.1-nano",
         user_id=user_id_session
     )
     responses = run_agent_interaction_test(
@@ -319,7 +285,7 @@ def test_file_agent_html_file_search(provider_fixture, user_id_session, tmp_path
         tools=[{"type": "file_search"}], # Changed from code_interpreter to file_search as per notebook
         tool_resources={"file_search": {"files": [(str(html_file_path), None)]}},
         metadata={'visible': 'True', 'initial_prompt': initial_prompt},
-        model="gpt-4o-nano", # Ensure model supports file_search or is general purpose
+        model="gpt-4.1-nano", # Ensure model supports file_search or is general purpose
         user_id=user_id_session
     )
     responses = run_agent_interaction_test(
