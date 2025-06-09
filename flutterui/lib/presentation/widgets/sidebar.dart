@@ -154,9 +154,13 @@ class AppSidebar extends ConsumerWidget {
           ListTile(
             leading: Icon(Icons.logout, color: currentPrimaryColor),
             title: Text('Logout', style: TextStyle(color: currentOnSurfaceColor)),
-            onTap: () {
+            onTap: () async {
               Navigator.pop(context);
-              ref.read(authNotifierProvider.notifier).logout();
+              await ref.read(authNotifierProvider.notifier).logout();
+              // Navigate to login screen after logout
+              if (context.mounted) {
+                Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+              }
             },
           ),
         ],

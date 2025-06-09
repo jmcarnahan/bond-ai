@@ -473,6 +473,23 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       return false;
     }
   }
+
+  Future<bool> deleteAgent(String agentId) async {
+    state = state.copyWith(isLoading: true, clearErrorMessage: true);
+
+    try {
+      final agentService = _ref.read(agentServiceProvider);
+      await agentService.deleteAgent(agentId);
+      logger.i('Agent deleted: $agentId');
+
+      state = state.copyWith(isLoading: false);
+      return true;
+    } catch (e) {
+      logger.e('Error deleting agent: ${e.toString()}');
+      state = state.copyWith(isLoading: false, errorMessage: e.toString());
+      return false;
+    }
+  }
 }
 
 final createAgentFormProvider =

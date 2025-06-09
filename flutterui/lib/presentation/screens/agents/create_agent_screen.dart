@@ -86,6 +86,42 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
     Navigator.of(context).pop();
   }
 
+  Future<void> _onDeletePressed() async {
+    if (widget.agentId == null) return;
+    
+    final confirmed = await _showDeleteConfirmationDialog();
+    if (confirmed == true) {
+      await _controller.deleteAgent(context);
+    }
+  }
+
+  Future<bool?> _showDeleteConfirmationDialog() {
+    return showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Delete Agent'),
+          content: const Text(
+            'Are you sure you want to delete this agent? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final formState = ref.watch(createAgentFormProvider);
@@ -97,6 +133,7 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
         isEditing: _controller.isEditing,
         isLoading: formState.isLoading,
         onBack: _onBackPressed,
+        onDelete: _controller.isEditing ? _onDeletePressed : null,
       ),
       body: Stack(
         children: [
