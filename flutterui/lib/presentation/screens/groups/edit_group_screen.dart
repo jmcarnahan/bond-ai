@@ -4,6 +4,7 @@ import 'package:flutterui/data/models/group_model.dart';
 import 'package:flutterui/presentation/screens/groups/widgets/edit_group_form.dart';
 import 'package:flutterui/presentation/widgets/manage_members_panel/manage_members_panel.dart';
 import 'package:flutterui/providers/group_provider.dart';
+import 'package:flutterui/presentation/widgets/manage_members_panel/providers/manage_members_provider.dart';
 import 'package:flutterui/presentation/widgets/success_banner.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 
@@ -47,6 +48,7 @@ class _EditGroupScreenState extends ConsumerState<EditGroupScreen> with ErrorHan
       ref.invalidate(groupsProvider);
       ref.invalidate(groupProvider(widget.group.id));
       ref.invalidate(groupNotifierProvider);
+      ref.invalidate(manageMembersProvider(widget.group.id));
 
       // Show success message and navigate back
       if (mounted) {
@@ -77,6 +79,11 @@ class _EditGroupScreenState extends ConsumerState<EditGroupScreen> with ErrorHan
             ),
             const SizedBox(height: 16),
             const Divider(),
+            const SizedBox(height: 16),
+            Text(
+              'Manage Members',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             const SizedBox(height: 16),
             Expanded(
               flex: 3,

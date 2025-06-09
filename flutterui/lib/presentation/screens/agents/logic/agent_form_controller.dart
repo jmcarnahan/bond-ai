@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/create_agent_form_provider.dart';
 import 'package:flutterui/providers/agent_provider.dart';
 import 'package:flutterui/providers/group_provider.dart';
+import 'package:flutterui/presentation/widgets/manage_members_panel/providers/manage_members_provider.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 import '../../../../core/utils/logger.dart';
 
@@ -127,10 +128,19 @@ class AgentFormController with ErrorHandlingMixin {
       // Refresh the agents list
       ref.invalidate(agentsProvider);
       
-      // Refresh the groups list (to show new default group if creating agent)
       if (!isEditing) {
         ref.invalidate(groupsProvider);
         ref.invalidate(groupNotifierProvider);
+      } else {
+        ref.invalidate(groupsProvider);
+        ref.invalidate(groupNotifierProvider);
+        
+        final allGroups = ref.read(groupsProvider);
+        allGroups.whenData((groups) {
+          for (final group in groups) {
+            ref.invalidate(manageMembersProvider(group.id));
+          }
+        });
       }
       
       if (context.mounted) {
