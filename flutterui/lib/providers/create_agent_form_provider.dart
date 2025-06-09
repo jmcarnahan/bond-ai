@@ -353,10 +353,6 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
             agentDetail.mcpResources != null
                 ? Set<String>.from(agentDetail.mcpResources!)
                 : {},
-        selectedGroupIds:
-            agentDetail.groupIds != null
-                ? Set<String>.from(agentDetail.groupIds!)
-                : {},
         isLoading: false,
       );
 
@@ -367,7 +363,6 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       logger.i(
         "[CreateAgentFormNotifier] MCP Resources: ${agentDetail.mcpResources}",
       );
-      logger.i("[CreateAgentFormNotifier] Group IDs: ${agentDetail.groupIds}");
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -486,7 +481,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       final agentService = _ref.read(agentServiceProvider);
       await agentService.deleteAgent(agentId);
       logger.i('Agent deleted: $agentId');
-      
+
       state = state.copyWith(isLoading: false);
       return true;
     } catch (e) {
