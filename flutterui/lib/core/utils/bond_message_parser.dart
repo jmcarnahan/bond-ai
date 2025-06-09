@@ -42,7 +42,7 @@ class BondMessageParser {
         String content = firstBondMessageElement.innerText.trim();
         String? imageData;
         final messageType = firstBondMessageElement.getAttribute('type') ?? '';
-        if (messageType == 'image_file') {
+        if (messageType == 'image_file' || messageType == 'image') {
           if (content.startsWith('data:image/png;base64,')) {
             imageData = content.substring('data:image/png;base64,'.length);
             content = '[Image]';
@@ -152,7 +152,7 @@ class BondMessageParser {
         String? imageData;
         
         final messageType = element.getAttribute('type') ?? '';
-        if (messageType == 'image_file') {
+        if (messageType == 'image_file' || messageType == 'image') {
           if (content.startsWith('data:image/png;base64,')) {
             imageData = content.substring('data:image/png;base64,'.length);
             content = '[Image]';
