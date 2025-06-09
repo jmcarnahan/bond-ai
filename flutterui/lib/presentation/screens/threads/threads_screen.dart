@@ -10,6 +10,7 @@ import 'widgets/threads_loading_state.dart';
 import 'widgets/create_thread_dialog.dart';
 import 'logic/threads_controller.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
+import 'package:flutterui/core/error_handling/error_handler.dart';
 
 class ThreadsScreen extends ConsumerStatefulWidget {
   final bool isFromAgentChat;
@@ -65,12 +66,21 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> with ErrorHandlin
         data: (threads) => _buildDataState(threads, selectedThreadId),
         loading: () => const ThreadsLoadingState(),
         error: (error, stack) {
-          // Handle thread loading error as a service error (show snackbar, don't navigate)
+          // Use automatic error detection and handling
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            handleServiceError(error, ref, customMessage: 'Failed to load threads');
+            handleAutoError(error, ref, serviceErrorMessage: 'Failed to load threads');
           });
           
-          // Show a fallback UI with retry button
+          // Check if this is an authentication error to show appropriate UI
+          final appError = error is Exception ? AppError.fromException(error) : null;
+          if (appError?.type == ErrorType.authentication) {
+            // Show loading while redirecting to login
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+          
+          // Show a fallback UI with retry button for other errors
           return Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 40.0),
