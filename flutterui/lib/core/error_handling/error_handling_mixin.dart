@@ -50,6 +50,33 @@ mixin ErrorHandlingMixin {
     ErrorHandlerService.handleError(appError, ref: ref);
   }
   
+  /// Automatically detect error type and handle appropriately
+  void handleAutoError(dynamic error, WidgetRef ref, {String? serviceErrorMessage}) {
+    // Convert to AppError using the factory method that detects error types
+    final appError = error is AppError 
+        ? error 
+        : error is Exception 
+            ? AppError.fromException(error)
+            : AppError.general(
+                serviceErrorMessage ?? 'An error occurred. Please try again.',
+                details: error.toString(),
+              );
+    
+    // If it's a service error and we have a custom message, update it
+    if (appError.type == ErrorType.serviceError && serviceErrorMessage != null) {
+      final updatedError = AppError(
+        message: serviceErrorMessage,
+        type: appError.type,
+        action: appError.action,
+        details: appError.details,
+        exception: appError.exception,
+      );
+      ErrorHandlerService.handleError(updatedError, ref: ref);
+    } else {
+      ErrorHandlerService.handleError(appError, ref: ref);
+    }
+  }
+  
   /// Wrap an async operation with error handling
   Future<T?> withErrorHandling<T>({
     required Future<T> Function() operation,
