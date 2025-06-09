@@ -7,7 +7,7 @@ import 'widgets/agent_form_app_bar.dart';
 import 'widgets/agent_form_fields.dart';
 import 'widgets/agent_files_table.dart';
 import 'widgets/mcp_selection_section.dart';
-import 'widgets/group_selection_section.dart';
+import 'widgets/agent_sharing_section.dart';
 import 'widgets/agent_save_button.dart';
 import 'widgets/agent_loading_overlay.dart';
 import 'widgets/agent_error_banner.dart';
@@ -144,7 +144,8 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
               onToolsChanged: _controller.onMcpToolsChanged,
               onResourcesChanged: _controller.onMcpResourcesChanged,
             ),
-            GroupSelectionSection(
+            AgentSharingSection(
+              agentName: _nameController.text.isNotEmpty ? _nameController.text : null,
               selectedGroupIds: formState.selectedGroupIds,
               onGroupSelectionChanged: _controller.onGroupSelectionChanged,
             ),
