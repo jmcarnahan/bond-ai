@@ -4,21 +4,23 @@ import 'package:flutterui/data/models/group_model.dart';
 import 'package:flutterui/providers/services/service_providers.dart';
 import 'package:flutterui/core/utils/logger.dart';
 
-class GroupSelectionSection extends ConsumerStatefulWidget {
+class AdditionalGroupsSection extends ConsumerStatefulWidget {
   final Set<String> selectedGroupIds;
   final Function(Set<String>) onGroupSelectionChanged;
+  final String? agentName;
 
-  const GroupSelectionSection({
+  const AdditionalGroupsSection({
     super.key,
     required this.selectedGroupIds,
     required this.onGroupSelectionChanged,
+    this.agentName,
   });
 
   @override
-  ConsumerState<GroupSelectionSection> createState() => _GroupSelectionSectionState();
+  ConsumerState<AdditionalGroupsSection> createState() => _AdditionalGroupsSectionState();
 }
 
-class _GroupSelectionSectionState extends ConsumerState<GroupSelectionSection> {
+class _AdditionalGroupsSectionState extends ConsumerState<AdditionalGroupsSection> {
   List<AvailableGroup>? _availableGroups;
   bool _isLoading = true;
   String? _errorMessage;
@@ -29,6 +31,11 @@ class _GroupSelectionSectionState extends ConsumerState<GroupSelectionSection> {
     _loadAvailableGroups();
   }
 
+  @override
+  void didUpdateWidget(AdditionalGroupsSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+  }
+
   Future<void> _loadAvailableGroups() async {
     try {
       setState(() {
@@ -37,10 +44,16 @@ class _GroupSelectionSectionState extends ConsumerState<GroupSelectionSection> {
       });
 
       final agentService = ref.read(agentServiceProvider);
-      final groups = await agentService.getAvailableGroups();
+      final allGroups = await agentService.getAvailableGroups();
+      
+      // Filter out default groups (groups that end with "Default Group")
+      final filteredGroups = allGroups.where((group) {
+        // Filter out any group that follows the default group naming pattern
+        return !group.name.endsWith('Default Group');
+      }).toList();
       
       setState(() {
-        _availableGroups = groups;
+        _availableGroups = filteredGroups;
         _isLoading = false;
       });
     } catch (e) {
@@ -71,12 +84,12 @@ class _GroupSelectionSectionState extends ConsumerState<GroupSelectionSection> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Share with Groups',
+              'Share with Additional Groups',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
             Text(
-              'Select groups to share this agent with. Members of selected groups will be able to access this agent.',
+              'Optionally share this agent with existing groups. Members of selected groups will also be able to access this agent.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).textTheme.bodySmall?.color,
               ),
@@ -116,12 +129,28 @@ class _GroupSelectionSectionState extends ConsumerState<GroupSelectionSection> {
                 ),
               )
             else if (_availableGroups?.isEmpty ?? true)
-              const Center(
+              Center(
                 child: Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text(
-                    'No groups available for sharing. Create or join groups to share agents.',
-                    textAlign: TextAlign.center,
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.groups,
+                        color: Theme.of(context).colorScheme.secondary,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'No additional groups available for sharing.',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Create or join groups to share agents with multiple users.',
+                        style: Theme.of(context).textTheme.bodySmall,
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
                 ),
               )
