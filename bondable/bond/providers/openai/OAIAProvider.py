@@ -23,8 +23,8 @@ class OAIAProvider(Provider):
         # Use OpenAI by default
         openai_client = None
         if not os.getenv('AZURE_OPENAI_API_KEY'):
-            openai_api_key = self.config.get_secret_value(os.getenv('OPENAI_KEY_SECRET_ID', 'openai_api_key'))
-            openai_project_id = self.config.get_secret_value(os.getenv('OPENAI_PROJECT_SECRET_ID', 'openai_project'))
+            openai_api_key=os.getenv('OPENAI_KEY')
+            openai_project_id=os.getenv('OPENAI_PROJECT')
             openai_client = OpenAI(api_key=openai_api_key, project=openai_project_id)
             LOGGER.info("Using OpenAI API")
         else:
