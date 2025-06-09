@@ -21,9 +21,6 @@ class AgentSharingSection extends StatelessWidget {
         AgentMembersSection(
           agentName: agentName,
         ),
-        
-        const SizedBox(height: 16),
-        
         AdditionalGroupsSection(
           selectedGroupIds: selectedGroupIds,
           onGroupSelectionChanged: onGroupSelectionChanged,

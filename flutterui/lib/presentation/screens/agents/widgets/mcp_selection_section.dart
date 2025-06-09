@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:flutterui/core/constants/app_constants.dart';
 import 'package:flutterui/data/models/mcp_model.dart';
 import 'package:flutterui/providers/services/service_providers.dart';
 import 'package:flutterui/core/utils/logger.dart';
+import 'package:flutterui/presentation/widgets/common/bondai_widgets.dart';
 
 class McpSelectionSection extends ConsumerStatefulWidget {
   final Set<String> selectedToolNames;
@@ -41,52 +41,32 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
 
   Future<void> _loadMcpData() async {
     if (_isLoading) {
-      logger.i(
-        '[McpSelectionSection] _loadMcpData called but already loading, returning',
-      );
       return;
     }
 
-    logger.i('[McpSelectionSection] Starting to load MCP data...');
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      logger.i('[McpSelectionSection] Getting MCP service provider...');
       final mcpService = ref.read(mcpServiceProvider);
-      logger.i(
-        '[McpSelectionSection] MCP service obtained: $mcpService',
-      );
+      logger.i('[McpSelectionSection] MCP service obtained: $mcpService');
 
-      logger.i(
-        '[McpSelectionSection] Starting parallel requests for tools and resources...',
-      );
       final results = await Future.wait([
         mcpService.getTools(),
         mcpService.getResources(),
       ]);
 
-      logger.i(
-        '[McpSelectionSection] Both requests completed, processing results...',
-      );
       final tools = results[0] as List<McpToolModel>;
       final resources = results[1] as List<McpResourceModel>;
 
-      logger.i(
-        '[McpSelectionSection] Received ${tools.length} tools and ${resources.length} resources',
-      );
 
       setState(() {
         _tools = tools;
         _resources = resources;
         _isLoading = false;
       });
-
-      logger.i(
-        '[McpSelectionSection] Successfully loaded ${_tools!.length} MCP tools and ${_resources!.length} MCP resources',
-      );
 
       // Log tool details
       for (int i = 0; i < tools.length; i++) {
@@ -144,317 +124,92 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(height: AppSpacing.xxl),
-        Text(
-          'Tools & Resources',
-          style: theme.textTheme.titleLarge?.copyWith(
-            color: theme.colorScheme.onSurface,
-            fontWeight: FontWeight.w600,
-          ),
+        BondAIContainer(
+          icon: Icons.build_circle,
+          title: 'Tools & Resources',
+          subtitle: 'Select tools and resources to enable for this agent',
+          margin: EdgeInsets.zero,
+          children: [
+            if (_isLoading) 
+              BondAILoadingState(message: 'Loading MCP tools and resources...'),
+            if (_errorMessage != null) 
+              BondAIErrorState(
+                message: 'Error loading MCP data',
+                errorDetails: _errorMessage!,
+                onRetry: _loadMcpData,
+              ),
+            if (!_isLoading && _errorMessage == null) ...[
+              _buildToolsSection(theme),
+              if ((_tools == null || _tools!.isEmpty) && (_resources == null || _resources!.isEmpty))
+                SizedBox(height: AppSpacing.xl),
+              if ((_tools == null || _tools!.isEmpty) && (_resources == null || _resources!.isEmpty))
+                Divider(
+                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
+                  height: 1,
+                ),
+              SizedBox(height: AppSpacing.xxl),
+              _buildResourcesSection(theme),
+            ],
+          ],
         ),
-        SizedBox(height: AppSpacing.md),
-        Text(
-          'Select tools and resources to enable for this agent',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurface.withValues(alpha: .7),
-          ),
-        ),
-        SizedBox(height: AppSpacing.lg),
-        if (_isLoading) _buildLoadingState(theme),
-        if (_errorMessage != null) _buildErrorState(theme),
-        if (!_isLoading && _errorMessage == null) ...[
-          _buildToolsSection(theme),
-          SizedBox(height: AppSpacing.xl),
-          _buildResourcesSection(theme),
-        ],
       ],
     );
   }
 
-  Widget _buildLoadingState(ThemeData theme) {
-    return Card(
-      elevation: 0.0,
-      margin: AppSpacing.verticalSm,
-      shape: RoundedRectangleBorder(
-        borderRadius: AppBorderRadius.allMd,
-        side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: .5),
-        ),
-      ),
-      color: theme.colorScheme.surfaceContainer,
-      child: Padding(
-        padding: AppSpacing.allXl,
-        child: Row(
-          children: [
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation(theme.colorScheme.primary),
-              ),
-            ),
-            SizedBox(width: AppSpacing.lg),
-            Text(
-              'Loading MCP tools and resources...',
-              style: theme.textTheme.bodyMedium,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorState(ThemeData theme) {
-    return Card(
-      elevation: 0.0,
-      margin: AppSpacing.verticalSm,
-      shape: RoundedRectangleBorder(
-        borderRadius: AppBorderRadius.allMd,
-        side: BorderSide(color: theme.colorScheme.error.withValues(alpha: .5)),
-      ),
-      color: theme.colorScheme.errorContainer,
-      child: Padding(
-        padding: AppSpacing.allXl,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  color: theme.colorScheme.error,
-                  size: 20,
-                ),
-                SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Text(
-                    'Error loading MCP data',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: AppSpacing.sm),
-            Text(
-              _errorMessage!,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.error,
-              ),
-            ),
-            SizedBox(height: AppSpacing.md),
-            TextButton.icon(
-              onPressed: _loadMcpData,
-              icon: Icon(Icons.refresh, size: 16),
-              label: Text('Retry'),
-              style: TextButton.styleFrom(
-                foregroundColor: theme.colorScheme.error,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildToolsSection(ThemeData theme) {
     if (_tools == null || _tools!.isEmpty) {
-      return _buildEmptyState(
-        theme,
-        'No tools available\n\nPlease contact the administrator to enable external tools',
+      return BondAIResourceUnavailable(
+        message: 'No tools available',
+        description: 'Please contact the administrator to enable external tools',
+        type: ResourceUnavailableType.empty,
+        showBorder: false,
+        padding: EdgeInsets.zero,
+        iconSize: AppSizes.iconEnormous / 2,
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Available Tools (${_tools!.length})',
-          style: theme.textTheme.titleMedium?.copyWith(
-            color: theme.colorScheme.onSurface,
-            fontWeight: FontWeight.w500,
-          ),
+    return BondAIContainerSection(
+      title: 'Available Tools (${_tools!.length})',
+      children: _tools!.map((tool) => 
+        BondAITile(
+          type: BondAITileType.checkbox,
+          title: tool.name,
+          subtitle: tool.description,
+          value: widget.selectedToolNames.contains(tool.name),
+          enabled: widget.enabled,
+          onChanged: (value) => _onToolSelectionChanged(tool.name, value ?? false),
         ),
-        SizedBox(height: AppSpacing.md),
-        ..._tools!.map((tool) => _buildToolItem(theme, tool)),
-      ],
+      ).toList(),
     );
   }
 
   Widget _buildResourcesSection(ThemeData theme) {
     if (_resources == null || _resources!.isEmpty) {
-      return _buildEmptyState(
-        theme,
-        'No resources available\n\nPlease contact the administrator to enable external resources',
+      return BondAIResourceUnavailable(
+        message: 'No resources available',
+        description: 'Please contact the administrator to enable external resources',
+        type: ResourceUnavailableType.empty,
+        showBorder: false,
+        padding: EdgeInsets.zero,
+        iconSize: AppSizes.iconEnormous / 2,
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Available Resources (${_resources!.length})',
-          style: theme.textTheme.titleMedium?.copyWith(
-            color: theme.colorScheme.onSurface,
-            fontWeight: FontWeight.w500,
-          ),
+    return BondAIContainerSection(
+      title: 'Available Resources (${_resources!.length})',
+      children: _resources!.map((resource) => 
+        BondAITile(
+          type: BondAITileType.checkbox,
+          title: resource.name,
+          subtitle: resource.description,
+          description: '${resource.mimeType} • ${resource.uri}',
+          value: widget.selectedResourceUris.contains(resource.uri),
+          enabled: widget.enabled,
+          onChanged: (value) => _onResourceSelectionChanged(resource.uri, value ?? false),
         ),
-        SizedBox(height: AppSpacing.md),
-        ..._resources!.map((resource) => _buildResourceItem(theme, resource)),
-      ],
+      ).toList(),
     );
   }
 
-  Widget _buildEmptyState(ThemeData theme, String message) {
-    return Card(
-      elevation: 0.0,
-      margin: AppSpacing.verticalSm,
-      shape: RoundedRectangleBorder(
-        borderRadius: AppBorderRadius.allMd,
-        side: BorderSide(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: .5),
-        ),
-      ),
-      color: theme.colorScheme.surfaceContainer,
-      child: Padding(
-        padding: AppSpacing.allXl,
-        child: Column(
-          children: [
-            Icon(
-              Icons.info_outline,
-              color: theme.colorScheme.onSurface.withValues(alpha: .5),
-              size: 24,
-            ),
-            SizedBox(height: AppSpacing.sm),
-            Text(
-              message,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: .7),
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildToolItem(ThemeData theme, McpToolModel tool) {
-    final isSelected = widget.selectedToolNames.contains(tool.name);
-
-    return Card(
-      elevation: 0.0,
-      margin: AppSpacing.verticalSm,
-      shape: RoundedRectangleBorder(
-        borderRadius: AppBorderRadius.allMd,
-        side: BorderSide(
-          color:
-              isSelected
-                  ? theme.colorScheme.primary.withValues(alpha: .5)
-                  : theme.colorScheme.outlineVariant.withValues(alpha: .5),
-        ),
-      ),
-      color:
-          isSelected
-              ? theme.colorScheme.primaryContainer.withValues(alpha: .1)
-              : theme.colorScheme.surfaceContainer,
-      child: CheckboxListTile(
-        title: Text(
-          tool.name,
-          style: theme.textTheme.titleSmall?.copyWith(
-            color:
-                widget.enabled
-                    ? theme.colorScheme.onSurface
-                    : theme.disabledColor,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        subtitle: Text(
-          tool.description,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color:
-                widget.enabled
-                    ? theme.colorScheme.onSurface.withValues(alpha: .7)
-                    : theme.disabledColor,
-          ),
-        ),
-        value: isSelected,
-        onChanged:
-            widget.enabled
-                ? (bool? value) =>
-                    _onToolSelectionChanged(tool.name, value ?? false)
-                : null,
-        activeColor: theme.colorScheme.primary,
-        contentPadding: AppSpacing.horizontalXl.add(AppSpacing.verticalLg),
-      ),
-    );
-  }
-
-  Widget _buildResourceItem(ThemeData theme, McpResourceModel resource) {
-    final isSelected = widget.selectedResourceUris.contains(resource.uri);
-
-    return Card(
-      elevation: 0.0,
-      margin: AppSpacing.verticalSm,
-      shape: RoundedRectangleBorder(
-        borderRadius: AppBorderRadius.allMd,
-        side: BorderSide(
-          color:
-              isSelected
-                  ? theme.colorScheme.primary.withValues(alpha: .5)
-                  : theme.colorScheme.outlineVariant.withValues(alpha: .5),
-        ),
-      ),
-      color:
-          isSelected
-              ? theme.colorScheme.primaryContainer.withValues(alpha: .1)
-              : theme.colorScheme.surfaceContainer,
-      child: CheckboxListTile(
-        title: Text(
-          resource.name,
-          style: theme.textTheme.titleSmall?.copyWith(
-            color:
-                widget.enabled
-                    ? theme.colorScheme.onSurface
-                    : theme.disabledColor,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              resource.description,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color:
-                    widget.enabled
-                        ? theme.colorScheme.onSurface.withValues(alpha: .7)
-                        : theme.disabledColor,
-              ),
-            ),
-            SizedBox(height: AppSpacing.xs),
-            Text(
-              '${resource.mimeType} • ${resource.uri}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color:
-                    widget.enabled
-                        ? theme.colorScheme.onSurface.withValues(alpha: .5)
-                        : theme.disabledColor,
-                fontFamily: 'monospace',
-              ),
-            ),
-          ],
-        ),
-        value: isSelected,
-        onChanged:
-            widget.enabled
-                ? (bool? value) =>
-                    _onResourceSelectionChanged(resource.uri, value ?? false)
-                : null,
-        activeColor: theme.colorScheme.primary,
-        contentPadding: AppSpacing.horizontalXl.add(AppSpacing.verticalLg),
-      ),
-    );
-  }
 }
