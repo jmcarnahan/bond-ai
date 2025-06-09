@@ -183,7 +183,6 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
             ),
             AgentSharingSection(
               agentName: _nameController.text.isNotEmpty ? _nameController.text : null,
-              agentId: widget.agentId,
               selectedGroupIds: formState.selectedGroupIds,
               onGroupSelectionChanged: _controller.onGroupSelectionChanged,
             ),
