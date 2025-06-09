@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutterui/core/constants/app_constants.dart';
 import 'package:flutterui/data/models/group_model.dart';
 import 'package:flutterui/providers/services/service_providers.dart';
 import 'package:flutterui/core/utils/logger.dart';
+import 'package:flutterui/presentation/widgets/common/bondai_widgets.dart';
 
 class AdditionalGroupsSection extends ConsumerStatefulWidget {
   final Set<String> selectedGroupIds;
@@ -77,112 +79,61 @@ class _AdditionalGroupsSectionState extends ConsumerState<AdditionalGroupsSectio
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Share with Additional Groups',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Optionally share this agent with existing groups. Members of selected groups will also be able to access this agent.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).textTheme.bodySmall?.color,
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            if (_isLoading)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: CircularProgressIndicator(),
-                ),
-              )
-            else if (_errorMessage != null)
-              Center(
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      color: Theme.of(context).colorScheme.error,
-                      size: 48,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _errorMessage!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
+    final theme = Theme.of(context);
+    
+    return BondAIContainer(
+      icon: Icons.groups,
+      title: 'Share with Additional Groups',
+      subtitle: 'Optionally share this agent with existing groups. Members of selected groups will also be able to access this agent.',
+      margin: EdgeInsets.only(top: AppSpacing.xl),
+      children: [
+        if (_isLoading)
+          BondAILoadingState(
+            message: 'Loading groups...',
+            showBackground: false,
+          )
+        else if (_errorMessage != null)
+          BondAIErrorState(
+            message: 'Failed to load groups',
+            errorDetails: _errorMessage!,
+            onRetry: _loadAvailableGroups,
+            showIcon: false,
+            padding: EdgeInsets.zero,
+          )
+        else if (_availableGroups?.isEmpty ?? true)
+          BondAIResourceUnavailable(
+            message: 'No additional groups available for sharing.',
+            description: 'Create or join groups to share agents with multiple users.',
+            icon: Icons.groups,
+            type: ResourceUnavailableType.empty,
+            showBorder: false,
+            padding: EdgeInsets.zero,
+          )
+        else
+          Column(
+            children: _availableGroups!.map((group) {
+              final isSelected = widget.selectedGroupIds.contains(group.id);
+              return BondAITile(
+                type: BondAITileType.checkbox,
+                title: group.name,
+                subtitle: group.description,
+                leading: group.isOwner
+                    ? Icon(
+                        Icons.admin_panel_settings,
+                        color: theme.colorScheme.primary,
+                      )
+                    : Icon(
+                        Icons.group,
+                        color: theme.colorScheme.secondary,
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    ElevatedButton(
-                      onPressed: _loadAvailableGroups,
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              )
-            else if (_availableGroups?.isEmpty ?? true)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.groups,
-                        color: Theme.of(context).colorScheme.secondary,
-                        size: 48,
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'No additional groups available for sharing.',
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Create or join groups to share agents with multiple users.',
-                        style: Theme.of(context).textTheme.bodySmall,
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            else
-              Column(
-                children: _availableGroups!.map((group) {
-                  final isSelected = widget.selectedGroupIds.contains(group.id);
-                  return CheckboxListTile(
-                    title: Text(group.name),
-                    subtitle: group.description != null
-                        ? Text(group.description!)
-                        : null,
-                    secondary: group.isOwner
-                        ? Icon(
-                            Icons.admin_panel_settings,
-                            color: Theme.of(context).colorScheme.primary,
-                          )
-                        : Icon(
-                            Icons.group,
-                            color: Theme.of(context).colorScheme.secondary,
-                          ),
-                    value: isSelected,
-                    onChanged: (bool? value) {
-                      _toggleGroupSelection(group.id);
-                    },
-                    contentPadding: EdgeInsets.zero,
-                  );
-                }).toList(),
-              ),
-          ],
-        ),
-      ),
+                value: isSelected,
+                onChanged: (bool? value) {
+                  _toggleGroupSelection(group.id);
+                },
+              );
+            }).toList(),
+          ),
+      ],
     );
   }
 }
