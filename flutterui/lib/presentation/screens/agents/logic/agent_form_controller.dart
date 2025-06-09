@@ -191,6 +191,66 @@ class AgentFormController with ErrorHandlingMixin {
     );
   }
 
+  Future<bool> deleteAgent(BuildContext context) async {
+    if (agentId == null) {
+      logger.e('Cannot delete agent: agentId is null');
+      return false;
+    }
+
+    _notifier.setLoading(true);
+
+    try {
+      final bool success = await _notifier.deleteAgent(agentId!);
+      
+      if (success && context.mounted) {
+        await _handleSuccessfulDelete(context);
+      }
+      
+      return success;
+    } catch (e) {
+      logger.e('Error deleting agent: $e');
+      if (context.mounted) {
+        handleServiceError(e, ref, customMessage: 'Failed to delete agent');
+      }
+      return false;
+    } finally {
+      if (context.mounted) {
+        _notifier.setLoading(false);
+      }
+    }
+  }
+
+  Future<void> _handleSuccessfulDelete(BuildContext context) async {
+    try {
+      // Refresh the agents list
+      ref.invalidate(agentsProvider);
+      ref.invalidate(groupsProvider);
+      ref.invalidate(groupNotifierProvider);
+      
+      if (context.mounted) {
+        _showDeleteSuccessMessage(context);
+        // Navigate to home screen after successful deletion
+        Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+      }
+    } catch (e) {
+      logger.e('Error refreshing lists after delete: $e');
+      if (context.mounted) {
+        // Handle as service error - the delete succeeded but refresh failed
+        handleServiceError(e, ref, customMessage: 'Agent deleted, but failed to refresh lists');
+        Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+      }
+    }
+  }
+
+  void _showDeleteSuccessMessage(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Agent deleted successfully!'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
 
   void dispose() {
     nameController.dispose();
