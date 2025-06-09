@@ -53,7 +53,7 @@ def mock_provider():
     provider.threads = MagicMock(spec=ThreadsProvider)
     provider.files = MagicMock(spec=FilesProvider)
     provider.vectorstores = MagicMock(spec=VectorStoresProvider)
-    provider.get_default_model.return_value = "gpt-4o-nano"
+    provider.get_default_model.return_value = "gpt-4.1-nano"
     return provider
 
 @pytest.fixture
@@ -224,7 +224,7 @@ class TestAgents:
             "instructions": "Be helpful",
             "introduction": "Hello, I'm a new agent",
             "reminder": "Remember to be helpful",
-            "model": "gpt-4o-nano",
+            "model": "gpt-4.1-nano",
             "tools": [{"type": "code_interpreter"}],
             "metadata": {"test": True}
         }
@@ -367,7 +367,7 @@ class TestAgents:
         mock_definition.instructions = "Be very detailed"
         mock_definition.introduction = "Hello, I'm a detailed agent"
         mock_definition.reminder = "Remember to be detailed"
-        mock_definition.model = "gpt-4o-nano"
+        mock_definition.model = "gpt-4.1-nano"
         mock_definition.tools = [{"type": "code_interpreter"}]
         mock_definition.tool_resources = {
             "code_interpreter": {"file_ids": ["file_1"]}
