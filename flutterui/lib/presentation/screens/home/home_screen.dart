@@ -6,6 +6,7 @@ import 'package:flutterui/providers/agent_provider.dart';
 import 'package:flutterui/presentation/screens/agents/widgets/agent_card.dart';
 import 'package:flutterui/core/theme/app_theme.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
+import 'package:flutterui/core/error_handling/error_handler.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -168,12 +169,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
                   ),
                 ),
                 error: (err, stack) { 
-                  // Handle agent loading error as a service error (show snackbar, don't navigate)
+                  // Use automatic error detection and handling
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    handleServiceError(err, ref, customMessage: 'Failed to load agents');
+                    handleAutoError(err, ref, serviceErrorMessage: 'Failed to load agents');
                   });
                   
-                  // Show a fallback UI with retry button
+                  // Check if this is an authentication error to show appropriate UI
+                  final appError = err is Exception ? AppError.fromException(err) : null;
+                  if (appError?.type == ErrorType.authentication) {
+                    // Show loading while redirecting to login
+                    return const Center(
+                      child: CircularProgressIndicator(),
+                    );
+                  }
+                  
+                  // Show a fallback UI with retry button for other errors
                   return Center(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 40.0),
