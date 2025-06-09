@@ -188,7 +188,7 @@ class TestAgentDefinition:
             name="Test Agent",
             description="Test Description",
             instructions="Test Instructions",
-            model="gpt-4o-nano",
+            model="gpt-4.1-nano",
             user_id="test_user",
             mcp_tools=["tool1", "tool2"],
             mcp_resources=["resource1", "resource2"]
