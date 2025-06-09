@@ -8,12 +8,14 @@ class AgentFormAppBar extends ConsumerWidget implements PreferredSizeWidget {
   final bool isEditing;
   final bool isLoading;
   final VoidCallback? onBack;
+  final VoidCallback? onDelete;
 
   const AgentFormAppBar({
     super.key,
     required this.isEditing,
     required this.isLoading,
     this.onBack,
+    this.onDelete,
   });
 
   @override
@@ -50,6 +52,15 @@ class AgentFormAppBar extends ConsumerWidget implements PreferredSizeWidget {
           ),
         ],
       ),
+      actions: isEditing && onDelete != null
+          ? [
+              IconButton(
+                icon: const Icon(Icons.delete, color: Colors.white),
+                onPressed: isLoading ? null : onDelete,
+                tooltip: 'Delete Agent',
+              ),
+            ]
+          : null,
     );
   }
 }
