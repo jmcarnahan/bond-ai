@@ -11,38 +11,41 @@ class RouteObserverForBanner extends NavigatorObserver {
   RouteObserverForBanner(this._ref);
 
   void _updateBannerVisibility(RouteSettings settings) {
-    String? routeName = settings.name;
-    bool shouldShowBanner = false;
+    // Delay the state update to avoid modifying providers during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      String? routeName = settings.name;
+      bool shouldShowBanner = false;
 
-    if (routeName != null) {
-      if (routeName.startsWith('/#/')) {
-        routeName = routeName.substring(2);
+      if (routeName != null) {
+        if (routeName.startsWith('/#/')) {
+          routeName = routeName.substring(2);
+        }
+        if (!routeName.startsWith('/')) {
+          routeName = '/$routeName';
+        }
+        try {
+          final Uri uri = Uri.parse(routeName);
+          routeName = uri.path;
+        } catch (e) {
+          logger.w("[RouteObserverForBanner] Error parsing routeName '$routeName' for banner visibility: $e");
+        }
+      } else {
+        routeName = '/';
       }
-      if (!routeName.startsWith('/')) {
-        routeName = '/$routeName';
-      }
-      try {
-        final Uri uri = Uri.parse(routeName);
-        routeName = uri.path;
-      } catch (e) {
-        logger.w("[RouteObserverForBanner] Error parsing routeName '$routeName' for banner visibility: $e");
-      }
-    } else {
-      routeName = '/';
-    }
-      
-    if (routeName == '/home') {
-      shouldShowBanner = true;
-    } else if (routeName == '/') {
-      final authState = _ref.read(authNotifierProvider);
-      if (authState is Authenticated) {
+        
+      if (routeName == '/home') {
         shouldShowBanner = true;
+      } else if (routeName == '/') {
+        final authState = _ref.read(authNotifierProvider);
+        if (authState is Authenticated) {
+          shouldShowBanner = true;
+        }
       }
-    }
-    
-    if (_ref.read(showThreadBannerProvider) != shouldShowBanner) {
-      _ref.read(showThreadBannerProvider.notifier).state = shouldShowBanner;
-    }
+      
+      if (_ref.read(showThreadBannerProvider) != shouldShowBanner) {
+        _ref.read(showThreadBannerProvider.notifier).state = shouldShowBanner;
+      }
+    });
   }
 
   @override
