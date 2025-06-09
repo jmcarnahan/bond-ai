@@ -7,8 +7,6 @@ import 'package:flutterui/data/models/chat_models.dart';
 import 'package:flutterui/data/services/thread_service.dart';
 import 'package:flutterui/data/services/chat_service.dart';
 import 'package:flutterui/data/services/file_service.dart';
-import 'package:flutterui/data/services/agent_service.dart';
-import 'package:flutterui/providers/thread_provider.dart';
 import 'chat_session_state.dart';
 import 'chat_stream_handler_mixin.dart';
 import '../../core/utils/logger.dart';
