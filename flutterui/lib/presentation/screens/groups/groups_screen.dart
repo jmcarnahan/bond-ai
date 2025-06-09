@@ -8,6 +8,7 @@ import 'package:flutterui/presentation/screens/groups/widgets/create_group_dialo
 import 'package:flutterui/presentation/screens/groups/widgets/groups_empty_state.dart';
 import 'package:flutterui/presentation/screens/groups/widgets/groups_list.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
+import 'package:flutterui/core/error_handling/error_handler.dart';
 
 class GroupsScreen extends ConsumerStatefulWidget {
   static const String routeName = '/groups';
@@ -51,12 +52,21 @@ class _GroupsScreenState extends ConsumerState<GroupsScreen> with ErrorHandlingM
       body: groupsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stack) {
-          // Handle group loading error as a service error (show snackbar, don't navigate)
+          // Use automatic error detection and handling
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            handleServiceError(error, ref, customMessage: 'Failed to load groups');
+            handleAutoError(error, ref, serviceErrorMessage: 'Failed to load groups');
           });
           
-          // Show a fallback UI with retry button
+          // Check if this is an authentication error to show appropriate UI
+          final appError = error is Exception ? AppError.fromException(error) : null;
+          if (appError?.type == ErrorType.authentication) {
+            // Show loading while redirecting to login
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+          
+          // Show a fallback UI with retry button for other errors
           return Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 40.0),

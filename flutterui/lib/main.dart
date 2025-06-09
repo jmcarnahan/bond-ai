@@ -47,19 +47,6 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final authState = ref.watch(authNotifierProvider);
-
-    Widget homeWidget;
-    if (authState is Authenticated) {
-      homeWidget = const HomeScreen();
-    } else if (authState is Unauthenticated || authState is AuthError) {
-      homeWidget = const LoginScreen();
-    } else {
-      homeWidget = const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
     final AppTheme currentTheme = ref.watch(appThemeProvider);
 
     if (kIsWeb) {
@@ -76,22 +63,26 @@ class MyApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       title: currentTheme.name,
       theme: currentTheme.themeData,
-      home: homeWidget,
+      home: const _AppContent(),
       navigatorObservers: [RouteObserverForBanner(ref)],
       builder: (context, child) {
-        final bool showBanner = ref.watch(showThreadBannerProvider);
-
-        return Stack(
-          children: [
-            if (child != null) child,
-            if (showBanner)
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: SelectedThreadBanner(),
-              ),
-          ],
+        return Consumer(
+          builder: (context, ref, _) {
+            final bool showBanner = ref.watch(showThreadBannerProvider);
+            
+            return Stack(
+              children: [
+                if (child != null) child,
+                if (showBanner)
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: SelectedThreadBanner(),
+                  ),
+              ],
+            );
+          },
         );
       },
       onGenerateRoute: (settings) {
@@ -172,7 +163,7 @@ class MyApp extends ConsumerWidget {
                       ref: ref,
                     );
                   });
-                  return MaterialPageRoute(builder: (_) => homeWidget);
+                  return MaterialPageRoute(builder: (_) => const HomeScreen());
                 }
               } else {
                 logger.i(
@@ -188,7 +179,7 @@ class MyApp extends ConsumerWidget {
                     ref: ref,
                   );
                 });
-                return MaterialPageRoute(builder: (_) => homeWidget);
+                return MaterialPageRoute(builder: (_) => const HomeScreen());
               }
             } else if (effectivePath.startsWith(
               CreateAgentScreen.editRouteNamePattern.split(':')[0],
@@ -211,7 +202,7 @@ class MyApp extends ConsumerWidget {
                     ref: ref,
                   );
                 });
-                return MaterialPageRoute(builder: (_) => homeWidget);
+                return MaterialPageRoute(builder: (_) => const HomeScreen());
               }
             } else {
               logger.i(
@@ -229,10 +220,29 @@ class MyApp extends ConsumerWidget {
         }
 
         logger.i(
-          "[onGenerateRoute] Fallback: Unknown route. Name='${settings.name}', EffectivePath='$effectivePath'. Showing homeWidget.",
+          "[onGenerateRoute] Fallback: Unknown route. Name='${settings.name}', EffectivePath='$effectivePath'. Showing home screen.",
         );
-        return MaterialPageRoute(builder: (_) => homeWidget);
+        return MaterialPageRoute(builder: (_) => const HomeScreen());
       },
     );
+  }
+}
+
+class _AppContent extends ConsumerWidget {
+  const _AppContent();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authNotifierProvider);
+
+    if (authState is Authenticated) {
+      return const HomeScreen();
+    } else if (authState is Unauthenticated || authState is AuthError) {
+      return const LoginScreen();
+    } else {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
   }
 }
