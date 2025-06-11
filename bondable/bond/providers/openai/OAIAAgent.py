@@ -116,18 +116,19 @@ class EventHandler(AssistantEventHandler):
             
             if function_name.startswith("mcp_resource_"):
                 # Handle MCP resource read
-                resource_name = function_name[13:]  # Remove "mcp_resource_" prefix
-                LOGGER.debug(f"Reading MCP resource: {resource_name}")
+                encoded_uri = function_name[13:]  # Remove "mcp_resource_" prefix
                 
-                # Find resource URI
-                resources = mcp_client.list_resources_sync()
-                resource_map = {getattr(r, "name", ""): getattr(r, "uri", "") for r in resources}
-                
-                if resource_name not in resource_map:
-                    return f"Error: MCP resource '{resource_name}' not found"
-                
-                # Read the resource
-                return mcp_client.read_resource_sync(resource_map[resource_name])
+                # Decode the base64 encoded URI
+                try:
+                    padded = encoded_uri + '=' * (4 - len(encoded_uri) % 4)
+                    resource_uri = base64.urlsafe_b64decode(padded).decode()
+                    LOGGER.debug(f"Reading MCP resource with URI: {resource_uri}")
+                    
+                    # Read the resource using the decoded URI
+                    return mcp_client.read_resource_sync(resource_uri)
+                except Exception as e:
+                    LOGGER.error(f"Failed to decode resource URI: {e}")
+                    return f"Error: Failed to decode resource URI: {str(e)}"
                 
             elif function_name.startswith("mcp_"):
                 # Handle MCP tool call
@@ -382,9 +383,17 @@ class OAIAAgentProvider(AgentProvider):
             if hasattr(tool, 'function') and hasattr(tool.function, 'name'):
                 function_name = tool.function.name
                 if function_name.startswith('mcp_resource_'):
-                    # Extract resource name by removing prefix
-                    resource_name = function_name[13:]  # Remove "mcp_resource_"
-                    mcp_resources.append(resource_name)
+                    # Extract encoded URI and decode it back
+                    encoded_uri = function_name[13:]  # Remove "mcp_resource_"
+                    try:
+                        # Add padding if needed and decode
+                        padded = encoded_uri + '=' * (4 - len(encoded_uri) % 4)
+                        resource_uri = base64.urlsafe_b64decode(padded).decode()
+                        mcp_resources.append(resource_uri)
+                    except Exception as e:
+                        LOGGER.warning(f"Could not decode resource URI from function name {function_name}: {e}")
+                        # Fallback to using the encoded string
+                        mcp_resources.append(encoded_uri)
                 elif function_name.startswith('mcp_'):
                     # Extract tool name by removing prefix
                     tool_name = function_name[4:]  # Remove "mcp_"
@@ -486,23 +495,36 @@ class OAIAAgentProvider(AgentProvider):
             available_resources = mcp_client.list_resources_sync()
             LOGGER.debug(f"Retrieved {len(available_resources)} available MCP resources from server")
             
-            # Map available resources by name
-            resource_map = {getattr(r, "name", ""): r for r in available_resources}
-            LOGGER.debug(f"Available MCP resource names: {list(resource_map.keys())}")
+            # Map available resources by both name and URI for flexible lookup
+            resource_map_by_name = {getattr(r, "name", ""): r for r in available_resources}
+            resource_map_by_uri = {str(getattr(r, "uri", "")): r for r in available_resources}  # Convert URI to string
             
             # Convert requested resources
             openai_tools = []
-            for resource_name in mcp_resource_names:
-                if resource_name not in resource_map:
-                    LOGGER.warning(f"MCP resource '{resource_name}' not found")
+            for resource_identifier in mcp_resource_names:
+                # Try to find resource by name first, then by URI (with string conversion)
+                mcp_resource = resource_map_by_name.get(resource_identifier) or resource_map_by_uri.get(str(resource_identifier))
+                
+                if not mcp_resource:
+                    LOGGER.warning(f"MCP resource '{resource_identifier}' not found (searched by name and URI)")
                     continue
                     
-                mcp_resource = resource_map[resource_name]
+                resource_uri = str(getattr(mcp_resource, "uri", resource_identifier))
+                resource_name = getattr(mcp_resource, "name", resource_uri)
+                # Base64 encode the URI to create a valid function name
+                encoded_uri = base64.urlsafe_b64encode(resource_uri.encode()).decode().rstrip('=')
+                
+                # Get resource description and include name for clarity
+                resource_desc = getattr(mcp_resource, 'description', '')
+                full_description = f"Read resource [{resource_name}]"
+                if resource_desc:
+                    full_description += f": {resource_desc}"
+                
                 openai_tools.append({
                     "type": "function",
                     "function": {
-                        "name": f"mcp_resource_{resource_name}",
-                        "description": f"Read resource: {getattr(mcp_resource, 'description', '')}",
+                        "name": f"mcp_resource_{encoded_uri}",
+                        "description": full_description,
                         "strict": False,
                         "parameters": {
                             "type": "object",
@@ -511,7 +533,7 @@ class OAIAAgentProvider(AgentProvider):
                         }
                     }
                 })
-                LOGGER.info(f"Converted MCP resource '{resource_name}' to OpenAI format")
+                LOGGER.info(f"Converted MCP resource '{resource_uri}' to OpenAI format with encoded name 'mcp_resource_{encoded_uri}'")
                 
             LOGGER.info(f"Successfully converted {len(openai_tools)} MCP resources to OpenAI format")
             return openai_tools
