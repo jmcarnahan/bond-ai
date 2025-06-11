@@ -18,6 +18,7 @@ class ThreadsController {
 
   void initializeThreads() {
     // Always refresh threads when the screen is shown to get latest data
+    // Already using addPostFrameCallback which is safe
     WidgetsBinding.instance.addPostFrameCallback((_) {
       refreshThreads();
     });
