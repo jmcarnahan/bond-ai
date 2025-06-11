@@ -43,23 +43,23 @@ class McpToolModel {
 @immutable
 class McpResourceModel {
   final String uri;
-  final String name;
-  final String description;
-  final String mimeType;
+  final String? name;
+  final String? description;
+  final String? mimeType;
 
   const McpResourceModel({
     required this.uri,
-    required this.name,
-    required this.description,
-    required this.mimeType,
+    this.name,
+    this.description,
+    this.mimeType,
   });
 
   factory McpResourceModel.fromJson(Map<String, dynamic> json) {
     return McpResourceModel(
       uri: json['uri'] as String,
-      name: json['name'] as String,
-      description: json['description'] as String,
-      mimeType: json['mime_type'] as String,
+      name: json['name'] as String?,
+      description: json['description'] as String?,
+      mimeType: json['mime_type'] as String?,
     );
   }
 
@@ -75,9 +75,7 @@ class McpResourceModel {
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    return other is McpResourceModel &&
-        other.uri == uri &&
-        other.name == name;
+    return other is McpResourceModel && other.uri == uri && other.name == name;
   }
 
   @override
