@@ -98,11 +98,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
+    logger.i("[AuthNotifier] Logout initiated");
     state = const AuthLoading();
     try {
-      await _authService.clearToken();
+      await _authService.performFullLogout();
+      logger.i("[AuthNotifier] Full logout completed");
+      // Note: On web, performFullLogout will redirect the page to login,
+      // so this state change may not be visible
       state = const Unauthenticated(message: "Successfully logged out.");
     } catch (e) {
+      logger.e("[AuthNotifier] Error during logout: $e");
       state = AuthError(e.toString());
       await _authService.clearToken();
       state = const Unauthenticated(
