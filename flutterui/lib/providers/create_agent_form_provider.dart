@@ -223,12 +223,25 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
             uploadedAt: DateTime.now(),
           );
 
-          final updatedFiles = [...state.uploadedFiles, fileInfo];
-          state = state.copyWith(uploadedFiles: updatedFiles);
-
-          logger.i(
-            'File uploaded successfully: ${file.name} -> ${uploadResponse.providerFileId}',
+          // Check if file already exists in the list
+          final existingFileIndex = state.uploadedFiles.indexWhere(
+            (f) => f.fileId == uploadResponse.providerFileId,
           );
+
+          if (existingFileIndex != -1) {
+            // File already exists, don't add duplicate
+            logger.i(
+              'File already uploaded: ${file.name} -> ${uploadResponse.providerFileId}',
+            );
+          } else {
+            // Add new file
+            final updatedFiles = [...state.uploadedFiles, fileInfo];
+            state = state.copyWith(uploadedFiles: updatedFiles);
+
+            logger.i(
+              'File uploaded successfully: ${file.name} -> ${uploadResponse.providerFileId}',
+            );
+          }
         }
       }
     } catch (e) {
