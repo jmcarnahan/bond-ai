@@ -24,6 +24,8 @@ class _AuthCallbackScreenState extends ConsumerState<AuthCallbackScreen> {
   void _handleAuthCallback() async {
     // Made async
     logger.i("[AuthCallbackScreen] _handleAuthCallback triggered.");
+    logger.i("[AuthCallbackScreen] Current route: ${ModalRoute.of(context)?.settings.name}");
+    
     if (kIsWeb) {
       // Use kIsWeb for a more robust check
       logger.i("[AuthCallbackScreen] Running on web.");
@@ -32,17 +34,22 @@ class _AuthCallbackScreenState extends ConsumerState<AuthCallbackScreen> {
 
       final Uri? currentUri = Uri.tryParse(fullUrl);
       if (currentUri == null) {
-        logger.i(
-          "[AuthCallbackScreen] Could not parse URI. Navigating to /login.",
+        logger.e(
+          "[AuthCallbackScreen] Could not parse URI. Navigating to login.",
         );
         if (mounted) {
-          Navigator.of(
-            context,
-          ).pushNamedAndRemoveUntil('/login', (route) => false);
+          try {
+            Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+          } catch (e) {
+            logger.e("[AuthCallbackScreen] Error navigating to /login: $e");
+            Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+          }
         }
         return;
       }
       logger.i("[AuthCallbackScreen] Parsed URI: $currentUri");
+      logger.i("[AuthCallbackScreen] URI Path: ${currentUri.path}");
+      logger.i("[AuthCallbackScreen] URI Query: ${currentUri.queryParameters}");
       logger.i("[AuthCallbackScreen] URI Fragment: ${currentUri.fragment}");
 
       String? token;
@@ -86,35 +93,45 @@ class _AuthCallbackScreenState extends ConsumerState<AuthCallbackScreen> {
 
         if (loginSuccess) {
           logger.i(
-            "[AuthCallbackScreen] loginWithToken succeeded. Navigating to /home.",
+            "[AuthCallbackScreen] loginWithToken succeeded. Navigating to home.",
           );
-          Navigator.of(
-            context,
-          ).pushNamedAndRemoveUntil('/home', (route) => false);
+          // Try named route first (for main.dart), fallback to root (for main_mobile.dart)
+          try {
+            Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+          } catch (e) {
+            Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+          }
         } else {
           logger.i(
-            "[AuthCallbackScreen] loginWithToken failed. Navigating to /login.",
+            "[AuthCallbackScreen] loginWithToken failed. Navigating to login.",
           );
-          Navigator.of(
-            context,
-          ).pushNamedAndRemoveUntil('/login', (route) => false);
+          // Try named route first (for main.dart), fallback to root (for main_mobile.dart)
+          try {
+            Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+          } catch (e) {
+            Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+          }
         }
       } else {
         logger.i(
-          "[AuthCallbackScreen] Token not extracted or is empty. Navigating to /login.",
+          "[AuthCallbackScreen] Token not extracted or is empty. Navigating to login.",
         );
         if (mounted) {
-          Navigator.of(
-            context,
-          ).pushNamedAndRemoveUntil('/login', (route) => false);
+          try {
+            Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+          } catch (e) {
+            Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+          }
         }
       }
     } else {
-      logger.i("[AuthCallbackScreen] Not running on web. Navigating to /login.");
+      logger.i("[AuthCallbackScreen] Not running on web. Navigating to login.");
       if (mounted) {
-        Navigator.of(
-          context,
-        ).pushNamedAndRemoveUntil('/login', (route) => false);
+        try {
+          Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+        } catch (e) {
+          Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+        }
       }
     }
   }

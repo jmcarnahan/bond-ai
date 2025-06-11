@@ -8,5 +8,5 @@ class MobileApiConfig {
       dotenv.env['MOBILE_AGENT_ID'] ?? 'asst_BZ6WaTaNc0THp8eCSDx6leHD';
   
   static String get mobileAgentName => 
-      dotenv.env['MOBILE_AGENT_NAME'] ?? 'Bond AI Assistant';
+      dotenv.env['MOBILE_AGENT_NAME'] ?? 'McAfee Companion';
 }
