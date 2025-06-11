@@ -73,7 +73,8 @@ class MessageListView extends ConsumerWidget {
   }
 
   Widget _buildEmptyChatPlaceholder(BuildContext context, WidgetRef ref, String agentName, bool isSendingIntroduction) {
-    final textTheme = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
     final appTheme = ref.watch(appThemeProvider);
     
     if (isSendingIntroduction) {
@@ -84,9 +85,9 @@ class MessageListView extends ConsumerWidget {
             _AnimatedLogo(appTheme: appTheme),
             const SizedBox(height: 32),
             Text(
-              'McAfee Companion is preparing...',
+              '${appTheme.name} is preparing...',
               style: textTheme.headlineSmall?.copyWith(
-                color: const Color(0xFF1A1A2E),
+                color: theme.colorScheme.onSurface,
                 fontWeight: FontWeight.w300,
                 letterSpacing: 0.5,
               ),
@@ -105,9 +106,9 @@ class MessageListView extends ConsumerWidget {
           _AnimatedLogo(appTheme: appTheme),
           const SizedBox(height: 48),
           Text(
-            'Welcome to McAfee Companion',
+            'Welcome to ${appTheme.name}',
             style: textTheme.headlineSmall?.copyWith(
-              color: const Color(0xFF1A1A2E),
+              color: theme.colorScheme.onSurface,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.5,
             ),
@@ -116,10 +117,10 @@ class MessageListView extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 40.0),
             child: Text(
-              'Your secure AI assistant is ready to help.\nAsk me anything about cybersecurity, privacy, or digital protection.',
+              appTheme.brandingMessage,
               textAlign: TextAlign.center,
               style: textTheme.bodyLarge?.copyWith(
-                color: const Color(0xFF1A1A2E).withOpacity(0.7),
+                color: theme.colorScheme.onSurface.withOpacity(0.7),
                 height: 1.5,
               ),
             ),
@@ -128,10 +129,10 @@ class MessageListView extends ConsumerWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: const Color(0xFFC8102E).withOpacity(0.1),
+              color: theme.colorScheme.primary.withOpacity(0.1),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: const Color(0xFFC8102E).withOpacity(0.2),
+                color: theme.colorScheme.primary.withOpacity(0.2),
               ),
             ),
             child: Row(
@@ -140,13 +141,13 @@ class MessageListView extends ConsumerWidget {
                 Icon(
                   Icons.shield_outlined,
                   size: 16,
-                  color: const Color(0xFFC8102E),
+                  color: theme.colorScheme.primary,
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Protected by McAfee',
+                  'Protected by ${appTheme.name.split(' ').first}',
                   style: textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFFC8102E),
+                    color: theme.colorScheme.primary,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -415,6 +416,8 @@ class _AnimatedLogoState extends State<_AnimatedLogo> with SingleTickerProviderS
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return AnimatedBuilder(
       animation: _animation,
       builder: (context, child) {
@@ -423,17 +426,17 @@ class _AnimatedLogoState extends State<_AnimatedLogo> with SingleTickerProviderS
           height: 120,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Color(0xFF0A0A14),
-                Color(0xFF1A1A2E),
+                theme.colorScheme.surface.withOpacity(0.9),
+                theme.colorScheme.surface,
               ],
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFC8102E).withOpacity(0.3 * _animation.value),
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.3 * _animation.value),
                 blurRadius: 30,
                 spreadRadius: 10,
               ),

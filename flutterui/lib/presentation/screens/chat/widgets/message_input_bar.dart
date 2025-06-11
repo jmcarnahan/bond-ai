@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/message_attachment_bar.dart';
+import 'package:flutterui/main.dart' show appThemeProvider;
 
 class MessageInputBar extends ConsumerStatefulWidget {
   final TextEditingController textController;
@@ -61,19 +62,20 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
 
   @override
   Widget build(BuildContext context) {
-    const mcAfeeRed = Color(0xFFC8102E);
-    const darkBlue = Color(0xFF1A1A2E);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final appTheme = ref.watch(appThemeProvider);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         boxShadow: [
           BoxShadow(
             offset: const Offset(0, -2),
             blurRadius: 8.0,
             spreadRadius: 0,
-            color: Colors.black.withOpacity(0.1),
+            color: colorScheme.shadow.withOpacity(0.1),
           ),
         ],
       ),
@@ -93,16 +95,16 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                   duration: const Duration(milliseconds: 200),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(28.0),
-                    color: Colors.grey.shade100,
+                    color: colorScheme.surfaceContainerHighest,
                     border: Border.all(
                       color: widget.isTextFieldFocused 
-                          ? mcAfeeRed 
-                          : Colors.grey.shade300,
+                          ? colorScheme.primary 
+                          : colorScheme.outline,
                       width: widget.isTextFieldFocused ? 2.0 : 1.0,
                     ),
                     boxShadow: widget.isTextFieldFocused ? [
                       BoxShadow(
-                        color: mcAfeeRed.withOpacity(0.1),
+                        color: colorScheme.primary.withOpacity(0.1),
                         blurRadius: 8,
                         spreadRadius: 1,
                       ),
@@ -130,15 +132,15 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                           keyboardType: TextInputType.multiline,
                           textCapitalization: TextCapitalization.sentences,
                           style: TextStyle(
-                            color: darkBlue,
+                            color: colorScheme.onSurface,
                             fontSize: 16,
                           ),
                           decoration: InputDecoration(
                             hintText: widget.isSendingMessage 
-                                ? 'McAfee Companion is typing...' 
-                                : 'Ask about security, privacy, or protection...',
+                                ? '${appTheme.name} is typing...' 
+                                : 'Type your message here...',
                             hintStyle: TextStyle(
-                              color: Colors.grey.shade500,
+                              color: colorScheme.onSurfaceVariant,
                               fontSize: 16,
                             ),
                             border: InputBorder.none,
@@ -171,15 +173,15 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                       height: 48,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: mcAfeeRed.withOpacity(0.1),
+                        color: colorScheme.primary.withOpacity(0.1),
                       ),
-                      child: const Center(
+                      child: Center(
                         child: SizedBox(
                           width: 24,
                           height: 24,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.5, 
-                            color: mcAfeeRed,
+                            color: colorScheme.primary,
                           ),
                         ),
                       ),
@@ -205,7 +207,8 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
     required String tooltip,
     bool isPrimary = false,
   }) {
-    const mcAfeeRed = Color(0xFFC8102E);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final isEnabled = onPressed != null;
     
     return AnimatedContainer(
@@ -213,13 +216,13 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: isPrimary && isEnabled
-            ? mcAfeeRed
+            ? colorScheme.primary
             : isEnabled 
-                ? Colors.grey.shade200
-                : Colors.grey.shade100,
+                ? colorScheme.surfaceContainerHighest
+                : colorScheme.surfaceContainerHigh,
         boxShadow: isPrimary && isEnabled ? [
           BoxShadow(
-            color: mcAfeeRed.withOpacity(0.3),
+            color: colorScheme.primary.withOpacity(0.3),
             blurRadius: 8,
             spreadRadius: 0,
           ),
@@ -229,10 +232,10 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
         icon: Icon(
           icon,
           color: isPrimary && isEnabled
-              ? Colors.white
+              ? colorScheme.onPrimary
               : isEnabled 
-                  ? const Color(0xFF1A1A2E)
-                  : Colors.grey.shade400,
+                  ? colorScheme.onSurface
+                  : colorScheme.onSurfaceVariant,
           size: 24,
         ),
         tooltip: tooltip,

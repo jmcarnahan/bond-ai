@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/main.dart';
+import 'package:flutterui/core/theme/app_theme.dart';
 
 class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
   final String agentName;
@@ -13,22 +14,16 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final appTheme = ref.watch(appThemeProvider);
+    final theme = Theme.of(context);
+    final customColors = CustomColors.of(context);
 
     return Container(
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF0A0A14), // Dark blue-black
-            Color(0xFF1A1A2E), // Dark blue
-            Color(0xFF16213E), // Midnight blue
-          ],
-        ),
+        color: theme.colorScheme.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 8,
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 4,
             offset: const Offset(0, 2),
           ),
         ],
@@ -39,7 +34,7 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
         automaticallyImplyLeading: false,
         leading: Builder(
           builder: (context) => IconButton(
-            icon: const Icon(Icons.menu, color: Colors.white),
+            icon: Icon(Icons.menu, color: theme.colorScheme.onSurface),
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
@@ -50,7 +45,7 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.1),
+                color: theme.colorScheme.onSurface.withOpacity(0.1),
               ),
               child: Image.asset(
                 appTheme.logoIcon,
@@ -63,19 +58,19 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  "McAfee Companion",
+                Text(
+                  "${appTheme.name} Companion",
                   style: TextStyle(
-                    color: Colors.white,
+                    color: theme.colorScheme.onSurface,
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.5,
                   ),
                 ),
                 Text(
-                  "Secure Assistant",
+                  appTheme.brandingMessage,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
+                    color: theme.colorScheme.onSurface.withOpacity(0.7),
                     fontSize: 12,
                     fontWeight: FontWeight.w400,
                   ),
