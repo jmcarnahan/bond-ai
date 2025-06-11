@@ -9,14 +9,12 @@ import 'thread_list_item.dart';
 class ThreadsListView extends ConsumerWidget {
   final List<Thread> threads;
   final String? selectedThreadId;
-  final bool isFromAgentChat;
   final void Function(Thread) onThreadSelected;
 
   const ThreadsListView({
     super.key,
     required this.threads,
     required this.selectedThreadId,
-    required this.isFromAgentChat,
     required this.onThreadSelected,
   });
 
@@ -36,7 +34,6 @@ class ThreadsListView extends ConsumerWidget {
           return ThreadListItem(
             thread: thread,
             isSelected: isSelected,
-            isFromAgentChat: isFromAgentChat,
             onTap: () => onThreadSelected(thread),
           );
         },
