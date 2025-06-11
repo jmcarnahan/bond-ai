@@ -43,6 +43,9 @@ class ThreadsNotifier extends StateNotifier<AsyncValue<List<Thread>>> {
         );
         currentThreads.add(newThread);
         state = AsyncValue.data(currentThreads);
+        
+        // Automatically select the newly created thread
+        selectThread(newThread.id);
       }
     } catch (e) {
       if (mounted) {

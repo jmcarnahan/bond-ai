@@ -5,11 +5,19 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutterui/main.dart' show sharedPreferencesProvider, appThemeProvider;
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/providers/thread_provider.dart';
+import 'package:flutterui/data/models/thread_model.dart';
 import 'package:flutterui/presentation/screens/auth/login_screen.dart';
+import 'package:flutterui/presentation/screens/auth/auth_callback_screen.dart';
 import 'package:flutterui/presentation/screens/chat/chat_screen.dart';
 import 'package:flutterui/presentation/screens/threads/threads_screen.dart';
 import 'package:flutterui/core/constants/mobile_api_config.dart';
 import 'package:flutterui/core/constants/api_constants.dart';
+import 'package:flutterui/core/utils/logger.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:web/web.dart' as web if (dart.library.io) 'dart:io';
+
+// Provider to control the bottom navigation index
+final navigationIndexProvider = StateProvider<int>((ref) => 0);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,12 +50,46 @@ class MobileApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final appTheme = ref.watch(appThemeProvider);
+    
+    // Determine initial route based on current URL
+    String initialRoute = '/';
+    if (kIsWeb) {
+      final currentUrl = Uri.parse(web.window.location.href);
+      logger.i('[MobileApp] Current URL on startup: $currentUrl');
+      
+      // Check if we're on the auth callback page
+      if (currentUrl.path.endsWith('/auth-callback') || 
+          currentUrl.queryParameters.containsKey('token')) {
+        initialRoute = '/auth-callback';
+        logger.i('[MobileApp] Starting with auth-callback route');
+      }
+    }
 
     return MaterialApp(
       title: 'Bond AI Mobile',
       debugShowCheckedModeBanner: false,
       theme: appTheme.themeData,
-      home: const MobileAuthWrapper(),
+      initialRoute: initialRoute,
+      onGenerateRoute: (settings) {
+        logger.i('[MobileApp] Route requested: ${settings.name}');
+        logger.i('[MobileApp] Route arguments: ${settings.arguments}');
+        
+        // Handle auth callback route
+        if (settings.name == '/auth-callback') {
+          logger.i('[MobileApp] Navigating to AuthCallbackScreen');
+          return MaterialPageRoute(
+            builder: (context) => const AuthCallbackScreen(),
+            settings: settings,
+          );
+        }
+        
+        // Default route
+        logger.i('[MobileApp] Navigating to MobileAuthWrapper (default)');
+        return MaterialPageRoute(
+          builder: (context) => const MobileAuthWrapper(),
+          settings: settings,
+        );
+      },
     );
   }
 }
@@ -58,6 +100,16 @@ class MobileAuthWrapper extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authNotifierProvider);
+    
+    // Log state changes
+    logger.i('[MobileAuthWrapper] Current auth state: ${authState.runtimeType}');
+    if (authState is Authenticated) {
+      logger.i('[MobileAuthWrapper] User authenticated: ${authState.user.email}');
+    } else if (authState is Unauthenticated) {
+      logger.i('[MobileAuthWrapper] User unauthenticated: ${authState.message}');
+    } else if (authState is AuthError) {
+      logger.e('[MobileAuthWrapper] Auth error: ${authState.error}');
+    }
 
     if (authState is AuthInitial || authState is AuthLoading) {
       return const Scaffold(
@@ -98,16 +150,18 @@ class MobileNavigationShell extends ConsumerStatefulWidget {
 }
 
 class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
-  int _currentIndex = 0;
-
   @override
   Widget build(BuildContext context) {
     final selectedThread = ref.watch(selectedThreadProvider);
+    final currentIndex = ref.watch(navigationIndexProvider);
     
-    // If a thread is selected, show chat screen
-    if (selectedThread != null && _currentIndex == 1) {
-      _currentIndex = 0; // Switch to chat tab
-    }
+    // Listen for thread selection changes
+    ref.listen<Thread?>(selectedThreadProvider, (previous, next) {
+      if (previous == null && next != null) {
+        // A thread was just selected, switch to chat tab
+        ref.read(navigationIndexProvider.notifier).state = 0;
+      }
+    });
 
     final List<Widget> pages = [
       ChatScreen(
@@ -120,15 +174,13 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
 
     return Scaffold(
       body: IndexedStack(
-        index: _currentIndex,
+        index: currentIndex,
         children: pages,
       ),
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
+        currentIndex: currentIndex,
         onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
+          ref.read(navigationIndexProvider.notifier).state = index;
         },
         items: const [
           BottomNavigationBarItem(

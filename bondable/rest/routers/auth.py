@@ -99,7 +99,19 @@ async def auth_callback_provider(provider: str, request: Request, bond_provider 
         )
         LOGGER.info(f"Generated JWT for user: {user_info.get('email')} (provider: {provider})")
 
-        flutter_redirect_url = f"{jwt_config.JWT_REDIRECT_URI}/#/auth-callback?token={access_token}"
+        # Check if this is a mobile app request (no hash routing)
+        # Mobile apps typically include a specific header or query param
+        user_agent = request.headers.get("user-agent", "").lower()
+        
+        # For mobile app or when hash routing is not needed
+        if "flutter" in user_agent or jwt_config.JWT_REDIRECT_URI.endswith(":5000"):
+            # Use regular routing for mobile app
+            flutter_redirect_url = f"{jwt_config.JWT_REDIRECT_URI}/auth-callback?token={access_token}"
+        else:
+            # Use hash routing for web app
+            flutter_redirect_url = f"{jwt_config.JWT_REDIRECT_URI}/#/auth-callback?token={access_token}"
+            
+        LOGGER.info(f"Redirecting to: {flutter_redirect_url}")
         return RedirectResponse(url=flutter_redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
     except ValueError as e:

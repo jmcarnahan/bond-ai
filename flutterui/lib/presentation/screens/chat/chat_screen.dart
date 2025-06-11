@@ -9,6 +9,7 @@ import '../../../core/utils/logger.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/chat_app_bar.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/message_input_bar.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/message_list_view.dart';
+import 'package:flutterui/presentation/widgets/app_drawer.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
@@ -175,8 +176,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with ErrorHandlingMixin
   @override
   Widget build(BuildContext context) {
     final chatState = ref.watch(chatSessionNotifierProvider);
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
 
     ref.listen(
       chatSessionNotifierProvider.select((state) => state.messages.length),
@@ -212,38 +211,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with ErrorHandlingMixin
     });
 
     return Scaffold(
-      backgroundColor: colorScheme.surface,
+      backgroundColor: Colors.grey.shade50,
+      drawer: const AppDrawer(),
       appBar: ChatAppBar(
         agentName: widget.agentName,
-        onViewThreads: () {
-          Navigator.pushNamed(context, '/threads');
-        },
-        onStartNewThread: () async {
-          final confirm = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Start New Conversation?'),
-              content: Text(
-                'This will clear the current conversation from view, allowing you to start fresh with ${widget.agentName}.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Start New'),
-                ),
-              ],
-            ),
-          );
-
-          if (confirm == true) {
-            ref.read(threadsProvider.notifier).deselectThread();
-            ref.read(chatSessionNotifierProvider.notifier).clearChatSession();
-          }
-        },
       ),
       body: Column(
         children: [
