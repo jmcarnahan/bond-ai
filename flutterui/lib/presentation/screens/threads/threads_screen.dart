@@ -13,9 +13,7 @@ import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 import 'package:flutterui/core/error_handling/error_handler.dart';
 
 class ThreadsScreen extends ConsumerStatefulWidget {
-  final bool isFromAgentChat;
-
-  const ThreadsScreen({super.key, this.isFromAgentChat = false});
+  const ThreadsScreen({super.key});
 
   @override
   ConsumerState<ThreadsScreen> createState() => _ThreadsScreenState();
@@ -29,6 +27,13 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> with ErrorHandlin
     super.initState();
     _controller = ThreadsController(ref: ref, context: context);
     _controller.initializeThreads();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh threads whenever we navigate to this screen
+    _controller.refreshThreads();
   }
 
   void _showCreateThreadDialog() {
@@ -131,7 +136,6 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> with ErrorHandlin
     return ThreadsListView(
       threads: threads,
       selectedThreadId: selectedThreadId,
-      isFromAgentChat: widget.isFromAgentChat,
       onThreadSelected: _onThreadSelected,
     );
   }

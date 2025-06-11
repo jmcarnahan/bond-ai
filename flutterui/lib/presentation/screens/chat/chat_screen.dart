@@ -216,7 +216,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with ErrorHandlingMixin
       appBar: ChatAppBar(
         agentName: widget.agentName,
         onViewThreads: () {
-          Navigator.pushNamed(context, '/threads', arguments: {'isFromAgentChat': true});
+          Navigator.pushNamed(context, '/threads');
         },
         onStartNewThread: () async {
           final confirm = await showDialog<bool>(

@@ -8,14 +8,12 @@ import 'package:flutterui/providers/thread_provider.dart';
 class ThreadListItem extends ConsumerWidget {
   final Thread thread;
   final bool isSelected;
-  final bool isFromAgentChat;
   final VoidCallback onTap;
 
   const ThreadListItem({
     super.key,
     required this.thread,
     required this.isSelected,
-    required this.isFromAgentChat,
     required this.onTap,
   });
 
@@ -96,8 +94,6 @@ class ThreadListItem extends ConsumerWidget {
   }
 
   Widget? _buildTrailing(BuildContext context, WidgetRef ref, ThemeData theme) {
-    if (isFromAgentChat) return null;
-
     return IconButton(
       icon: Icon(
         Icons.delete_outline,
