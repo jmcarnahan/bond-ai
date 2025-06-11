@@ -52,6 +52,9 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
           "[ChatStreamHandler] Extracted thread_id from most recent response: ${lastMessage.threadId}",
         );
         state = state.copyWith(currentThreadId: lastMessage.threadId);
+        
+        // Note: We can't directly access providers here since this is a mixin
+        // The threads will be refreshed when navigating to the threads screen
       }
     }
 

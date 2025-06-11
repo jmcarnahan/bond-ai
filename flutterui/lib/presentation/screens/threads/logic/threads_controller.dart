@@ -17,6 +17,10 @@ class ThreadsController {
   ThreadsNotifier get _notifier => ref.read(threadsProvider.notifier);
 
   void initializeThreads() {
+    // Always refresh threads when the screen is shown to get latest data
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      refreshThreads();
+    });
   }
 
   void showErrorSnackBar(String error) {
