@@ -61,7 +61,6 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
       final tools = results[0] as List<McpToolModel>;
       final resources = results[1] as List<McpResourceModel>;
 
-
       setState(() {
         _tools = tools;
         _resources = resources;
@@ -130,9 +129,9 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
           subtitle: 'Select tools and resources to enable for this agent',
           margin: EdgeInsets.zero,
           children: [
-            if (_isLoading) 
+            if (_isLoading)
               BondAILoadingState(message: 'Loading MCP tools and resources...'),
-            if (_errorMessage != null) 
+            if (_errorMessage != null)
               BondAIErrorState(
                 message: 'Error loading MCP data',
                 errorDetails: _errorMessage!,
@@ -140,11 +139,15 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
               ),
             if (!_isLoading && _errorMessage == null) ...[
               _buildToolsSection(theme),
-              if ((_tools == null || _tools!.isEmpty) && (_resources == null || _resources!.isEmpty))
+              if ((_tools == null || _tools!.isEmpty) &&
+                  (_resources == null || _resources!.isEmpty))
                 SizedBox(height: AppSpacing.xl),
-              if ((_tools == null || _tools!.isEmpty) && (_resources == null || _resources!.isEmpty))
+              if ((_tools == null || _tools!.isEmpty) &&
+                  (_resources == null || _resources!.isEmpty))
                 Divider(
-                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
+                  color: theme.colorScheme.outlineVariant.withValues(
+                    alpha: 0.2,
+                  ),
                   height: 1,
                 ),
               SizedBox(height: AppSpacing.xxl),
@@ -156,12 +159,12 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
     );
   }
 
-
   Widget _buildToolsSection(ThemeData theme) {
     if (_tools == null || _tools!.isEmpty) {
       return BondAIResourceUnavailable(
         message: 'No tools available',
-        description: 'Please contact the administrator to enable external tools',
+        description:
+            'Please contact the administrator to enable external tools',
         type: ResourceUnavailableType.empty,
         showBorder: false,
         padding: EdgeInsets.zero,
@@ -171,16 +174,21 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
 
     return BondAIContainerSection(
       title: 'Available Tools (${_tools!.length})',
-      children: _tools!.map((tool) => 
-        BondAITile(
-          type: BondAITileType.checkbox,
-          title: tool.name,
-          subtitle: tool.description,
-          value: widget.selectedToolNames.contains(tool.name),
-          enabled: widget.enabled,
-          onChanged: (value) => _onToolSelectionChanged(tool.name, value ?? false),
-        ),
-      ).toList(),
+      children:
+          _tools!
+              .map(
+                (tool) => BondAITile(
+                  type: BondAITileType.checkbox,
+                  title: tool.name,
+                  subtitle: tool.description,
+                  value: widget.selectedToolNames.contains(tool.name),
+                  enabled: widget.enabled,
+                  onChanged:
+                      (value) =>
+                          _onToolSelectionChanged(tool.name, value ?? false),
+                ),
+              )
+              .toList(),
     );
   }
 
@@ -188,7 +196,8 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
     if (_resources == null || _resources!.isEmpty) {
       return BondAIResourceUnavailable(
         message: 'No resources available',
-        description: 'Please contact the administrator to enable external resources',
+        description:
+            'Please contact the administrator to enable external resources',
         type: ResourceUnavailableType.empty,
         showBorder: false,
         padding: EdgeInsets.zero,
@@ -198,18 +207,24 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
 
     return BondAIContainerSection(
       title: 'Available Resources (${_resources!.length})',
-      children: _resources!.map((resource) => 
-        BondAITile(
-          type: BondAITileType.checkbox,
-          title: resource.name,
-          subtitle: resource.description,
-          description: '${resource.mimeType} • ${resource.uri}',
-          value: widget.selectedResourceUris.contains(resource.uri),
-          enabled: widget.enabled,
-          onChanged: (value) => _onResourceSelectionChanged(resource.uri, value ?? false),
-        ),
-      ).toList(),
+      children:
+          _resources!
+              .map(
+                (resource) => BondAITile(
+                  type: BondAITileType.checkbox,
+                  title: resource.name ?? resource.uri,
+                  subtitle: resource.description,
+                  description: '${resource.mimeType} • ${resource.uri}',
+                  value: widget.selectedResourceUris.contains(resource.uri),
+                  enabled: widget.enabled,
+                  onChanged:
+                      (value) => _onResourceSelectionChanged(
+                        resource.uri,
+                        value ?? false,
+                      ),
+                ),
+              )
+              .toList(),
     );
   }
-
 }
