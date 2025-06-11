@@ -1,8 +1,9 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show immutable;
+import 'package:flutter/foundation.dart' show immutable, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:web/web.dart' as web;
 
 import 'package:flutterui/core/constants/api_constants.dart';
 import 'package:flutterui/data/models/user_model.dart';
@@ -57,7 +58,44 @@ class AuthService {
   }
 
   Future<void> clearToken() async {
+    final hadToken = await retrieveToken();
     await _sharedPreferences.remove(_tokenStorageKey);
+    final tokenAfterClear = await retrieveToken();
+    
+    // Log for debugging
+    if (kIsWeb) {
+      print('[AuthService] Logout - Had token: ${hadToken != null}');
+      print('[AuthService] Logout - Token after clear: ${tokenAfterClear != null}');
+    }
+  }
+
+  Future<void> performFullLogout() async {
+    await clearToken();
+    
+    // On web, clear all browser storage and force a page reload to ensure clean state
+    if (kIsWeb) {
+      print('[AuthService] Performing full web logout - clearing all storage');
+      
+      // Clear all possible browser storage
+      try {
+        // Clear localStorage
+        await _sharedPreferences.clear();
+        
+        // Force a page reload to ensure all state is cleared
+        // This will trigger a fresh authentication check
+        final currentUrl = Uri.parse(web.window.location.href);
+        final loginUrl = Uri(
+          scheme: currentUrl.scheme,
+          host: currentUrl.host,
+          port: currentUrl.port,
+          path: '/#/login',
+        ).toString();
+        
+        web.window.location.href = loginUrl;
+      } catch (e) {
+        print('[AuthService] Error during full logout: $e');
+      }
+    }
   }
 
   Future<User> getCurrentUser() async {
