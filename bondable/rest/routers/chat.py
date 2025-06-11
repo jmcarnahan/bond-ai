@@ -33,18 +33,29 @@ async def chat(
         else:
             # For system messages (introduction), use generic name
             thread_name = "New Conversation"
-            
-        new_thread = provider.threads.create_thread(user_id=current_user.user_id, name=thread_name)
-        thread_id = new_thread.thread_id
-        LOGGER.info(f"Created new thread: {thread_id} with name: {thread_name}")
+        
+        try:
+            new_thread = provider.threads.create_thread(user_id=current_user.user_id, name=thread_name)
+            thread_id = new_thread.thread_id
+            LOGGER.info(f"Created new thread: {thread_id} with name: {thread_name}")
+        except Exception as e:
+            LOGGER.error(f"Failed to create thread for user {current_user.user_id}: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to create new thread: {str(e)}"
+            )
     else:
         # Check if this is a user message and the thread name needs updating
         if request_body.override_role == "user":
-            existing_thread = provider.threads.get_thread(thread_id, current_user.user_id)
-            if existing_thread and existing_thread.name == "New Conversation":
-                new_thread_name = request_body.prompt[:30] + "..." if len(request_body.prompt) > 30 else request_body.prompt
-                provider.threads.update_thread(thread_id, current_user.user_id, new_thread_name)
-                LOGGER.info(f"Updated thread {thread_id} name from 'New Conversation' to: {new_thread_name}")
+            try:
+                existing_thread = provider.threads.get_thread(thread_id, current_user.user_id)
+                if existing_thread and existing_thread.name == "New Conversation":
+                    new_thread_name = request_body.prompt[:30] + "..." if len(request_body.prompt) > 30 else request_body.prompt
+                    provider.threads.update_thread(thread_id, current_user.user_id, new_thread_name)
+                    LOGGER.info(f"Updated thread {thread_id} name from 'New Conversation' to: {new_thread_name}")
+            except Exception as e:
+                LOGGER.error(f"Failed to update thread name for {thread_id}: {e}", exc_info=True)
+                # Don't fail the request, just log the error
     
     if request_body.override_role == "system":
         LOGGER.info(f"System message (introduction) being sent: {request_body.prompt[:100]}...")
