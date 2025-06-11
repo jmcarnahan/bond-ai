@@ -33,7 +33,8 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> with ErrorHandlin
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Refresh threads whenever we navigate to this screen
-    _controller.refreshThreads();
+    // Use Future to avoid modifying provider during build
+    Future.microtask(() => _controller.refreshThreads());
   }
 
   void _showCreateThreadDialog() {
