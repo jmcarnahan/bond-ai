@@ -1,7 +1,7 @@
 import logging
-from typing import Annotated, List, Dict, Any
+from typing import Annotated, List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, AnyUrl
 
 from bondable.bond.mcp_client import MCPClient
 from bondable.rest.models.auth import User
@@ -20,10 +20,10 @@ class MCPToolResponse(BaseModel):
 
 class MCPResourceResponse(BaseModel):
     """Response model for MCP resource information."""
-    uri: str
-    name: str
-    description: str
-    mime_type: str
+    uri: AnyUrl
+    name: Optional[str]
+    description: Optional[str]
+    mime_type: Optional[str]
 
 
 @router.get("/tools", response_model=List[MCPToolResponse])
