@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/main.dart';
-import 'package:flutterui/core/theme/app_theme.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -154,7 +153,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
     final appTheme = ref.watch(appThemeProvider);
-    final size = MediaQuery.of(context).size;
 
     ref.listen<AuthState>(authNotifierProvider, (previous, next) {
       if (next is AuthError) {

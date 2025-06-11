@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:flutterui/core/constants/app_constants.dart';
 import 'package:flutterui/data/models/thread_model.dart';
 import 'package:flutterui/providers/thread_provider.dart';
 
@@ -20,59 +19,100 @@ class ThreadListItem extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    const mcAfeeRed = Color(0xFFC8102E);
 
-    return Card(
-      elevation: isSelected ? AppElevation.sm : AppElevation.xs,
-      margin: AppSpacing.verticalSm,
-      shape: RoundedRectangleBorder(
-        borderRadius: AppBorderRadius.allMd,
-        side: isSelected
-            ? BorderSide(
-                color: theme.colorScheme.primary,
-                width: 1.5,
-              )
-            : BorderSide(
-                color: theme.dividerColor,
-                width: 0.5,
-              ),
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        border: Border.all(
+          color: isSelected ? mcAfeeRed : Colors.grey.shade200,
+          width: isSelected ? 2.0 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: isSelected 
+                ? mcAfeeRed.withOpacity(0.15)
+                : Colors.black.withOpacity(0.05),
+            blurRadius: isSelected ? 12 : 8,
+            offset: const Offset(0, 4),
+            spreadRadius: isSelected ? 1 : 0,
+          ),
+        ],
       ),
-      child: ListTile(
-        tileColor: isSelected
-            ? theme.colorScheme.primary.withValues(alpha: 0.5)
-            : null,
-        leading: _buildLeadingIcon(theme),
-        title: _buildTitle(theme),
-        subtitle: _buildSubtitle(theme),
-        trailing: _buildTrailing(context, ref, theme),
-        onTap: onTap,
-        contentPadding: AppSpacing.horizontalXl.add(AppSpacing.verticalMd),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                _buildLeadingIcon(theme, isSelected),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTitle(theme, isSelected),
+                      if (thread.description != null && thread.description!.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        _buildSubtitle(theme)!,
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _buildDeleteButton(context, ref, theme),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildLeadingIcon(ThemeData theme) {
-    return Icon(
-      isSelected ? Icons.chat_bubble : Icons.chat_bubble_outline,
-      color: isSelected
-          ? theme.colorScheme.primary
-          : theme.colorScheme.onSurface.withValues(alpha: 0.7),
-      size: AppSizes.iconLg,
+  Widget _buildLeadingIcon(ThemeData theme, bool selected) {
+    const mcAfeeRed = Color(0xFFC8102E);
+    const darkBlue = Color(0xFF1A1A2E);
+    
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: selected
+              ? [mcAfeeRed.withOpacity(0.8), mcAfeeRed]
+              : [darkBlue.withOpacity(0.1), darkBlue.withOpacity(0.2)],
+        ),
+      ),
+      child: Icon(
+        selected ? Icons.chat_bubble : Icons.chat_bubble_outline,
+        color: selected ? Colors.white : darkBlue,
+        size: 24,
+      ),
     );
   }
 
-  Widget _buildTitle(ThemeData theme) {
-    final displayName = thread.name.isNotEmpty ? thread.name : "Unnamed Thread";
+  Widget _buildTitle(ThemeData theme, bool selected) {
+    const mcAfeeRed = Color(0xFFC8102E);
+    const darkBlue = Color(0xFF1A1A2E);
+    final displayName = thread.name.isNotEmpty ? thread.name : "Unnamed Conversation";
     
     return Text(
       displayName,
-      style: isSelected
-          ? theme.textTheme.bodyLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: theme.colorScheme.primary,
-            )
-          : theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.onSurface,
-            ),
+      style: TextStyle(
+        fontSize: 16,
+        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+        color: selected ? mcAfeeRed : darkBlue,
+        letterSpacing: 0.2,
+      ),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
     );
@@ -87,20 +127,21 @@ class ThreadListItem extends ConsumerWidget {
       thread.description!,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: theme.textTheme.bodyMedium?.copyWith(
-        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+      style: TextStyle(
+        fontSize: 14,
+        color: Colors.grey.shade600,
       ),
     );
   }
 
-  Widget? _buildTrailing(BuildContext context, WidgetRef ref, ThemeData theme) {
+  Widget _buildDeleteButton(BuildContext context, WidgetRef ref, ThemeData theme) {
     return IconButton(
       icon: Icon(
         Icons.delete_outline,
-        color: theme.colorScheme.error.withValues(alpha: 0.8),
-        size: AppSizes.iconMd,
+        color: Colors.grey.shade400,
+        size: 20,
       ),
-      tooltip: 'Delete Thread',
+      tooltip: 'Delete Conversation',
       onPressed: () => _showDeleteConfirmation(context, ref, theme),
     );
   }
