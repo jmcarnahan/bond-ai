@@ -156,11 +156,8 @@ class AppSidebar extends ConsumerWidget {
             title: Text('Logout', style: TextStyle(color: currentOnSurfaceColor)),
             onTap: () async {
               Navigator.pop(context);
+              // Note: logout() will handle page redirection on web automatically
               await ref.read(authNotifierProvider.notifier).logout();
-              // Navigate to login screen after logout
-              if (context.mounted) {
-                Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-              }
             },
           ),
         ],
