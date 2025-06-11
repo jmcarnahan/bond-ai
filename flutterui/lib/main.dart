@@ -115,11 +115,7 @@ class MyApp extends ConsumerWidget {
             pageWidget = const AuthCallbackScreen();
             break;
           case '/threads':
-            bool isFromAgentChat = false;
-            if (settings.arguments is Map<String, dynamic>) {
-              isFromAgentChat = (settings.arguments as Map<String, dynamic>)['isFromAgentChat'] ?? false;
-            }
-            pageWidget = ThreadsScreen(isFromAgentChat: isFromAgentChat);
+            pageWidget = const ThreadsScreen();
             break;
           case CreateAgentScreen.routeName:
             pageWidget = const CreateAgentScreen();
