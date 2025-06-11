@@ -42,45 +42,92 @@ class ThreadsProvider(ABC):
         pass
 
     def create_thread(self, user_id: str, name: Optional[str] = None) -> Thread: # Return Thread object
-        thread_id = self.create_thread_resource()  
-        return self.grant_thread(thread_id=thread_id, user_id=user_id, name=name, fail_if_missing=False)
+        thread_id = None
+        try:
+            # First create the thread resource (OpenAI thread)
+            thread_id = self.create_thread_resource()
+            LOGGER.info(f"Successfully created thread resource with ID: {thread_id}")
+            
+            # Then save to database
+            thread_record = self.grant_thread(thread_id=thread_id, user_id=user_id, name=name, fail_if_missing=False)
+            
+            # Verify the thread was saved to database
+            with self.metadata.get_db_session() as session:
+                verify_thread = session.query(Thread).filter_by(thread_id=thread_id, user_id=user_id).first()
+                if not verify_thread:
+                    LOGGER.error(f"Thread {thread_id} was not found in database after creation!")
+                    raise Exception(f"Failed to save thread {thread_id} to database")
+                else:
+                    LOGGER.info(f"Verified thread {thread_id} exists in database for user {user_id}")
+            
+            return thread_record
+            
+        except Exception as e:
+            LOGGER.error(f"Error in create_thread for user {user_id}: {e}", exc_info=True)
+            # If thread was created in provider but DB save failed, try to clean up
+            if thread_id:
+                try:
+                    LOGGER.warning(f"Attempting to delete orphaned thread resource {thread_id}")
+                    self.delete_thread_resource(thread_id)
+                except Exception as cleanup_error:
+                    LOGGER.error(f"Failed to cleanup orphaned thread {thread_id}: {cleanup_error}")
+            raise e
     
     def update_thread_name(self, thread_id: str, user_id: str, thread_name: str) -> None:
-        with self.metadata.get_db_session() as session:  
+        session = self.metadata.get_db_session()
+        try:
             thread = session.query(Thread).filter_by(thread_id=thread_id, user_id=user_id).first()
             if thread:
                 thread.name = thread_name  
-                session.commit()  
+                session.commit()
+                LOGGER.info(f"Successfully updated thread {thread_id} name to '{thread_name}' for user {user_id}")  
             else:
                 LOGGER.error(f"Thread {thread_id} not found for user {user_id}. Cannot update name.")
+        except Exception as e:
+            LOGGER.error(f"Error updating thread name: {e}", exc_info=True)
+            session.rollback()
+            raise e
+        finally:
+            session.close()
 
     def update_thread(self, thread_id: str, user_id: str, name: str) -> bool:
         """Update a thread's metadata for a specific user."""
-        with self.metadata.get_db_session() as session:  
+        session = self.metadata.get_db_session()
+        try:
             thread = session.query(Thread).filter_by(thread_id=thread_id, user_id=user_id).first()
             if thread:
                 thread.name = name
-                session.commit()  
+                session.commit()
+                LOGGER.info(f"Successfully updated thread {thread_id} name to '{name}' for user {user_id}")
                 return True
             else:
                 LOGGER.error(f"Thread {thread_id} not found for user {user_id}. Cannot update.")
                 return False
+        except Exception as e:
+            LOGGER.error(f"Error updating thread metadata: {e}", exc_info=True)
+            session.rollback()
+            return False
+        finally:
+            session.close()
 
 
-    def get_current_threads(self, user_id: str, count: int = 10) -> list:
+    def get_current_threads(self, user_id: str, count: int = 20) -> list:
         with self.metadata.get_db_session() as session:  
             results = (session.query(Thread.thread_id, Thread.name, Thread.created_at, Thread.updated_at)
-                        .filter_by(user_id=user_id).order_by(Thread.created_at.desc()).limit(count).all())
+                        .filter_by(user_id=user_id)
+                        .order_by(Thread.updated_at.desc(), Thread.created_at.desc())
+                        .limit(count).all())
             threads = [
                 {"thread_id": thread_id, "name": name, "created_at": created_at, "updated_at": updated_at}
                 for thread_id, name, created_at, updated_at in results
             ]
-            LOGGER.debug(f"Retrieved available threads: {len(threads)}")
+            LOGGER.info(f"Retrieved {len(threads)} threads for user {user_id} (limit: {count}, sorted by updated_at desc)")
             return threads
 
 
     def grant_thread(self, thread_id: str, user_id: str, name: Optional[str] = None, fail_if_missing: bool = False) -> Thread:
-        with self.metadata.get_db_session() as session:
+        session = self.metadata.get_db_session()
+        try:
             if fail_if_missing:
                 # Check if the thread_id exists for *any* user.
                 # This confirms the thread is known to the system if we are trying to grant access to an existing thread.
@@ -97,6 +144,7 @@ class ThreadsProvider(ABC):
                 if name is not None and user_access_record.name != name:
                     user_access_record.name = name
                     session.commit()
+                    LOGGER.info(f"Updated thread {thread_id} name to '{name}' for user {user_id}")
                     session.refresh(user_access_record) # Ensure the returned object reflects the update.
                 return user_access_record
             else:
@@ -105,8 +153,15 @@ class ThreadsProvider(ABC):
                 new_access_record = Thread(thread_id=thread_id, user_id=user_id, name=name)
                 session.add(new_access_record)
                 session.commit()
+                LOGGER.info(f"Created new thread record in database: thread_id={thread_id}, user_id={user_id}, name='{name or 'New Thread'}'")
                 session.refresh(new_access_record) # Load any DB-generated defaults.
                 return new_access_record
+        except Exception as e:
+            LOGGER.error(f"Error in grant_thread for thread_id={thread_id}, user_id={user_id}: {e}", exc_info=True)
+            session.rollback()
+            raise e
+        finally:
+            session.close()
 
 
     def delete_thread(self, thread_id: str, user_id: str) -> bool:
