@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/main.dart';
+import 'package:flutterui/core/theme/app_theme.dart';
 
 class AppDrawer extends ConsumerWidget {
   const AppDrawer({super.key});
@@ -23,9 +24,9 @@ class AppDrawer extends ConsumerWidget {
               Navigator.of(context).pop(); // Close drawer
               ref.read(authNotifierProvider.notifier).logout();
             },
-            child: const Text(
+            child: Text(
               'Logout',
-              style: TextStyle(color: Color(0xFFC8102E)),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ),
         ],
@@ -37,6 +38,8 @@ class AppDrawer extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authNotifierProvider);
     final appTheme = ref.watch(appThemeProvider);
+    final theme = Theme.of(context);
+    final customColors = CustomColors.of(context);
     
     String userEmail = '';
     if (authState is Authenticated) {
@@ -46,26 +49,17 @@ class AppDrawer extends ConsumerWidget {
     return Drawer(
       width: 280,
       child: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF0A0A14), // Dark blue-black
-              Color(0xFF1A1A2E), // Dark blue
-            ],
-          ),
-        ),
+        color: theme.colorScheme.surface,
         child: SafeArea(
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   border: Border(
                     bottom: BorderSide(
-                      color: Colors.white24,
+                      color: theme.dividerColor.withOpacity(0.3),
                       width: 1,
                     ),
                   ),
@@ -77,7 +71,7 @@ class AppDrawer extends ConsumerWidget {
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.1),
+                        color: theme.colorScheme.onSurface.withOpacity(0.1),
                       ),
                       child: Image.asset(
                         appTheme.logoIcon,
@@ -86,10 +80,10 @@ class AppDrawer extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'McAfee Companion',
+                    Text(
+                      '${appTheme.name} Companion',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: theme.colorScheme.onSurface,
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.5,
@@ -100,7 +94,7 @@ class AppDrawer extends ConsumerWidget {
                       Text(
                         userEmail,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                          color: theme.colorScheme.onSurface.withOpacity(0.7),
                           fontSize: 13,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -109,14 +103,14 @@ class AppDrawer extends ConsumerWidget {
                 ),
               ),
               ListTile(
-                leading: const Icon(
+                leading: Icon(
                   Icons.logout,
-                  color: Colors.white,
+                  color: theme.colorScheme.onSurface,
                 ),
-                title: const Text(
+                title: Text(
                   'Logout',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: theme.colorScheme.onSurface,
                     fontSize: 16,
                   ),
                 ),

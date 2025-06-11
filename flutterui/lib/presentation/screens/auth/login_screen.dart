@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/main.dart';
+import 'package:flutterui/core/theme/app_theme.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -81,7 +82,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     }
   }
 
-  Widget _buildProviderButton(Map<String, dynamic> provider, AuthState authState) {
+  Widget _buildProviderButton(Map<String, dynamic> provider, AuthState authState, AppTheme appTheme) {
     final providerName = provider['name'] as String;
     final isLoading = authState is AuthLoading;
     
@@ -107,14 +108,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             ),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF1A1A1A),
+                backgroundColor: appTheme.themeData.colorScheme.surface,
+                foregroundColor: appTheme.themeData.colorScheme.onSurface,
                 padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 32),
                 minimumSize: const Size(double.infinity, 56),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(28.0),
                   side: BorderSide(
-                    color: Colors.grey.withOpacity(0.2),
+                    color: appTheme.themeData.dividerColor.withOpacity(0.2),
                     width: 1,
                   ),
                 ),
@@ -163,16 +164,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     return Scaffold(
       body: Stack(
         children: [
-          // Animated gradient background
+          // Subtle gradient background
           Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Color(0xFF0A0A14), // Dark blue-black
-                  Color(0xFF1A1A2E), // Dark blue
-                  Color(0xFF16213E), // Midnight blue
+                  appTheme.themeData.colorScheme.surface,
+                  appTheme.themeData.colorScheme.surface.withOpacity(0.95),
+                  appTheme.themeData.colorScheme.surfaceVariant ?? appTheme.themeData.colorScheme.surface.withOpacity(0.9),
                 ],
               ),
             ),
@@ -187,19 +188,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             ),
           ),
           
-          // Red accent bar at top
+          // Accent bar at top
           Positioned(
             top: 0,
             left: 0,
             right: 0,
             child: Container(
               height: 4,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Color(0xFF8B0000),
-                    Color(0xFFC8102E), // Official McAfee red
-                    Color(0xFF8B0000),
+                    appTheme.themeData.colorScheme.primary.withOpacity(0.6),
+                    appTheme.themeData.colorScheme.primary,
+                    appTheme.themeData.colorScheme.primary.withOpacity(0.6),
                   ],
                 ),
               ),
@@ -232,11 +233,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                     padding: const EdgeInsets.all(24),
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
+                                      color: appTheme.themeData.colorScheme.surface,
                                       boxShadow: [
                                         BoxShadow(
-                                          color: const Color(0xFFC8102E).withOpacity(0.3 * _logoAnimation.value),
-                                          blurRadius: 40,
-                                          spreadRadius: 10,
+                                          color: appTheme.themeData.colorScheme.primary.withOpacity(0.2 * _logoAnimation.value),
+                                          blurRadius: 30,
+                                          spreadRadius: 5,
+                                        ),
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.1),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 4),
                                         ),
                                       ],
                                     ),
@@ -254,10 +261,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                               Text(
                                 'Welcome to ${appTheme.name}',
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Colors.white,
+                                style: TextStyle(
+                                  color: appTheme.themeData.colorScheme.onSurface,
                                   fontSize: 28,
-                                  fontWeight: FontWeight.w300,
+                                  fontWeight: FontWeight.w600,
                                   letterSpacing: 1.2,
                                 ),
                               ),
@@ -266,12 +273,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                               
                               // Tagline
                               Text(
-                                'Secure your digital life',
+                                appTheme.brandingMessage,
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.7),
+                                  color: appTheme.themeData.colorScheme.onSurfaceVariant ?? appTheme.themeData.colorScheme.onSurface.withOpacity(0.7),
                                   fontSize: 16,
-                                  fontWeight: FontWeight.w300,
+                                  fontWeight: FontWeight.w400,
                                   letterSpacing: 0.5,
                                 ),
                               ),
@@ -285,11 +292,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                   builder: (context, child) {
                                     return CircularProgressIndicator(
                                       valueColor: AlwaysStoppedAnimation<Color>(
-                                        Color.lerp(
-                                          const Color(0xFFC8102E),
-                                          const Color(0xFFFF6B6B),
-                                          _logoAnimation.value,
-                                        )!,
+                                        appTheme.themeData.colorScheme.primary,
                                       ),
                                     );
                                   },
@@ -297,7 +300,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                               else
                                 ..._providers
                                     .where((provider) => provider['name'] == 'google')
-                                    .map((provider) => _buildProviderButton(provider, authState)),
+                                    .map((provider) => _buildProviderButton(provider, authState, appTheme)),
                               
                               const SizedBox(height: 24),
                               
@@ -308,13 +311,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                   Icon(
                                     Icons.lock_outline,
                                     size: 16,
-                                    color: Colors.white.withOpacity(0.5),
+                                    color: appTheme.themeData.colorScheme.onSurfaceVariant ?? appTheme.themeData.colorScheme.onSurface.withOpacity(0.5),
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
-                                    'Secured by McAfee',
+                                    'Secured by ${appTheme.name}',
                                     style: TextStyle(
-                                      color: Colors.white.withOpacity(0.5),
+                                      color: appTheme.themeData.colorScheme.onSurfaceVariant ?? appTheme.themeData.colorScheme.onSurface.withOpacity(0.5),
                                       fontSize: 12,
                                       letterSpacing: 0.5,
                                     ),
@@ -329,18 +332,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                 Container(
                                   padding: const EdgeInsets.all(16.0),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFC8102E).withOpacity(0.1),
+                                    color: appTheme.themeData.colorScheme.error.withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(12.0),
                                     border: Border.all(
-                                      color: const Color(0xFFC8102E).withOpacity(0.3),
+                                      color: appTheme.themeData.colorScheme.error.withOpacity(0.3),
                                       width: 1,
                                     ),
                                   ),
                                   child: Text(
                                     authState.message!,
                                     textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      color: Color(0xFFFF6B6B),
+                                    style: TextStyle(
+                                      color: appTheme.themeData.colorScheme.error,
                                       fontSize: 14,
                                       fontWeight: FontWeight.w500,
                                     ),
@@ -361,9 +364,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     child: Column(
                       children: [
                         Text(
-                          '© ${DateTime.now().year} McAfee Corp. All rights reserved.',
+                          '© ${DateTime.now().year} ${appTheme.name}. All rights reserved.',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.4),
+                            color: appTheme.themeData.colorScheme.onSurfaceVariant ?? appTheme.themeData.colorScheme.onSurface.withOpacity(0.4),
                             fontSize: 12,
                           ),
                         ),
@@ -376,7 +379,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                               margin: const EdgeInsets.symmetric(horizontal: 16),
                               width: 1,
                               height: 12,
-                              color: Colors.white.withOpacity(0.2),
+                              color: appTheme.themeData.dividerColor,
                             ),
                             _buildFooterLink('Terms of Service'),
                           ],
@@ -394,6 +397,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
   
   Widget _buildFooterLink(String text) {
+    final appTheme = ref.watch(appThemeProvider);
+    
     return InkWell(
       onTap: () {
         // Handle link tap
@@ -401,7 +406,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       child: Text(
         text,
         style: TextStyle(
-          color: Colors.white.withOpacity(0.5),
+          color: appTheme.themeData.colorScheme.primary,
           fontSize: 12,
           decoration: TextDecoration.underline,
         ),

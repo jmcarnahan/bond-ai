@@ -121,7 +121,7 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> with ErrorHandlin
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFC8102E).withOpacity(0.3),
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
               blurRadius: 12,
               spreadRadius: 2,
               offset: const Offset(0, 4),
@@ -130,7 +130,7 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> with ErrorHandlin
         ),
         child: FloatingActionButton(
           onPressed: _showCreateThreadDialog,
-          backgroundColor: const Color(0xFFC8102E),
+          backgroundColor: Theme.of(context).colorScheme.primary,
           foregroundColor: Colors.white,
           tooltip: 'Start New Conversation',
           elevation: 0,
