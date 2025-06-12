@@ -21,9 +21,24 @@ import 'package:web/web.dart' as web if (dart.library.io) 'dart:io';
 import 'package:flutterui/presentation/widgets/firestore_listener.dart';
 import 'package:flutterui/presentation/widgets/message_notification_banner.dart';
 import 'package:flutterui/providers/notification_provider.dart';
+import 'package:flutterui/providers/config_provider.dart';
+import 'package:flutterui/presentation/screens/agents/agents_screen.dart';
+import 'package:flutterui/presentation/screens/agents/create_agent_screen.dart';
+import 'package:flutterui/providers/agent_provider.dart';
+import 'package:flutterui/data/models/agent_model.dart';
 
 // Provider to control the bottom navigation index
-final navigationIndexProvider = StateProvider<int>((ref) => 0);
+final navigationIndexProvider = StateProvider<int>((ref) {
+  final navItems = ref.watch(bottomNavItemsProvider);
+  final isAgentsEnabled = ref.watch(isAgentsEnabledProvider);
+  
+  // Default to chat screen if agents are enabled (index 1), otherwise chat is at index 0
+  if (isAgentsEnabled && navItems.length > 1) {
+    final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
+    return chatIndex != -1 ? chatIndex : 0;
+  }
+  return 0;
+});
 
 // Provider to track if user is manually navigating
 final isUserNavigatingProvider = StateProvider<bool>((ref) => false);
@@ -108,10 +123,57 @@ class MobileApp extends ConsumerWidget {
           return MaterialPageRoute(
             builder: (context) => Consumer(
               builder: (context, ref, _) {
-                // Set navigation to profile tab
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  ref.read(navigationIndexProvider.notifier).state = 2;
-                });
+                // Find profile tab index
+                final navItems = ref.read(bottomNavItemsProvider);
+                final profileIndex = navItems.indexWhere((item) => item.label == 'Profile');
+                if (profileIndex != -1) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    ref.read(navigationIndexProvider.notifier).state = profileIndex;
+                  });
+                }
+                return const MobileAuthWrapper();
+              },
+            ),
+            settings: settings,
+          );
+        }
+        
+        // Handle create/edit agent routes
+        if (settings.name?.startsWith('/edit-agent/') == true) {
+          final agentId = settings.name!.replaceFirst('/edit-agent/', '');
+          logger.i('[MobileApp] Edit agent route requested for: $agentId');
+          return MaterialPageRoute(
+            builder: (context) => CreateAgentScreen(agentId: agentId),
+            settings: settings,
+          );
+        }
+        
+        // Handle chat with agent routes
+        if (settings.name?.startsWith('/chat/') == true) {
+          final agentId = settings.name!.replaceFirst('/chat/', '');
+          logger.i('[MobileApp] Chat with agent route requested for: $agentId');
+          
+          // Get the agent data from arguments
+          final agent = settings.arguments as AgentListItemModel?;
+          
+          return MaterialPageRoute(
+            builder: (context) => Consumer(
+              builder: (context, ref, _) {
+                // Set the selected agent if provided
+                if (agent != null) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    ref.read(selectedAgentProvider.notifier).selectAgent(agent);
+                  });
+                }
+                
+                // Navigate to the chat tab
+                final navItems = ref.read(bottomNavItemsProvider);
+                final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
+                if (chatIndex != -1) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    ref.read(navigationIndexProvider.notifier).state = chatIndex;
+                  });
+                }
                 return const MobileAuthWrapper();
               },
             ),
@@ -191,7 +253,27 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
+    final navItems = ref.read(bottomNavItemsProvider);
+    final isAgentsEnabled = ref.read(isAgentsEnabledProvider);
+    
+    // Default to chat screen if agents are enabled (index 1), otherwise chat is at index 0
+    int initialIndex = 0;
+    if (isAgentsEnabled && navItems.length > 1) {
+      // Find chat index (should be 1 when agents are enabled)
+      final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
+      if (chatIndex != -1) {
+        initialIndex = chatIndex;
+      }
+    }
+    
+    _pageController = PageController(initialPage: initialIndex);
+    
+    // Set the navigation index after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(navigationIndexProvider.notifier).state = initialIndex;
+      }
+    });
   }
   
   @override
@@ -204,6 +286,8 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
   Widget build(BuildContext context) {
     final selectedThread = ref.watch(selectedThreadProvider);
     final currentIndex = ref.watch(navigationIndexProvider);
+    final navItems = ref.watch(bottomNavItemsProvider);
+    final selectedAgent = ref.watch(selectedAgentProvider);
     
     // Listen for navigation index changes to update PageView
     ref.listen<int>(navigationIndexProvider, (previous, next) {
@@ -222,37 +306,87 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
       }
       
       // Navigate to chat when a thread is selected from the threads tab
-      if (next != null && 
-          currentIndex == 1 && 
-          previous?.id != next.id) {
-        ref.read(navigationIndexProvider.notifier).state = 0;
+      if (next != null && previous?.id != next.id) {
+        // Find the chat tab index (it might be 0 or 1 depending on agents)
+        final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
+        if (chatIndex != -1 && currentIndex != chatIndex) {
+          ref.read(navigationIndexProvider.notifier).state = chatIndex;
+        }
       }
     });
 
-    final List<Widget> pages = [
-      ChatScreen(
-        agentId: MobileApiConfig.mobileAgentId,
-        agentName: MobileApiConfig.mobileAgentName,
-        initialThreadId: selectedThread?.id,
-      ),
-      const ThreadsScreen(),
-      const ProfileScreen(),
-    ];
+    final List<Widget> pages = [];
+    
+    // Build pages based on navigation items
+    for (final item in navItems) {
+      switch (item.label) {
+        case 'Agents':
+          pages.add(const AgentsScreen());
+          break;
+        case 'Chat':
+          pages.add(ChatScreen(
+            agentId: selectedAgent?.id ?? MobileApiConfig.defaultAgentId,
+            agentName: selectedAgent?.name ?? MobileApiConfig.defaultAgentName,
+            initialThreadId: selectedThread?.id,
+          ));
+          break;
+        case 'Threads':
+          pages.add(const ThreadsScreen());
+          break;
+        case 'Profile':
+          pages.add(const ProfileScreen());
+          break;
+      }
+    }
 
     final notificationState = ref.watch(notificationProvider);
     
     return FirestoreListener(
-      child: Stack(
-        children: [
-          Scaffold(
-            body: PageView(
+      child: Scaffold(
+        body: Stack(
+          children: [
+            PageView(
               controller: _pageController,
               physics: const NeverScrollableScrollPhysics(), // Disable swipe
               children: pages,
             ),
-            bottomNavigationBar: BottomNavigationBar(
-              currentIndex: currentIndex,
-              onTap: (index) {
+            // Notification banner overlay
+            if (notificationState.isVisible && notificationState.messageContent != null)
+              MessageNotificationBanner(
+                threadName: notificationState.threadName ?? 'New Message',
+                messageContent: notificationState.messageContent!,
+                agentId: notificationState.agentId ?? MobileApiConfig.defaultAgentId,
+                subject: notificationState.subject,
+                duration: notificationState.duration,
+                onDismiss: () {
+                  ref.read(notificationProvider.notifier).hideNotification();
+                },
+              ),
+          ],
+        ),
+        bottomNavigationBar: Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: SafeArea(
+                top: false,
+                child: BottomNavigationBar(
+                  currentIndex: currentIndex.clamp(0, navItems.length - 1),
+                  type: BottomNavigationBarType.fixed,
+                  backgroundColor: Colors.transparent,
+                  elevation: 0,
+                  selectedItemColor: Theme.of(context).colorScheme.primary,
+                  unselectedItemColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                  selectedFontSize: 12,
+                  unselectedFontSize: 12,
+                  onTap: (index) {
                 // Set flag to indicate user-initiated navigation
                 ref.read(isUserNavigatingProvider.notifier).state = true;
                 ref.read(navigationIndexProvider.notifier).state = index;
@@ -262,35 +396,13 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
                   ref.read(isUserNavigatingProvider.notifier).state = false;
                 });
               },
-              items: const [
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.chat),
-                  label: 'Chat',
+              items: navItems.map((item) => BottomNavigationBarItem(
+                icon: Icon(item.icon),
+                label: item.label,
+              )).toList(),
                 ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.list),
-                  label: 'Threads',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.person),
-                  label: 'Profile',
-                ),
-              ],
+              ),
             ),
-          ),
-          // Notification banner overlay
-          if (notificationState.isVisible && notificationState.messageContent != null)
-            MessageNotificationBanner(
-              threadName: notificationState.threadName ?? 'New Message',
-              messageContent: notificationState.messageContent!,
-              agentId: notificationState.agentId ?? MobileApiConfig.mobileAgentId,
-              subject: notificationState.subject,
-              duration: notificationState.duration,
-              onDismiss: () {
-                ref.read(notificationProvider.notifier).hideNotification();
-              },
-            ),
-        ],
       ),
     );
   }
