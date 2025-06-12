@@ -22,6 +22,11 @@ class ThreadsNotifier extends StateNotifier<AsyncValue<List<Thread>>> {
     try {
       final threads = await _threadService.getThreads();
       if (mounted) {
+        logger.d("[ThreadsNotifier] Fetched ${threads.length} threads");
+        if (threads.isNotEmpty) {
+          logger.d("[ThreadsNotifier] First thread: ${threads[0].name} - Updated: ${threads[0].updatedAt}");
+          logger.d("[ThreadsNotifier] Last thread: ${threads[threads.length - 1].name} - Updated: ${threads[threads.length - 1].updatedAt}");
+        }
         state = AsyncValue.data(threads);
       }
     } catch (e, stackTrace) {
@@ -32,7 +37,7 @@ class ThreadsNotifier extends StateNotifier<AsyncValue<List<Thread>>> {
     }
   }
 
-  Future<void> addThread({String? name}) async {
+  Future<Thread?> addThread({String? name}) async {
     final previousState = state;
 
     try {
@@ -47,6 +52,7 @@ class ThreadsNotifier extends StateNotifier<AsyncValue<List<Thread>>> {
         // Automatically select the newly created thread
         selectThread(newThread.id);
       }
+      return newThread;
     } catch (e) {
       if (mounted) {
         _ref.read(threadErrorProvider.notifier).state = e.toString();
@@ -54,6 +60,7 @@ class ThreadsNotifier extends StateNotifier<AsyncValue<List<Thread>>> {
       }
 
       logger.i('Error adding thread: $e');
+      return null;
     }
   }
 
