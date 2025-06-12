@@ -22,11 +22,11 @@ class ThreadsNotifier extends StateNotifier<AsyncValue<List<Thread>>> {
     try {
       final threads = await _threadService.getThreads();
       if (mounted) {
-        logger.d("[ThreadsNotifier] Fetched ${threads.length} threads");
-        if (threads.isNotEmpty) {
-          logger.d("[ThreadsNotifier] First thread: ${threads[0].name} - Updated: ${threads[0].updatedAt}");
-          logger.d("[ThreadsNotifier] Last thread: ${threads[threads.length - 1].name} - Updated: ${threads[threads.length - 1].updatedAt}");
-        }
+        // logger.d("[ThreadsNotifier] Fetched ${threads.length} threads");
+        // if (threads.isNotEmpty) {
+        //   logger.d("[ThreadsNotifier] First thread: ${threads[0].name} - Updated: ${threads[0].updatedAt}");
+        //   logger.d("[ThreadsNotifier] Last thread: ${threads[threads.length - 1].name} - Updated: ${threads[threads.length - 1].updatedAt}");
+        // }
         state = AsyncValue.data(threads);
       }
     } catch (e, stackTrace) {

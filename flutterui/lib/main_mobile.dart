@@ -138,11 +138,11 @@ class MobileAuthWrapper extends ConsumerWidget {
     final authState = ref.watch(authNotifierProvider);
     
     // Log state changes
-    logger.d('[MobileAuthWrapper] Current auth state: ${authState.runtimeType}');
+    // logger.d('[MobileAuthWrapper] Current auth state: ${authState.runtimeType}');
     if (authState is Authenticated) {
-      logger.d('[MobileAuthWrapper] User authenticated: ${authState.user.email}');
+      // logger.d('[MobileAuthWrapper] User authenticated: ${authState.user.email}');
     } else if (authState is Unauthenticated) {
-      logger.d('[MobileAuthWrapper] User unauthenticated: ${authState.message}');
+      // logger.d('[MobileAuthWrapper] User unauthenticated: ${authState.message}');
     } else if (authState is AuthError) {
       logger.e('[MobileAuthWrapper] Auth error: ${authState.error}');
     }

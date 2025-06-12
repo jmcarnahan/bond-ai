@@ -58,7 +58,7 @@ class AuthService {
 
   Future<String?> retrieveToken() async {
     final token = _sharedPreferences.getString(_tokenStorageKey);
-    logger.d("[AuthService] Retrieved token: ${token != null ? 'Found (length: ${token.length})' : 'Not found'}");
+    // logger.d("[AuthService] Retrieved token: ${token != null ? 'Found (length: ${token.length})' : 'Not found'}");
     return token;
   }
 
