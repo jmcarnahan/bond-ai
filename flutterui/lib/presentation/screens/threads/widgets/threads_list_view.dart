@@ -28,8 +28,8 @@ class ThreadsListView extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(vertical: 16),
           itemCount: threads.length,
           itemBuilder: (context, index) {
-            // Show newest threads first
-            final thread = threads[threads.length - 1 - index];
+            // Threads are already sorted by updated_at DESC from the backend
+            final thread = threads[index];
             final isSelected = thread.id == selectedThreadId;
 
             return ThreadListItem(
