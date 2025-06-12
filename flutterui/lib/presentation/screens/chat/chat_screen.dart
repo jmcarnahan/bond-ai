@@ -88,7 +88,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with ErrorHandlingMixin
   }
 
   void _checkAndSendIntroductionIfNeeded() async {
-    logger.d("[ChatScreen] Checking if agent has introduction for auto-send");
+    // logger.d("[ChatScreen] Checking if agent has introduction for auto-send");
     
     await withErrorHandling(
       operation: () async {
@@ -106,7 +106,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with ErrorHandlingMixin
             introduction: agentDetails.introduction!.trim(),
           );
         } else {
-          logger.d("[ChatScreen] Agent has no introduction, waiting for user to start conversation");
+          // logger.d("[ChatScreen] Agent has no introduction, waiting for user to start conversation");
         }
       },
       ref: ref,
