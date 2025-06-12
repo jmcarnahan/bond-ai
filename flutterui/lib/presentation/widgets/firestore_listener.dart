@@ -20,11 +20,23 @@ class _FirestoreListenerState extends ConsumerState<FirestoreListener> {
   @override
   void initState() {
     super.initState();
-    logger.i('[FirestoreListener] Widget initialized');
+    final isEnabled = ref.read(firestore.isFirestoreEnabledProvider);
+    if (isEnabled) {
+      logger.i('[FirestoreListener] Widget initialized - Firestore listener ACTIVE');
+    } else {
+      logger.i('[FirestoreListener] Widget initialized - Firestore listener INACTIVE (no FIRESTORE_DATABASE_ID)');
+    }
   }
   
   @override
   Widget build(BuildContext context) {
+    final isEnabled = ref.watch(firestore.isFirestoreEnabledProvider);
+    
+    // If Firestore is not enabled, just return the child widget
+    if (!isEnabled) {
+      return widget.child;
+    }
+    
     // Watch the stream to ensure it stays active
     ref.watch(firestore.incomingMessageStreamProvider);
     
