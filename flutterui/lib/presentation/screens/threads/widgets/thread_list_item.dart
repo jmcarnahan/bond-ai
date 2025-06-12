@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import 'package:flutterui/data/models/thread_model.dart';
 import 'package:flutterui/providers/thread_provider.dart';
@@ -32,8 +33,8 @@ class ThreadListItem extends ConsumerWidget {
         boxShadow: [
           BoxShadow(
             color: isSelected 
-                ? theme.colorScheme.primary.withOpacity(0.15)
-                : theme.colorScheme.onSurface.withOpacity(0.05),
+                ? theme.colorScheme.primary.withValues(alpha: 0.15)
+                : theme.colorScheme.onSurface.withValues(alpha: 0.05),
             blurRadius: isSelected ? 12 : 8,
             offset: const Offset(0, 4),
             spreadRadius: isSelected ? 1 : 0,
@@ -57,10 +58,8 @@ class ThreadListItem extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildTitle(theme, isSelected),
-                      if (thread.description != null && thread.description!.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        _buildSubtitle(theme)!,
-                      ],
+                      const SizedBox(height: 4),
+                      _buildTimestamp(theme),
                     ],
                   ),
                 ),
@@ -85,8 +84,8 @@ class ThreadListItem extends ConsumerWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: selected
-              ? [theme.colorScheme.primary.withOpacity(0.8), theme.colorScheme.primary]
-              : [theme.colorScheme.onSurface.withOpacity(0.1), theme.colorScheme.onSurface.withOpacity(0.2)],
+              ? [theme.colorScheme.primary.withValues(alpha: 0.8), theme.colorScheme.primary]
+              : [theme.colorScheme.onSurface.withValues(alpha: 0.1), theme.colorScheme.onSurface.withValues(alpha: 0.2)],
         ),
       ),
       child: Icon(
@@ -113,18 +112,22 @@ class ThreadListItem extends ConsumerWidget {
     );
   }
 
-  Widget? _buildSubtitle(ThemeData theme) {
-    if (thread.description == null || thread.description!.isEmpty) {
-      return null;
+  Widget _buildTimestamp(ThemeData theme) {
+    // Use updatedAt if available, otherwise fall back to createdAt
+    final timestamp = thread.updatedAt ?? thread.createdAt;
+    
+    if (timestamp == null) {
+      return const SizedBox.shrink();
     }
 
+    // Format the timestamp with date and time
+    final formattedTime = DateFormat('MMM d, y • h:mm a').format(timestamp);
+
     return Text(
-      thread.description!,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
+      formattedTime,
       style: TextStyle(
-        fontSize: 14,
-        color: theme.colorScheme.onSurfaceVariant,
+        fontSize: 13,
+        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
       ),
     );
   }
@@ -133,7 +136,7 @@ class ThreadListItem extends ConsumerWidget {
     return IconButton(
       icon: Icon(
         Icons.delete_outline,
-        color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7),
+        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
         size: 20,
       ),
       tooltip: 'Delete Conversation',

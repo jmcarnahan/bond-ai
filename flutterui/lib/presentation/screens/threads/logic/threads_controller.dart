@@ -47,12 +47,13 @@ class ThreadsController {
   void selectThread(Thread thread) {
     logger.i('[ThreadsController]Selecting thread: ${thread.name} (${thread.id})');
     _notifier.selectThread(thread.id);
-    Navigator.of(context).pop();
+    // Don't use Navigator.pop() in mobile app - we use bottom navigation
+    // The thread selection will trigger navigation through the provider
   }
 
   void showCreateThreadDialog() {}
 
   void navigateBack() {
-    Navigator.of(context).pop();
+    // Don't use Navigator.pop() in mobile app - we use bottom navigation
   }
 }
