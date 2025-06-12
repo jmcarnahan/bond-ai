@@ -66,7 +66,7 @@ class FirestoreService {
         FirestoreConstants.contentField: messageContent,
         FirestoreConstants.threadNameField: messageMetadata[FirestoreConstants.threadNameField] ?? FirestoreConstants.defaultThreadName,
         FirestoreConstants.agentIdField: messageMetadata[FirestoreConstants.agentIdField] as String? ?? 
-                    dotenv.env['MOBILE_AGENT_ID'] ?? 
+                    dotenv.env['DEFAULT_AGENT_ID'] ?? 
                     'asst_NhwtO75WEHWaW0Oy3Wsv9y7Q',
         FirestoreConstants.subjectField: messageMetadata[FirestoreConstants.subjectField] as String?,
         FirestoreConstants.durationField: messageMetadata[FirestoreConstants.durationField] as int? ?? FirestoreConstants.defaultMessageDuration
