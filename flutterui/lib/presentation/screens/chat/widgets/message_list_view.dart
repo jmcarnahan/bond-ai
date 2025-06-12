@@ -169,8 +169,13 @@ class MessageListView extends ConsumerWidget {
       return const Center(child: TypingIndicator());
     }
 
-    if (chatState.messages.isEmpty) {
+    if (chatState.messages.isEmpty && !chatState.isSendingMessage) {
       return _buildEmptyChatPlaceholder(context, ref, agentName, chatState.isSendingIntroduction);
+    }
+
+    // Show typing indicator when sending first message to empty thread
+    if (chatState.messages.isEmpty && chatState.isSendingMessage) {
+      return const Center(child: TypingIndicator());
     }
 
     return ListView.builder(
