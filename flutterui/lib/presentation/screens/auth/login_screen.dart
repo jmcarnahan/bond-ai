@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/main.dart';
+import '../../../core/utils/logger.dart';
 import 'package:flutterui/core/theme/app_theme.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 
@@ -27,28 +28,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   void initState() {
     super.initState();
     _loadProviders();
-    
+
     // Initialize animations
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
-    
+
     _logoController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
     );
-    
+
     _fadeAnimation = CurvedAnimation(
       parent: _fadeController,
       curve: Curves.easeInOut,
     );
-    
+
     _logoAnimation = CurvedAnimation(
       parent: _logoController,
       curve: Curves.easeInOut,
     );
-    
+
     _fadeController.forward();
     _logoController.repeat(reverse: true);
   }
@@ -62,7 +63,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   Future<void> _loadProviders() async {
     try {
-      final providers = await ref.read(authNotifierProvider.notifier).getAvailableProviders();
+      final providers =
+          await ref.read(authNotifierProvider.notifier).getAvailableProviders();
+      logger.i(
+        '[LoginScreen] Loaded auth providers: ${providers.length} -> ${providers.map((p) => p['name']).join(', ')}',
+      );
       if (mounted) {
         setState(() {
           _providers = providers;
@@ -71,10 +76,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       }
     } catch (e) {
       if (mounted) {
-        handleServiceError(e, ref, customMessage: 'Failed to load auth providers');
+        handleServiceError(
+          e,
+          ref,
+          customMessage: 'Failed to load auth providers',
+        );
         setState(() {
           _providers = [
-            {'name': 'google', 'login_url': '/login/google', 'callback_url': '/auth/google/callback'}
+            {
+              'name': 'google',
+              'login_url': '/login/google',
+              'callback_url': '/auth/google/callback',
+            },
           ];
           _loadingProviders = false;
         });
@@ -82,10 +95,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     }
   }
 
-  Widget _buildProviderButton(Map<String, dynamic> provider, AuthState authState, AppTheme appTheme) {
+  Widget _buildProviderButton(
+    Map<String, dynamic> provider,
+    AuthState authState,
+    AppTheme appTheme,
+  ) {
     final providerName = provider['name'] as String;
     final isLoading = authState is AuthLoading;
     
+    // Get provider-specific details
+    String displayName;
+    String? iconPath;
+    Color? backgroundColor;
+    Color? textColor;
+    
+    switch (providerName.toLowerCase()) {
+      case 'google':
+        displayName = 'Sign in with Google';
+        iconPath = 'assets/google_logo.png';
+        break;
+      case 'okta':
+        displayName = 'Sign in with Okta';
+        backgroundColor = const Color(0xFF007DC1); // Okta blue
+        textColor = Colors.white;
+        break;
+      default:
+        displayName = 'Sign in with ${providerName[0].toUpperCase()}${providerName.substring(1)}';
+        break;
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: MouseRegion(
@@ -93,14 +131,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         onExit: (_) => setState(() => _isHovering = false),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          transform: Matrix4.identity()
-            ..scale(_isHovering ? 1.02 : 1.0),
+          transform: Matrix4.identity()..scale(_isHovering ? 1.02 : 1.0),
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(28.0),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(_isHovering ? 0.3 : 0.2),
+                  color: Colors.black.withValues(alpha: _isHovering ? 0.3 : 0.2),
                   blurRadius: _isHovering ? 12 : 8,
                   offset: Offset(0, _isHovering ? 6 : 4),
                 ),
@@ -108,37 +145,63 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             ),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: appTheme.themeData.colorScheme.surface,
-                foregroundColor: appTheme.themeData.colorScheme.onSurface,
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 32),
+                backgroundColor: backgroundColor ?? appTheme.themeData.colorScheme.surface,
+                foregroundColor: textColor ?? appTheme.themeData.colorScheme.onSurface,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 16,
+                  horizontal: 32,
+                ),
                 minimumSize: const Size(double.infinity, 56),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(28.0),
                   side: BorderSide(
-                    color: appTheme.themeData.dividerColor.withOpacity(0.2),
+                    color: appTheme.themeData.dividerColor.withValues(alpha: 0.2),
                     width: 1,
                   ),
                 ),
                 elevation: 0,
               ),
-              onPressed: isLoading ? null : () {
-                ref.read(authNotifierProvider.notifier).initiateLogin(provider: providerName);
-              },
+              onPressed:
+                  isLoading
+                      ? null
+                      : () {
+                        ref
+                            .read(authNotifierProvider.notifier)
+                            .initiateLogin(provider: providerName);
+                      },
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
-                  Image.asset(
-                    'assets/google_logo.png',
-                    height: 24.0,
-                    width: 24.0,
-                  ),
-                  const SizedBox(width: 16),
+                  if (iconPath != null) ...[
+                    Image.asset(
+                      iconPath,
+                      height: 24.0,
+                      width: 24.0,
+                      errorBuilder: (context, error, stackTrace) {
+                        // Fallback if icon not found
+                        return Icon(
+                          Icons.login,
+                          size: 24.0,
+                          color: textColor ?? appTheme.themeData.colorScheme.onSurface,
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 16),
+                  ] else ...[
+                    Icon(
+                      Icons.login,
+                      size: 24.0,
+                      color: textColor ?? appTheme.themeData.colorScheme.onSurface,
+                    ),
+                    const SizedBox(width: 16),
+                  ],
                   Text(
-                    'Sign in with Google',
-                    style: const TextStyle(
+                    displayName,
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0.5,
+                      color: textColor ?? appTheme.themeData.colorScheme.onSurface,
                     ),
                   ),
                 ],
@@ -172,22 +235,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 end: Alignment.bottomRight,
                 colors: [
                   appTheme.themeData.colorScheme.surface,
-                  appTheme.themeData.colorScheme.surface.withOpacity(0.95),
-                  appTheme.themeData.colorScheme.surfaceVariant ?? appTheme.themeData.colorScheme.surface.withOpacity(0.9),
+                  appTheme.themeData.colorScheme.surface.withValues(alpha: 0.95),
+                  appTheme.themeData.colorScheme.surfaceContainerHighest,
                 ],
               ),
             ),
           ),
-          
+
           // Subtle geometric pattern overlay
           Positioned.fill(
-            child: CustomPaint(
-              painter: GeometricPatternPainter(
-                opacity: 0.03,
-              ),
-            ),
+            child: CustomPaint(painter: GeometricPatternPainter(opacity: 0.03)),
           ),
-          
+
           // Accent bar at top
           Positioned(
             top: 0,
@@ -198,15 +257,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    appTheme.themeData.colorScheme.primary.withOpacity(0.6),
+                    appTheme.themeData.colorScheme.primary.withValues(alpha: 0.6),
                     appTheme.themeData.colorScheme.primary,
-                    appTheme.themeData.colorScheme.primary.withOpacity(0.6),
+                    appTheme.themeData.colorScheme.primary.withValues(alpha: 0.6),
                   ],
                 ),
               ),
             ),
           ),
-          
+
           // Main content
           SafeArea(
             top: false,
@@ -224,7 +283,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               const SizedBox(height: 80), // Top spacing
-                              
                               // Animated logo with glow effect
                               AnimatedBuilder(
                                 animation: _logoAnimation,
@@ -233,15 +291,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                     padding: const EdgeInsets.all(24),
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
-                                      color: appTheme.themeData.colorScheme.surface,
+                                      color:
+                                          appTheme
+                                              .themeData
+                                              .colorScheme
+                                              .surface,
                                       boxShadow: [
                                         BoxShadow(
-                                          color: appTheme.themeData.colorScheme.primary.withOpacity(0.2 * _logoAnimation.value),
+                                          color: appTheme
+                                              .themeData
+                                              .colorScheme
+                                              .primary
+                                              .withValues(
+                                                alpha: 0.2 * _logoAnimation.value,
+                                              ),
                                           blurRadius: 30,
                                           spreadRadius: 5,
                                         ),
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(0.1),
+                                          color: Colors.black.withValues(alpha: 0.1),
                                           blurRadius: 10,
                                           offset: const Offset(0, 4),
                                         ),
@@ -254,37 +322,44 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                   );
                                 },
                               ),
-                              
-                              const SizedBox(height: 64), // Logo to text spacing
-                              
+
+                              const SizedBox(
+                                height: 64,
+                              ), // Logo to text spacing
                               // Welcome text
                               Text(
                                 'Welcome to ${appTheme.name}',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: appTheme.themeData.colorScheme.onSurface,
+                                  color:
+                                      appTheme.themeData.colorScheme.onSurface,
                                   fontSize: 28,
                                   fontWeight: FontWeight.w600,
                                   letterSpacing: 1.2,
                                 ),
                               ),
-                              
+
                               const SizedBox(height: 8),
-                              
+
                               // Tagline
                               Text(
                                 appTheme.brandingMessage,
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: appTheme.themeData.colorScheme.onSurfaceVariant ?? appTheme.themeData.colorScheme.onSurface.withOpacity(0.7),
+                                  color:
+                                      appTheme
+                                          .themeData
+                                          .colorScheme
+                                          .onSurfaceVariant,
                                   fontSize: 16,
                                   fontWeight: FontWeight.w400,
                                   letterSpacing: 0.5,
                                 ),
                               ),
-                              
-                              const SizedBox(height: 64), // Text to button spacing
-                              
+
+                              const SizedBox(
+                                height: 64,
+                              ), // Text to button spacing
                               // Auth content
                               if (authState is AuthLoading || _loadingProviders)
                                 AnimatedBuilder(
@@ -298,12 +373,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                   },
                                 )
                               else
-                                ..._providers
-                                    .where((provider) => provider['name'] == 'google')
-                                    .map((provider) => _buildProviderButton(provider, authState, appTheme)),
-                              
+                                ..._providers.map(
+                                      (provider) => _buildProviderButton(
+                                        provider,
+                                        authState,
+                                        appTheme,
+                                      ),
+                                    ),
+
                               const SizedBox(height: 24),
-                              
+
                               // Security badge
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -311,31 +390,45 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                   Icon(
                                     Icons.lock_outline,
                                     size: 16,
-                                    color: appTheme.themeData.colorScheme.onSurfaceVariant ?? appTheme.themeData.colorScheme.onSurface.withOpacity(0.5),
+                                    color:
+                                        appTheme
+                                            .themeData
+                                            .colorScheme
+                                            .onSurfaceVariant,
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
                                     'Secured by ${appTheme.name}',
                                     style: TextStyle(
-                                      color: appTheme.themeData.colorScheme.onSurfaceVariant ?? appTheme.themeData.colorScheme.onSurface.withOpacity(0.5),
+                                      color:
+                                          appTheme
+                                              .themeData
+                                              .colorScheme
+                                              .onSurfaceVariant,
                                       fontSize: 12,
                                       letterSpacing: 0.5,
                                     ),
                                   ),
                                 ],
                               ),
-                              
+
                               const SizedBox(height: 32),
-                              
+
                               // Error message
-                              if (authState is Unauthenticated && authState.message != null)
+                              if (authState is Unauthenticated &&
+                                  authState.message != null)
                                 Container(
                                   padding: const EdgeInsets.all(16.0),
                                   decoration: BoxDecoration(
-                                    color: appTheme.themeData.colorScheme.error.withOpacity(0.1),
+                                    color: appTheme.themeData.colorScheme.error
+                                        .withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(12.0),
                                     border: Border.all(
-                                      color: appTheme.themeData.colorScheme.error.withOpacity(0.3),
+                                      color: appTheme
+                                          .themeData
+                                          .colorScheme
+                                          .error
+                                          .withValues(alpha: 0.3),
                                       width: 1,
                                     ),
                                   ),
@@ -343,13 +436,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                     authState.message!,
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
-                                      color: appTheme.themeData.colorScheme.error,
+                                      color:
+                                          appTheme.themeData.colorScheme.error,
                                       fontSize: 14,
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                 ),
-                              
+
                               const SizedBox(height: 80), // Bottom spacing
                             ],
                           ),
@@ -357,16 +451,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       ),
                     ),
                   ),
-                  
+
                   // Footer
                   Container(
-                    padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 24),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 24,
+                      horizontal: 24,
+                    ),
                     child: Column(
                       children: [
                         Text(
-                          '© ${DateTime.now().year} ${appTheme.name}. All rights reserved.',
+                          '(c) ${DateTime.now().year} ${appTheme.name}. All rights reserved.',
                           style: TextStyle(
-                            color: appTheme.themeData.colorScheme.onSurfaceVariant ?? appTheme.themeData.colorScheme.onSurface.withOpacity(0.4),
+                            color:
+                                appTheme
+                                    .themeData
+                                    .colorScheme
+                                    .onSurfaceVariant,
                             fontSize: 12,
                           ),
                         ),
@@ -376,7 +477,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                           children: [
                             _buildFooterLink('Privacy Policy'),
                             Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 16),
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
                               width: 1,
                               height: 12,
                               color: appTheme.themeData.dividerColor,
@@ -395,10 +498,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       ),
     );
   }
-  
+
   Widget _buildFooterLink(String text) {
     final appTheme = ref.watch(appThemeProvider);
-    
+
     return InkWell(
       onTap: () {
         // Handle link tap
@@ -418,20 +521,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 // Custom painter for geometric pattern
 class GeometricPatternPainter extends CustomPainter {
   final double opacity;
-  
+
   GeometricPatternPainter({required this.opacity});
-  
+
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withOpacity(opacity)
-      ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
-    
+    final paint =
+        Paint()
+          ..color = Colors.white.withValues(alpha: opacity)
+          ..strokeWidth = 1
+          ..style = PaintingStyle.stroke;
+
     // Draw hexagonal pattern
     const double hexSize = 50;
     const double hexHeight = hexSize * 1.732;
-    
+
     for (double y = 0; y < size.height + hexHeight; y += hexHeight * 0.75) {
       for (double x = 0; x < size.width + hexSize * 2; x += hexSize * 3) {
         final offsetX = (y % (hexHeight * 1.5) == 0) ? 0.0 : hexSize * 1.5;
@@ -439,7 +543,7 @@ class GeometricPatternPainter extends CustomPainter {
       }
     }
   }
-  
+
   void _drawHexagon(Canvas canvas, Offset center, double size, Paint paint) {
     final path = Path();
     for (int i = 0; i < 6; i++) {
@@ -455,7 +559,7 @@ class GeometricPatternPainter extends CustomPainter {
     path.close();
     canvas.drawPath(path, paint);
   }
-  
+
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
