@@ -51,7 +51,7 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
 
     try {
       final mcpService = ref.read(mcpServiceProvider);
-      logger.i('[McpSelectionSection] MCP service obtained: $mcpService');
+      // logger.i('[McpSelectionSection] MCP service obtained: $mcpService');
 
       final results = await Future.wait([
         mcpService.getTools(),
@@ -68,21 +68,21 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
       });
 
       // Log tool details
-      for (int i = 0; i < tools.length; i++) {
-        logger.i(
-          '[McpSelectionSection] Tool ${i + 1}: ${tools[i].name} - ${tools[i].description}',
-        );
-      }
+      // for (int i = 0; i < tools.length; i++) {
+      //   logger.i(
+      //     '[McpSelectionSection] Tool ${i + 1}: ${tools[i].name} - ${tools[i].description}',
+      //   );
+      // }
 
       // Log resource details
-      for (int i = 0; i < resources.length; i++) {
-        logger.i(
-          '[McpSelectionSection] Resource ${i + 1}: ${resources[i].name} (${resources[i].uri})',
-        );
-      }
+      // for (int i = 0; i < resources.length; i++) {
+      //   logger.i(
+      //     '[McpSelectionSection] Resource ${i + 1}: ${resources[i].name} (${resources[i].uri})',
+      //   );
+      // }
     } catch (e, stackTrace) {
       logger.e('[McpSelectionSection] Error loading MCP data: $e');
-      logger.e('[McpSelectionSection] Stack trace: $stackTrace');
+      // logger.e('[McpSelectionSection] Stack trace: $stackTrace');
 
       setState(() {
         _isLoading = false;
