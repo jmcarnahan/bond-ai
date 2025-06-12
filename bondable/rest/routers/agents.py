@@ -235,8 +235,8 @@ async def get_agent_details(
                             processed_file_ids.add(file_details.file_id)
                 response_tool_resources.file_search = ToolResourceFilesList(file_ids=list(processed_file_ids))
 
-        LOGGER.info(f"Returning agent details - introduction: '{agent_def.introduction[:50] if agent_def.introduction else 'None'}'...")
-        LOGGER.info(f"Returning agent details - reminder: '{agent_def.reminder[:50] if agent_def.reminder else 'None'}'...")
+        LOGGER.debug(f"Returning agent details - introduction: '{agent_def.introduction[:50] if agent_def.introduction else 'None'}'...")
+        LOGGER.debug(f"Returning agent details - reminder: '{agent_def.reminder[:50] if agent_def.reminder else 'None'}'...")
         
         return AgentDetailResponse(
             id=agent_instance.get_agent_id(),
