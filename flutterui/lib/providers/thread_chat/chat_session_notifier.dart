@@ -43,6 +43,10 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
       );
     }
   }
+  
+  void setThreadIdOnly(String threadId) {
+    state = state.copyWith(currentThreadId: threadId);
+  }
 
   Future<void> sendMessage({
     required String agentId,
