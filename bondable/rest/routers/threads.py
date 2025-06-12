@@ -24,7 +24,9 @@ async def get_threads(
             ThreadRef(
                 id=thread_data['thread_id'],
                 name=thread_data['name'],
-                description=thread_data.get('description')
+                description=thread_data.get('description'),
+                created_at=thread_data.get('created_at'),
+                updated_at=thread_data.get('updated_at')
             )
             for thread_data in thread_data_list
         ]
@@ -97,7 +99,7 @@ async def get_messages(
             # Skip system messages - they should not be returned to the client
             msg_role = getattr(msg_obj, 'role', 'assistant')
             if msg_role == 'system':
-                logger.debug(f"Filtering out system message: {getattr(msg_obj, 'message_id', 'unknown')}")
+                LOGGER.debug(f"Filtering out system message: {getattr(msg_obj, 'message_id', 'unknown')}")
                 continue
                 
             actual_content = ""
