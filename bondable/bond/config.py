@@ -237,7 +237,15 @@ class Config:
     
     def _get_google_oauth2_config(self) -> dict:
         """Get Google OAuth2 configuration."""
-        auth_creds_str = self.get_secret_value(os.getenv('GOOGLE_AUTH_CREDS_SECRET_ID', 'google_auth_creds'), "{}")
+        # First check if credentials are provided directly via environment variable
+        if 'GOOGLE_AUTH_CREDS_JSON' in os.environ:
+            auth_creds_str = os.getenv('GOOGLE_AUTH_CREDS_JSON')
+            LOGGER.info("Using Google OAuth2 credentials from GOOGLE_AUTH_CREDS_JSON environment variable")
+        else:
+            # Fall back to Secret Manager
+            auth_creds_str = self.get_secret_value(os.getenv('GOOGLE_AUTH_CREDS_SECRET_ID', 'google_auth_creds'), "{}")
+            LOGGER.info("Using Google OAuth2 credentials from Secret Manager")
+        
         auth_creds = json.loads(auth_creds_str)
         redirect_uri = os.getenv('GOOGLE_AUTH_REDIRECT_URI', 'http://localhost:8000/auth/google/callback')
         scopes_str = os.getenv('GOOGLE_AUTH_SCOPES', 'openid, https://www.googleapis.com/auth/userinfo.email, https://www.googleapis.com/auth/userinfo.profile')
