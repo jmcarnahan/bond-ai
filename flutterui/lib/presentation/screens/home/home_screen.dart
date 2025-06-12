@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/main.dart';
 import 'package:flutterui/presentation/widgets/sidebar.dart';
 import 'package:flutterui/providers/agent_provider.dart';
+import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/presentation/screens/agents/widgets/agent_card.dart';
 import 'package:flutterui/core/theme/app_theme.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 import 'package:flutterui/core/error_handling/error_handler.dart';
+import 'package:flutterui/presentation/widgets/firestore_listener.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -20,6 +22,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
   Widget build(BuildContext context) {
     final agentsAsyncValue = ref.watch(agentsProvider);
     final appTheme = ref.watch(appThemeProvider);
+    final authState = ref.watch(authNotifierProvider);
     
     final ThemeData currentThemeData = Theme.of(context);
     final TextTheme textTheme = currentThemeData.textTheme;
@@ -27,9 +30,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
     final CustomColors? customColors = currentThemeData.extension<CustomColors>();
     final Color appBarBackgroundColor = customColors?.brandingSurface ?? currentThemeData.appBarTheme.backgroundColor ?? currentThemeData.colorScheme.surface; // Generic fallback
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      appBar: AppBar(
+    return FirestoreListener(
+      child: Scaffold(
+        backgroundColor: colorScheme.surface,
+        appBar: AppBar(
         iconTheme: IconThemeData(color: Colors.white),
         title: Row(
           mainAxisSize: MainAxisSize.min,
@@ -227,6 +231,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
             ),
           ],
         ),
+      ),
       ),
     );
   }
