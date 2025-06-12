@@ -372,10 +372,10 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       logger.i(
         "[CreateAgentFormNotifier] Loaded agent data for editing: ${agentDetail.name}",
       );
-      logger.i("[CreateAgentFormNotifier] MCP Tools: ${agentDetail.mcpTools}");
-      logger.i(
-        "[CreateAgentFormNotifier] MCP Resources: ${agentDetail.mcpResources}",
-      );
+      // logger.i("[CreateAgentFormNotifier] MCP Tools: ${agentDetail.mcpTools}");
+      // logger.i(
+      //   "[CreateAgentFormNotifier] MCP Resources: ${agentDetail.mcpResources}",
+      // );
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
