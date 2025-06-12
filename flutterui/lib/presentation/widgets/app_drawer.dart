@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/main.dart';
+import 'package:flutterui/main_mobile.dart' show navigationIndexProvider;
 import 'package:flutterui/core/theme/app_theme.dart';
+import 'package:flutterui/presentation/screens/profile/profile_screen.dart';
 
 class AppDrawer extends ConsumerWidget {
   const AppDrawer({super.key});
@@ -102,6 +104,32 @@ class AppDrawer extends ConsumerWidget {
                   ],
                 ),
               ),
+              ListTile(
+                leading: Icon(
+                  Icons.person_outline,
+                  color: theme.colorScheme.onSurface,
+                ),
+                title: Text(
+                  'Profile',
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface,
+                    fontSize: 16,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context); // Close drawer
+                  // Check if we're in mobile navigation shell
+                  final isMobile = context.findAncestorWidgetOfExactType<Scaffold>()?.bottomNavigationBar != null;
+                  if (isMobile) {
+                    // For mobile, switch to profile tab instead of navigating
+                    ref.read(navigationIndexProvider.notifier).state = 2;
+                  } else {
+                    // For desktop/web, use regular navigation
+                    Navigator.pushNamed(context, ProfileScreen.routeName);
+                  }
+                },
+              ),
+              const Divider(indent: 16, endIndent: 16),
               ListTile(
                 leading: Icon(
                   Icons.logout,
