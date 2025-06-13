@@ -118,13 +118,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with ErrorHandlingMixin
   void _sendPendingSystemMessage(String message, String agentId, {String? threadName}) async {
     logger.i("[ChatScreen] Starting _sendPendingSystemMessage");
     
+    // Check if widget is still mounted before using ref
+    if (!mounted) {
+      logger.w("[ChatScreen] Widget disposed, skipping _sendPendingSystemMessage");
+      return;
+    }
+    
     // Set sending state immediately to show loading
     final chatNotifier = ref.read(chatSessionNotifierProvider.notifier);
     chatNotifier.state = chatNotifier.state.copyWith(isSendingMessage: true);
     
+    // Only proceed with error handling if still mounted
+    if (!mounted) {
+      logger.w("[ChatScreen] Widget disposed, cannot proceed with error handling");
+      return;
+    }
+    
     await withErrorHandling(
       operation: () async {
         logger.i("[ChatScreen] Creating thread with name: $threadName");
+        
+        // Check mounted before using ref
+        if (!mounted) {
+          logger.w("[ChatScreen] Widget disposed during operation");
+          return;
+        }
+        
         // First, create a thread with the proper name from the notification
         final newThread = await ref.read(threadsProvider.notifier).addThread(
           name: threadName ?? 'New Conversation',
@@ -134,6 +153,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with ErrorHandlingMixin
           throw Exception('Failed to create thread');
         }
         logger.i("[ChatScreen] Thread created: ${newThread.id}");
+        
+        // Check mounted again after async operation
+        if (!mounted) {
+          logger.w("[ChatScreen] Widget disposed after thread creation");
+          return;
+        }
         
         // Set the current thread ID in the chat session (without loading messages)
         chatNotifier.setThreadIdOnly(newThread.id);
@@ -275,7 +300,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with ErrorHandlingMixin
         
         // Send the system message
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _sendPendingSystemMessage(next.message, next.agentId, threadName: next.threadName);
+          if (mounted) {
+            _sendPendingSystemMessage(next.message, next.agentId, threadName: next.threadName);
+          }
         });
       }
     });
