@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../main_mobile.dart' show navigationIndexProvider;
 import '../../providers/notification_provider.dart';
+import '../../providers/config_provider.dart';
 
 class MessageNotificationBanner extends ConsumerStatefulWidget {
   final String threadName;
@@ -77,8 +78,19 @@ class _MessageNotificationBannerState extends ConsumerState<MessageNotificationB
   }
 
   void _navigateToChat() {
+    print('[MessageNotificationBanner] _navigateToChat called');
+    print('[MessageNotificationBanner] Agent ID: ${widget.agentId}');
+    print('[MessageNotificationBanner] Thread Name: ${widget.threadName}');
+    print('[MessageNotificationBanner] Message Content: ${widget.messageContent}');
+    
+    // Find the correct index for the chat screen
+    final navItems = ref.read(bottomNavItemsProvider);
+    final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
+    
+    print('[MessageNotificationBanner] Chat screen is at index: $chatIndex');
+    
     // Navigate to chat tab first
-    ref.read(navigationIndexProvider.notifier).state = 0;
+    ref.read(navigationIndexProvider.notifier).state = chatIndex != -1 ? chatIndex : 1;
     
     // Pass the system message to the chat screen by storing it in a provider
     ref.read(pendingSystemMessageProvider.notifier).state = PendingSystemMessage(
@@ -86,6 +98,8 @@ class _MessageNotificationBannerState extends ConsumerState<MessageNotificationB
       agentId: widget.agentId,
       threadName: widget.threadName,
     );
+    
+    print('[MessageNotificationBanner] PendingSystemMessage set with agentId: ${widget.agentId}');
     
     // Dismiss the banner
     _dismiss();
