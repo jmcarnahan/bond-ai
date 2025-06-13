@@ -24,6 +24,7 @@ import logging
 import base64
 import abc
 import json
+import os
 
 
 LOGGER = logging.getLogger(__name__)
@@ -692,6 +693,47 @@ class OAIAAgentProvider(AgentProvider):
         if assistant is None:
             raise Exception(f"Assistant not found: {agent_id}")
         return OAIAAgent(assistant=assistant, agent_def=agent_def, openai_client=self.openai_client)
+    
+    @override
+    def get_available_models(self) -> List[Dict[str, any]]:
+        """
+        Get a list of available models that can be used by agents.
+        
+        Returns:
+            List[Dict[str, any]]: A list of dictionaries containing model information.
+        """
+        models = []
+        
+        # Read models from environment variables
+        # Format: OPENAI_MODELS=model1:description1,model2:description2
+        # Default model: OPENAI_DEFAULT_MODEL=model1
+        models_config = os.getenv('OPENAI_MODELS', 'gpt-4o:Most capable GPT-4 Omni model for complex tasks')
+        default_model = os.getenv('OPENAI_DEFAULT_MODEL', 'gpt-4o').strip()
+        
+        # Parse the models configuration
+        for model_entry in models_config.split(','):
+            model_entry = model_entry.strip()
+            if ':' in model_entry:
+                name, description = model_entry.split(':', 1)
+                models.append({
+                    'name': name.strip(),
+                    'description': description.strip(),
+                    'is_default': name.strip() == default_model
+                })
+            else:
+                # Handle case where only model name is provided
+                models.append({
+                    'name': model_entry,
+                    'description': f'{model_entry} model',
+                    'is_default': model_entry == default_model
+                })
+        
+        # Ensure at least one model is marked as default
+        if models and not any(m['is_default'] for m in models):
+            LOGGER.warning(f"Default model '{default_model}' not found in available models, marking first model as default")
+            models[0]['is_default'] = True
+        
+        return models
     
     
     # @override
