@@ -4,7 +4,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutterui/providers/thread_chat/chat_session_state.dart';
 import 'package:flutterui/presentation/widgets/typing_indicator.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/image_message_widget.dart';
-import 'package:flutterui/main.dart' show appThemeProvider;
+import 'package:flutterui/providers/core_providers.dart' show appThemeProvider;
 
 class MessageListView extends ConsumerWidget {
   final ChatSessionState chatState;

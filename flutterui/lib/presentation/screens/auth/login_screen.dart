@@ -2,7 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart';
-import 'package:flutterui/main.dart';
+import 'package:flutterui/providers/core_providers.dart';
 import '../../../core/utils/logger.dart';
 import 'package:flutterui/core/theme/app_theme.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
