@@ -174,6 +174,20 @@ class AgentProvider(ABC):
         Returns:
             Agent: The agent object associated with the given ID.
         """
+        pass
+    
+    @abstractmethod
+    def get_available_models(self) -> List[Dict[str, any]]:
+        """
+        Get a list of available models that can be used by agents.
+        
+        Returns:
+            List[Dict[str, any]]: A list of dictionaries containing model information.
+                Each dictionary should have the following keys:
+                - 'name' (str): The model identifier/name
+                - 'description' (str): A human-readable description of the model
+                - 'is_default' (bool): Whether this is the default model
+        """
         pass    
 
         
