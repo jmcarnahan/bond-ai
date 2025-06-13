@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web/web.dart' as web;
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
 import 'package:flutterui/presentation/screens/home/home_screen.dart';
 import 'package:flutterui/presentation/screens/auth/login_screen.dart';
@@ -12,26 +14,30 @@ import 'package:flutterui/presentation/screens/threads/threads_screen.dart';
 import 'package:flutterui/presentation/screens/agents/create_agent_screen.dart';
 import 'package:flutterui/presentation/screens/groups/groups_screen.dart';
 import 'package:flutterui/presentation/screens/groups/edit_group_screen.dart';
+import 'package:flutterui/presentation/screens/profile/profile_screen.dart';
 import 'package:flutterui/providers/auth_provider.dart';
+import 'package:flutterui/providers/core_providers.dart';
+import 'package:flutterui/core/theme/app_theme.dart';
 import 'package:flutterui/data/models/agent_model.dart';
 import 'package:flutterui/data/models/group_model.dart';
-import 'package:flutterui/core/theme/app_theme.dart';
-import 'package:flutterui/core/theme/generated_theme.dart';
 import 'package:flutterui/core/utils/logger.dart';
 import 'package:flutterui/presentation/widgets/selected_thread_banner.dart';
 import 'package:flutterui/providers/ui_providers.dart';
 import 'package:flutterui/core/error_handling/error_handler.dart';
 
-final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
-  throw UnimplementedError('SharedPreferences not initialized');
-});
-
-final appThemeProvider = Provider<AppTheme>((ref) {
-  return AppGeneratedTheme(); 
-});
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Firebase
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    logger.i('Firebase initialized successfully');
+  } catch (e) {
+    logger.e('Error initializing Firebase: $e');
+  }
+  
   final prefs = await SharedPreferences.getInstance();
 
   runApp(
@@ -122,6 +128,9 @@ class MyApp extends ConsumerWidget {
             break;
           case GroupsScreen.routeName:
             pageWidget = const GroupsScreen();
+            break;
+          case ProfileScreen.routeName:
+            pageWidget = const ProfileScreen();
             break;
           default:
             if (effectivePath.startsWith('/groups/') && effectivePath.endsWith('/edit')) {
