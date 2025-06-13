@@ -6,7 +6,7 @@ import 'package:flutterui/data/services/thread_service.dart';
 import 'package:flutterui/data/services/chat_service.dart';
 import 'package:flutterui/data/services/mcp_service.dart';
 import 'package:flutterui/data/services/file_service.dart';
-import 'package:flutterui/main.dart' show sharedPreferencesProvider;
+import 'package:flutterui/providers/core_providers.dart' show sharedPreferencesProvider;
 
 final authServiceProvider = Provider<AuthService>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
