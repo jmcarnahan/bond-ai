@@ -4,8 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutterui/firebase_options.dart';
-import 'package:flutterui/main.dart' show sharedPreferencesProvider, appThemeProvider;
 import 'package:flutterui/providers/auth_provider.dart';
+import 'package:flutterui/providers/core_providers.dart';
 import 'package:flutterui/providers/thread_provider.dart';
 import 'package:flutterui/data/models/thread_model.dart';
 import 'package:flutterui/presentation/screens/auth/login_screen.dart';
@@ -351,17 +351,26 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
               children: pages,
             ),
             // Notification banner overlay
-            if (notificationState.isVisible && notificationState.messageContent != null)
-              MessageNotificationBanner(
-                threadName: notificationState.threadName ?? 'New Message',
-                messageContent: notificationState.messageContent!,
-                agentId: notificationState.agentId ?? MobileApiConfig.defaultAgentId,
-                subject: notificationState.subject,
-                duration: notificationState.duration,
-                onDismiss: () {
-                  ref.read(notificationProvider.notifier).hideNotification();
-                },
-              ),
+            if (notificationState.isVisible && notificationState.messageContent != null) ...[
+              Builder(builder: (context) {
+                final agentId = notificationState.agentId ?? MobileApiConfig.defaultAgentId;
+                print('[MobileHomePage] Creating MessageNotificationBanner');
+                print('[MobileHomePage] Notification agentId: ${notificationState.agentId}');
+                print('[MobileHomePage] Using agentId: $agentId');
+                print('[MobileHomePage] Default agentId: ${MobileApiConfig.defaultAgentId}');
+                
+                return MessageNotificationBanner(
+                  threadName: notificationState.threadName ?? 'New Message',
+                  messageContent: notificationState.messageContent!,
+                  agentId: agentId,
+                  subject: notificationState.subject,
+                  duration: notificationState.duration,
+                  onDismiss: () {
+                    ref.read(notificationProvider.notifier).hideNotification();
+                  },
+                );
+              }),
+            ]
           ],
         ),
         bottomNavigationBar: Container(

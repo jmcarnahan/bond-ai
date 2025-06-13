@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/message_attachment_bar.dart';
-import 'package:flutterui/main.dart' show appThemeProvider;
+import 'package:flutterui/providers/core_providers.dart' show appThemeProvider;
 
 class MessageInputBar extends ConsumerStatefulWidget {
   final TextEditingController textController;

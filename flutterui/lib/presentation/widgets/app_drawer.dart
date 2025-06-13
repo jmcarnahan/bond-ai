@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart';
-import 'package:flutterui/main.dart';
+import 'package:flutterui/providers/core_providers.dart';
 import 'package:flutterui/main_mobile.dart' show navigationIndexProvider;
 import 'package:flutterui/core/theme/app_theme.dart';
 import 'package:flutterui/presentation/screens/profile/profile_screen.dart';
