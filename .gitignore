@@ -16,3 +16,6 @@ creds
 # VS Code
 .vscode/
 *.code-workspace
+
+# iOS Firebase configuration (deployment-specific)
+flutterui/ios/Runner/GoogleService-Info.plist
