@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart' show immutable, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:web/web.dart' as web;
 
 import 'package:flutterui/core/constants/api_constants.dart';
 import 'package:flutterui/data/models/user_model.dart';
@@ -23,11 +22,24 @@ class AuthService {
        _sharedPreferences = sharedPreferences;
 
   Future<void> launchLoginUrl({String provider = 'google'}) async {
-    final Uri loginUri = Uri.parse(
-      '${ApiConstants.baseUrl}/login/$provider',
-    );
+    // For mobile, we need to specify a redirect URI that uses our custom scheme
+    String loginUrl = '${ApiConstants.baseUrl}/login/$provider';
+    
+    if (!kIsWeb) {
+      // For mobile, append redirect_uri parameter to use our custom URL scheme
+      final redirectUri = Uri.encodeComponent('bondai://auth-callback');
+      loginUrl = '$loginUrl?redirect_uri=$redirectUri&platform=mobile';
+      logger.i('[AuthService] Mobile login URL: $loginUrl');
+    }
+    
+    final Uri loginUri = Uri.parse(loginUrl);
     if (await canLaunchUrl(loginUri)) {
-      await launchUrl(loginUri, webOnlyWindowName: '_self');
+      if (kIsWeb) {
+        await launchUrl(loginUri, webOnlyWindowName: '_self');
+      } else {
+        // For mobile, open in external browser
+        await launchUrl(loginUri, mode: LaunchMode.externalApplication);
+      }
     } else {
       throw Exception('Could not launch $loginUri');
     }
@@ -49,11 +61,17 @@ class AuthService {
   }
 
   Future<void> storeToken(String accessToken) async {
+    logger.i("[AuthService] Storing token (length: ${accessToken.length})");
     await _sharedPreferences.setString(_tokenStorageKey, accessToken);
+    
+    // Verify storage
+    final stored = _sharedPreferences.getString(_tokenStorageKey);
+    logger.i("[AuthService] Token stored successfully: ${stored != null && stored.length == accessToken.length}");
   }
 
   Future<String?> retrieveToken() async {
     final token = _sharedPreferences.getString(_tokenStorageKey);
+    // logger.d("[AuthService] Retrieved token: ${token != null ? 'Found (length: ${token.length})' : 'Not found'}");
     return token;
   }
 
@@ -64,38 +82,29 @@ class AuthService {
     
     // Log for debugging
     if (kIsWeb) {
-      print('[AuthService] Logout - Had token: ${hadToken != null}');
-      print('[AuthService] Logout - Token after clear: ${tokenAfterClear != null}');
+      logger.i('[AuthService] Logout - Had token: ${hadToken != null}');
+      logger.i('[AuthService] Logout - Token after clear: ${tokenAfterClear != null}');
     }
   }
 
   Future<void> performFullLogout() async {
     await clearToken();
     
-    // On web, clear all browser storage and force a page reload to ensure clean state
+    // Clear all browser storage on web without page reload
     if (kIsWeb) {
-      print('[AuthService] Performing full web logout - clearing all storage');
+      logger.i('[AuthService] Performing logout - clearing all storage');
       
-      // Clear all possible browser storage
       try {
-        // Clear localStorage
+        // Clear all SharedPreferences data
         await _sharedPreferences.clear();
-        
-        // Force a page reload to ensure all state is cleared
-        // This will trigger a fresh authentication check
-        final currentUrl = Uri.parse(web.window.location.href);
-        final loginUrl = Uri(
-          scheme: currentUrl.scheme,
-          host: currentUrl.host,
-          port: currentUrl.port,
-          path: '/#/login',
-        ).toString();
-        
-        web.window.location.href = loginUrl;
+        logger.i('[AuthService] All storage cleared successfully');
       } catch (e) {
-        print('[AuthService] Error during full logout: $e');
+        logger.e('[AuthService] Error during logout: $e');
       }
     }
+    
+    // The auth state will automatically update when token is cleared
+    // No need to reload the page - the UI will react to the state change
   }
 
   Future<User> getCurrentUser() async {
