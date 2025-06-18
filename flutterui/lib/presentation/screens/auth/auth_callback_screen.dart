@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:web/web.dart' as web if (dart.library.io) 'dart:io';
+import 'package:universal_html/html.dart' as html;
 import '../../../core/utils/logger.dart';
 
 class AuthCallbackScreen extends ConsumerStatefulWidget {
@@ -29,7 +29,7 @@ class _AuthCallbackScreenState extends ConsumerState<AuthCallbackScreen> {
     if (kIsWeb) {
       // Use kIsWeb for a more robust check
       logger.i("[AuthCallbackScreen] Running on web.");
-      final String fullUrl = web.window.location.href;
+      final String fullUrl = html.window.location.href;
       logger.i("[AuthCallbackScreen] Full URL: $fullUrl");
 
       final Uri? currentUri = Uri.tryParse(fullUrl);

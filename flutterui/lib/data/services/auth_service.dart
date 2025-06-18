@@ -22,11 +22,24 @@ class AuthService {
        _sharedPreferences = sharedPreferences;
 
   Future<void> launchLoginUrl({String provider = 'google'}) async {
-    final Uri loginUri = Uri.parse(
-      '${ApiConstants.baseUrl}/login/$provider',
-    );
+    // For mobile, we need to specify a redirect URI that uses our custom scheme
+    String loginUrl = '${ApiConstants.baseUrl}/login/$provider';
+    
+    if (!kIsWeb) {
+      // For mobile, append redirect_uri parameter to use our custom URL scheme
+      final redirectUri = Uri.encodeComponent('bondai://auth-callback');
+      loginUrl = '$loginUrl?redirect_uri=$redirectUri&platform=mobile';
+      logger.i('[AuthService] Mobile login URL: $loginUrl');
+    }
+    
+    final Uri loginUri = Uri.parse(loginUrl);
     if (await canLaunchUrl(loginUri)) {
-      await launchUrl(loginUri, webOnlyWindowName: '_self');
+      if (kIsWeb) {
+        await launchUrl(loginUri, webOnlyWindowName: '_self');
+      } else {
+        // For mobile, open in external browser
+        await launchUrl(loginUri, mode: LaunchMode.externalApplication);
+      }
     } else {
       throw Exception('Could not launch $loginUri');
     }
