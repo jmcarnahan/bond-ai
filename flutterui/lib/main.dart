@@ -1,32 +1,67 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:web/web.dart' as web;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
-
-import 'package:flutterui/presentation/screens/home/home_screen.dart';
+import 'package:flutterui/firebase_options.dart';
+import 'package:flutterui/providers/auth_provider.dart';
+import 'package:flutterui/providers/thread_provider.dart';
+import 'package:flutterui/data/models/thread_model.dart';
 import 'package:flutterui/presentation/screens/auth/login_screen.dart';
 import 'package:flutterui/presentation/screens/auth/auth_callback_screen.dart';
 import 'package:flutterui/presentation/screens/chat/chat_screen.dart';
 import 'package:flutterui/presentation/screens/threads/threads_screen.dart';
+import 'package:flutterui/presentation/screens/profile/profile_screen.dart';
 import 'package:flutterui/presentation/screens/agents/create_agent_screen.dart';
 import 'package:flutterui/presentation/screens/groups/groups_screen.dart';
 import 'package:flutterui/presentation/screens/groups/edit_group_screen.dart';
-import 'package:flutterui/presentation/screens/profile/profile_screen.dart';
-import 'package:flutterui/providers/auth_provider.dart';
-import 'package:flutterui/providers/core_providers.dart';
-import 'package:flutterui/core/theme/app_theme.dart';
+import 'package:flutterui/core/constants/mobile_api_config.dart';
+import 'package:flutterui/core/constants/api_constants.dart';
 import 'package:flutterui/data/models/agent_model.dart';
 import 'package:flutterui/data/models/group_model.dart';
 import 'package:flutterui/core/utils/logger.dart';
-import 'package:flutterui/presentation/widgets/selected_thread_banner.dart';
-import 'package:flutterui/providers/ui_providers.dart';
-import 'package:flutterui/core/error_handling/error_handler.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:universal_html/html.dart' as html;
+import 'package:flutterui/presentation/widgets/firestore_listener.dart';
+import 'package:flutterui/presentation/widgets/message_notification_banner.dart';
+import 'package:flutterui/providers/notification_provider.dart';
+import 'package:flutterui/providers/config_provider.dart';
+import 'package:flutterui/presentation/screens/agents/agents_screen.dart';
+import 'package:flutterui/providers/agent_provider.dart';
+import 'package:flutterui/core/services/deep_link_service.dart';
 
-Future<void> main() async {
+// Provider for SharedPreferences instance
+final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
+  throw UnimplementedError('sharedPreferencesProvider must be overridden');
+});
+
+// Provider to control the bottom navigation index
+final navigationIndexProvider = StateProvider<int>((ref) {
+  final navItems = ref.watch(bottomNavItemsProvider);
+  final isAgentsEnabled = ref.watch(isAgentsEnabledProvider);
+  
+  // Default to chat screen if agents are enabled (index 1), otherwise chat is at index 0
+  if (isAgentsEnabled && navItems.length > 1) {
+    final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
+    return chatIndex != -1 ? chatIndex : 0;
+  }
+  return 0;
+});
+
+// Provider to track if user is manually navigating
+final isUserNavigatingProvider = StateProvider<bool>((ref) => false);
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Load environment variables
+  await dotenv.load(fileName: ".env");
+  
+  // Override API base URL from environment
+  final apiBaseUrl = dotenv.env['API_BASE_URL'];
+  if (apiBaseUrl != null && apiBaseUrl.isNotEmpty) {
+    ApiConstants.baseUrl = apiBaseUrl;
+  }
   
   // Initialize Firebase
   try {
@@ -38,59 +73,46 @@ Future<void> main() async {
     logger.e('Error initializing Firebase: $e');
   }
   
-  final prefs = await SharedPreferences.getInstance();
-
+  // Initialize SharedPreferences
+  final sharedPreferences = await SharedPreferences.getInstance();
+  
   runApp(
     ProviderScope(
-      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
-      child: const MyApp(),
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(sharedPreferences),
+      ],
+      child: const MobileApp(),
     ),
   );
 }
 
-class MyApp extends ConsumerWidget {
-  const MyApp({super.key});
+class MobileApp extends ConsumerWidget {
+  const MobileApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final AppTheme currentTheme = ref.watch(appThemeProvider);
-
+    // Determine initial route based on current URL
+    String initialRoute = '/';
     if (kIsWeb) {
-      try {
-        web.document.title = currentTheme.name;
-      } catch (e) {
-        logger.w("Could not set document.title: $e");
+      final currentUrl = Uri.parse(html.window.location.href);
+      logger.i('[MobileApp] Current URL on startup: $currentUrl');
+      
+      // Check if we're on the auth callback page
+      if (currentUrl.path.endsWith('/auth-callback') || 
+          currentUrl.queryParameters.containsKey('token')) {
+        initialRoute = '/auth-callback';
+        logger.i('[MobileApp] Starting with auth-callback route');
       }
     }
 
     return MaterialApp(
-      navigatorKey: ErrorHandlerService.navigatorKey,
-      scaffoldMessengerKey: ErrorHandlerService.scaffoldMessengerKey,
+      title: 'Bond AI Mobile',
       debugShowCheckedModeBanner: false,
-      title: currentTheme.name,
-      theme: currentTheme.themeData,
-      home: const _AppContent(),
-      navigatorObservers: [RouteObserverForBanner(ref)],
-      builder: (context, child) {
-        return Consumer(
-          builder: (context, ref, _) {
-            final bool showBanner = ref.watch(showThreadBannerProvider);
-            
-            return Stack(
-              children: [
-                if (child != null) child,
-                if (showBanner)
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: SelectedThreadBanner(),
-                  ),
-              ],
-            );
-          },
-        );
-      },
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        useMaterial3: true,
+      ),
+      initialRoute: initialRoute,
       onGenerateRoute: (settings) {
         logger.i(
           "[onGenerateRoute] Name: '${settings.name}', Args: ${settings.arguments}",
@@ -107,15 +129,35 @@ class MyApp extends ConsumerWidget {
 
         final Uri uri = Uri.parse(effectivePath);
         effectivePath = uri.path;
+        
+        // Handle root route with token parameter (mobile OAuth callback)
+        if ((effectivePath == '/' || effectivePath.isEmpty) && uri.queryParameters.containsKey('token')) {
+          final token = uri.queryParameters['token'];
+          logger.i('[MobileApp] Found token in route, processing authentication');
+          
+          return MaterialPageRoute(
+            builder: (context) => Consumer(
+              builder: (context, ref, _) {
+                // Process the token immediately
+                WidgetsBinding.instance.addPostFrameCallback((_) async {
+                  if (token != null && token.isNotEmpty) {
+                    logger.i('[MobileApp] Processing OAuth token from route');
+                    await ref.read(authNotifierProvider.notifier).loginWithToken(token);
+                  }
+                });
+                
+                return const MobileAuthWrapper();
+              },
+            ),
+            settings: settings,
+          );
+        }
 
         logger.i("[onGenerateRoute] Effective Path for switch: '$effectivePath'");
 
         switch (effectivePath) {
           case '/login':
             pageWidget = const LoginScreen();
-            break;
-          case '/home':
-            pageWidget = const HomeScreen();
             break;
           case '/auth-callback':
             pageWidget = const AuthCallbackScreen();
@@ -158,96 +200,269 @@ class MyApp extends ConsumerWidget {
                   logger.i(
                     '[onGenerateRoute] Error: ChatScreen /chat/:id called without AgentListItemModel object as argument. Args: ${settings.arguments}',
                   );
-                  // Handle critical error - missing required data
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    ErrorHandlerService.handleError(
-                      AppError.critical(
-                        'Unable to load chat. Required information is missing.',
-                        details: 'Missing agent details for chat route',
-                      ),
-                      ref: ref,
-                    );
-                  });
-                  return MaterialPageRoute(builder: (_) => const HomeScreen());
+                  // Handle missing agent data
+                  logger.e('[onGenerateRoute] Missing agent data for chat route');
+                  pageWidget = const MobileAuthWrapper();
                 }
-              } else {
-                logger.i(
-                  '[onGenerateRoute] Error: Invalid /chat/ route format: $effectivePath',
-                );
-                // Handle critical error - invalid route
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  ErrorHandlerService.handleError(
-                    AppError.critical(
-                      'Invalid page requested.',
-                      details: 'Invalid chat route format: $effectivePath',
-                    ),
-                    ref: ref,
-                  );
-                });
-                return MaterialPageRoute(builder: (_) => const HomeScreen());
               }
-            } else if (effectivePath.startsWith(
-              CreateAgentScreen.editRouteNamePattern.split(':')[0],
-            )) {
-              final parts = effectivePath.split('/');
-              if (parts.length >= 3) {
-                final agentIdForEdit = parts[2];
-                pageWidget = CreateAgentScreen(agentId: agentIdForEdit);
-              } else {
-                logger.i(
-                  '[onGenerateRoute] Error: Invalid /edit-agent/ route format: $effectivePath',
-                );
-                // Handle critical error - invalid route
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  ErrorHandlerService.handleError(
-                    AppError.critical(
-                      'Invalid page requested.',
-                      details: 'Invalid edit agent route format: $effectivePath',
-                    ),
-                    ref: ref,
-                  );
-                });
-                return MaterialPageRoute(builder: (_) => const HomeScreen());
-              }
-            } else {
-              logger.i(
-                '[onGenerateRoute] Warning: Unhandled effectivePath: $effectivePath. Args: ${settings.arguments}',
-              );
+            } else if (effectivePath.startsWith('/edit-agent/')) {
+              final agentId = effectivePath.replaceFirst('/edit-agent/', '');
+              logger.i('[MobileApp] Edit agent route requested for: $agentId');
+              pageWidget = CreateAgentScreen(agentId: agentId);
             }
             break;
         }
-
+        
         if (pageWidget != null) {
           return MaterialPageRoute(
-            builder: (_) => pageWidget!,
+            builder: (context) => pageWidget!,
             settings: settings,
           );
         }
-
-        logger.i(
-          "[onGenerateRoute] Fallback: Unknown route. Name='${settings.name}', EffectivePath='$effectivePath'. Showing home screen.",
+        
+        // Default route
+        logger.i('[MobileApp] Navigating to MobileAuthWrapper (default)');
+        return MaterialPageRoute(
+          builder: (context) => const MobileAuthWrapper(),
+          settings: settings,
         );
-        return MaterialPageRoute(builder: (_) => const HomeScreen());
       },
     );
   }
 }
 
-class _AppContent extends ConsumerWidget {
-  const _AppContent();
+class MobileAuthWrapper extends ConsumerWidget {
+  const MobileAuthWrapper({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authNotifierProvider);
-
+    
+    // Log state changes
+    // logger.d('[MobileAuthWrapper] Current auth state: ${authState.runtimeType}');
     if (authState is Authenticated) {
-      return const HomeScreen();
-    } else if (authState is Unauthenticated || authState is AuthError) {
-      return const LoginScreen();
-    } else {
+      // logger.d('[MobileAuthWrapper] User authenticated: ${authState.user.email}');
+    } else if (authState is Unauthenticated) {
+      // logger.d('[MobileAuthWrapper] User unauthenticated: ${authState.message}');
+    } else if (authState is AuthError) {
+      logger.e('[MobileAuthWrapper] Auth error: ${authState.error}');
+    }
+
+    if (authState is AuthInitial || authState is AuthLoading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
+    } else if (authState is Authenticated) {
+      return const MobileNavigationShell();
+    } else if (authState is AuthError) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('Error: ${authState.error}'),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  ref.read(authNotifierProvider.notifier).initiateLogin();
+                },
+                child: const Text('Try Again'),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      // Unauthenticated
+      return const LoginScreen();
     }
+  }
+}
+
+class MobileNavigationShell extends ConsumerStatefulWidget {
+  const MobileNavigationShell({super.key});
+
+  @override
+  ConsumerState<MobileNavigationShell> createState() => _MobileNavigationShellState();
+}
+
+class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
+  late PageController _pageController;
+  DeepLinkService? _deepLinkService;
+  
+  @override
+  void initState() {
+    super.initState();
+    final navItems = ref.read(bottomNavItemsProvider);
+    final isAgentsEnabled = ref.read(isAgentsEnabledProvider);
+    
+    // Default to chat screen if agents are enabled (index 1), otherwise chat is at index 0
+    int initialIndex = 0;
+    if (isAgentsEnabled && navItems.length > 1) {
+      // Find chat index (should be 1 when agents are enabled)
+      final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
+      if (chatIndex != -1) {
+        initialIndex = chatIndex;
+      }
+    }
+    
+    _pageController = PageController(initialPage: initialIndex);
+    
+    // Initialize deep link service only for mobile platforms
+    if (!kIsWeb) {
+      _deepLinkService = DeepLinkService();
+    }
+    
+    // Set the navigation index after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(navigationIndexProvider.notifier).state = initialIndex;
+        // Initialize deep links after the first frame
+        if (!kIsWeb && _deepLinkService != null) {
+          _deepLinkService!.initDeepLinks(context, ref);
+        }
+      }
+    });
+  }
+  
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _deepLinkService?.dispose();
+    super.dispose();
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    final selectedThread = ref.watch(selectedThreadProvider);
+    final currentIndex = ref.watch(navigationIndexProvider);
+    final navItems = ref.watch(bottomNavItemsProvider);
+    final selectedAgent = ref.watch(selectedAgentProvider);
+    
+    // Listen for navigation index changes to update PageView
+    ref.listen<int>(navigationIndexProvider, (previous, next) {
+      if (_pageController.hasClients && previous != next) {
+        _pageController.jumpToPage(next);
+      }
+    });
+    
+    // Listen for thread selection changes
+    ref.listen<Thread?>(selectedThreadProvider, (previous, next) {
+      final isUserNavigating = ref.read(isUserNavigatingProvider);
+      
+      // Don't auto-navigate if user is manually navigating
+      if (isUserNavigating) {
+        return;
+      }
+      
+      // Navigate to chat when a thread is selected from the threads tab
+      if (next != null && previous?.id != next.id) {
+        // Find the chat tab index (it might be 0 or 1 depending on agents)
+        final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
+        if (chatIndex != -1 && currentIndex != chatIndex) {
+          ref.read(navigationIndexProvider.notifier).state = chatIndex;
+        }
+      }
+    });
+
+    final List<Widget> pages = [];
+    
+    // Build pages based on navigation items
+    for (final item in navItems) {
+      switch (item.label) {
+        case 'Agents':
+          pages.add(const AgentsScreen());
+          break;
+        case 'Chat':
+          pages.add(ChatScreen(
+            agentId: selectedAgent?.id ?? MobileApiConfig.defaultAgentId,
+            agentName: selectedAgent?.name ?? MobileApiConfig.defaultAgentName,
+            initialThreadId: selectedThread?.id,
+          ));
+          break;
+        case 'Threads':
+          pages.add(const ThreadsScreen());
+          break;
+        case 'Profile':
+          pages.add(const ProfileScreen());
+          break;
+      }
+    }
+
+    final notificationState = ref.watch(notificationProvider);
+    
+    return FirestoreListener(
+      child: Scaffold(
+        body: Stack(
+          children: [
+            PageView(
+              controller: _pageController,
+              physics: const NeverScrollableScrollPhysics(), // Disable swipe
+              children: pages,
+            ),
+            // Notification banner overlay
+            if (notificationState.isVisible && notificationState.messageContent != null) ...[
+              Builder(builder: (context) {
+                final agentId = notificationState.agentId ?? MobileApiConfig.defaultAgentId;
+                logger.d('[MobileHomePage] Creating MessageNotificationBanner');
+                logger.d('[MobileHomePage] Notification agentId: ${notificationState.agentId}');
+                logger.d('[MobileHomePage] Using agentId: $agentId');
+                logger.d('[MobileHomePage] Default agentId: ${MobileApiConfig.defaultAgentId}');
+                
+                return MessageNotificationBanner(
+                  threadName: notificationState.threadName ?? 'New Message',
+                  messageContent: notificationState.messageContent!,
+                  agentId: agentId,
+                  subject: notificationState.subject,
+                  duration: notificationState.duration,
+                  onDismiss: () {
+                    ref.read(notificationProvider.notifier).hideNotification();
+                  },
+                );
+              }),
+            ]
+          ],
+        ),
+        bottomNavigationBar: Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: SafeArea(
+                top: false,
+                child: BottomNavigationBar(
+                  currentIndex: currentIndex.clamp(0, navItems.length - 1),
+                  type: BottomNavigationBarType.fixed,
+                  backgroundColor: Colors.transparent,
+                  elevation: 0,
+                  selectedItemColor: Theme.of(context).colorScheme.primary,
+                  unselectedItemColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                  selectedFontSize: 12,
+                  unselectedFontSize: 12,
+                  onTap: (index) {
+                // Set flag to indicate user-initiated navigation
+                ref.read(isUserNavigatingProvider.notifier).state = true;
+                ref.read(navigationIndexProvider.notifier).state = index;
+                
+                // Clear the flag after a short delay to allow navigation to complete
+                Future.delayed(const Duration(milliseconds: 500), () {
+                  ref.read(isUserNavigatingProvider.notifier).state = false;
+                });
+              },
+              items: navItems.map((item) => BottomNavigationBarItem(
+                icon: Icon(item.icon),
+                label: item.label,
+              )).toList(),
+                ),
+              ),
+            ),
+      ),
+    );
   }
 }
