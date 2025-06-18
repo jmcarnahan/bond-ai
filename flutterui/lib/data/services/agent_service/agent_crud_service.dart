@@ -5,6 +5,7 @@ import 'package:flutterui/core/constants/api_constants.dart';
 import 'package:flutterui/data/models/agent_model.dart';
 import 'package:flutterui/data/models/api_response_models.dart';
 import 'package:flutterui/data/models/group_model.dart';
+import 'package:flutterui/data/models/model_info.dart';
 import 'agent_http_client.dart';
 import '../../../core/utils/logger.dart';
 
@@ -137,6 +138,30 @@ class AgentCrudService {
     } catch (e) {
       logger.e("[AgentCrudService] Error in getAvailableGroups: ${e.toString()}");
       throw Exception('Failed to fetch available groups: ${e.toString()}');
+    }
+  }
+
+  Future<List<ModelInfo>> getAvailableModels() async {
+    try {
+      final url = '${ApiConstants.baseUrl}${ApiConstants.agentsEndpoint}/models';
+      final response = await _httpClient.get(url);
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        final List<ModelInfo> models = data
+            .map((item) => ModelInfo.fromJson(item as Map<String, dynamic>))
+            .toList();
+        
+        logger.i("[AgentCrudService] Fetched ${models.length} available models");
+        return models;
+      } else {
+        final errorMsg = 'Failed to load available models: ${response.statusCode}';
+        logger.e("[AgentCrudService] $errorMsg, Body: ${response.body}");
+        throw Exception(errorMsg);
+      }
+    } catch (e) {
+      logger.e("[AgentCrudService] Error in getAvailableModels: ${e.toString()}");
+      throw Exception('Failed to fetch available models: ${e.toString()}');
     }
   }
 }

@@ -1,64 +1,88 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutterui/providers/core_providers.dart';
 import 'package:flutterui/core/theme/app_theme.dart';
-import 'package:flutterui/main.dart';
 
 class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
   final String agentName;
-  final VoidCallback onStartNewThread;
-  final VoidCallback onViewThreads;
 
   const ChatAppBar({
     super.key,
     required this.agentName,
-    required this.onStartNewThread,
-    required this.onViewThreads,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final customColors = theme.extension<CustomColors>();
-    final appBarBackgroundColor = customColors?.brandingSurface ?? theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface; // Generic fallback
     final appTheme = ref.watch(appThemeProvider);
-    final textTheme = theme.textTheme;
+    final theme = Theme.of(context);
+    final customColors = CustomColors.of(context);
 
-    return AppBar(
-      backgroundColor: appBarBackgroundColor,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back, color: Colors.white),
-        onPressed: () => Navigator.of(context).pop(),
-      ),
-      title: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Image.asset(
-            appTheme.logoIcon,
-            height: 24,
-            width: 24,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            "Chat with $agentName",
-            style: textTheme.titleLarge?.copyWith(color: Colors.white),
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.forum_outlined, color: Colors.white),
-          tooltip: 'View/Change Threads',
-          onPressed: onViewThreads,
+      child: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: Icon(Icons.menu, color: theme.colorScheme.onSurface),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
         ),
-        IconButton(
-          icon: const Icon(Icons.add_comment_outlined, color: Colors.white),
-          tooltip: 'Start New Thread',
-          onPressed: onStartNewThread,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: theme.colorScheme.onSurface.withOpacity(0.1),
+              ),
+              child: Image.asset(
+                appTheme.logoIcon,
+                height: 24,
+                width: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  "${appTheme.name} Companion",
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                Text(
+                  appTheme.brandingMessage,
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight + 8);
 }

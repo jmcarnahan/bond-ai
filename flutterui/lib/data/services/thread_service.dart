@@ -31,7 +31,7 @@ class ThreadService {
             data
                 .map((item) => Thread.fromJson(item as Map<String, dynamic>))
                 .toList();
-        logger.i("[ThreadService] Parsed ${threads.length} threads.");
+        // logger.i("[ThreadService] Parsed ${threads.length} threads.");
         return threads;
       } else {
         logger.i(
@@ -100,9 +100,9 @@ class ThreadService {
             data
                 .map((item) => Message.fromJson(item as Map<String, dynamic>))
                 .toList();
-        logger.i(
-          "[ThreadService] Parsed ${messages.length} messages for thread $threadId.",
-        );
+        // logger.i(
+        //   "[ThreadService] Parsed ${messages.length} messages for thread $threadId.",
+        // );
         return messages;
       } else {
         logger.i(

@@ -1,7 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutterui/data/models/agent_model.dart';
+import 'package:flutterui/data/services/agent_service.dart';
+import 'package:flutterui/data/services/file_service.dart';
 import 'package:flutterui/providers/services/service_providers.dart';
+import 'package:flutterui/providers/models_provider.dart';
 import '../core/utils/logger.dart';
 
 class UploadedFileInfo {
@@ -113,9 +116,18 @@ class CreateAgentFormState {
 }
 
 class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
-  final Ref _ref;
+  final AgentService _agentService;
+  final FileService _fileService;
+  final String Function() _getDefaultModel;
 
-  CreateAgentFormNotifier(this._ref) : super(CreateAgentFormState());
+  CreateAgentFormNotifier({
+    required AgentService agentService,
+    required FileService fileService,
+    required String Function() getDefaultModel,
+  })  : _agentService = agentService,
+        _fileService = fileService,
+        _getDefaultModel = getDefaultModel,
+        super(CreateAgentFormState());
 
   void setName(String name) {
     state = state.copyWith(name: name);
@@ -208,8 +220,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
             clearErrorMessage: true,
           );
 
-          final fileService = _ref.read(fileServiceProvider);
-          final uploadResponse = await fileService.uploadFile(
+          final uploadResponse = await _fileService.uploadFile(
             file.name,
             file.bytes!,
           );
@@ -268,8 +279,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
     state = state.copyWith(isLoading: true, clearErrorMessage: true);
 
     try {
-      final agentService = _ref.read(agentServiceProvider);
-      final agentDetail = await agentService.getAgentDetails(agentId);
+      final agentDetail = await _agentService.getAgentDetails(agentId);
 
       List<UploadedFileInfo> uploadedFiles = [];
 
@@ -297,10 +307,8 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
         // Fetch file details for all file IDs
         if (allFileIds.isNotEmpty) {
           try {
-            final fileService = _ref.read(fileServiceProvider);
-
             // Add timeout to prevent hanging on file details fetch
-            final fileDetailsList = await fileService
+            final fileDetailsList = await _fileService
                 .getFileDetails(allFileIds.toList())
                 .timeout(
                   const Duration(seconds: 15),
@@ -372,10 +380,10 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       logger.i(
         "[CreateAgentFormNotifier] Loaded agent data for editing: ${agentDetail.name}",
       );
-      logger.i("[CreateAgentFormNotifier] MCP Tools: ${agentDetail.mcpTools}");
-      logger.i(
-        "[CreateAgentFormNotifier] MCP Resources: ${agentDetail.mcpResources}",
-      );
+      // logger.i("[CreateAgentFormNotifier] MCP Tools: ${agentDetail.mcpTools}");
+      // logger.i(
+      //   "[CreateAgentFormNotifier] MCP Resources: ${agentDetail.mcpResources}",
+      // );
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -436,6 +444,9 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       );
     }
 
+    // Get the default model from the provider
+    final defaultModel = _getDefaultModel();
+    
     final agentData = AgentDetailModel(
       id: agentId ?? '',
       name: state.name,
@@ -443,7 +454,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       instructions: state.instructions.isNotEmpty ? state.instructions : null,
       introduction: state.introduction.isNotEmpty ? state.introduction : null,
       reminder: state.reminder.isNotEmpty ? state.reminder : null,
-      model: "gpt-4o-mini",
+      model: defaultModel,
       tools: tools,
       toolResources: toolResources,
       mcpTools:
@@ -469,12 +480,11 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
     );
 
     try {
-      final agentService = _ref.read(agentServiceProvider);
       if (agentId == null || agentId.isEmpty) {
-        await agentService.createAgent(agentData);
+        await _agentService.createAgent(agentData);
         logger.i('Agent created: ${state.name}');
       } else {
-        await agentService.updateAgent(agentId, agentData);
+        await _agentService.updateAgent(agentId, agentData);
         logger.i('Agent updated: ${state.name}');
       }
 
@@ -491,8 +501,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
     state = state.copyWith(isLoading: true, clearErrorMessage: true);
 
     try {
-      final agentService = _ref.read(agentServiceProvider);
-      await agentService.deleteAgent(agentId);
+      await _agentService.deleteAgent(agentId);
       logger.i('Agent deleted: $agentId');
 
       state = state.copyWith(isLoading: false);
@@ -507,5 +516,17 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
 
 final createAgentFormProvider =
     StateNotifierProvider<CreateAgentFormNotifier, CreateAgentFormState>((ref) {
-      return CreateAgentFormNotifier(ref);
+      final agentService = ref.watch(agentServiceProvider);
+      final fileService = ref.watch(fileServiceProvider);
+      
+      // Create a function that captures the ref context
+      String getDefaultModel() {
+        return ref.read(defaultModelProvider) ?? 'gpt-4o';
+      }
+      
+      return CreateAgentFormNotifier(
+        agentService: agentService,
+        fileService: fileService,
+        getDefaultModel: getDefaultModel,
+      );
     });

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/message_attachment_bar.dart';
+import 'package:flutterui/providers/core_providers.dart' show appThemeProvider;
 
 class MessageInputBar extends ConsumerStatefulWidget {
   final TextEditingController textController;
@@ -63,23 +64,24 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final appTheme = ref.watch(appThemeProvider);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 24.0),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
       decoration: BoxDecoration(
-        color: theme.scaffoldBackgroundColor,
+        color: colorScheme.surface,
         boxShadow: [
           BoxShadow(
-            offset: const Offset(0, -1),
-            blurRadius: 2.0,
-            spreadRadius: 0.5,
-            color: Colors.black.withValues(alpha: .08),
+            offset: const Offset(0, -2),
+            blurRadius: 8.0,
+            spreadRadius: 0,
+            color: colorScheme.shadow.withOpacity(0.1),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        spacing: 8.0,
+        spacing: 12.0,
         children: [
           MessageAttachmentBar(
             attachments: widget.attachments,
@@ -89,19 +91,29 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(25.0),
-                  border: widget.isTextFieldFocused
-                      ? Border.all(color: Colors.red, width: 2.0)
-                      : null,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(28.0),
+                    color: colorScheme.surfaceContainerHighest,
+                    border: Border.all(
+                      color: widget.isTextFieldFocused 
+                          ? colorScheme.primary 
+                          : colorScheme.outline,
+                      width: widget.isTextFieldFocused ? 2.0 : 1.0,
+                    ),
+                    boxShadow: widget.isTextFieldFocused ? [
+                      BoxShadow(
+                        color: colorScheme.primary.withOpacity(0.1),
+                        blurRadius: 8,
+                        spreadRadius: 1,
+                      ),
+                    ] : null,
                   ),
                   child: Material(
-                    borderRadius: BorderRadius.circular(25.0),
-                    clipBehavior: Clip.antiAlias,
-                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                    color: Colors.transparent,
                     child: Padding( 
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0),
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 2.0),
                       child: KeyboardListener(
                         focusNode: _keyboardFocusNode,
                         onKeyEvent: (KeyEvent event) {
@@ -119,13 +131,23 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                           maxLines: null,
                           keyboardType: TextInputType.multiline,
                           textCapitalization: TextCapitalization.sentences,
+                          style: TextStyle(
+                            color: colorScheme.onSurface,
+                            fontSize: 16,
+                          ),
                           decoration: InputDecoration(
-                            hintText: widget.isSendingMessage ? 'Waiting for response...' : 'Type a message...',
+                            hintText: widget.isSendingMessage 
+                                ? '${appTheme.name} is typing...' 
+                                : 'Type your message here...',
+                            hintStyle: TextStyle(
+                              color: colorScheme.onSurfaceVariant,
+                              fontSize: 16,
+                            ),
                             border: InputBorder.none,
                             enabledBorder: InputBorder.none,
                             focusedBorder: InputBorder.none,
                             filled: false,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 12.0),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 14.0),
                           ),
                           onSubmitted: (value) {
                             if (!widget.isSendingMessage && value.trim().isNotEmpty) {
@@ -138,32 +160,87 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                   ),
                 ),
               ),
-              const SizedBox(width: 8.0),
-              IconButton(
-                icon: Icon(Icons.attach_file, color: widget.isSendingMessage ? Colors.grey : colorScheme.primary, size: 28), // Grey out icon when disabled
-                tooltip: 'Add a file',
-                padding: const EdgeInsets.only(bottom: 4.0), // Align with TextField baseline
-                onPressed: _pickFiles,
+              const SizedBox(width: 12.0),
+              _buildActionButton(
+                icon: Icons.attach_file_rounded,
+                onPressed: widget.isSendingMessage ? null : _pickFiles,
+                tooltip: 'Attach file',
               ),
+              const SizedBox(width: 8.0),
               widget.isSendingMessage
-                  ? Padding(
-                      padding: const EdgeInsets.only(bottom: 4.0, right: 4.0),
-                      child: SizedBox(
-                        width: 28,
-                        height: 28,
-                        child: CircularProgressIndicator(strokeWidth: 2.5, color: colorScheme.primary),
+                  ? Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: colorScheme.primary.withOpacity(0.1),
+                      ),
+                      child: Center(
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5, 
+                            color: colorScheme.primary,
+                          ),
+                        ),
                       ),
                     )
-                  : IconButton(
-                      icon: Icon(Icons.send, color: widget.isSendingMessage ? Colors.grey : colorScheme.primary, size: 28), // Grey out icon when disabled
-                      tooltip: widget.isSendingMessage ? 'Waiting for response' : 'Send message',
-                      padding: const EdgeInsets.only(bottom: 4.0),
-                      onPressed: widget.isSendingMessage ? null : widget.onSendMessage,
+                  : _buildActionButton(
+                      icon: Icons.send_rounded,
+                      onPressed: widget.textController.text.trim().isEmpty 
+                          ? null 
+                          : widget.onSendMessage,
+                      tooltip: 'Send message',
+                      isPrimary: true,
                     ),
-               ],
+            ],
           ),
         ],
       )
+    );
+  }
+  
+  Widget _buildActionButton({
+    required IconData icon,
+    required VoidCallback? onPressed,
+    required String tooltip,
+    bool isPrimary = false,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isEnabled = onPressed != null;
+    
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: isPrimary && isEnabled
+            ? colorScheme.primary
+            : isEnabled 
+                ? colorScheme.surfaceContainerHighest
+                : colorScheme.surfaceContainerHigh,
+        boxShadow: isPrimary && isEnabled ? [
+          BoxShadow(
+            color: colorScheme.primary.withOpacity(0.3),
+            blurRadius: 8,
+            spreadRadius: 0,
+          ),
+        ] : null,
+      ),
+      child: IconButton(
+        icon: Icon(
+          icon,
+          color: isPrimary && isEnabled
+              ? colorScheme.onPrimary
+              : isEnabled 
+                  ? colorScheme.onSurface
+                  : colorScheme.onSurfaceVariant,
+          size: 24,
+        ),
+        tooltip: tooltip,
+        onPressed: onPressed,
+      ),
     );
   }
 }

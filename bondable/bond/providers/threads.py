@@ -121,7 +121,7 @@ class ThreadsProvider(ABC):
                 {"thread_id": thread_id, "name": name, "created_at": created_at, "updated_at": updated_at}
                 for thread_id, name, created_at, updated_at in results
             ]
-            LOGGER.info(f"Retrieved {len(threads)} threads for user {user_id} (limit: {count}, sorted by updated_at desc)")
+            LOGGER.debug(f"Retrieved {len(threads)} threads for user {user_id} (limit: {count}, sorted by updated_at desc)")
             return threads
 
 

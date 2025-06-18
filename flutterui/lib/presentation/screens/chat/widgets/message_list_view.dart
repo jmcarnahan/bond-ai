@@ -4,6 +4,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutterui/providers/thread_chat/chat_session_state.dart';
 import 'package:flutterui/presentation/widgets/typing_indicator.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/image_message_widget.dart';
+import 'package:flutterui/providers/core_providers.dart' show appThemeProvider;
 
 class MessageListView extends ConsumerWidget {
   final ChatSessionState chatState;
@@ -71,28 +72,24 @@ class MessageListView extends ConsumerWidget {
     );
   }
 
-  Widget _buildEmptyChatPlaceholder(BuildContext context, String agentName, bool isSendingIntroduction) {
-    final textTheme = Theme.of(context).textTheme;
+  Widget _buildEmptyChatPlaceholder(BuildContext context, WidgetRef ref, String agentName, bool isSendingIntroduction) {
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+    final appTheme = ref.watch(appThemeProvider);
     
     if (isSendingIntroduction) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircleAvatar(
-              radius: 40,
-              backgroundColor: Colors.grey.shade200,
-              child: Icon(
-                Icons.smart_toy_outlined,
-                size: 48,
-                color: Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 24),
+            _AnimatedLogo(appTheme: appTheme),
+            const SizedBox(height: 32),
             Text(
-              'Starting a conversation with $agentName',
+              '${appTheme.name} is preparing...',
               style: textTheme.headlineSmall?.copyWith(
-                color: Colors.grey.shade700,
+                color: theme.colorScheme.onSurface,
+                fontWeight: FontWeight.w300,
+                letterSpacing: 0.5,
               ),
             ),
             const SizedBox(height: 16),
@@ -106,31 +103,55 @@ class MessageListView extends ConsumerWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          CircleAvatar(
-            radius: 40,
-            backgroundColor: Colors.grey.shade200,
-            child: Icon(
-              Icons.smart_toy_outlined,
-              size: 48,
-              color: Colors.grey.shade600,
-            ),
-          ),
-          const SizedBox(height: 24),
+          _AnimatedLogo(appTheme: appTheme),
+          const SizedBox(height: 48),
           Text(
-            'Start a conversation',
+            'Welcome to ${appTheme.name}',
             style: textTheme.headlineSmall?.copyWith(
-              color: Colors.grey.shade700,
+              color: theme.colorScheme.onSurface,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 40.0),
             child: Text(
-              'Send a message to begin your chat with $agentName.',
+              appTheme.brandingMessage,
               textAlign: TextAlign.center,
               style: textTheme.bodyLarge?.copyWith(
-                color: Colors.grey.shade500,
+                color: theme.colorScheme.onSurface.withOpacity(0.7),
+                height: 1.5,
               ),
+            ),
+          ),
+          const SizedBox(height: 32),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: theme.colorScheme.primary.withOpacity(0.2),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.shield_outlined,
+                  size: 16,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Protected by ${appTheme.name.split(' ').first}',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -148,8 +169,13 @@ class MessageListView extends ConsumerWidget {
       return const Center(child: TypingIndicator());
     }
 
-    if (chatState.messages.isEmpty) {
-      return _buildEmptyChatPlaceholder(context, agentName, chatState.isSendingIntroduction);
+    if (chatState.messages.isEmpty && !chatState.isSendingMessage) {
+      return _buildEmptyChatPlaceholder(context, ref, agentName, chatState.isSendingIntroduction);
+    }
+
+    // Show typing indicator when sending first message to empty thread
+    if (chatState.messages.isEmpty && chatState.isSendingMessage) {
+      return const Center(child: TypingIndicator());
     }
 
     return ListView.builder(
@@ -353,6 +379,82 @@ class MessageListView extends ConsumerWidget {
             }
           }
         }
+      },
+    );
+  }
+}
+
+class _AnimatedLogo extends StatefulWidget {
+  final dynamic appTheme;
+  
+  const _AnimatedLogo({required this.appTheme});
+
+  @override
+  State<_AnimatedLogo> createState() => _AnimatedLogoState();
+}
+
+class _AnimatedLogoState extends State<_AnimatedLogo> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    );
+    
+    _animation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOut,
+    );
+    
+    _controller.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Container(
+          width: 120,
+          height: 120,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                theme.colorScheme.surface.withOpacity(0.9),
+                theme.colorScheme.surface,
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.3 * _animation.value),
+                blurRadius: 30,
+                spreadRadius: 10,
+              ),
+            ],
+          ),
+          child: Center(
+            child: Image.asset(
+              widget.appTheme.logo,
+              height: 60,
+              width: 60,
+            ),
+          ),
+        );
       },
     );
   }

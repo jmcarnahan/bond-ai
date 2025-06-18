@@ -70,3 +70,9 @@ class AgentDetailResponse(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     mcp_tools: Optional[List[str]] = None
     mcp_resources: Optional[List[str]] = None
+
+
+class ModelInfo(BaseModel):
+    name: str
+    description: str
+    is_default: bool = False
