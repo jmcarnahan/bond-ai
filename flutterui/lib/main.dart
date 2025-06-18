@@ -5,6 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutterui/firebase_options.dart';
 import 'package:flutterui/providers/auth_provider.dart';
+import 'package:flutterui/providers/core_providers.dart';
 import 'package:flutterui/providers/thread_provider.dart';
 import 'package:flutterui/data/models/thread_model.dart';
 import 'package:flutterui/presentation/screens/auth/login_screen.dart';
@@ -29,11 +30,6 @@ import 'package:flutterui/providers/config_provider.dart';
 import 'package:flutterui/presentation/screens/agents/agents_screen.dart';
 import 'package:flutterui/providers/agent_provider.dart';
 import 'package:flutterui/core/services/deep_link_service.dart';
-
-// Provider for SharedPreferences instance
-final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
-  throw UnimplementedError('sharedPreferencesProvider must be overridden');
-});
 
 // Provider to control the bottom navigation index
 final navigationIndexProvider = StateProvider<int>((ref) {
@@ -91,6 +87,8 @@ class MobileApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final appTheme = ref.watch(appThemeProvider);
+    
     // Determine initial route based on current URL
     String initialRoute = '/';
     if (kIsWeb) {
@@ -108,10 +106,7 @@ class MobileApp extends ConsumerWidget {
     return MaterialApp(
       title: 'Bond AI Mobile',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
-      ),
+      theme: appTheme.themeData,
       initialRoute: initialRoute,
       onGenerateRoute: (settings) {
         logger.i(
