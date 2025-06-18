@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/data/models/agent_model.dart';
 import 'package:flutterui/providers/core_providers.dart';
 import 'package:flutterui/providers/auth_provider.dart';
+import 'package:flutterui/providers/config_provider.dart';
+import 'package:flutterui/providers/agent_provider.dart';
+import 'package:flutterui/main.dart';
 
 class AgentCard extends ConsumerWidget {
   final AgentListItemModel agent;
@@ -35,11 +38,15 @@ class AgentCard extends ConsumerWidget {
       color: themeData.cardTheme.color ?? colorScheme.surface,
       child: InkWell(
         onTap: () {
-          Navigator.pushNamed(
-            context,
-            '/chat/${agent.id}',
-            arguments: agent,
-          );
+          // Update the selected agent
+          ref.read(selectedAgentProvider.notifier).selectAgent(agent);
+          
+          // Navigate to the chat tab within the navigation shell
+          final navItems = ref.read(bottomNavItemsProvider);
+          final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
+          if (chatIndex != -1) {
+            ref.read(navigationIndexProvider.notifier).state = chatIndex;
+          }
         },
         borderRadius: BorderRadius.circular(8.0),
         child: Container(
