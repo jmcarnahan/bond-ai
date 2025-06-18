@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:flutterui/data/models/thread_model.dart';
 import 'package:flutterui/providers/thread_provider.dart';
+import 'package:flutterui/presentation/widgets/app_drawer.dart';
 import 'widgets/threads_app_bar.dart';
 import 'widgets/threads_list_view.dart';
 import 'widgets/threads_empty_state.dart';
@@ -49,15 +50,10 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> with ErrorHandlin
     _controller.refreshThreads();
   }
 
-  void _onBack() {
-    _controller.navigateBack();
-  }
-
   @override
   Widget build(BuildContext context) {
     final threadsAsyncValue = ref.watch(threadsProvider);
     final selectedThreadId = ref.watch(selectedThreadIdProvider);
-    final theme = Theme.of(context);
 
     ref.listen<String?>(threadErrorProvider, (previous, next) {
       if (next != null && context.mounted) {
@@ -67,7 +63,8 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> with ErrorHandlin
     });
 
     return Scaffold(
-      appBar: ThreadsAppBar(onBack: _onBack),
+      drawer: const AppDrawer(),
+      appBar: const ThreadsAppBar(),
       body: threadsAsyncValue.when(
         data: (threads) => _buildDataState(threads, selectedThreadId),
         loading: () => const ThreadsLoadingState(),
@@ -119,12 +116,26 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> with ErrorHandlin
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showCreateThreadDialog,
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-        tooltip: 'Create New Thread',
-        child: const Icon(Icons.add),
+      floatingActionButton: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+              blurRadius: 12,
+              spreadRadius: 2,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: FloatingActionButton(
+          onPressed: _showCreateThreadDialog,
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          foregroundColor: Colors.white,
+          tooltip: 'Start New Conversation',
+          elevation: 0,
+          child: const Icon(Icons.add_comment_rounded, size: 28),
+        ),
       ),
     );
   }

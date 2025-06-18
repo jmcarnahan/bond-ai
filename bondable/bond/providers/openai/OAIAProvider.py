@@ -33,7 +33,6 @@ class OAIAProvider(Provider):
                 azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
                 api_version=os.getenv('AZURE_OPENAI_API_VERSION', "2025-04-01-preview"),
             )
-            openai_deployment = os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4o-mini')
             LOGGER.info("Using Azure OpenAI API")
 
         metadata_db_url = self.config.get_metadata_db_url()
@@ -52,5 +51,19 @@ class OAIAProvider(Provider):
 
     @override
     def get_default_model(self) -> str:
-        return "gpt-4o-mini"
+        models = self.agents.get_available_models()
+        
+        # Handle empty models list
+        if not models:
+            LOGGER.warning("No models available from provider, using fallback 'gpt-4o'")
+            return "gpt-4o"
+        
+        # Find the default model
+        for model in models:
+            if model.get('is_default', False):
+                return model['name']
+        
+        # If no default is explicitly set, use the first model
+        LOGGER.warning(f"No default model specified, using first available: {models[0]['name']}")
+        return models[0]['name']
 

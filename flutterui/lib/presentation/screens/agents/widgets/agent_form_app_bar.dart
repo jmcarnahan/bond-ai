@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:flutterui/core/theme/app_theme.dart';
-import 'package:flutterui/main.dart';
+import 'package:flutterui/providers/core_providers.dart';
 
 class AgentFormAppBar extends ConsumerWidget implements PreferredSizeWidget {
   final bool isEditing;

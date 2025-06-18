@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutterui/data/models/agent_model.dart';
 import 'package:flutterui/data/models/api_response_models.dart';
 import 'package:flutterui/data/models/group_model.dart';
+import 'package:flutterui/data/models/model_info.dart';
 import 'package:flutterui/data/services/auth_service.dart';
 import 'agent_http_client.dart';
 import 'agent_crud_service.dart';
@@ -49,6 +50,9 @@ class AgentService {
 
   Future<List<AvailableGroup>> getAvailableGroups([String? agentId]) =>
     _crudService.getAvailableGroups(agentId);
+
+  Future<List<ModelInfo>> getAvailableModels() =>
+    _crudService.getAvailableModels();
 
   void dispose() {
     _httpClient.dispose();

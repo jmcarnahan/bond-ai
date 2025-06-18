@@ -9,7 +9,7 @@ from bondable.bond.providers.provider import Provider
 from bondable.rest.models.auth import User
 from bondable.rest.models.agents import (
     AgentRef, AgentCreateRequest, AgentUpdateRequest, AgentResponse,
-    AgentDetailResponse, ToolResourcesResponse, ToolResourceFilesList
+    AgentDetailResponse, ToolResourcesResponse, ToolResourceFilesList, ModelInfo
 )
 from bondable.rest.dependencies.auth import get_current_user
 from bondable.rest.dependencies.providers import get_bond_provider
@@ -73,6 +73,20 @@ async def get_agents(
     except Exception as e:
         LOGGER.error(f"Error fetching agents for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not fetch agents.")
+
+
+@router.get("/models", response_model=List[ModelInfo])
+async def get_available_models(
+    current_user: Annotated[User, Depends(get_current_user)],
+    provider: Provider = Depends(get_bond_provider)
+):
+    """Get list of available models that can be used by agents."""
+    try:
+        models = provider.agents.get_available_models()
+        return [ModelInfo(**model) for model in models]
+    except Exception as e:
+        LOGGER.error(f"Error fetching available models: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not fetch available models.")
 
 
 @router.get("/available-groups", response_model=List[dict])
@@ -235,8 +249,8 @@ async def get_agent_details(
                             processed_file_ids.add(file_details.file_id)
                 response_tool_resources.file_search = ToolResourceFilesList(file_ids=list(processed_file_ids))
 
-        LOGGER.info(f"Returning agent details - introduction: '{agent_def.introduction[:50] if agent_def.introduction else 'None'}'...")
-        LOGGER.info(f"Returning agent details - reminder: '{agent_def.reminder[:50] if agent_def.reminder else 'None'}'...")
+        LOGGER.debug(f"Returning agent details - introduction: '{agent_def.introduction[:50] if agent_def.introduction else 'None'}'...")
+        LOGGER.debug(f"Returning agent details - reminder: '{agent_def.reminder[:50] if agent_def.reminder else 'None'}'...")
         
         return AgentDetailResponse(
             id=agent_instance.get_agent_id(),

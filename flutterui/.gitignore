@@ -52,3 +52,7 @@ theme_configs/
 
 # Theme-specific assets (contents are private and provided at build time)
 assets/theme_specific/*
+
+# Environment files
+.env
+.env.*
