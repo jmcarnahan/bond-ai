@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../main_mobile.dart' show navigationIndexProvider;
+import '../../main.dart' show navigationIndexProvider;
 import '../../providers/notification_provider.dart';
 import '../../providers/config_provider.dart';
 
