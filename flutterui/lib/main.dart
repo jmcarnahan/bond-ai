@@ -13,8 +13,13 @@ import 'package:flutterui/presentation/screens/auth/auth_callback_screen.dart';
 import 'package:flutterui/presentation/screens/chat/chat_screen.dart';
 import 'package:flutterui/presentation/screens/threads/threads_screen.dart';
 import 'package:flutterui/presentation/screens/profile/profile_screen.dart';
+import 'package:flutterui/presentation/screens/agents/create_agent_screen.dart';
+import 'package:flutterui/presentation/screens/groups/groups_screen.dart';
+import 'package:flutterui/presentation/screens/groups/edit_group_screen.dart';
 import 'package:flutterui/core/constants/mobile_api_config.dart';
 import 'package:flutterui/core/constants/api_constants.dart';
+import 'package:flutterui/data/models/agent_model.dart';
+import 'package:flutterui/data/models/group_model.dart';
 import 'package:flutterui/core/utils/logger.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:universal_html/html.dart' as html;
@@ -23,10 +28,7 @@ import 'package:flutterui/presentation/widgets/message_notification_banner.dart'
 import 'package:flutterui/providers/notification_provider.dart';
 import 'package:flutterui/providers/config_provider.dart';
 import 'package:flutterui/presentation/screens/agents/agents_screen.dart';
-import 'package:flutterui/presentation/screens/agents/create_agent_screen.dart';
 import 'package:flutterui/providers/agent_provider.dart';
-import 'package:flutterui/data/models/agent_model.dart';
-import 'package:app_links/app_links.dart';
 import 'package:flutterui/core/services/deep_link_service.dart';
 
 // Provider to control the bottom navigation index
@@ -62,9 +64,9 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    logger.i('[MobileApp] Firebase initialized successfully');
+    logger.i('Firebase initialized successfully');
   } catch (e) {
-    logger.e('[MobileApp] Error initializing Firebase: $e');
+    logger.e('Error initializing Firebase: $e');
   }
   
   // Initialize SharedPreferences
@@ -107,105 +109,108 @@ class MobileApp extends ConsumerWidget {
       theme: appTheme.themeData,
       initialRoute: initialRoute,
       onGenerateRoute: (settings) {
-        logger.i('[MobileApp] Route requested: ${settings.name}');
-        logger.i('[MobileApp] Route arguments: ${settings.arguments}');
+        logger.i(
+          "[onGenerateRoute] Name: '${settings.name}', Args: ${settings.arguments}",
+        );
+        Widget? pageWidget;
+
+        String effectivePath = settings.name ?? '/';
+        if (effectivePath.startsWith('/#/')) {
+          effectivePath = effectivePath.substring(2);
+        }
+        if (!effectivePath.startsWith('/')) {
+          effectivePath = '/$effectivePath';
+        }
+
+        final Uri uri = Uri.parse(effectivePath);
+        effectivePath = uri.path;
         
         // Handle root route with token parameter (mobile OAuth callback)
-        if (settings.name == '/' || settings.name?.startsWith('/?') == true) {
-          // Check if there's a token in the route
-          final uri = Uri.tryParse(settings.name ?? '/');
-          if (uri != null && uri.queryParameters.containsKey('token')) {
-            final token = uri.queryParameters['token'];
-            logger.i('[MobileApp] Found token in route, processing authentication');
-            
-            return MaterialPageRoute(
-              builder: (context) => Consumer(
-                builder: (context, ref, _) {
-                  // Process the token immediately
-                  WidgetsBinding.instance.addPostFrameCallback((_) async {
-                    if (token != null && token.isNotEmpty) {
-                      logger.i('[MobileApp] Processing OAuth token from route');
-                      await ref.read(authNotifierProvider.notifier).loginWithToken(token);
-                    }
-                  });
-                  
-                  return const MobileAuthWrapper();
-                },
-              ),
-              settings: settings,
-            );
-          }
-        }
-        
-        // Handle auth callback route
-        if (settings.name == '/auth-callback') {
-          logger.i('[MobileApp] Navigating to AuthCallbackScreen');
-          return MaterialPageRoute(
-            builder: (context) => const AuthCallbackScreen(),
-            settings: settings,
-          );
-        }
-        
-        // Handle profile route by switching to profile tab
-        if (settings.name == ProfileScreen.routeName) {
-          logger.i('[MobileApp] Profile route requested, switching to profile tab');
-          return MaterialPageRoute(
-            builder: (context) => Consumer(
-              builder: (context, ref, _) {
-                // Find profile tab index
-                final navItems = ref.read(bottomNavItemsProvider);
-                final profileIndex = navItems.indexWhere((item) => item.label == 'Profile');
-                if (profileIndex != -1) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    ref.read(navigationIndexProvider.notifier).state = profileIndex;
-                  });
-                }
-                return const MobileAuthWrapper();
-              },
-            ),
-            settings: settings,
-          );
-        }
-        
-        // Handle create/edit agent routes
-        if (settings.name?.startsWith('/edit-agent/') == true) {
-          final agentId = settings.name!.replaceFirst('/edit-agent/', '');
-          logger.i('[MobileApp] Edit agent route requested for: $agentId');
-          return MaterialPageRoute(
-            builder: (context) => CreateAgentScreen(agentId: agentId),
-            settings: settings,
-          );
-        }
-        
-        // Handle chat with agent routes
-        if (settings.name?.startsWith('/chat/') == true) {
-          final agentId = settings.name!.replaceFirst('/chat/', '');
-          logger.i('[MobileApp] Chat with agent route requested for: $agentId');
-          
-          // Get the agent data from arguments
-          final agent = settings.arguments as AgentListItemModel?;
+        if ((effectivePath == '/' || effectivePath.isEmpty) && uri.queryParameters.containsKey('token')) {
+          final token = uri.queryParameters['token'];
+          logger.i('[MobileApp] Found token in route, processing authentication');
           
           return MaterialPageRoute(
             builder: (context) => Consumer(
               builder: (context, ref, _) {
-                // Set the selected agent if provided
-                if (agent != null) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    ref.read(selectedAgentProvider.notifier).selectAgent(agent);
-                  });
-                }
+                // Process the token immediately
+                WidgetsBinding.instance.addPostFrameCallback((_) async {
+                  if (token != null && token.isNotEmpty) {
+                    logger.i('[MobileApp] Processing OAuth token from route');
+                    await ref.read(authNotifierProvider.notifier).loginWithToken(token);
+                  }
+                });
                 
-                // Navigate to the chat tab
-                final navItems = ref.read(bottomNavItemsProvider);
-                final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
-                if (chatIndex != -1) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    ref.read(navigationIndexProvider.notifier).state = chatIndex;
-                  });
-                }
                 return const MobileAuthWrapper();
               },
             ),
+            settings: settings,
+          );
+        }
+
+        logger.i("[onGenerateRoute] Effective Path for switch: '$effectivePath'");
+
+        switch (effectivePath) {
+          case '/login':
+            pageWidget = const LoginScreen();
+            break;
+          case '/auth-callback':
+            pageWidget = const AuthCallbackScreen();
+            break;
+          case '/threads':
+            pageWidget = const ThreadsScreen();
+            break;
+          case CreateAgentScreen.routeName:
+            pageWidget = const CreateAgentScreen();
+            break;
+          case GroupsScreen.routeName:
+            pageWidget = const GroupsScreen();
+            break;
+          case ProfileScreen.routeName:
+            pageWidget = const ProfileScreen();
+            break;
+          default:
+            if (effectivePath.startsWith('/groups/') && effectivePath.endsWith('/edit')) {
+              final parts = effectivePath.split('/');
+              if (parts.length >= 3 && settings.arguments is Group) {
+                final group = settings.arguments as Group;
+                pageWidget = EditGroupScreen(group: group);
+              } else {
+                logger.e('[onGenerateRoute] Error: EditGroupScreen called without Group argument');
+                pageWidget = const GroupsScreen();
+              }
+            } else if (effectivePath.startsWith('/chat/')) {
+              final parts = effectivePath.split('/');
+              if (parts.length >= 3) {
+                if (settings.arguments is AgentListItemModel) {
+                  final agent = settings.arguments as AgentListItemModel;
+                  logger.i(
+                    "[onGenerateRoute] Navigating to ChatScreen for agent: ${agent.name} (ID: ${agent.id})",
+                  );
+                  pageWidget = ChatScreen(
+                    agentId: agent.id,
+                    agentName: agent.name,
+                  );
+                } else {
+                  logger.i(
+                    '[onGenerateRoute] Error: ChatScreen /chat/:id called without AgentListItemModel object as argument. Args: ${settings.arguments}',
+                  );
+                  // Handle missing agent data
+                  logger.e('[onGenerateRoute] Missing agent data for chat route');
+                  pageWidget = const MobileAuthWrapper();
+                }
+              }
+            } else if (effectivePath.startsWith('/edit-agent/')) {
+              final agentId = effectivePath.replaceFirst('/edit-agent/', '');
+              logger.i('[MobileApp] Edit agent route requested for: $agentId');
+              pageWidget = CreateAgentScreen(agentId: agentId);
+            }
+            break;
+        }
+        
+        if (pageWidget != null) {
+          return MaterialPageRoute(
+            builder: (context) => pageWidget!,
             settings: settings,
           );
         }
@@ -278,7 +283,7 @@ class MobileNavigationShell extends ConsumerStatefulWidget {
 
 class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
   late PageController _pageController;
-  late DeepLinkService _deepLinkService;
+  DeepLinkService? _deepLinkService;
   
   @override
   void initState() {
@@ -298,15 +303,19 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
     
     _pageController = PageController(initialPage: initialIndex);
     
-    // Initialize deep link service
-    _deepLinkService = DeepLinkService();
+    // Initialize deep link service only for mobile platforms
+    if (!kIsWeb) {
+      _deepLinkService = DeepLinkService();
+    }
     
     // Set the navigation index after the first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         ref.read(navigationIndexProvider.notifier).state = initialIndex;
         // Initialize deep links after the first frame
-        _deepLinkService.initDeepLinks(context, ref);
+        if (!kIsWeb && _deepLinkService != null) {
+          _deepLinkService!.initDeepLinks(context, ref);
+        }
       }
     });
   }
@@ -314,7 +323,7 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
   @override
   void dispose() {
     _pageController.dispose();
-    _deepLinkService.dispose();
+    _deepLinkService?.dispose();
     super.dispose();
   }
   
@@ -390,10 +399,10 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
             if (notificationState.isVisible && notificationState.messageContent != null) ...[
               Builder(builder: (context) {
                 final agentId = notificationState.agentId ?? MobileApiConfig.defaultAgentId;
-                print('[MobileHomePage] Creating MessageNotificationBanner');
-                print('[MobileHomePage] Notification agentId: ${notificationState.agentId}');
-                print('[MobileHomePage] Using agentId: $agentId');
-                print('[MobileHomePage] Default agentId: ${MobileApiConfig.defaultAgentId}');
+                logger.d('[MobileHomePage] Creating MessageNotificationBanner');
+                logger.d('[MobileHomePage] Notification agentId: ${notificationState.agentId}');
+                logger.d('[MobileHomePage] Using agentId: $agentId');
+                logger.d('[MobileHomePage] Default agentId: ${MobileApiConfig.defaultAgentId}');
                 
                 return MessageNotificationBanner(
                   threadName: notificationState.threadName ?? 'New Message',

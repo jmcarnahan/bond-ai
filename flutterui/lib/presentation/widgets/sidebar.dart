@@ -3,8 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/providers/agent_provider.dart';
 import 'package:flutterui/presentation/screens/agents/create_agent_screen.dart';
+import 'package:flutterui/presentation/screens/profile/profile_screen.dart';
 import 'package:flutterui/core/theme/app_theme.dart';
-import 'package:flutterui/main.dart';
+import 'package:flutterui/providers/core_providers.dart';
 
 class AppSidebar extends ConsumerWidget {
   const AppSidebar({super.key});

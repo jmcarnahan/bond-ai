@@ -5,6 +5,7 @@ import 'package:flutterui/data/models/agent_model.dart';
 import 'package:flutterui/data/services/agent_service.dart';
 import 'package:flutterui/data/services/file_service.dart';
 import 'package:flutterui/providers/services/service_providers.dart';
+import 'package:flutterui/providers/models_provider.dart';
 import 'package:flutterui/providers/domain/base/error_handler.dart';
 import 'agent_form_state.dart';
 import '../../../core/utils/logger.dart';
@@ -13,9 +14,13 @@ class AgentFormNotifier extends StateNotifier<AgentFormState>
     with ErrorHandlerMixin<AgentFormState> {
   final AgentService _agentService;
   final FileService _fileService;
+  final String Function() _getDefaultModel;
 
-  AgentFormNotifier(this._agentService, this._fileService)
-    : super(const AgentFormState());
+  AgentFormNotifier(
+    this._agentService, 
+    this._fileService, 
+    this._getDefaultModel,
+  ) : super(const AgentFormState());
 
   @override
   void handleAppError(AppError error) {
@@ -275,6 +280,9 @@ class AgentFormNotifier extends StateNotifier<AgentFormState>
       );
     }
 
+    // Get the default model from the provider
+    final defaultModel = _getDefaultModel();
+    
     return AgentDetailModel(
       id: state.editingAgentId ?? '',
       name: state.data.name,
@@ -282,7 +290,7 @@ class AgentFormNotifier extends StateNotifier<AgentFormState>
           state.data.description.isNotEmpty ? state.data.description : null,
       instructions:
           state.data.instructions.isNotEmpty ? state.data.instructions : null,
-      model: "gpt-4o-mini",
+      model: defaultModel,
       tools: tools,
       toolResources: toolResources,
       files: [],
@@ -294,7 +302,13 @@ final agentFormProvider =
     StateNotifierProvider<AgentFormNotifier, AgentFormState>((ref) {
       final agentService = ref.watch(agentServiceProvider);
       final fileService = ref.watch(fileServiceProvider);
-      return AgentFormNotifier(agentService, fileService);
+      
+      // Create a function that captures the ref context
+      String getDefaultModel() {
+        return ref.read(defaultModelProvider) ?? 'gpt-4o';
+      }
+      
+      return AgentFormNotifier(agentService, fileService, getDefaultModel);
     });
 
 final agentFormDataProvider = Provider<AgentFormData>((ref) {

@@ -9,7 +9,9 @@ import '../../../core/utils/logger.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/chat_app_bar.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/message_input_bar.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/message_list_view.dart';
+import 'package:flutterui/presentation/widgets/app_drawer.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
+import 'package:flutterui/providers/notification_provider.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String agentId;
@@ -41,40 +43,52 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with ErrorHandlingMixin
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeChatSession();
     });
-
   }
 
   void _initializeChatSession() {
-    logger.i("[ChatScreen] _initializeChatSession called - agentId: ${widget.agentId}, agentName: ${widget.agentName}");
     final chatNotifier = ref.read(chatSessionNotifierProvider.notifier);
     final globalSelectedThreadId = ref.read(selectedThreadIdProvider);
 
+    // Check for pending system message from notification
+    final pendingSystemMessage = ref.read(pendingSystemMessageProvider);
+    
+    if (pendingSystemMessage != null) {
+      // Clear the chat session to start fresh
+      chatNotifier.clearChatSession();
+      
+      // Clear the pending message provider
+      ref.read(pendingSystemMessageProvider.notifier).state = null;
+      
+      // Send the system message (this will create a new thread)
+      _sendPendingSystemMessage(
+        pendingSystemMessage.message, 
+        pendingSystemMessage.agentId,
+        threadName: pendingSystemMessage.threadName,
+      );
+      return;
+    }
+
     if (widget.initialThreadId != null) {
-      logger.i("[ChatScreen] Initializing with explicit threadId: ${widget.initialThreadId}, agentId: ${widget.agentId}");
       chatNotifier.setCurrentThread(widget.initialThreadId!);
       if (globalSelectedThreadId != widget.initialThreadId) {
         ref.read(threadsProvider.notifier).selectThread(widget.initialThreadId!);
       }
     } else if (globalSelectedThreadId != null) {
-      logger.i("[ChatScreen] Initializing with global selectedThreadId: $globalSelectedThreadId, agentId: ${widget.agentId}");
       final chatSessionCurrentThread = ref.read(chatSessionNotifierProvider).currentThreadId;
       if (chatSessionCurrentThread != globalSelectedThreadId) {
         chatNotifier.setCurrentThread(globalSelectedThreadId);
       }
     } else {
-      logger.i("[ChatScreen] No initial or global thread, checking if should auto-send introduction.");
       final chatSessionCurrentThread = ref.read(chatSessionNotifierProvider).currentThreadId;
       if (chatSessionCurrentThread != null) {
         chatNotifier.clearChatSession();
       }
-      
-      // Check if agent has introduction and auto-send it
       _checkAndSendIntroductionIfNeeded();
     }
   }
 
   void _checkAndSendIntroductionIfNeeded() async {
-    logger.i("[ChatScreen] Checking if agent has introduction for auto-send");
+    // logger.d("[ChatScreen] Checking if agent has introduction for auto-send");
     
     await withErrorHandling(
       operation: () async {
@@ -92,12 +106,75 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with ErrorHandlingMixin
             introduction: agentDetails.introduction!.trim(),
           );
         } else {
-          logger.i("[ChatScreen] Agent has no introduction, waiting for user to start conversation");
+          // logger.d("[ChatScreen] Agent has no introduction, waiting for user to start conversation");
         }
       },
       ref: ref,
       errorMessage: 'Failed to load agent information.',
       isCritical: false,  // This is a service error, not critical
+    );
+  }
+
+  void _sendPendingSystemMessage(String message, String agentId, {String? threadName}) async {
+    logger.i("[ChatScreen] Starting _sendPendingSystemMessage");
+    
+    // Check if widget is still mounted before using ref
+    if (!mounted) {
+      logger.w("[ChatScreen] Widget disposed, skipping _sendPendingSystemMessage");
+      return;
+    }
+    
+    // Set sending state immediately to show loading
+    final chatNotifier = ref.read(chatSessionNotifierProvider.notifier);
+    chatNotifier.state = chatNotifier.state.copyWith(isSendingMessage: true);
+    
+    // Only proceed with error handling if still mounted
+    if (!mounted) {
+      logger.w("[ChatScreen] Widget disposed, cannot proceed with error handling");
+      return;
+    }
+    
+    await withErrorHandling(
+      operation: () async {
+        logger.i("[ChatScreen] Creating thread with name: $threadName");
+        
+        // Check mounted before using ref
+        if (!mounted) {
+          logger.w("[ChatScreen] Widget disposed during operation");
+          return;
+        }
+        
+        // First, create a thread with the proper name from the notification
+        final newThread = await ref.read(threadsProvider.notifier).addThread(
+          name: threadName ?? 'New Conversation',
+        );
+        
+        if (newThread == null) {
+          throw Exception('Failed to create thread');
+        }
+        logger.i("[ChatScreen] Thread created: ${newThread.id}");
+        
+        // Check mounted again after async operation
+        if (!mounted) {
+          logger.w("[ChatScreen] Widget disposed after thread creation");
+          return;
+        }
+        
+        // Set the current thread ID in the chat session (without loading messages)
+        chatNotifier.setThreadIdOnly(newThread.id);
+        
+        logger.i("[ChatScreen] Sending system message");
+        // Now send the system message to the created thread
+        await chatNotifier.sendMessage(
+          agentId: agentId,
+          prompt: message,
+          overrideRole: "system",
+        );
+        logger.i("[ChatScreen] System message sent");
+      },
+      ref: ref,
+      errorMessage: 'Failed to send system message.',
+      isCritical: false,
     );
   }
 
@@ -163,10 +240,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with ErrorHandlingMixin
   @override
   void didUpdateWidget(covariant ChatScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    
+    // Only re-initialize if we're actually changing to a different thread
     if (widget.agentId != oldWidget.agentId ||
-        widget.initialThreadId != oldWidget.initialThreadId) {
+        (widget.initialThreadId != oldWidget.initialThreadId && 
+         widget.initialThreadId != ref.read(chatSessionNotifierProvider).currentThreadId)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        logger.i("[ChatScreen] didUpdateWidget: agentId or initialThreadId changed. Re-initializing.");
         _initializeChatSession();
       });
     }
@@ -175,8 +254,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with ErrorHandlingMixin
   @override
   Widget build(BuildContext context) {
     final chatState = ref.watch(chatSessionNotifierProvider);
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
 
     ref.listen(
       chatSessionNotifierProvider.select((state) => state.messages.length),
@@ -211,39 +288,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with ErrorHandlingMixin
       }
     });
 
+    // Listen for pending system message changes
+    ref.listen<PendingSystemMessage?>(pendingSystemMessageProvider, (previous, next) {
+      if (next != null) {
+        // Clear current chat session
+        final chatNotifier = ref.read(chatSessionNotifierProvider.notifier);
+        chatNotifier.clearChatSession();
+        
+        // Clear the pending message provider
+        ref.read(pendingSystemMessageProvider.notifier).state = null;
+        
+        // Send the system message
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _sendPendingSystemMessage(next.message, next.agentId, threadName: next.threadName);
+          }
+        });
+      }
+    });
+
     return Scaffold(
-      backgroundColor: colorScheme.surface,
+      backgroundColor: Colors.grey.shade50,
+      drawer: const AppDrawer(),
       appBar: ChatAppBar(
         agentName: widget.agentName,
-        onViewThreads: () {
-          Navigator.pushNamed(context, '/threads');
-        },
-        onStartNewThread: () async {
-          final confirm = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Start New Conversation?'),
-              content: Text(
-                'This will clear the current conversation from view, allowing you to start fresh with ${widget.agentName}.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Start New'),
-                ),
-              ],
-            ),
-          );
-
-          if (confirm == true) {
-            ref.read(threadsProvider.notifier).deselectThread();
-            ref.read(chatSessionNotifierProvider.notifier).clearChatSession();
-          }
-        },
       ),
       body: Column(
         children: [

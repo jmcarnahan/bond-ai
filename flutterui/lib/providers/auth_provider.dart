@@ -49,13 +49,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> _checkInitialAuthStatus() async {
+    logger.i("[AuthNotifier] Checking initial auth status");
     state = const AuthLoading();
     try {
       final token = await _authService.retrieveToken();
       if (token != null && token.isNotEmpty) {
+        logger.i("[AuthNotifier] Token found, fetching user data");
         final user = await _authService.getCurrentUser();
+        logger.i("[AuthNotifier] User authenticated: ${user.email} (ID: ${user.userId})");
         state = Authenticated(user);
       } else {
+        logger.i("[AuthNotifier] No token found, user is unauthenticated");
         state = const Unauthenticated();
       }
     } catch (e) {
@@ -87,6 +91,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       await _authService.storeToken(token);
       final user = await _authService.getCurrentUser();
+      logger.i("[AuthNotifier] Login successful: ${user.email} (ID: ${user.userId})");
       state = Authenticated(user);
       return true;
     } catch (e) {

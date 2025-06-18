@@ -43,6 +43,10 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
       );
     }
   }
+  
+  void setThreadIdOnly(String threadId) {
+    state = state.copyWith(currentThreadId: threadId);
+  }
 
   Future<void> sendMessage({
     required String agentId,
@@ -113,6 +117,12 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState> with ChatStrea
 
     try {
       chatStreamSubscription?.cancel();
+      logger.i("[ChatSessionNotifier] Calling streamChatResponse with:");
+      logger.i("[ChatSessionNotifier]   - agentId: $agentId");
+      logger.i("[ChatSessionNotifier]   - threadId: ${state.currentThreadId}");
+      logger.i("[ChatSessionNotifier]   - prompt: $prompt");
+      logger.i("[ChatSessionNotifier]   - overrideRole: $overrideRole");
+      
       chatStreamSubscription = _chatService
           .streamChatResponse(
             threadId: state.currentThreadId,  // Can be null - backend will create thread
