@@ -29,6 +29,7 @@ mcp = {extras = ["cli"], version = "^1.9.1"}
 fastmcp = "^2.5.1"
 magika = "^0.6.2"
 google-cloud-firestore = "^2.21.0"
+boto3 = "^1.38.39"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
