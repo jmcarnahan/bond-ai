@@ -1,5 +1,9 @@
 class ApiConstants {
-  static String baseUrl = 'http://localhost:8000';
+  static const String compiledBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: '',
+  );
+  static String baseUrl = compiledBaseUrl;
   static const String loginEndpoint = '/login';
   static const String googleCallbackEndpoint = '/auth/google/callback';
   static const String usersMeEndpoint = '/users/me';
