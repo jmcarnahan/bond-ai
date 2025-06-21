@@ -35,7 +35,7 @@ import 'package:flutterui/core/services/deep_link_service.dart';
 final navigationIndexProvider = StateProvider<int>((ref) {
   final navItems = ref.watch(bottomNavItemsProvider);
   final isAgentsEnabled = ref.watch(isAgentsEnabledProvider);
-  
+
   // Default to chat screen if agents are enabled (index 1), otherwise chat is at index 0
   if (isAgentsEnabled && navItems.length > 1) {
     final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
@@ -49,16 +49,16 @@ final isUserNavigatingProvider = StateProvider<bool>((ref) => false);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Load environment variables
   await dotenv.load(fileName: ".env");
-  
+
   // Override API base URL from environment
-  final apiBaseUrl = dotenv.env['API_BASE_URL'];
-  if (apiBaseUrl != null && apiBaseUrl.isNotEmpty) {
+  final apiBaseUrl = dotenv.env['API_BASE_URL'] ?? 'http://localhost:8000';
+  if (ApiConstants.baseUrl.isEmpty) {
     ApiConstants.baseUrl = apiBaseUrl;
   }
-  
+
   // Initialize Firebase
   try {
     await Firebase.initializeApp(
@@ -68,10 +68,10 @@ void main() async {
   } catch (e) {
     logger.e('Error initializing Firebase: $e');
   }
-  
+
   // Initialize SharedPreferences
   final sharedPreferences = await SharedPreferences.getInstance();
-  
+
   runApp(
     ProviderScope(
       overrides: [
@@ -88,15 +88,15 @@ class MobileApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final appTheme = ref.watch(appThemeProvider);
-    
+
     // Determine initial route based on current URL
     String initialRoute = '/';
     if (kIsWeb) {
       final currentUrl = Uri.parse(html.window.location.href);
       logger.i('[MobileApp] Current URL on startup: $currentUrl');
-      
+
       // Check if we're on the auth callback page
-      if (currentUrl.path.endsWith('/auth-callback') || 
+      if (currentUrl.path.endsWith('/auth-callback') ||
           currentUrl.queryParameters.containsKey('token')) {
         initialRoute = '/auth-callback';
         logger.i('[MobileApp] Starting with auth-callback route');
@@ -124,31 +124,41 @@ class MobileApp extends ConsumerWidget {
 
         final Uri uri = Uri.parse(effectivePath);
         effectivePath = uri.path;
-        
+
         // Handle root route with token parameter (mobile OAuth callback)
-        if ((effectivePath == '/' || effectivePath.isEmpty) && uri.queryParameters.containsKey('token')) {
+        if ((effectivePath == '/' || effectivePath.isEmpty) &&
+            uri.queryParameters.containsKey('token')) {
           final token = uri.queryParameters['token'];
-          logger.i('[MobileApp] Found token in route, processing authentication');
-          
+          logger.i(
+            '[MobileApp] Found token in route, processing authentication',
+          );
+
           return MaterialPageRoute(
-            builder: (context) => Consumer(
-              builder: (context, ref, _) {
-                // Process the token immediately
-                WidgetsBinding.instance.addPostFrameCallback((_) async {
-                  if (token != null && token.isNotEmpty) {
-                    logger.i('[MobileApp] Processing OAuth token from route');
-                    await ref.read(authNotifierProvider.notifier).loginWithToken(token);
-                  }
-                });
-                
-                return const MobileAuthWrapper();
-              },
-            ),
+            builder:
+                (context) => Consumer(
+                  builder: (context, ref, _) {
+                    // Process the token immediately
+                    WidgetsBinding.instance.addPostFrameCallback((_) async {
+                      if (token != null && token.isNotEmpty) {
+                        logger.i(
+                          '[MobileApp] Processing OAuth token from route',
+                        );
+                        await ref
+                            .read(authNotifierProvider.notifier)
+                            .loginWithToken(token);
+                      }
+                    });
+
+                    return const MobileAuthWrapper();
+                  },
+                ),
             settings: settings,
           );
         }
 
-        logger.i("[onGenerateRoute] Effective Path for switch: '$effectivePath'");
+        logger.i(
+          "[onGenerateRoute] Effective Path for switch: '$effectivePath'",
+        );
 
         switch (effectivePath) {
           case '/login':
@@ -170,13 +180,16 @@ class MobileApp extends ConsumerWidget {
             pageWidget = const ProfileScreen();
             break;
           default:
-            if (effectivePath.startsWith('/groups/') && effectivePath.endsWith('/edit')) {
+            if (effectivePath.startsWith('/groups/') &&
+                effectivePath.endsWith('/edit')) {
               final parts = effectivePath.split('/');
               if (parts.length >= 3 && settings.arguments is Group) {
                 final group = settings.arguments as Group;
                 pageWidget = EditGroupScreen(group: group);
               } else {
-                logger.e('[onGenerateRoute] Error: EditGroupScreen called without Group argument');
+                logger.e(
+                  '[onGenerateRoute] Error: EditGroupScreen called without Group argument',
+                );
                 pageWidget = const GroupsScreen();
               }
             } else if (effectivePath.startsWith('/chat/')) {
@@ -196,7 +209,9 @@ class MobileApp extends ConsumerWidget {
                     '[onGenerateRoute] Error: ChatScreen /chat/:id called without AgentListItemModel object as argument. Args: ${settings.arguments}',
                   );
                   // Handle missing agent data
-                  logger.e('[onGenerateRoute] Missing agent data for chat route');
+                  logger.e(
+                    '[onGenerateRoute] Missing agent data for chat route',
+                  );
                   pageWidget = const MobileAuthWrapper();
                 }
               }
@@ -207,14 +222,14 @@ class MobileApp extends ConsumerWidget {
             }
             break;
         }
-        
+
         if (pageWidget != null) {
           return MaterialPageRoute(
             builder: (context) => pageWidget!,
             settings: settings,
           );
         }
-        
+
         // Default route
         logger.i('[MobileApp] Navigating to MobileAuthWrapper (default)');
         return MaterialPageRoute(
@@ -232,7 +247,7 @@ class MobileAuthWrapper extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authNotifierProvider);
-    
+
     // Log state changes
     // logger.d('[MobileAuthWrapper] Current auth state: ${authState.runtimeType}');
     if (authState is Authenticated) {
@@ -244,9 +259,7 @@ class MobileAuthWrapper extends ConsumerWidget {
     }
 
     if (authState is AuthInitial || authState is AuthLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     } else if (authState is Authenticated) {
       return const MobileNavigationShell();
     } else if (authState is AuthError) {
@@ -278,19 +291,20 @@ class MobileNavigationShell extends ConsumerStatefulWidget {
   const MobileNavigationShell({super.key});
 
   @override
-  ConsumerState<MobileNavigationShell> createState() => _MobileNavigationShellState();
+  ConsumerState<MobileNavigationShell> createState() =>
+      _MobileNavigationShellState();
 }
 
 class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
   late PageController _pageController;
   DeepLinkService? _deepLinkService;
-  
+
   @override
   void initState() {
     super.initState();
     final navItems = ref.read(bottomNavItemsProvider);
     final isAgentsEnabled = ref.read(isAgentsEnabledProvider);
-    
+
     // Default to chat screen if agents are enabled (index 1), otherwise chat is at index 0
     int initialIndex = 0;
     if (isAgentsEnabled && navItems.length > 1) {
@@ -300,14 +314,14 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
         initialIndex = chatIndex;
       }
     }
-    
+
     _pageController = PageController(initialPage: initialIndex);
-    
+
     // Initialize deep link service only for mobile platforms
     if (!kIsWeb) {
       _deepLinkService = DeepLinkService();
     }
-    
+
     // Set the navigation index after the first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -319,37 +333,37 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
       }
     });
   }
-  
+
   @override
   void dispose() {
     _pageController.dispose();
     _deepLinkService?.dispose();
     super.dispose();
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final selectedThread = ref.watch(selectedThreadProvider);
     final currentIndex = ref.watch(navigationIndexProvider);
     final navItems = ref.watch(bottomNavItemsProvider);
     final selectedAgent = ref.watch(selectedAgentProvider);
-    
+
     // Listen for navigation index changes to update PageView
     ref.listen<int>(navigationIndexProvider, (previous, next) {
       if (_pageController.hasClients && previous != next) {
         _pageController.jumpToPage(next);
       }
     });
-    
+
     // Listen for thread selection changes
     ref.listen<Thread?>(selectedThreadProvider, (previous, next) {
       final isUserNavigating = ref.read(isUserNavigatingProvider);
-      
+
       // Don't auto-navigate if user is manually navigating
       if (isUserNavigating) {
         return;
       }
-      
+
       // Navigate to chat when a thread is selected from the threads tab
       if (next != null && previous?.id != next.id) {
         // Find the chat tab index (it might be 0 or 1 depending on agents)
@@ -361,7 +375,7 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
     });
 
     final List<Widget> pages = [];
-    
+
     // Build pages based on navigation items
     for (final item in navItems) {
       switch (item.label) {
@@ -369,11 +383,14 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
           pages.add(const AgentsScreen());
           break;
         case 'Chat':
-          pages.add(ChatScreen(
-            agentId: selectedAgent?.id ?? MobileApiConfig.defaultAgentId,
-            agentName: selectedAgent?.name ?? MobileApiConfig.defaultAgentName,
-            initialThreadId: selectedThread?.id,
-          ));
+          pages.add(
+            ChatScreen(
+              agentId: selectedAgent?.id ?? MobileApiConfig.defaultAgentId,
+              agentName:
+                  selectedAgent?.name ?? MobileApiConfig.defaultAgentName,
+              initialThreadId: selectedThread?.id,
+            ),
+          );
           break;
         case 'Threads':
           pages.add(const ThreadsScreen());
@@ -385,7 +402,7 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
     }
 
     final notificationState = ref.watch(notificationProvider);
-    
+
     return FirestoreListener(
       child: Scaffold(
         body: Stack(
@@ -396,67 +413,86 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
               children: pages,
             ),
             // Notification banner overlay
-            if (notificationState.isVisible && notificationState.messageContent != null) ...[
-              Builder(builder: (context) {
-                final agentId = notificationState.agentId ?? MobileApiConfig.defaultAgentId;
-                logger.d('[MobileHomePage] Creating MessageNotificationBanner');
-                logger.d('[MobileHomePage] Notification agentId: ${notificationState.agentId}');
-                logger.d('[MobileHomePage] Using agentId: $agentId');
-                logger.d('[MobileHomePage] Default agentId: ${MobileApiConfig.defaultAgentId}');
-                
-                return MessageNotificationBanner(
-                  threadName: notificationState.threadName ?? 'New Message',
-                  messageContent: notificationState.messageContent!,
-                  agentId: agentId,
-                  subject: notificationState.subject,
-                  duration: notificationState.duration,
-                  onDismiss: () {
-                    ref.read(notificationProvider.notifier).hideNotification();
-                  },
-                );
-              }),
-            ]
+            if (notificationState.isVisible &&
+                notificationState.messageContent != null) ...[
+              Builder(
+                builder: (context) {
+                  final agentId =
+                      notificationState.agentId ??
+                      MobileApiConfig.defaultAgentId;
+                  logger.d(
+                    '[MobileHomePage] Creating MessageNotificationBanner',
+                  );
+                  logger.d(
+                    '[MobileHomePage] Notification agentId: ${notificationState.agentId}',
+                  );
+                  logger.d('[MobileHomePage] Using agentId: $agentId');
+                  logger.d(
+                    '[MobileHomePage] Default agentId: ${MobileApiConfig.defaultAgentId}',
+                  );
+
+                  return MessageNotificationBanner(
+                    threadName: notificationState.threadName ?? 'New Message',
+                    messageContent: notificationState.messageContent!,
+                    agentId: agentId,
+                    subject: notificationState.subject,
+                    duration: notificationState.duration,
+                    onDismiss: () {
+                      ref
+                          .read(notificationProvider.notifier)
+                          .hideNotification();
+                    },
+                  );
+                },
+              ),
+            ],
           ],
         ),
         bottomNavigationBar: Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 4,
+                offset: const Offset(0, -2),
               ),
-              child: SafeArea(
-                top: false,
-                child: BottomNavigationBar(
-                  currentIndex: currentIndex.clamp(0, navItems.length - 1),
-                  type: BottomNavigationBarType.fixed,
-                  backgroundColor: Colors.transparent,
-                  elevation: 0,
-                  selectedItemColor: Theme.of(context).colorScheme.primary,
-                  unselectedItemColor: Theme.of(context).colorScheme.onSurfaceVariant,
-                  selectedFontSize: 12,
-                  unselectedFontSize: 12,
-                  onTap: (index) {
+            ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: BottomNavigationBar(
+              currentIndex: currentIndex.clamp(0, navItems.length - 1),
+              type: BottomNavigationBarType.fixed,
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              selectedItemColor: Theme.of(context).colorScheme.primary,
+              unselectedItemColor:
+                  Theme.of(context).colorScheme.onSurfaceVariant,
+              selectedFontSize: 12,
+              unselectedFontSize: 12,
+              onTap: (index) {
                 // Set flag to indicate user-initiated navigation
                 ref.read(isUserNavigatingProvider.notifier).state = true;
                 ref.read(navigationIndexProvider.notifier).state = index;
-                
+
                 // Clear the flag after a short delay to allow navigation to complete
                 Future.delayed(const Duration(milliseconds: 500), () {
                   ref.read(isUserNavigatingProvider.notifier).state = false;
                 });
               },
-              items: navItems.map((item) => BottomNavigationBarItem(
-                icon: Icon(item.icon),
-                label: item.label,
-              )).toList(),
-                ),
-              ),
+              items:
+                  navItems
+                      .map(
+                        (item) => BottomNavigationBarItem(
+                          icon: Icon(item.icon),
+                          label: item.label,
+                        ),
+                      )
+                      .toList(),
             ),
+          ),
+        ),
       ),
     );
   }
