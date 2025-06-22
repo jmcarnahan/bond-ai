@@ -89,6 +89,32 @@ async def get_available_models(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not fetch available models.")
 
 
+@router.get("/default", response_model=AgentResponse)
+async def get_default_agent(
+    current_user: Annotated[User, Depends(get_current_user)],
+    provider: Provider = Depends(get_bond_provider)
+):
+    """Get the default agent, creating one if it doesn't exist."""
+    try:
+        default_agent = provider.agents.get_default_agent()
+        if not default_agent:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to get or create default agent"
+            )
+        
+        return AgentResponse(
+            agent_id=default_agent.get_agent_id(),
+            name=default_agent.get_name()
+        )
+    except Exception as e:
+        LOGGER.error(f"Error getting default agent: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error getting default agent: {str(e)}"
+        )
+
+
 @router.get("/available-groups", response_model=List[dict])
 async def get_available_groups_for_agent(
     current_user: Annotated[User, Depends(get_current_user)],
@@ -225,7 +251,17 @@ async def get_agent_details(
         if not agent_instance:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found.")
 
-        if not provider.agents.can_user_access_agent(user_id=current_user.user_id, agent_id=agent_id):
+        # Check if this is a default agent (accessible to all users)
+        is_default_agent = False
+        try:
+            # Check if this agent is the default agent by comparing with the default agent ID
+            default_agent = provider.agents.get_default_agent()
+            is_default_agent = default_agent and default_agent.agent_id == agent_id
+        except Exception as e:
+            LOGGER.error(f"Error checking if agent {agent_id} is default: {e}")
+        
+        # Validate user access to agent (skip validation for default agents)
+        if not is_default_agent and not provider.agents.can_user_access_agent(user_id=current_user.user_id, agent_id=agent_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to this agent is forbidden.")
 
         agent_def = agent_instance.get_agent_definition()

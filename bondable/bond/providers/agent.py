@@ -188,7 +188,24 @@ class AgentProvider(ABC):
                 - 'description' (str): A human-readable description of the model
                 - 'is_default' (bool): Whether this is the default model
         """
-        pass    
+        pass
+    
+    def get_default_model(self) -> str:
+        """
+        Get the default model from available models.
+        
+        Returns:
+            str: The name/identifier of the default model
+        """
+        models = self.get_available_models()
+        for model in models:
+            if model.get('is_default', False):
+                return model['name']
+        # If no default is set, return the first model
+        if models:
+            return models[0]['name']
+
+        raise RuntimeError("No models were found. Cannot get default model.")
 
         
     def delete_agent(self, agent_id: str) -> bool:
@@ -343,4 +360,70 @@ class AgentProvider(ABC):
                 .exists()
             )
             return session.query(access_query).scalar()
+    
+    def get_default_agent(self) -> Optional[Agent]:
+        """
+        Retrieves the default agent from the database.
+        If no default agent exists, creates one automatically.
+        
+        Returns:
+            Agent: The default agent object, or None if creation fails.
+        """
+        with self.metadata.get_db_session() as session:
+            # First, try to find an existing default agent
+            default_agent_record = session.query(AgentRecord).filter(
+                AgentRecord.is_default == True
+            ).first()
+            
+            if default_agent_record:
+                try:
+                    return self.get_agent(default_agent_record.agent_id)
+                except Exception as e:
+                    LOGGER.error(f"Error retrieving default agent with id {default_agent_record.agent_id}: {e}")
+                    # Continue to create a new default if retrieval fails
+            
+            # No default agent exists, create one
+            LOGGER.info("No default agent found, creating one...")
+            
+            # Get or create the system user
+            system_user = self.metadata.get_or_create_system_user()
+            
+            # Create default agent definition
+            default_agent_def = AgentDefinition(
+                user_id=system_user.id,
+                id="default-home-agent",
+                name="Home",
+                description="Your AI assistant for various tasks",
+                instructions="You are a helpful AI assistant. Help users with their questions and tasks.",
+                introduction="Hello! I'm your AI assistant. I can help you with various tasks, answer questions, and provide information.",
+                reminder="",
+                model=self.get_default_model(),
+                tools=[{"type": "code_interpreter"}, {"type": "file_search"}],  # Enable code interpreter and file search
+                metadata={"is_default": "true"}
+            )
+            
+            try:
+                # Use the existing create_or_update_agent method
+                agent = self.create_or_update_agent(
+                    agent_def=default_agent_def,
+                    user_id=system_user.id
+                )
+                
+                # Mark it as default in the database
+                agent_record = session.query(AgentRecord).filter(
+                    AgentRecord.agent_id == agent.get_agent_id()
+                ).first()
+                
+                if agent_record:
+                    agent_record.is_default = True
+                    session.commit()
+                    LOGGER.info(f"Created default agent with id: {agent.get_agent_id()}")
+                    return agent
+                else:
+                    LOGGER.error("Failed to find default agent record in database after creation")
+                    return None
+                    
+            except Exception as e:
+                LOGGER.error(f"Error creating default agent: {e}", exc_info=True)
+                return None
 

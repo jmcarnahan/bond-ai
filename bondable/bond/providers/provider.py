@@ -17,13 +17,14 @@ class Provider(ABC):
     groups: Groups = None
     users: Users = None
 
-    @abstractmethod
     def get_default_model(self) -> str:
         """
         Returns the default model for the provider.
-        This method should be implemented by subclasses.
+        Delegates to the agents provider for backward compatibility.
         """
-        pass
+        if not self.agents:
+            raise RuntimeError("AgentProvider not initialized. Cannot get default model.")
+        return self.agents.get_default_model()
 
 
     def cleanup(self, user_id) -> None:

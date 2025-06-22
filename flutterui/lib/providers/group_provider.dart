@@ -46,7 +46,7 @@ class GroupNotifier extends StateNotifier<AsyncValue<List<Group>>> {
       await loadGroups();
     } catch (error) {
       logger.e('Error creating group: $error');
-      throw error;
+      rethrow;
     }
   }
 
@@ -60,7 +60,7 @@ class GroupNotifier extends StateNotifier<AsyncValue<List<Group>>> {
       await loadGroups();
     } catch (error) {
       logger.e('Error updating group: $error');
-      throw error;
+      rethrow;
     }
   }
 
@@ -70,7 +70,7 @@ class GroupNotifier extends StateNotifier<AsyncValue<List<Group>>> {
       await loadGroups();
     } catch (error) {
       logger.e('Error deleting group: $error');
-      throw error;
+      rethrow;
     }
   }
 }
