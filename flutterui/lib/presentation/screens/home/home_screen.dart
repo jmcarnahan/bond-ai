@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/core_providers.dart';
-import 'package:flutterui/presentation/widgets/sidebar.dart';
+import 'package:flutterui/presentation/widgets/app_drawer.dart';
 import 'package:flutterui/providers/agent_provider.dart';
-import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/presentation/screens/agents/widgets/agent_card.dart';
 import 'package:flutterui/core/theme/app_theme.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
@@ -22,7 +21,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
   Widget build(BuildContext context) {
     final agentsAsyncValue = ref.watch(agentsProvider);
     final appTheme = ref.watch(appThemeProvider);
-    final authState = ref.watch(authNotifierProvider);
     
     final ThemeData currentThemeData = Theme.of(context);
     final TextTheme textTheme = currentThemeData.textTheme;
@@ -53,7 +51,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
         backgroundColor: appBarBackgroundColor,
         elevation: currentThemeData.appBarTheme.elevation ?? 2.0,
       ),
-      drawer: const AppSidebar(),
+      drawer: const AppDrawer(),
       body: Padding(
         padding: const EdgeInsets.only(top: 24.0, left: 24.0, right: 24.0), 
         child: Column(
