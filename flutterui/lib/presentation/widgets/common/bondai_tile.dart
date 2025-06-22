@@ -287,7 +287,7 @@ class BondAITileGroup extends StatelessWidget {
                 ),
                 SizedBox(height: spacing),
               ],
-            ]).toList()
+            ])
           else
             ...children,
         ],
