@@ -14,8 +14,14 @@ from bondable.rest.routers import auth, agents, threads, chat, files, mcp, group
 # Configure logging from YAML file
 def setup_logging():
     """Load logging configuration from YAML file"""
+
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    logs_dir = os.path.join(project_root, "logs")
+
+    if not os.path.exists(logs_dir):
+        os.makedirs(logs_dir)
+
     config_path = os.path.join(os.path.dirname(__file__), "logging_config.yaml")
-    
     if os.path.exists(config_path):
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
