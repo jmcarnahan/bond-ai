@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/providers/core_providers.dart';
 import 'package:flutterui/main.dart' show navigationIndexProvider;
-import 'package:flutterui/core/theme/app_theme.dart';
 import 'package:flutterui/presentation/screens/profile/profile_screen.dart';
 
 class AppDrawer extends ConsumerWidget {
@@ -41,7 +40,6 @@ class AppDrawer extends ConsumerWidget {
     final authState = ref.watch(authNotifierProvider);
     final appTheme = ref.watch(appThemeProvider);
     final theme = Theme.of(context);
-    final customColors = CustomColors.of(context);
     
     String userEmail = '';
     if (authState is Authenticated) {
