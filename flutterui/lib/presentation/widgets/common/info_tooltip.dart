@@ -40,7 +40,7 @@ class InfoTooltip extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha: 0.2),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -74,7 +74,7 @@ class InfoIcon extends StatelessWidget {
       child: Icon(
         Icons.help_outline,
         size: size,
-        color: color ?? theme.colorScheme.onSurface.withOpacity(0.6),
+        color: color ?? theme.colorScheme.onSurface.withValues(alpha: 0.6),
       ),
     );
   }
