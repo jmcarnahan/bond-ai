@@ -9,6 +9,8 @@ import os
 import uuid
 import json
 import logging
+import base64
+import hashlib
 from typing import List, Dict, Optional, Generator, Any
 from botocore.exceptions import ClientError
 
@@ -59,10 +61,10 @@ class BedrockAgent(Agent):
             self.bedrock_agent_alias_id = None
         
         LOGGER.info(f"Initialized BedrockAgent {agent_id} with model {self.model_id}")
-        LOGGER.info(f"  Bedrock Agent ID: {self.bedrock_agent_id}")
-        LOGGER.info(f"  Bedrock Alias ID: {self.bedrock_agent_alias_id}")
-        LOGGER.info(f"  MCP tools from definition: {agent_definition.mcp_tools}")
-        LOGGER.info(f"  MCP tools from record: {getattr(agent_record, 'mcp_tools', None) if agent_record else None}")
+        LOGGER.debug(f"  Bedrock Agent ID: {self.bedrock_agent_id}")
+        LOGGER.debug(f"  Bedrock Alias ID: {self.bedrock_agent_alias_id}")
+        LOGGER.debug(f"  MCP tools from definition: {agent_definition.mcp_tools}")
+        LOGGER.debug(f"  MCP tools from record: {getattr(agent_record, 'mcp_tools', None) if agent_record else None}")
     
     def get_agent_id(self) -> str:
         """Get the agent's ID"""
@@ -109,6 +111,115 @@ class BedrockAgent(Agent):
         else:
             yield f"Error: {error_message}"
         yield '</_bondmessage>'
+    
+    def _compute_file_hash(self, file_info: Dict[str, Any]) -> Optional[str]:
+        """
+        Compute MD5 hash of file data for duplicate detection.
+        
+        Returns None if no bytes data is present.
+        """
+        if 'bytes' not in file_info:
+            return None
+            
+        file_data = file_info['bytes']
+        
+        # Convert to bytes if needed
+        if isinstance(file_data, str):
+            file_data = file_data.encode('utf-8')
+        
+        # Compute MD5 hash
+        return hashlib.md5(file_data).hexdigest()
+    
+    def _handle_file_event(self, file_info: Dict[str, Any], thread_id: str, 
+                          response_id: str, message_index: int) -> Generator[str, None, None]:
+        """
+        Helper method to handle file events and yield appropriate messages.
+        
+        Images are returned inline as base64 data URLs.
+        Other file types are uploaded to S3 and returned as links.
+        """
+        if 'bytes' not in file_info:
+            return
+            
+        # Close the current text message tag
+        yield '</_bondmessage>'
+        
+        # Get file details
+        file_data = file_info['bytes']
+        file_name = file_info.get('name', 'file')
+        file_type = file_info.get('type', 'application/octet-stream')
+        
+        # Determine if this is an image based on MIME type
+        is_image = file_type.startswith('image/')
+        
+        if is_image:
+            # Handle images inline with base64 encoding
+            if isinstance(file_data, bytes):
+                image_base64 = base64.b64encode(file_data).decode('utf-8')
+            else:
+                # If it's already a string, handle accordingly
+                image_base64 = file_data
+            
+            # Create the data URL format for the image
+            data_url = f"data:{file_type};base64,{image_base64}"
+            
+            # Yield image message
+            file_id = str(uuid.uuid4())
+            yield (
+                f'<_bondmessage '
+                f'id="{file_id}" '
+                f'thread_id="{thread_id}" '
+                f'agent_id="{self.agent_id}" '
+                f'message_index="{message_index}" '
+                f'type="image_file" '
+                f'role="assistant" '
+                f'is_error="false" '
+                f'is_done="false">'
+            )
+            yield data_url
+            yield '</_bondmessage>'
+            
+            LOGGER.info(f"Received and yielded image: {file_name} ({file_type})")
+        else:
+            # Handle non-image files by uploading to S3
+            try:
+                # TODO: Implement S3 upload logic here
+                # For now, we'll log that we need to handle this file type
+                LOGGER.warning(f"Non-image file received: {file_name} ({file_type}) - S3 upload not yet implemented")
+                
+                # Yield a file link message
+                file_id = str(uuid.uuid4())
+                yield (
+                    f'<_bondmessage '
+                    f'id="{file_id}" '
+                    f'thread_id="{thread_id}" '
+                    f'agent_id="{self.agent_id}" '
+                    f'message_index="{message_index}" '
+                    f'type="file_link" '
+                    f'role="assistant" '
+                    f'is_error="false" '
+                    f'is_done="false">'
+                )
+                # TODO: Replace with actual S3 URL after upload
+                yield f"File received: {file_name} (upload pending)"
+                yield '</_bondmessage>'
+                
+            except Exception as e:
+                LOGGER.error(f"Error handling file {file_name}: {e}")
+                # Continue without failing the entire response
+        
+        # Reopen text message tag for any following text
+        yield (
+            f'<_bondmessage '
+            f'id="{response_id}" '
+            f'thread_id="{thread_id}" '
+            f'agent_id="{self.agent_id}" '
+            f'message_index="{message_index}" '
+            f'type="message" '
+            f'role="assistant" '
+            f'is_error="false" '
+            f'is_done="false">'
+        )
     
     def create_user_message(self, prompt: str, thread_id: str, 
                           attachments: Optional[List] = None,
@@ -235,6 +346,7 @@ class BedrockAgent(Agent):
             # Process the streaming response
             full_content = ""
             new_session_state = None
+            seen_file_hashes = set()  # Track files we've already sent
             
             # The response contains an EventStream that we need to iterate
             event_stream = response.get('completion')
@@ -247,11 +359,29 @@ class BedrockAgent(Agent):
                     # Handle text chunks
                     if 'chunk' in event:
                         chunk = event['chunk']
+                        LOGGER.debug(f" --- Received chunk: {list(chunk.keys())}")
                         if 'bytes' in chunk:
                             text = chunk['bytes'].decode('utf-8')
                             LOGGER.debug(f"Processing text chunk of length {len(text)}")
                             yield text
                             full_content += text
+                    
+                    # Handle files event (this is where files from code interpreter come)
+                    elif 'files' in event:
+                        files_event = event['files']
+                        if 'files' in files_event:
+                            for file_info in files_event['files']:
+                                # Check for duplicate files
+                                file_hash = self._compute_file_hash(file_info)
+                                if file_hash:
+                                    if file_hash in seen_file_hashes:
+                                        # Duplicate file - log and skip
+                                        file_name = file_info.get('name', 'unknown')
+                                        LOGGER.debug(f"Skipping duplicate file: {file_name} (hash: {file_hash})")
+                                        continue
+                                    seen_file_hashes.add(file_hash)
+                                
+                                yield from self._handle_file_event(file_info, thread_id, response_id, message_index)
                     
                     # Handle returnControl events for MCP tools
                     elif 'returnControl' in event:
@@ -289,6 +419,22 @@ class BedrockAgent(Agent):
                                             text = chunk['bytes'].decode('utf-8')
                                             yield text
                                             full_content += text
+                                    elif 'files' in cont_event:
+                                        # Handle files in continuation stream
+                                        files_event = cont_event['files']
+                                        if 'files' in files_event:
+                                            for file_info in files_event['files']:
+                                                # Check for duplicate files
+                                                file_hash = self._compute_file_hash(file_info)
+                                                if file_hash:
+                                                    if file_hash in seen_file_hashes:
+                                                        # Duplicate file - log and skip
+                                                        file_name = file_info.get('name', 'unknown')
+                                                        LOGGER.debug(f"Skipping duplicate file in continuation: {file_name} (hash: {file_hash})")
+                                                        continue
+                                                    seen_file_hashes.add(file_hash)
+                                                
+                                                yield from self._handle_file_event(file_info, thread_id, response_id, message_index)
                                     elif 'sessionState' in cont_event:
                                         new_session_state = cont_event['sessionState']
                     
@@ -296,6 +442,10 @@ class BedrockAgent(Agent):
                     elif 'sessionState' in event:
                         new_session_state = event['sessionState']
                         LOGGER.debug("Received session state update")
+
+                    elif 'trace' in event:
+                        event_trace = event['trace']
+                        LOGGER.debug(f" --- Received trace: {list(event_trace.keys())}")
                 
                 LOGGER.info(f"Processed {event_count} events from completion stream")
             
@@ -844,14 +994,29 @@ class BedrockAgentProvider(AgentProvider):
             # Step 2: Wait for agent to be created
             self._wait_for_resource_status('agent', bedrock_agent_id, ['NOT_PREPARED', 'PREPARED'])
             
-            # Step 3: Prepare the agent
+            # Step 3: Enable code interpreter (always enabled for all agents)
+            LOGGER.info(f"Enabling code interpreter for Bedrock Agent {bedrock_agent_id}")
+            try:
+                code_interpreter_response = self.bedrock_agent_client.create_agent_action_group(
+                    agentId=bedrock_agent_id,
+                    agentVersion='DRAFT',
+                    actionGroupName='CodeInterpreterActionGroup',
+                    parentActionGroupSignature='AMAZON.CodeInterpreter',
+                    actionGroupState='ENABLED'
+                )
+                LOGGER.info(f"Created code interpreter action group: {code_interpreter_response['agentActionGroup']['actionGroupId']}")
+            except ClientError as e:
+                LOGGER.warning(f"Failed to enable code interpreter: {e}")
+                # Continue without code interpreter rather than failing
+            
+            # Step 4: Prepare the agent
             LOGGER.info(f"Preparing Bedrock Agent {bedrock_agent_id}")
             self.bedrock_agent_client.prepare_agent(agentId=bedrock_agent_id)
             
-            # Step 4: Wait for agent to be prepared
+            # Step 5: Wait for agent to be prepared
             self._wait_for_resource_status('agent', bedrock_agent_id, ['PREPARED'])
             
-            # Step 4.5: Create MCP action groups if any MCP tools specified
+            # Step 5.5: Create MCP action groups if any MCP tools specified
             if mcp_tools:
                 self._create_mcp_action_groups(bedrock_agent_id, mcp_tools, mcp_resources or [])
                 # Re-prepare the agent after adding action groups
@@ -859,7 +1024,7 @@ class BedrockAgentProvider(AgentProvider):
                 self.bedrock_agent_client.prepare_agent(agentId=bedrock_agent_id)
                 self._wait_for_resource_status('agent', bedrock_agent_id, ['PREPARED'])
             
-            # Step 5: Create alias
+            # Step 6: Create alias
             alias_name = f"bond-{uuid.uuid4().hex[:8]}"
             LOGGER.info(f"Creating alias {alias_name} for Bedrock Agent {bedrock_agent_id}")
             
@@ -871,7 +1036,7 @@ class BedrockAgentProvider(AgentProvider):
             
             bedrock_agent_alias_id = alias_response['agentAlias']['agentAliasId']
             
-            # Step 6: Wait for alias to be prepared
+            # Step 7: Wait for alias to be prepared
             self._wait_for_resource_status('alias', bedrock_agent_alias_id, ['PREPARED'], agent_id=bedrock_agent_id)
             
             LOGGER.info(f"Successfully created Bedrock Agent {bedrock_agent_id} with alias {bedrock_agent_alias_id}")
