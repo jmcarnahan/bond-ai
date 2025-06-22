@@ -77,8 +77,17 @@ async def chat(
             LOGGER.warning(f"Agent {request_body.agent_id} not found for chat.")
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found.")
 
-        # Validate user access to agent
-        if not provider.agents.can_user_access_agent(user_id=current_user.user_id, agent_id=request_body.agent_id):
+        # Check if this is a default agent (accessible to all users)
+        is_default_agent = False
+        try:
+            # Check if this agent is the default agent by comparing with the default agent ID
+            default_agent = provider.agents.get_default_agent()
+            is_default_agent = default_agent and default_agent.agent_id == request_body.agent_id
+        except Exception as e:
+            LOGGER.error(f"Error checking if agent {request_body.agent_id} is default: {e}")
+        
+        # Validate user access to agent (skip validation for default agents)
+        if not is_default_agent and not provider.agents.can_user_access_agent(user_id=current_user.user_id, agent_id=request_body.agent_id):
             LOGGER.warning(f"User {current_user.user_id} ({current_user.email}) attempted to access agent {request_body.agent_id} without permission for chat.")
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to this agent is forbidden.")
 
