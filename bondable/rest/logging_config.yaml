@@ -9,45 +9,59 @@ handlers:
     default:
         class: logging.StreamHandler
         formatter: default
+    debug_file_handler:
+        class: logging.handlers.TimedRotatingFileHandler
+        filename: "logs/bondable_debug.log"
+        when: "midnight"
+        interval: 1
+        backupCount: 7
+        formatter: default
+        level: DEBUG
+        encoding: "utf-8"
 
 root:
     level: INFO
     handlers: [default]
 
 loggers:
+    bondable:
+        level: DEBUG
+        handlers: [default, debug_file_handler]
+        propagate: false
+
     uvicorn:
         level: INFO
-        handlers: [default]
+        handlers: [default, debug_file_handler]
         propagate: false
 
     uvicorn.error:
         level: INFO
-        handlers: [default]
+        handlers: [default, debug_file_handler]
         propagate: false
 
     uvicorn.access:
         level: WARNING
-        handlers: [default]
+        handlers: [default, debug_file_handler]
         propagate: false
 
     # Suppress HTTP request logs from httpx
     httpx:
         level: ERROR
-        handlers: [default]
+        handlers: [default, debug_file_handler]
         propagate: false
 
     # Suppress MCP client logs
     mcp:
         level: ERROR
-        handlers: [default]
+        handlers: [default, debug_file_handler]
         propagate: false
 
     mcp.client:
         level: ERROR
-        handlers: [default]
+        handlers: [default, debug_file_handler]
         propagate: false
 
     mcp.client.streamable_http:
         level: ERROR
-        handlers: [default]
+        handlers: [default, debug_file_handler]
         propagate: false
