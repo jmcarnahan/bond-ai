@@ -164,4 +164,24 @@ class AgentCrudService {
       throw Exception('Failed to fetch available models: ${e.toString()}');
     }
   }
+
+  Future<AgentResponseModel> getDefaultAgent() async {
+    try {
+      final url = '${ApiConstants.baseUrl}${ApiConstants.agentsEndpoint}/default';
+      final response = await _httpClient.get(url);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        logger.i("[AgentCrudService] Fetched default agent: ${data['name']}");
+        return AgentResponseModel.fromJson(data);
+      } else {
+        final errorMsg = 'Failed to load default agent: ${response.statusCode}';
+        logger.e("[AgentCrudService] $errorMsg, Body: ${response.body}");
+        throw Exception(errorMsg);
+      }
+    } catch (e) {
+      logger.e("[AgentCrudService] Error in getDefaultAgent: ${e.toString()}");
+      throw Exception('Failed to fetch default agent: ${e.toString()}');
+    }
+  }
 }
