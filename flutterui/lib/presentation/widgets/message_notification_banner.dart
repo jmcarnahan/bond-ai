@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../main.dart' show navigationIndexProvider;
 import '../../providers/notification_provider.dart';
 import '../../providers/config_provider.dart';
+import '../../core/utils/logger.dart';
 
 class MessageNotificationBanner extends ConsumerStatefulWidget {
   final String threadName;
@@ -78,16 +79,16 @@ class _MessageNotificationBannerState extends ConsumerState<MessageNotificationB
   }
 
   void _navigateToChat() {
-    print('[MessageNotificationBanner] _navigateToChat called');
-    print('[MessageNotificationBanner] Agent ID: ${widget.agentId}');
-    print('[MessageNotificationBanner] Thread Name: ${widget.threadName}');
-    print('[MessageNotificationBanner] Message Content: ${widget.messageContent}');
+    logger.d('[MessageNotificationBanner] _navigateToChat called');
+    logger.d('[MessageNotificationBanner] Agent ID: ${widget.agentId}');
+    logger.d('[MessageNotificationBanner] Thread Name: ${widget.threadName}');
+    logger.d('[MessageNotificationBanner] Message Content: ${widget.messageContent}');
     
     // Find the correct index for the chat screen
     final navItems = ref.read(bottomNavItemsProvider);
     final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
     
-    print('[MessageNotificationBanner] Chat screen is at index: $chatIndex');
+    logger.d('[MessageNotificationBanner] Chat screen is at index: $chatIndex');
     
     // Navigate to chat tab first
     ref.read(navigationIndexProvider.notifier).state = chatIndex != -1 ? chatIndex : 1;
@@ -99,7 +100,7 @@ class _MessageNotificationBannerState extends ConsumerState<MessageNotificationB
       threadName: widget.threadName,
     );
     
-    print('[MessageNotificationBanner] PendingSystemMessage set with agentId: ${widget.agentId}');
+    logger.d('[MessageNotificationBanner] PendingSystemMessage set with agentId: ${widget.agentId}');
     
     // Dismiss the banner
     _dismiss();
