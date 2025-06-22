@@ -126,7 +126,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with ErrorHandlingMixin
     
     // Set sending state immediately to show loading
     final chatNotifier = ref.read(chatSessionNotifierProvider.notifier);
-    chatNotifier.state = chatNotifier.state.copyWith(isSendingMessage: true);
+    chatNotifier.setSendingState(true);
     
     // Only proceed with error handling if still mounted
     if (!mounted) {
