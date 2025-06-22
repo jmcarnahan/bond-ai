@@ -20,7 +20,7 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
         color: theme.colorScheme.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -43,7 +43,7 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: theme.colorScheme.onSurface.withOpacity(0.1),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
               ),
               child: Image.asset(
                 appTheme.logoIcon,
@@ -68,7 +68,7 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
                 Text(
                   appTheme.brandingMessage,
                   style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     fontSize: 12,
                     fontWeight: FontWeight.w400,
                   ),
