@@ -45,7 +45,7 @@ class _AgentsScreenState extends ConsumerState<AgentsScreen> with ErrorHandlingM
             color: colorScheme.surface,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha: 0.1),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -59,7 +59,7 @@ class _AgentsScreenState extends ConsumerState<AgentsScreen> with ErrorHandlingM
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: colorScheme.onSurface.withOpacity(0.1),
+                    color: colorScheme.onSurface.withValues(alpha: 0.1),
                   ),
                   child: Image.asset(
                     const AppGeneratedTheme().logoIcon,
