@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/auth_provider.dart';
-import '../../../core/theme/app_theme.dart';
 import 'widgets/profile_app_bar.dart';
 import '../../widgets/app_drawer.dart';
 
