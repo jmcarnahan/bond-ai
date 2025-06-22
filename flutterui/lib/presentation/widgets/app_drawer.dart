@@ -59,7 +59,7 @@ class AppDrawer extends ConsumerWidget {
                 decoration: BoxDecoration(
                   border: Border(
                     bottom: BorderSide(
-                      color: theme.dividerColor.withOpacity(0.3),
+                      color: theme.dividerColor.withValues(alpha: 0.3),
                       width: 1,
                     ),
                   ),
@@ -71,7 +71,7 @@ class AppDrawer extends ConsumerWidget {
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: theme.colorScheme.onSurface.withOpacity(0.1),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
                       ),
                       child: Image.asset(
                         appTheme.logoIcon,
@@ -94,7 +94,7 @@ class AppDrawer extends ConsumerWidget {
                       Text(
                         userEmail,
                         style: TextStyle(
-                          color: theme.colorScheme.onSurface.withOpacity(0.7),
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                           fontSize: 13,
                         ),
                         overflow: TextOverflow.ellipsis,
