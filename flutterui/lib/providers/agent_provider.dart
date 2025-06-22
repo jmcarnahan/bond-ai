@@ -37,3 +37,23 @@ final agentDetailProvider = FutureProvider.autoDispose
       final agentService = ref.watch(agentServiceProvider);
       return agentService.getAgentDetails(agentId);
     });
+
+final defaultAgentProvider = FutureProvider<AgentListItemModel>((ref) async {
+  final agentService = ref.watch(agentServiceProvider);
+  try {
+    final defaultAgentResponse = await agentService.getDefaultAgent();
+    logger.i("[defaultAgentProvider] Fetched default agent: ${defaultAgentResponse.name}");
+    // Convert AgentResponseModel to AgentListItemModel
+    return AgentListItemModel(
+      id: defaultAgentResponse.agentId,
+      name: defaultAgentResponse.name,
+      description: null,
+      model: null,
+      tool_types: [],
+      metadata: {},
+    );
+  } catch (e) {
+    logger.e("[defaultAgentProvider] Error fetching default agent: ${e.toString()}");
+    rethrow;
+  }
+});
