@@ -75,7 +75,7 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
             offset: const Offset(0, -2),
             blurRadius: 8.0,
             spreadRadius: 0,
-            color: colorScheme.shadow.withOpacity(0.1),
+            color: colorScheme.shadow.withValues(alpha: 0.1),
           ),
         ],
       ),
@@ -104,7 +104,7 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                     ),
                     boxShadow: widget.isTextFieldFocused ? [
                       BoxShadow(
-                        color: colorScheme.primary.withOpacity(0.1),
+                        color: colorScheme.primary.withValues(alpha: 0.1),
                         blurRadius: 8,
                         spreadRadius: 1,
                       ),
@@ -173,7 +173,7 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                       height: 48,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: colorScheme.primary.withOpacity(0.1),
+                        color: colorScheme.primary.withValues(alpha: 0.1),
                       ),
                       child: Center(
                         child: SizedBox(
@@ -222,7 +222,7 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                 : colorScheme.surfaceContainerHigh,
         boxShadow: isPrimary && isEnabled ? [
           BoxShadow(
-            color: colorScheme.primary.withOpacity(0.3),
+            color: colorScheme.primary.withValues(alpha: 0.3),
             blurRadius: 8,
             spreadRadius: 0,
           ),
