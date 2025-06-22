@@ -54,6 +54,9 @@ class AgentService {
   Future<List<ModelInfo>> getAvailableModels() =>
     _crudService.getAvailableModels();
 
+  Future<AgentResponseModel> getDefaultAgent() => 
+      _crudService.getDefaultAgent();
+
   void dispose() {
     _httpClient.dispose();
   }

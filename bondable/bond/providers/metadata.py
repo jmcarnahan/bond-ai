@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 
-from sqlalchemy import ForeignKey, create_engine, Column, String, DateTime, func, PrimaryKeyConstraint, UniqueConstraint
+from sqlalchemy import ForeignKey, create_engine, Column, String, DateTime, func, PrimaryKeyConstraint, UniqueConstraint, Boolean
 from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
 from sqlalchemy.sql import text
 import logging
@@ -30,6 +30,7 @@ class AgentRecord(Base):
     introduction = Column(String, nullable=True, default="")
     reminder = Column(String, nullable=True, default="")
     owner_user_id = Column(String, ForeignKey('users.id'), nullable=False)
+    is_default = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=datetime.datetime.now)
 class FileRecord(Base):
     __tablename__ = "files"
@@ -122,6 +123,31 @@ class Metadata(ABC):
 
     def close(self) -> None:
         self.close_db_engine()
+    
+    def get_or_create_system_user(self) -> User:
+        """
+        Get or create the system user for internal operations.
+        
+        Returns:
+            User: The system user object
+        """
+        with self.get_db_session() as session:
+            system_user = session.query(User).filter(User.email == "system@bondableai.com").first()
+            
+            if not system_user:
+                # Create system user
+                import uuid
+                system_user = User(
+                    id=str(uuid.uuid4()),
+                    email="system@bondableai.com",
+                    name="System",
+                    sign_in_method="system"
+                )
+                session.add(system_user)
+                session.commit()
+                LOGGER.info(f"Created system user with id: {system_user.id}")
+            
+            return system_user
 
 
 
