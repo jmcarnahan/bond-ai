@@ -80,9 +80,8 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
       //     '[McpSelectionSection] Resource ${i + 1}: ${resources[i].name} (${resources[i].uri})',
       //   );
       // }
-    } catch (e, stackTrace) {
+    } catch (e) {
       logger.e('[McpSelectionSection] Error loading MCP data: $e');
-      // logger.e('[McpSelectionSection] Stack trace: $stackTrace');
 
       setState(() {
         _isLoading = false;

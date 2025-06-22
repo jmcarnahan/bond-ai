@@ -3,14 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/utils/logger.dart';
 import 'widgets/profile_app_bar.dart';
 import '../../widgets/app_drawer.dart';
 
 class ProfileScreen extends ConsumerWidget {
   static const String routeName = '/profile';
   
-  const ProfileScreen({Key? key}) : super(key: key);
+  const ProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -18,7 +17,6 @@ class ProfileScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
-    final customColors = theme.extension<CustomColors>();
     
     if (authState is! Authenticated) {
       return Scaffold(

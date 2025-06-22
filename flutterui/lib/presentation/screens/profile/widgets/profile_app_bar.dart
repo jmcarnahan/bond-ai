@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/core_providers.dart';
-import 'package:flutterui/core/theme/app_theme.dart';
 
 class ProfileAppBar extends ConsumerWidget implements PreferredSizeWidget {
   const ProfileAppBar({super.key});
@@ -11,7 +10,6 @@ class ProfileAppBar extends ConsumerWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final appTheme = ref.watch(appThemeProvider);
     final theme = Theme.of(context);
 
     return Container(
