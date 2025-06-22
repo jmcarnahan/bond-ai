@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutterui/providers/core_providers.dart';
 
 class ProfileAppBar extends ConsumerWidget implements PreferredSizeWidget {
   const ProfileAppBar({super.key});
@@ -17,7 +16,7 @@ class ProfileAppBar extends ConsumerWidget implements PreferredSizeWidget {
         color: theme.colorScheme.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -40,7 +39,7 @@ class ProfileAppBar extends ConsumerWidget implements PreferredSizeWidget {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: theme.colorScheme.onSurface.withOpacity(0.1),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
               ),
               child: Icon(
                 Icons.person,
