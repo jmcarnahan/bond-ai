@@ -19,9 +19,9 @@ class UserTile extends StatelessWidget {
   Widget build(BuildContext context) {
     Color? backgroundColor;
     if (isPendingRemoval) {
-      backgroundColor = Colors.red.withOpacity(0.1);
+      backgroundColor = Colors.red.withValues(alpha: 0.1);
     } else if (isPendingAddition) {
-      backgroundColor = Colors.green.withOpacity(0.1);
+      backgroundColor = Colors.green.withValues(alpha: 0.1);
     }
 
     return Container(
