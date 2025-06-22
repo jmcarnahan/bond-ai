@@ -16,7 +16,6 @@ import 'package:flutterui/presentation/screens/profile/profile_screen.dart';
 import 'package:flutterui/presentation/screens/agents/create_agent_screen.dart';
 import 'package:flutterui/presentation/screens/groups/groups_screen.dart';
 import 'package:flutterui/presentation/screens/groups/edit_group_screen.dart';
-import 'package:flutterui/core/constants/mobile_api_config.dart';
 import 'package:flutterui/core/constants/api_constants.dart';
 import 'package:flutterui/data/models/agent_model.dart';
 import 'package:flutterui/data/models/group_model.dart';
@@ -383,12 +382,35 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
           pages.add(const AgentsScreen());
           break;
         case 'Chat':
+          // Use ref.watch here to get the default agent
+          final defaultAgentAsync = ref.watch(defaultAgentProvider);
           pages.add(
-            ChatScreen(
-              agentId: selectedAgent?.id ?? MobileApiConfig.defaultAgentId,
-              agentName:
-                  selectedAgent?.name ?? MobileApiConfig.defaultAgentName,
-              initialThreadId: selectedThread?.id,
+            defaultAgentAsync.when(
+              data: (defaultAgent) => ChatScreen(
+                agentId: selectedAgent?.id ?? defaultAgent.id,
+                agentName: selectedAgent?.name ?? defaultAgent.name,
+                initialThreadId: selectedThread?.id,
+              ),
+              loading: () => const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              ),
+              error: (error, _) => Scaffold(
+                body: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                      const SizedBox(height: 16),
+                      Text('Failed to load default agent: ${error.toString()}'),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () => ref.refresh(defaultAgentProvider),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           );
           break;
@@ -417,31 +439,37 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
                 notificationState.messageContent != null) ...[
               Builder(
                 builder: (context) {
-                  final agentId =
-                      notificationState.agentId ??
-                      MobileApiConfig.defaultAgentId;
-                  logger.d(
-                    '[MobileHomePage] Creating MessageNotificationBanner',
-                  );
-                  logger.d(
-                    '[MobileHomePage] Notification agentId: ${notificationState.agentId}',
-                  );
-                  logger.d('[MobileHomePage] Using agentId: $agentId');
-                  logger.d(
-                    '[MobileHomePage] Default agentId: ${MobileApiConfig.defaultAgentId}',
-                  );
+                  final defaultAgentAsync = ref.watch(defaultAgentProvider);
+                  
+                  return defaultAgentAsync.when(
+                    data: (defaultAgent) {
+                      final agentId = notificationState.agentId ?? defaultAgent.id;
+                      logger.d(
+                        '[MobileHomePage] Creating MessageNotificationBanner',
+                      );
+                      logger.d(
+                        '[MobileHomePage] Notification agentId: ${notificationState.agentId}',
+                      );
+                      logger.d('[MobileHomePage] Using agentId: $agentId');
+                      logger.d(
+                        '[MobileHomePage] Default agentId: ${defaultAgent.id}',
+                      );
 
-                  return MessageNotificationBanner(
-                    threadName: notificationState.threadName ?? 'New Message',
-                    messageContent: notificationState.messageContent!,
-                    agentId: agentId,
-                    subject: notificationState.subject,
-                    duration: notificationState.duration,
-                    onDismiss: () {
-                      ref
-                          .read(notificationProvider.notifier)
-                          .hideNotification();
+                      return MessageNotificationBanner(
+                        threadName: notificationState.threadName ?? 'New Message',
+                        messageContent: notificationState.messageContent!,
+                        agentId: agentId,
+                        subject: notificationState.subject,
+                        duration: notificationState.duration,
+                        onDismiss: () {
+                          ref
+                              .read(notificationProvider.notifier)
+                              .hideNotification();
+                        },
+                      );
                     },
+                    loading: () => const SizedBox.shrink(),
+                    error: (_, __) => const SizedBox.shrink(),
                   );
                 },
               ),
