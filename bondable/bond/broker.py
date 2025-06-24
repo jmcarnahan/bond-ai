@@ -62,26 +62,29 @@ class BondMessage:
 
     thread_id: str
     message_id: str
+    agent_id: str
     type: str
     role: str
     is_error: bool = False
     is_done: bool = False
     clob: BondMessageClob = None
 
-    def __init__(self, thread_id, message_id, type, role, is_error=False, is_done=False, content=None):
+    def __init__(self, thread_id, message_id, agent_id, type, role, is_error=False, is_done=False, content=None):
         self.message_id = message_id
         self.thread_id = thread_id
+        self.agent_id = agent_id
         self.type = type
         self.role = role
         self.is_error = is_error
         self.is_done = is_done
+
         self.clob = BondMessageClob(content=content)
 
     def __str__(self):
         return f"Message thread[{self.thread_id}] message[{self.message_id}]"
 
     def to_start_xml(self):
-        return f'<_bondmessage id="{self.message_id}" thread_id="{self.thread_id}" type="{self.type}" role="{self.role}" is_error="{self.is_error}" is_done="{self.is_done}">'
+        return f'<_bondmessage id="{self.message_id}" thread_id="{self.thread_id}" agent_id="{self.agent_name}" type="{self.type}" role="{self.role}" is_error="{self.is_error}" is_done="{self.is_done}">'
     
     def to_end_xml(self):
         return '</_bondmessage>'
@@ -123,6 +126,7 @@ class BrokerConnection:
             self.current_msg = BondMessage(
                 thread_id=attributes.get('thread_id'),
                 message_id=attributes.get('id'),
+                agent_id=attributes.get('agent_id'),
                 type=attributes.get('type'),
                 role=attributes.get('role'),
                 is_error=str(attributes.get('is_error')).lower() == 'true',
