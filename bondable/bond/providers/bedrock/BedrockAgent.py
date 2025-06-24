@@ -131,7 +131,8 @@ class BedrockAgent(Agent):
         return hashlib.md5(file_data).hexdigest()
     
     def _handle_file_event(self, file_info: Dict[str, Any], thread_id: str, 
-                          response_id: str, message_index: int) -> Generator[str, None, None]:
+                           user_id: str) -> Generator[str, None, None]:
+
         """
         Helper method to handle file events and yield appropriate messages.
         
@@ -140,15 +141,16 @@ class BedrockAgent(Agent):
         """
         if 'bytes' not in file_info:
             return
-            
-        # Close the current text message tag
-        yield '</_bondmessage>'
-        
+
         # Get file details
         file_data = file_info['bytes']
         file_name = file_info.get('name', 'file')
         file_type = file_info.get('type', 'application/octet-stream')
         
+        message_content = ''
+        message_type = ''
+        message_role = 'assistant'
+
         # Determine if this is an image based on MIME type
         is_image = file_type.startswith('image/')
         
@@ -160,25 +162,10 @@ class BedrockAgent(Agent):
                 # If it's already a string, handle accordingly
                 image_base64 = file_data
             
-            # Create the data URL format for the image
-            data_url = f"data:{file_type};base64,{image_base64}"
-            
-            # Yield image message
-            file_id = str(uuid.uuid4())
-            yield (
-                f'<_bondmessage '
-                f'id="{file_id}" '
-                f'thread_id="{thread_id}" '
-                f'agent_id="{self.agent_id}" '
-                f'message_index="{message_index}" '
-                f'type="image_file" '
-                f'role="assistant" '
-                f'is_error="false" '
-                f'is_done="false">'
-            )
-            yield data_url
-            yield '</_bondmessage>'
-            
+            # Create the data URL format for the image as the message content
+            message_content = f"data:{file_type};base64,{image_base64}"
+            message_type = 'image_file'
+    
             LOGGER.info(f"Received and yielded image: {file_name} ({file_type})")
         else:
             # Handle non-image files by uploading to S3
@@ -188,38 +175,40 @@ class BedrockAgent(Agent):
                 LOGGER.warning(f"Non-image file received: {file_name} ({file_type}) - S3 upload not yet implemented")
                 
                 # Yield a file link message
-                file_id = str(uuid.uuid4())
-                yield (
-                    f'<_bondmessage '
-                    f'id="{file_id}" '
-                    f'thread_id="{thread_id}" '
-                    f'agent_id="{self.agent_id}" '
-                    f'message_index="{message_index}" '
-                    f'type="file_link" '
-                    f'role="assistant" '
-                    f'is_error="false" '
-                    f'is_done="false">'
-                )
-                # TODO: Replace with actual S3 URL after upload
-                yield f"File received: {file_name} (upload pending)"
-                yield '</_bondmessage>'
+                message_content = f"File received: {file_name} (upload pending)"
+                message_type = 'file_link'
                 
             except Exception as e:
                 LOGGER.error(f"Error handling file {file_name}: {e}")
                 # Continue without failing the entire response
         
-        # Reopen text message tag for any following text
+        message_id = self.threads.add_message(
+            thread_id=thread_id,
+            user_id=user_id,
+            role=message_role,
+            message_type=message_type,
+            content=message_content,
+            metadata={
+                'agent_id': self.agent_id,
+                'model': self.model_id,
+                'bedrock_agent_id': self.bedrock_agent_id
+            }
+        )
+
+        # Yield file message
         yield (
             f'<_bondmessage '
-            f'id="{response_id}" '
+            f'id="{message_id}" '
             f'thread_id="{thread_id}" '
             f'agent_id="{self.agent_id}" '
-            f'message_index="{message_index}" '
-            f'type="message" '
-            f'role="assistant" '
+            f'type="{message_type}" '
+            f'role="{message_role}" '
             f'is_error="false" '
             f'is_done="false">'
         )
+        yield message_content
+        yield '</_bondmessage>'
+
     
     def create_user_message(self, prompt: str, thread_id: str, 
                           attachments: Optional[List] = None,
@@ -247,6 +236,7 @@ class BedrockAgent(Agent):
             thread_id=thread_id,
             user_id=user_id,
             role=override_role,
+            message_type='text',
             content=prompt,
             attachments=attachments,
             metadata={
@@ -286,8 +276,6 @@ class BedrockAgent(Agent):
         if not user_id:
             raise ValueError("Agent must have user_id in metadata")
         
-        response_id = str(uuid.uuid4())
-        
         try:
             # Add user message if prompt provided
             if prompt:
@@ -321,30 +309,30 @@ class BedrockAgent(Agent):
                 }
             }
             
+            # Generate Bond message start tag
+            full_content = ""
+            response_id = str(uuid.uuid4())
+            response_type = "text"
+            response_role = "assistant"
+            yield (
+                f'<_bondmessage '
+                f'id="{response_id}" '
+                f'thread_id="{thread_id}" '
+                f'agent_id="{self.agent_id}" '
+                f'type="{response_type}" '
+                f'role="{response_role}" '
+                f'is_error="false" '
+                f'is_done="false">'
+            )
+
             # Add session state if available
             if session_state:
                 request['sessionState'] = session_state
             
             # Invoke the agent (this returns a streaming response)
             response = self.bedrock_agent_runtime.invoke_agent(**request)
-            
-            # Generate Bond message start tag
-            messages = self.threads.get_messages(thread_id, limit=100)
-            message_index = len([m for m in messages.values() if m.role == 'assistant'])
-            yield (
-                f'<_bondmessage '
-                f'id="{response_id}" '
-                f'thread_id="{thread_id}" '
-                f'agent_id="{self.agent_id}" '
-                f'message_index="{message_index}" '
-                f'type="message" '
-                f'role="assistant" '
-                f'is_error="false" '
-                f'is_done="false">'
-            )
-            
+
             # Process the streaming response
-            full_content = ""
             new_session_state = None
             seen_file_hashes = set()  # Track files we've already sent
             
@@ -381,8 +369,45 @@ class BedrockAgent(Agent):
                                         continue
                                     seen_file_hashes.add(file_hash)
                                 
-                                yield from self._handle_file_event(file_info, thread_id, response_id, message_index)
-                    
+
+                                if full_content and len(full_content) > 0:
+                                    # Need to save off any content here as a message
+                                    message_id = self.threads.add_message(
+                                        message_id=response_id,
+                                        thread_id=thread_id,
+                                        user_id=user_id,
+                                        role=response_role,
+                                        message_type=response_type,
+                                        content=full_content,
+                                        attachments=attachments,
+                                        metadata={
+                                            'agent_id': self.agent_id,
+                                            'model': self.model_id,
+                                            'bedrock_agent_id': self.bedrock_agent_id
+                                        }
+                                    )
+                                    full_content = ''
+
+                                # finish the text message
+                                yield '</_bondmessage>'
+                                # send the file message
+                                yield from self._handle_file_event(file_info=file_info, 
+                                                                   thread_id=thread_id, 
+                                                                   user_id=user_id)
+                                
+                                # start a new text message
+                                response_id = str(uuid.uuid4())
+                                yield (
+                                    f'<_bondmessage '
+                                    f'id="{response_id}" '
+                                    f'thread_id="{thread_id}" '
+                                    f'agent_id="{self.agent_id}" '
+                                    f'type="{response_type}" '
+                                    f'role="{response_role}" '
+                                    f'is_error="false" '
+                                    f'is_done="false">'
+                                )
+
                     # Handle returnControl events for MCP tools
                     elif 'returnControl' in event:
                         return_control = event['returnControl']
@@ -434,7 +459,45 @@ class BedrockAgent(Agent):
                                                         continue
                                                     seen_file_hashes.add(file_hash)
                                                 
-                                                yield from self._handle_file_event(file_info, thread_id, response_id, message_index)
+                                                # from here
+                                                if full_content and len(full_content) > 0:
+                                                    # Need to save off any content here as a message
+                                                    message_id = self.threads.add_message(
+                                                        message_id=response_id,
+                                                        thread_id=thread_id,
+                                                        user_id=user_id,
+                                                        role=response_role,
+                                                        message_type=response_type,
+                                                        content=full_content,
+                                                        attachments=attachments,
+                                                        metadata={
+                                                            'agent_id': self.agent_id,
+                                                            'model': self.model_id,
+                                                            'bedrock_agent_id': self.bedrock_agent_id
+                                                        }
+                                                    )
+                                                    full_content = ''
+
+                                                # finish the text message
+                                                yield '</_bondmessage>'
+                                                # send the file message
+                                                yield from self._handle_file_event(file_info=file_info, 
+                                                                                    thread_id=thread_id, 
+                                                                                    user_id=user_id)
+                                                
+                                                # start a new text message
+                                                response_id = str(uuid.uuid4())
+                                                yield (
+                                                    f'<_bondmessage '
+                                                    f'id="{response_id}" '
+                                                    f'thread_id="{thread_id}" '
+                                                    f'agent_id="{self.agent_id}" '
+                                                    f'type="{response_type}" '
+                                                    f'role="{response_role}" '
+                                                    f'is_error="false" '
+                                                    f'is_done="false">'
+                                                )
+
                                     elif 'sessionState' in cont_event:
                                         new_session_state = cont_event['sessionState']
                     
@@ -453,19 +516,21 @@ class BedrockAgent(Agent):
             yield '</_bondmessage>'
             
             # Save the complete response to the thread
-            if full_content:
+            if full_content and len(full_content) > 0:
                 self.threads.add_message(
+                    message_id=response_id,
                     thread_id=thread_id,
                     user_id=user_id,
-                    role="assistant",
+                    role=response_role,
+                    message_type=response_type,
                     content=full_content,
                     metadata={
                         'agent_id': self.agent_id,
                         'model': self.model_id,
-                        'message_id': response_id,
                         'bedrock_agent_id': self.bedrock_agent_id
                     }
                 )
+
                 LOGGER.info(f"Saved assistant response to thread {thread_id}")
             
             # Update session state if provided
