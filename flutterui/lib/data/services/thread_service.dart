@@ -49,9 +49,7 @@ class ThreadService {
     logger.i("[ThreadService] createThread called with name: $name");
     try {
       final headers = await _authService.authenticatedHeaders;
-      final body = json.encode({
-        'name': name,
-      });
+      final body = json.encode({'name': name});
 
       final response = await _httpClient.post(
         Uri.parse(ApiConstants.baseUrl + ApiConstants.threadsEndpoint),
@@ -100,9 +98,14 @@ class ThreadService {
             data
                 .map((item) => Message.fromJson(item as Map<String, dynamic>))
                 .toList();
-        // logger.i(
-        //   "[ThreadService] Parsed ${messages.length} messages for thread $threadId.",
-        // );
+        logger.i(
+          "[ThreadService] Parsed ${messages.length} messages for thread $threadId.",
+        );
+        for (final msg in messages) {
+          logger.d(
+            "[ThreadService] Message from API - ID: ${msg.id}, Agent: ${msg.agentId ?? 'none'}, Type: ${msg.type}, Role: ${msg.role}",
+          );
+        }
         return messages;
       } else {
         logger.i(
