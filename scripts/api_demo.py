@@ -19,9 +19,11 @@ import time
 import tempfile
 import csv
 import os
+import re
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from jose import jwt
-from typing import Optional
+from typing import Optional, Dict, List
 
 
 def create_auth_token(user_email: str = "demo@example.com") -> str:
@@ -30,9 +32,12 @@ def create_auth_token(user_email: str = "demo@example.com") -> str:
         from bondable.bond.config import Config
         jwt_config = Config.config().get_jwt_config()
         
+        # Token needs user_id and provider fields based on auth.py requirements
         token_data = {
             "sub": user_email,
             "name": "Demo User",
+            "user_id": f"test_user_{user_email.split('@')[0]}",
+            "provider": "google",
             "exp": datetime.now(timezone.utc) + timedelta(minutes=jwt_config.ACCESS_TOKEN_EXPIRE_MINUTES)
         }
         
@@ -146,6 +151,12 @@ class BondAPIDemo:
         self.created_resources["agents"].append(agent['agent_id'])
         return agent
     
+    def get_default_agent(self) -> dict:
+        """Get the default agent."""
+        response = requests.get(f"{self.base_url}/agents/default", headers=self.headers)
+        response.raise_for_status()
+        return response.json()
+    
     def get_agent_details(self, agent_id: str) -> dict:
         """Get detailed information about an agent."""
         response = requests.get(f"{self.base_url}/agents/{agent_id}", headers=self.headers)
@@ -164,8 +175,31 @@ class BondAPIDemo:
         self.created_resources["threads"].append(thread['id'])
         return thread
     
+    def parse_bond_messages(self, xml_string: str) -> List[Dict[str, str]]:
+        """Parse bond messages from XML string."""
+        messages = []
+        try:
+            # Wrap in root element to handle multiple messages
+            wrapped_xml = f"<root>{xml_string}</root>"
+            root = ET.fromstring(wrapped_xml)
+            
+            for bond_msg in root.findall('.//bond_message'):
+                msg_data = {
+                    'id': bond_msg.get('message_id', ''),
+                    'thread_id': bond_msg.get('thread_id', ''),
+                    'agent_id': bond_msg.get('agent_id', ''),
+                    'type': bond_msg.get('type', ''),
+                    'role': bond_msg.get('role', ''),
+                    'content': bond_msg.text or ''
+                }
+                messages.append(msg_data)
+        except Exception as e:
+            print(f"\n   ⚠️  Error parsing bond messages: {e}")
+        
+        return messages
+    
     def chat(self, thread_id: str, agent_id: str, prompt: str, show_response: bool = True) -> str:
-        """Send a chat message and get the response."""
+        """Send a chat message and get the response with ID tracking."""
         payload = {
             "thread_id": thread_id,
             "agent_id": agent_id,
@@ -189,13 +223,36 @@ class BondAPIDemo:
         if show_response:
             print()  # New line after response
         
+        # Parse bond messages from the response
+        messages = self.parse_bond_messages(full_response)
+        if messages:
+            print("\n   📋 Streamed Message Details:")
+            for msg in messages:
+                print(f"       - Message ID: {msg['id']}")
+                print(f"         Thread ID: {msg['thread_id']}")
+                print(f"         Agent ID: {msg['agent_id'] or 'None'}")
+                print(f"         Type: {msg['type']}, Role: {msg['role']}")
+        
         return full_response
     
     def get_thread_messages(self, thread_id: str, limit: int = 100) -> list:
-        """Get messages from a thread."""
+        """Get messages from a thread with detailed information."""
         response = requests.get(f"{self.base_url}/threads/{thread_id}/messages?limit={limit}", headers=self.headers)
         response.raise_for_status()
-        return response.json()
+        messages = response.json()
+        
+        print(f"\n   📨 Retrieved {len(messages)} messages from thread:")
+        for msg in messages:
+            print(f"       - Message ID: {msg.get('id', 'Unknown')}")
+            print(f"         Agent ID: {msg.get('agent_id', 'None')}")
+            print(f"         Type: {msg.get('type', 'Unknown')}, Role: {msg.get('role', 'Unknown')}")
+            content_preview = msg.get('content', '')[:50]
+            if len(msg.get('content', '')) > 50:
+                content_preview += "..."
+            print(f"         Content: {content_preview}")
+            print()
+        
+        return messages
     
     def delete_thread(self, thread_id: str) -> bool:
         """Delete a thread."""
@@ -323,9 +380,14 @@ def main():
         print(f"   ✅ Agent: {agent_details['name']}")
         print(f"       Model: {agent_details['model']}")
         print(f"       Tools: {len(agent_details['tools'])} tools configured")
-        if agent_details.get('tool_resources'):
-            ci_files = agent_details['tool_resources'].get('code_interpreter', {}).get('file_ids', [])
-            print(f"       Code Interpreter Files: {len(ci_files)} file(s)")
+        tool_resources = agent_details.get('tool_resources')
+        if tool_resources and isinstance(tool_resources, dict):
+            code_interpreter = tool_resources.get('code_interpreter', {})
+            if code_interpreter:
+                ci_files = code_interpreter.get('file_ids', [])
+                print(f"       Code Interpreter Files: {len(ci_files)} file(s)")
+        else:
+            print(f"       Tool Resources: Not configured")
         
         # Step 7: Create a thread
         print("\n💬 Creating conversation thread...")
@@ -351,10 +413,23 @@ def main():
         print(f"\n   👤 User: {prompt3}")
         response3 = demo.chat(thread_id, agent_id, prompt3)
         
-        # Step 9: Check thread messages
-        print(f"\n📨 Checking conversation history...")
+        # Step 9: Check thread messages with detailed information
+        print(f"\n📨 Checking conversation history with message details...")
         messages = demo.get_thread_messages(thread_id)
         print(f"   ✅ Thread contains {len(messages)} messages")
+        
+        # Show detailed message information
+        print("\n   📊 Message Details:")
+        for i, msg in enumerate(messages, 1):
+            print(f"\n   Message {i}:")
+            print(f"      ID: {msg.get('id', 'Unknown')}")
+            print(f"      Agent ID: {msg.get('agent_id', 'None')}")
+            print(f"      Type: {msg.get('type', 'Unknown')}")
+            print(f"      Role: {msg.get('role', 'Unknown')}")
+            content_preview = msg.get('content', '')[:60]
+            if len(msg.get('content', '')) > 60:
+                content_preview += "..."
+            print(f"      Content: {content_preview}")
         
         # Step 10: Clean up resources
         print(f"\n🧹 Cleaning up resources...")
