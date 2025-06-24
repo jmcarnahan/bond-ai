@@ -4,6 +4,7 @@ from bondable.bond.broker import Broker
 from bondable.bond.providers.metadata import Metadata, AgentRecord, AgentGroup, GroupUser
 from typing import List, Dict, Optional, Generator
 import logging
+import uuid
 LOGGER = logging.getLogger(__name__)
 
 
@@ -388,10 +389,11 @@ class AgentProvider(ABC):
             # Get or create the system user
             system_user = self.metadata.get_or_create_system_user()
             
-            # Create default agent definition
+            # Create default agent definition with unique ID
+            default_agent_id = f"default_agent_{uuid.uuid4()}"
             default_agent_def = AgentDefinition(
                 user_id=system_user.id,
-                id="default-home-agent",
+                id=default_agent_id,
                 name="Home",
                 description="Your AI assistant for various tasks",
                 instructions="You are a helpful AI assistant. Help users with their questions and tasks.",
