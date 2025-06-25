@@ -61,7 +61,13 @@ class AgentCrudService {
   Future<AgentResponseModel> createAgent(AgentDetailModel agentData) async {
     try {
       final url = ApiConstants.baseUrl + ApiConstants.agentsEndpoint;
-      final response = await _httpClient.post(url, agentData.toJson());
+      
+      // Log the data being sent to the API
+      final jsonData = agentData.toJson();
+      logger.i("[AgentCrudService] Creating agent with data: ${json.encode(jsonData)}");
+      logger.i("[AgentCrudService] Model being sent: ${jsonData['model']}");
+      
+      final response = await _httpClient.post(url, jsonData);
 
       if (response.statusCode == 201) {
         final Map<String, dynamic> data = json.decode(response.body);
