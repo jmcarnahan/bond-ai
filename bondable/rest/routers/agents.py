@@ -143,6 +143,7 @@ async def create_agent(
     LOGGER.info(f"Create agent request for user {current_user.user_id} ({current_user.email}) - MCP tools: {request_data.mcp_tools}, MCP resources: {request_data.mcp_resources}")
     try:
         tool_resources_payload = _process_tool_resources(request_data, provider, current_user.user_id)
+        LOGGER.info(f"CREATE_AGENT: tool_resources_payload after processing: {tool_resources_payload}")
         
         agent_def = AgentDefinition(
             name=request_data.name,
@@ -208,6 +209,15 @@ async def update_agent(
     LOGGER.info(f"Update agent request for agent {agent_id}, user {current_user.user_id} ({current_user.email}) - MCP tools: {request_data.mcp_tools}, MCP resources: {request_data.mcp_resources}")
     LOGGER.info(f"Update request - introduction: '{request_data.introduction[:50] if request_data.introduction else 'None'}'...")
     LOGGER.info(f"Update request - reminder: '{request_data.reminder[:50] if request_data.reminder else 'None'}'...")
+    
+    # Log the incoming tool_resources
+    if request_data.tool_resources:
+        LOGGER.info(f"UPDATE REQUEST tool_resources: {request_data.tool_resources}")
+        if hasattr(request_data.tool_resources, 'file_search') and request_data.tool_resources.file_search:
+            LOGGER.info(f"  file_search: {request_data.tool_resources.file_search}")
+            if hasattr(request_data.tool_resources.file_search, 'vector_store_ids'):
+                LOGGER.info(f"  vector_store_ids: {request_data.tool_resources.file_search.vector_store_ids}")
+    
     try:
         tool_resources_payload = _process_tool_resources(request_data, provider, current_user.user_id)
         
