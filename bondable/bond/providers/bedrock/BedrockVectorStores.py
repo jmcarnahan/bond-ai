@@ -31,22 +31,8 @@ class BedrockVectorStoresProvider(VectorStoresProvider):
         """
         return self.files_provider
     
-    def get_or_create_vector_store_id(self, user_id: str, name: str) -> str:
-        """
-        Get or create a vector store ID.
-        For now, just returns a dummy ID.
-        
-        Args:
-            user_id: User ID
-            name: Vector store name
-            
-        Returns:
-            Vector store ID
-        """
-        # For now, just generate a dummy ID
-        vector_store_id = f"bedrock_vs_{uuid.uuid4()}"
-        LOGGER.debug(f"Stub: Created dummy vector store {vector_store_id} for user {user_id}")
-        return vector_store_id
+    # Removed get_or_create_vector_store_id - using parent class implementation
+    # which properly handles database persistence
     
     def update_vector_store_file_ids(self, vector_store_id: str, file_ids: List[str]) -> bool:
         """
@@ -73,25 +59,20 @@ class BedrockVectorStoresProvider(VectorStoresProvider):
     
     def delete_vector_store_resource(self, vector_store_id: str) -> bool:
         """
-        Delete vector store.
-        Stub implementation - always returns True.
+        Delete vector store resource.
+        Stub implementation - just logs and returns True.
+        The parent class handles database cleanup.
         """
-        LOGGER.debug(f"Stub: Would delete vector store {vector_store_id}")
+        LOGGER.debug(f"Stub: Would delete vector store resource {vector_store_id}")
         return True
     
-    def create_vector_store_resource(
-        self,
-        user_id: str,
-        name: str,
-        file_ids: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> str:
+    def create_vector_store_resource(self, name: str) -> str:
         """
         Create a vector store.
         Stub implementation - returns dummy ID.
         """
         vector_store_id = f"bedrock_vs_{uuid.uuid4()}"
-        LOGGER.debug(f"Stub: Would create vector store {vector_store_id} with name {name}")
+        LOGGER.debug(f"Stub: Created vector store {vector_store_id} with name {name}")
         return vector_store_id
     
     def list_vector_store_resources(

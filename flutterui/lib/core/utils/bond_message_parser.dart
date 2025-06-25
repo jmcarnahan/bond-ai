@@ -3,6 +3,7 @@ import 'package:xml/xml.dart';
 class ParsedBondMessage {
   final String id;
   final String threadId;
+  final String? agentId;
   final String type;
   final String role;
   final String content;
@@ -13,6 +14,7 @@ class ParsedBondMessage {
   ParsedBondMessage({
     this.id = '',
     this.threadId = '',
+    this.agentId,
     this.type = '',
     this.role = '',
     required this.content,
@@ -23,67 +25,6 @@ class ParsedBondMessage {
 }
 
 class BondMessageParser {
-  static ParsedBondMessage parseFirstFoundBondMessage(String xmlString) {
-    if (xmlString.trim().isEmpty) {
-      return ParsedBondMessage(
-        content: "Error: Empty response.",
-        parsingHadError: true,
-        isErrorAttribute: true,
-      );
-    }
-    try {
-      final wrappedXml = "<stream_wrapper>${xmlString.trim()}</stream_wrapper>";
-      final XmlDocument doc = XmlDocument.parse(wrappedXml);
-
-      final XmlElement? firstBondMessageElement =
-          doc.rootElement.findElements('_bondmessage').firstOrNull;
-
-      if (firstBondMessageElement != null) {
-        String content = firstBondMessageElement.innerText.trim();
-        String? imageData;
-        final messageType = firstBondMessageElement.getAttribute('type') ?? '';
-        if (messageType == 'image_file' || messageType == 'image') {
-          if (content.startsWith('data:image/png;base64,')) {
-            imageData = content.substring('data:image/png;base64,'.length);
-            content = '[Image]';
-          } else if (content.startsWith('data:image/jpeg;base64,')) {
-            imageData = content.substring('data:image/jpeg;base64,'.length);
-            content = '[Image]';
-          } else if (content.startsWith('data:image/')) {
-            final commaIndex = content.indexOf(',');
-            if (commaIndex != -1 && commaIndex < content.length - 1) {
-              imageData = content.substring(commaIndex + 1);
-              content = '[Image]';
-            }
-          }
-        }
-        
-        return ParsedBondMessage(
-          id: firstBondMessageElement.getAttribute('id') ?? '',
-          threadId: firstBondMessageElement.getAttribute('thread_id') ?? '',
-          type: messageType,
-          role: firstBondMessageElement.getAttribute('role') ?? '',
-          content: content,
-          imageData: imageData,
-          isErrorAttribute:
-              firstBondMessageElement.getAttribute('is_error')?.toLowerCase() == 'true',
-          parsingHadError: false,
-        );
-      } else {
-        return ParsedBondMessage(
-          content: "Error: No <_bondmessage> element found in the provided XML string.",
-          parsingHadError: true,
-          isErrorAttribute: true,
-        );
-      }
-    } catch (e) {
-      return ParsedBondMessage(
-        content: "Error parsing XML: ${e.toString()}",
-        parsingHadError: true,
-        isErrorAttribute: true,
-      );
-    }
-  }
 
   static String extractStreamingBodyContent(String accumulatedXml) {
     String stringToDisplayForUi = "...";
@@ -171,6 +112,7 @@ class BondMessageParser {
         messages.add(ParsedBondMessage(
           id: element.getAttribute('id') ?? '',
           threadId: element.getAttribute('thread_id') ?? '',
+          agentId: element.getAttribute('agent_id'),
           type: messageType,
           role: element.getAttribute('role') ?? '',
           content: content,

@@ -11,7 +11,7 @@ from bondable.bond.providers.metadata import Metadata, Base, Thread, AgentRecord
 import datetime
 import uuid
 import logging
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 
 LOGGER = logging.getLogger(__name__)
 
@@ -45,6 +45,7 @@ class BedrockMessage(Base):
     user_id = Column(String, ForeignKey('users.id'), nullable=False)
     session_id = Column(String, nullable=True)  # Bedrock Agent session ID
     role = Column(String, nullable=False)  # 'user' or 'assistant'
+    type = Column(String, nullable=False)  # 'text', 'image_file', etc.
     content = Column(JSON, nullable=False)  # Store full message content including attachments
     message_index = Column(Integer, nullable=False)  # Order within thread
     created_at = Column(DateTime, default=datetime.datetime.now)
@@ -82,10 +83,9 @@ class BedrockMetadata(Metadata):
         LOGGER.info("Created all Bedrock metadata tables")
     
     # Message Management Methods
-    
-    def create_message(self, thread_id: str, user_id: str, role: str, 
+    def create_message(self, thread_id: str, user_id: str, role: str, message_type: str, 
                       content: List[Dict], metadata: Optional[Dict] = None,
-                      session_id: Optional[str] = None) -> str:
+                      session_id: Optional[str] = None, message_id: Optional[str] = None) -> str:
         """Create a new message in a thread"""
         session = self.get_db_session()
         try:
@@ -106,10 +106,12 @@ class BedrockMetadata(Metadata):
             message_index = (max_index[0] + 1) if max_index else 0
             
             message = BedrockMessage(
+                id=message_id or str(uuid.uuid4()),
                 thread_id=thread_id,
                 user_id=user_id,
                 session_id=session_id,
                 role=role,
+                type=message_type,
                 content=content,
                 message_index=message_index,
                 message_metadata=metadata or {}
@@ -118,7 +120,7 @@ class BedrockMetadata(Metadata):
             session.add(message)
             session.commit()
             
-            LOGGER.info(f"Created message {message.id} in thread {thread_id} with session {session_id}")
+            LOGGER.info(f"Created message {message.id} in thread {thread_id} with session {session_id} - message index {message_index}")
             return message.id
             
         except Exception as e:

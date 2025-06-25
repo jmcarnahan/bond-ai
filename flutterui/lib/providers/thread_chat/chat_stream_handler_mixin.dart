@@ -52,7 +52,7 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
           "[ChatStreamHandler] Extracted thread_id from most recent response: ${lastMessage.threadId}",
         );
         state = state.copyWith(currentThreadId: lastMessage.threadId);
-        
+
         // Note: We can't directly access providers here since this is a mixin
         // The threads will be refreshed when navigating to the threads screen
       }
@@ -65,6 +65,13 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
     logger.i(
       "[ChatStreamHandler] Found ${assistantMessages.length} assistant messages",
     );
+
+    // Log thread_id and agent_id for all parsed messages
+    for (final msg in allMessages) {
+      logger.d(
+        "[ChatStreamHandler] Parsed message - ID: ${msg.id}, Thread: ${msg.threadId}, Agent: ${msg.agentId ?? 'none'}, Type: ${msg.type}, Role: ${msg.role}",
+      );
+    }
 
     final currentMessages = List<Message>.from(state.messages);
 
@@ -97,8 +104,12 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
                 type: parsedMessage.type,
                 content: parsedMessage.content,
                 imageData: parsedMessage.imageData,
+                agentId: parsedMessage.agentId,
                 isError: parsedMessage.isErrorAttribute,
               );
+          logger.d(
+            "[ChatStreamHandler] Updated message - ID: ${currentMessages[assistantMessageIndex].id}, Agent: ${currentMessages[assistantMessageIndex].agentId ?? 'none'}, Type: ${currentMessages[assistantMessageIndex].type}",
+          );
         } else {
           final newMessage = Message(
             id: (DateTime.now().millisecondsSinceEpoch + i).toString(),
@@ -106,9 +117,13 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
             role: 'assistant',
             content: parsedMessage.content,
             imageData: parsedMessage.imageData,
+            agentId: parsedMessage.agentId,
             isError: parsedMessage.isErrorAttribute,
           );
           currentMessages.add(newMessage);
+          logger.d(
+            "[ChatStreamHandler] Created new message - ID: ${newMessage.id}, Agent: ${newMessage.agentId ?? 'none'}, Type: ${newMessage.type}",
+          );
         }
       }
     }
