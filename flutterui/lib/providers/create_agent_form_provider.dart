@@ -118,12 +118,12 @@ class CreateAgentFormState {
 class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
   final AgentService _agentService;
   final FileService _fileService;
-  final String Function() _getDefaultModel;
+  final String? Function() _getDefaultModel;
 
   CreateAgentFormNotifier({
     required AgentService agentService,
     required FileService fileService,
-    required String Function() getDefaultModel,
+    required String? Function() getDefaultModel,
   })  : _agentService = agentService,
         _fileService = fileService,
         _getDefaultModel = getDefaultModel,
@@ -395,6 +395,8 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
 
   Future<bool> saveAgent({String? agentId}) async {
     state = state.copyWith(isLoading: true, clearErrorMessage: true);
+    
+    logger.i('[CreateAgentFormNotifier] Starting saveAgent for: ${state.name}');
 
     if (state.name.isEmpty) {
       state = state.copyWith(
@@ -445,7 +447,34 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
     }
 
     // Get the default model from the provider
-    final defaultModel = _getDefaultModel();
+    String? defaultModel = _getDefaultModel();
+    
+    // If model is null, models might not be loaded yet, wait and retry
+    if (defaultModel == null) {
+      logger.w('[CreateAgentFormNotifier] Model is null, waiting for models to load...');
+      
+      // Wait up to 3 seconds for models to load
+      for (int i = 0; i < 6; i++) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        defaultModel = _getDefaultModel();
+        if (defaultModel != null) {
+          logger.i('[CreateAgentFormNotifier] Models loaded after ${(i + 1) * 500}ms');
+          break;
+        }
+      }
+      
+      // If still null after waiting, fail the save
+      if (defaultModel == null) {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: "Unable to determine AI model. Please refresh and try again.",
+        );
+        logger.e('[CreateAgentFormNotifier] Failed to load models after 3 seconds');
+        return false;
+      }
+    }
+    
+    logger.i('[CreateAgentFormNotifier] Using model for agent creation: $defaultModel');
     
     final agentData = AgentDetailModel(
       id: agentId ?? '',
@@ -454,7 +483,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       instructions: state.instructions.isNotEmpty ? state.instructions : null,
       introduction: state.introduction.isNotEmpty ? state.introduction : null,
       reminder: state.reminder.isNotEmpty ? state.reminder : null,
-      model: defaultModel,
+      model: defaultModel, // guaranteed non-null by check above
       tools: tools,
       toolResources: toolResources,
       mcpTools:
@@ -520,8 +549,13 @@ final createAgentFormProvider =
       final fileService = ref.watch(fileServiceProvider);
       
       // Create a function that captures the ref context
-      String getDefaultModel() {
-        return ref.read(defaultModelProvider) ?? 'gpt-4o';
+      String? getDefaultModel() {
+        final model = ref.read(defaultModelProvider);
+        logger.i('[CreateAgentFormProvider] defaultModelProvider returned: $model');
+        if (model == null) {
+          logger.w('[CreateAgentFormProvider] defaultModelProvider is null - models not loaded yet');
+        }
+        return model;
       }
       
       return CreateAgentFormNotifier(
