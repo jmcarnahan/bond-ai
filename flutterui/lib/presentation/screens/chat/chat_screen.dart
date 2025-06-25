@@ -8,6 +8,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutterui/providers/thread_chat/thread_chat_providers.dart';
 import 'package:flutterui/providers/thread_provider.dart';
 import 'package:flutterui/providers/services/service_providers.dart';
+import 'package:flutterui/providers/cached_agent_details_provider.dart';
 import '../../../core/utils/logger.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/chat_app_bar.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/message_input_bar.dart';
@@ -483,15 +484,40 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (!isUserMessage) ...[
-                          CircleAvatar(
-                            backgroundColor:
-                                colorScheme.surfaceContainerHighest,
-                            radius: 16,
-                            child: Icon(
-                              Icons.smart_toy_outlined,
-                              color: colorScheme.primary,
-                              size: 20,
-                            ),
+                          Column(
+                            children: [
+                              CircleAvatar(
+                                backgroundColor:
+                                    colorScheme.surfaceContainerHighest,
+                                radius: 16,
+                                child: Icon(
+                                  Icons.smart_toy_outlined,
+                                  color: colorScheme.primary,
+                                  size: 20,
+                                ),
+                              ),
+                              if (message.agentId != null)
+                                Container(
+                                  width: 32,
+                                  margin: const EdgeInsets.only(top: 2),
+                                  child: ref.watch(getCachedAgentDetailsProvider(message.agentId!)).when(
+                                    data: (agent) => agent != null
+                                        ? Text(
+                                            agent.name,
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              color: colorScheme.onSurface.withAlpha(179),
+                                            ),
+                                            textAlign: TextAlign.center,
+                                            overflow: TextOverflow.ellipsis,
+                                            maxLines: 1,
+                                          )
+                                        : const SizedBox.shrink(),
+                                    loading: () => const SizedBox.shrink(),
+                                    error: (_, __) => const SizedBox.shrink(),
+                                  ),
+                                ),
+                            ],
                           ),
                           const SizedBox(width: 8),
                         ],
