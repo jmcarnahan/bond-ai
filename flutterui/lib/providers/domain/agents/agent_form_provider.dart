@@ -14,7 +14,7 @@ class AgentFormNotifier extends StateNotifier<AgentFormState>
     with ErrorHandlerMixin<AgentFormState> {
   final AgentService _agentService;
   final FileService _fileService;
-  final String Function() _getDefaultModel;
+  final String? Function() _getDefaultModel;
 
   AgentFormNotifier(
     this._agentService, 
@@ -210,6 +210,36 @@ class AgentFormNotifier extends StateNotifier<AgentFormState>
     );
 
     try {
+      // Check if we can get the default model before building agent data
+      String? defaultModel = _getDefaultModel();
+      
+      // If model is null, models might not be loaded yet, wait and retry
+      if (defaultModel == null) {
+        logger.w('[AgentFormNotifier] Model is null, waiting for models to load...');
+        
+        // Wait up to 3 seconds for models to load
+        for (int i = 0; i < 6; i++) {
+          await Future.delayed(const Duration(milliseconds: 500));
+          defaultModel = _getDefaultModel();
+          if (defaultModel != null) {
+            logger.i('[AgentFormNotifier] Models loaded after ${(i + 1) * 500}ms');
+            break;
+          }
+        }
+        
+        // If still null after waiting, fail the save
+        if (defaultModel == null) {
+          state = state.copyWith(
+            ui: state.ui.copyWith(
+              isLoading: false,
+              errorMessage: "Unable to determine AI model. Please refresh and try again.",
+            ),
+          );
+          logger.e('[AgentFormNotifier] Failed to load models after 3 seconds');
+          return false;
+        }
+      }
+      
       final agentData = _buildAgentData();
 
       if (state.isEditing) {
@@ -281,7 +311,8 @@ class AgentFormNotifier extends StateNotifier<AgentFormState>
     }
 
     // Get the default model from the provider
-    final defaultModel = _getDefaultModel();
+    // Note: The model null check is done in saveAgent() before calling this method
+    final defaultModel = _getDefaultModel()!;
     
     return AgentDetailModel(
       id: state.editingAgentId ?? '',
@@ -304,8 +335,8 @@ final agentFormProvider =
       final fileService = ref.watch(fileServiceProvider);
       
       // Create a function that captures the ref context
-      String getDefaultModel() {
-        return ref.read(defaultModelProvider) ?? 'gpt-4o';
+      String? getDefaultModel() {
+        return ref.read(defaultModelProvider);
       }
       
       return AgentFormNotifier(agentService, fileService, getDefaultModel);

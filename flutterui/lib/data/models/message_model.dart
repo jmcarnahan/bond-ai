@@ -7,6 +7,7 @@ class Message {
   final String role;
   final String content;
   final String? imageData;
+  final String? agentId;
   final bool isError;
 
   const Message({
@@ -15,6 +16,7 @@ class Message {
     required this.role,
     required this.content,
     this.imageData,
+    this.agentId,
     this.isError = false,
   });
 
@@ -25,6 +27,7 @@ class Message {
       role: json['role'] as String,
       content: json['content'] as String,
       imageData: json['image_data'] as String?,
+      agentId: json['agent_id'] as String?,
       isError: json['is_error'] as bool? ?? false,
     );
   }
@@ -36,6 +39,7 @@ class Message {
       'role': role,
       'content': content,
       'image_data': imageData,
+      'agent_id': agentId,
       'is_error': isError,
     };
   }
@@ -46,6 +50,7 @@ class Message {
     String? role,
     String? content,
     String? imageData,
+    String? agentId,
     bool? isError,
   }) {
     return Message(
@@ -54,6 +59,7 @@ class Message {
       role: role ?? this.role,
       content: content ?? this.content,
       imageData: imageData ?? this.imageData,
+      agentId: agentId ?? this.agentId,
       isError: isError ?? this.isError,
     );
   }

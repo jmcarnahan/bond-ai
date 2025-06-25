@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:flutterui/providers/create_agent_form_provider.dart';
+import 'package:flutterui/providers/models_provider.dart';
 import 'widgets/agent_form_fields.dart';
 import 'widgets/agent_files_table.dart';
+import 'widgets/agent_model_section.dart';
 import 'widgets/mcp_selection_section.dart';
 import 'widgets/agent_sharing_section.dart';
 import 'widgets/agent_loading_overlay.dart';
@@ -221,6 +223,8 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
                     ),
                     theme: theme,
                   ),
+                  const SizedBox(height: 16),
+                  const AgentModelSection(),
                   const SizedBox(height: 16),
                   _buildSectionCard(
                     title: 'Files & Resources',

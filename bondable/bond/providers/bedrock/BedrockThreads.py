@@ -192,11 +192,20 @@ class BedrockThreadsProvider(ThreadsProvider):
                                         'data': content_item['document']
                                     })
                     
-                    # BondMessage expects: thread_id, message_id, type, role, is_error=False, is_done=False, content=None
+                    # Determine message type based on stored type or attachments
+                    message_type = msg.type if msg.type else "text"
+                    
+                    # Extract agent_id from metadata if available
+                    agent_id = None
+                    if msg.message_metadata and isinstance(msg.message_metadata, dict):
+                        agent_id = msg.message_metadata.get('agent_id')
+                    
+                    # BondMessage expects: thread_id, message_id, agent_id, type, role, is_error=False, is_done=False, content=None
                     bond_message = BondMessage(
                         thread_id=thread_id,
                         message_id=msg.id,
-                        type="text",  # or "image_file" if it has image attachments
+                        agent_id=agent_id,
+                        type=message_type,
                         role=msg.role,
                         is_error=False,
                         is_done=True,  # These are completed messages from DB
@@ -208,6 +217,7 @@ class BedrockThreadsProvider(ThreadsProvider):
                     bond_message.metadata = msg.message_metadata
                     bond_message.attachments = attachments if attachments else None
                     bond_message.session_id = msg.session_id  # Include session ID
+                    bond_message.agent_id = agent_id  # Include agent ID
                     
                     messages[msg.id] = bond_message
                 
@@ -218,18 +228,20 @@ class BedrockThreadsProvider(ThreadsProvider):
             LOGGER.error(f"Error retrieving messages: {e}")
             return {}
     
-    def add_message(self, thread_id: str, user_id: str, role: str, 
+    def add_message(self, thread_id: str, user_id: str, role: str, message_type: str,
                    content: str, attachments: Optional[list] = None,
-                   metadata: Optional[Dict] = None) -> str:
+                   metadata: Optional[Dict] = None, message_id: Optional[Dict] = None) -> str:
         """
         Add a message to a thread.
         
         This is a helper method not in the base interface but useful for Bedrock.
         
         Args:
+            message_id: optional
             thread_id: Thread to add message to
             user_id: User who owns this message
             role: 'user' or 'assistant'
+            message_type: 'text', 'image_file'
             content: Message content
             attachments: Optional attachments
             metadata: Optional metadata
@@ -287,9 +299,11 @@ class BedrockThreadsProvider(ThreadsProvider):
         
         # Create the message with session_id
         return self.metadata.create_message(
+            message_id=message_id,
             thread_id=thread_id,
             user_id=user_id,
             role=role,
+            message_type=message_type,
             content=bedrock_content,
             metadata=metadata,
             session_id=session_id
