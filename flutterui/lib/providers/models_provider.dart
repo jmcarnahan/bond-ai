@@ -22,20 +22,37 @@ final defaultModelProvider = Provider<String?>((ref) {
   
   return modelsAsync.when(
     data: (models) {
+      logger.i('[ModelsProvider] Available models count: ${models.length}');
+      
+      // Log all models and their default status
+      for (var model in models) {
+        logger.d('[ModelsProvider] Model: ${model.name}, isDefault: ${model.isDefault}');
+      }
+      
       // Find the default model
-      final defaultModel = models.firstWhere(
-        (model) => model.isDefault,
-        orElse: () => models.isNotEmpty ? models.first : ModelInfo(
-          name: 'gpt-4o',
-          description: 'Default model',
-          isDefault: true,
-        ),
-      );
-      logger.i('[ModelsProvider] Default model: ${defaultModel.name}');
-      return defaultModel.name;
+      try {
+        final defaultModel = models.firstWhere((model) => model.isDefault);
+        logger.i('[ModelsProvider] Selected default model: ${defaultModel.name} (isDefault: ${defaultModel.isDefault})');
+        return defaultModel.name;
+      } catch (e) {
+        // No model marked as default
+        if (models.isNotEmpty) {
+          logger.w('[ModelsProvider] No model marked as default, falling back to first model: ${models.first.name}');
+          return models.first.name;
+        } else {
+          logger.e('[ModelsProvider] No models available');
+          return null;
+        }
+      }
     },
-    loading: () => null,
-    error: (_, __) => 'gpt-4o', // Fallback default
+    loading: () {
+      logger.d('[ModelsProvider] Models still loading, returning null');
+      return null;
+    },
+    error: (error, stack) {
+      logger.e('[ModelsProvider] Error loading models: $error');
+      return null; // Return null on error instead of hardcoded default
+    },
   );
 });
 
@@ -44,14 +61,14 @@ final modelByNameProvider = Provider.family<ModelInfo?, String>((ref, modelName)
   final modelsAsync = ref.watch(availableModelsProvider);
   
   return modelsAsync.maybeWhen(
-    data: (models) => models.firstWhere(
-      (model) => model.name == modelName,
-      orElse: () => ModelInfo(
-        name: modelName,
-        description: modelName,
-        isDefault: false,
-      ),
-    ),
+    data: (models) {
+      try {
+        return models.firstWhere((model) => model.name == modelName);
+      } catch (e) {
+        logger.w('[ModelsProvider] Model not found: $modelName');
+        return null;
+      }
+    },
     orElse: () => null,
   );
 });
