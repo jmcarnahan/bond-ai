@@ -145,6 +145,20 @@ async def create_agent(
         tool_resources_payload = _process_tool_resources(request_data, provider, current_user.user_id)
         LOGGER.info(f"CREATE_AGENT: tool_resources_payload after processing: {tool_resources_payload}")
         
+        # Log complete request data for debugging
+        LOGGER.debug("=== AGENT CREATE REQUEST DEBUG ===")
+        LOGGER.debug(f"User: {current_user.user_id} ({current_user.email})")
+        LOGGER.debug(f"Request data:")
+        LOGGER.debug(f"  - name: {request_data.name}")
+        LOGGER.debug(f"  - description: {request_data.description}")
+        LOGGER.debug(f"  - instructions: {request_data.instructions[:200]}..." if request_data.instructions and len(request_data.instructions) > 200 else f"  - instructions: {request_data.instructions}")
+        LOGGER.debug(f"  - model: {request_data.model}")
+        LOGGER.debug(f"  - tools: {request_data.tools}")
+        LOGGER.debug(f"  - mcp_tools: {request_data.mcp_tools}")
+        LOGGER.debug(f"  - mcp_resources: {request_data.mcp_resources}")
+        LOGGER.debug(f"  - metadata: {request_data.metadata}")
+        LOGGER.debug("=================================")
+        
         agent_def = AgentDefinition(
             name=request_data.name,
             description=request_data.description or "",  # Ensure description is never None
@@ -160,6 +174,16 @@ async def create_agent(
             mcp_tools=request_data.mcp_tools or [],
             mcp_resources=request_data.mcp_resources or []
         )
+        
+        # Log the created agent definition
+        LOGGER.debug("=== AGENT DEFINITION CREATED ===")
+        LOGGER.debug(f"AgentDefinition object:")
+        LOGGER.debug(f"  - name: {agent_def.name}")
+        LOGGER.debug(f"  - model: {agent_def.model}")
+        LOGGER.debug(f"  - mcp_tools: {agent_def.mcp_tools}")
+        LOGGER.debug(f"  - mcp_resources: {agent_def.mcp_resources}")
+        LOGGER.debug(f"  - tools: {agent_def.tools}")
+        LOGGER.debug("================================")
         
         agent_instance = provider.agents.create_or_update_agent(agent_def=agent_def, user_id=current_user.user_id)
         
@@ -221,6 +245,21 @@ async def update_agent(
     try:
         tool_resources_payload = _process_tool_resources(request_data, provider, current_user.user_id)
         
+        # Log complete request data for debugging
+        LOGGER.debug("=== AGENT UPDATE REQUEST DEBUG ===")
+        LOGGER.debug(f"Agent ID: {agent_id}")
+        LOGGER.debug(f"User: {current_user.user_id} ({current_user.email})")
+        LOGGER.debug(f"Request data:")
+        LOGGER.debug(f"  - name: {request_data.name}")
+        LOGGER.debug(f"  - description: {request_data.description}")
+        LOGGER.debug(f"  - instructions: {request_data.instructions[:200]}..." if request_data.instructions and len(request_data.instructions) > 200 else f"  - instructions: {request_data.instructions}")
+        LOGGER.debug(f"  - model: {request_data.model}")
+        LOGGER.debug(f"  - tools: {request_data.tools}")
+        LOGGER.debug(f"  - mcp_tools: {request_data.mcp_tools}")
+        LOGGER.debug(f"  - mcp_resources: {request_data.mcp_resources}")
+        LOGGER.debug(f"  - metadata: {request_data.metadata}")
+        LOGGER.debug("=================================")
+        
         agent_def = AgentDefinition(
             id=agent_id,
             name=request_data.name,
@@ -236,6 +275,17 @@ async def update_agent(
             mcp_tools=request_data.mcp_tools or [],
             mcp_resources=request_data.mcp_resources or []
         )
+        
+        # Log the created agent definition
+        LOGGER.debug("=== AGENT DEFINITION UPDATED ===")
+        LOGGER.debug(f"AgentDefinition object:")
+        LOGGER.debug(f"  - id: {agent_def.id}")
+        LOGGER.debug(f"  - name: {agent_def.name}")
+        LOGGER.debug(f"  - model: {agent_def.model}")
+        LOGGER.debug(f"  - mcp_tools: {agent_def.mcp_tools}")
+        LOGGER.debug(f"  - mcp_resources: {agent_def.mcp_resources}")
+        LOGGER.debug(f"  - tools: {agent_def.tools}")
+        LOGGER.debug("================================")
         
         agent_instance = provider.agents.create_or_update_agent(agent_def=agent_def, user_id=current_user.user_id)
         
@@ -266,7 +316,7 @@ async def get_agent_details(
         try:
             # Check if this agent is the default agent by comparing with the default agent ID
             default_agent = provider.agents.get_default_agent()
-            is_default_agent = default_agent and default_agent.agent_id == agent_id
+            is_default_agent = default_agent and default_agent.get_agent_id() == agent_id
         except Exception as e:
             LOGGER.error(f"Error checking if agent {agent_id} is default: {e}")
         

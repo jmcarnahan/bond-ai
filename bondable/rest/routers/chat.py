@@ -82,7 +82,7 @@ async def chat(
         try:
             # Check if this agent is the default agent by comparing with the default agent ID
             default_agent = provider.agents.get_default_agent()
-            is_default_agent = default_agent and default_agent.agent_id == request_body.agent_id
+            is_default_agent = default_agent and default_agent.get_agent_id() == request_body.agent_id
         except Exception as e:
             LOGGER.error(f"Error checking if agent {request_body.agent_id} is default: {e}")
         
