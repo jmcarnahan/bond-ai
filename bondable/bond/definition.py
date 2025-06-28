@@ -21,11 +21,14 @@ class AgentDefinition:
     user_id: str = None
     mcp_tools: List[str] = []  # List of MCP tool identifiers
     mcp_resources: List[str] = []  # List of MCP resource identifiers
+    temperature: float = 0.0  
+    top_p: float = 0.5
 
     def __init__(self, user_id: str, name: str, description: str, instructions: str, model: str,
                  tools: List = [], tool_resources: Dict = {}, metadata: Dict = {},
                  id: Optional[str] = None, introduction: str = "", reminder: str = "",
-                 mcp_tools: List[str] = [], mcp_resources: List[str] = []): 
+                 mcp_tools: List[str] = [], mcp_resources: List[str] = [], 
+                 temperature: float = 0.0, top_p: float = 0.5): 
         self.id = id
         self.name = name
         self.description = description
@@ -39,6 +42,8 @@ class AgentDefinition:
         self.mcp_resources = mcp_resources or []
         self.config = Config.config()
         self.provider = self.config.get_provider()
+        self.temperature = temperature
+        self.top_p = top_p
 
         if user_id is None:
             raise ValueError("User ID must be provided for agent definition.")
@@ -76,13 +81,12 @@ class AgentDefinition:
              # Ensure the structure exists even if no resources were provided
             self.tool_resources["code_interpreter"] = {"file_ids": []}
 
+        # Always create a default vector store for the agent
+        default_vector_store_id = self.provider.vectorstores.get_or_create_default_vector_store_id(user_id=user_id, agent_id=self.id)
+        vector_store_ids = [default_vector_store_id]
+
         if "file_search" in self.tool_resources and self.tool_resources["file_search"] is not None:
-            vector_store_ids = []
-
-            default_vector_store_name = f"{self.id}_file_search_vs"
-            default_vector_store_id = self.provider.vectorstores.get_or_create_vector_store_id(user_id=user_id, name=default_vector_store_name)
-            vector_store_ids.append(default_vector_store_id)
-
+            # Process existing file_search resources
             if "vector_store_ids" in self.tool_resources["file_search"] and self.tool_resources["file_search"]["vector_store_ids"] is not None:
                 vector_store_ids.extend(self.tool_resources["file_search"]["vector_store_ids"])
                 
@@ -97,24 +101,21 @@ class AgentDefinition:
                         file_ids.append(file_details.file_id)
                 self.provider.vectorstores.update_vector_store_file_ids(vector_store_id=default_vector_store_id, file_ids=file_ids)
 
-            self.tool_resources["file_search"] = {
-                "vector_store_ids": list(set(vector_store_ids))
-            }
-
-        else:
-            # Ensure the structure exists even if no resources were provided
-            self.tool_resources["file_search"] = {"vector_store_ids": []}
+        # Always ensure file_search has the default vector store
+        self.tool_resources["file_search"] = {
+            "vector_store_ids": list(set(vector_store_ids))
+        }
 
         LOGGER.debug(f"Agent[{self.name}] Tool Resources: {json.dumps(self.tool_resources, sort_keys=True, indent=4)}")
 
     @classmethod
     def to_dict(cls, obj):
-      LOGGER.debug(f"Before conversion to dict: {obj}")
+      # LOGGER.debug(f"Before conversion to dict: {obj}")
       if hasattr(obj, "__dict__"):
           obj = obj.__dict__
           for key, value in obj.items():
               obj[key] = cls.to_dict(value)
-      LOGGER.debug(f"After conversion to dict: {obj}")
+      # LOGGER.debug(f"After conversion to dict: {obj}")
       return obj
 
     def __dict__(self):
@@ -130,7 +131,9 @@ class AgentDefinition:
             "tool_resources": self.tool_resources,
             "metadata": self.metadata,
             "mcp_tools": self.mcp_tools,
-            "mcp_resources": self.mcp_resources
+            "mcp_resources": self.mcp_resources,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
         }
     
     def __str__(self):
@@ -145,5 +148,6 @@ class AgentDefinition:
                 json.dumps(self.tools, sort_keys=True),
                 json.dumps(self.tool_resources, sort_keys=True),
                 json.dumps(self.mcp_tools, sort_keys=True),
-                json.dumps(self.mcp_resources, sort_keys=True))
+                json.dumps(self.mcp_resources, sort_keys=True),
+                self.temperature, self.top_p)
         )
