@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import uuid
 from typing import Any, Dict, Optional, List, Tuple
 from bondable.bond.providers.metadata import Metadata, VectorStore
 from bondable.bond.providers.files import FilesProvider, FileDetails
@@ -81,7 +82,27 @@ class VectorStoresProvider(ABC):
             removed = self.remove_vector_store_file(vector_store_id=vector_store_id, file_id=file_id)
             LOGGER.info(f"Deleted vector store [{vector_store_id}] file record for file: {file_id} - Success: {removed}")
 
-    def get_or_create_vector_store_id(self, name: str, user_id) -> str:
+
+    def get_or_create_default_vector_store_id(self, user_id: str, agent_id: str = None) -> str:
+        """
+        if the id of the agent is defined in the agent definition, then we should lookup the default vector store for the agent
+        if the if of the agent is not defined, then we should create a default vector store and allow the agent creating to assign 
+        as the default vector store later
+        """
+        if agent_id is None:
+            return self.get_or_create_vector_store_id(name=f"default_vs_{uuid.uuid4().hex}", user_id=user_id)
+        else:
+            with self.metadata.get_db_session() as session:
+                try:
+                    vector_store: VectorStore = session.query(VectorStore).filter_by(owner_user_id=user_id, default_for_agent_id=agent_id).first()
+                    if vector_store is None:
+                        raise ValueError(f"No default vector store found for user {user_id} and agent {agent_id}. Something went wrong")
+                    return vector_store.vector_store_id
+                except Exception as e:
+                    LOGGER.error(f"Could not find default vector store for user {user_id} and agent {agent_id}: {e}", exc_info=True)
+                    raise
+
+    def get_or_create_vector_store_id(self, name: str, user_id: str) -> str:
         """
         Gets or creates a vector store ID based on the provided name and file tuples.
         Adds missing files and removes extra files from the vector store.
@@ -137,3 +158,24 @@ class VectorStoresProvider(ABC):
             vs_file_details[vector_store_id] = file_details_list
         return vs_file_details
     
+    def get_default_vector_store(self, agent_id: str) -> Optional[VectorStore]:
+        """
+        Get the default vector store for a given agent.
+        
+        Args:
+            agent_id: The ID of the agent
+            
+        Returns:
+            VectorStore object if found, None otherwise
+        """
+        with self.metadata.get_db_session() as session:
+            try:
+                vector_store = session.query(VectorStore).filter_by(
+                    default_for_agent_id=agent_id
+                ).first()
+                return vector_store
+            except Exception as e:
+                LOGGER.error(f"Error getting default vector store for agent {agent_id}: {e}", exc_info=True)
+                return None
+    
+
