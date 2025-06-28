@@ -13,84 +13,98 @@ import base64
 import hashlib
 from typing import List, Dict, Optional, Generator, Any
 from botocore.exceptions import ClientError
-
+from typing_extensions import override
 from bondable.bond.providers.agent import Agent, AgentProvider
 from bondable.bond.definition import AgentDefinition
-from .BedrockMetadata import BedrockMetadata
-from .BedrockThreads import BedrockThreadsProvider
-from .BedrockMCP import get_mcp_tool_definitions_sync, execute_mcp_tool_sync
+from bondable.bond.config import Config
+from bondable.bond.providers.provider import Provider
+from bondable.bond.providers.threads import ThreadsProvider
+from bondable.bond.providers.files import FilesProvider
+from bondable.bond.providers.metadata import AgentRecord
+from .BedrockCRUD import create_bedrock_agent, update_bedrock_agent, delete_bedrock_agent, get_bedrock_agent
+from .BedrockMCP import execute_mcp_tool_sync
+from .BedrockMetadata import BedrockMetadata, BedrockAgentOptions
 
 LOGGER = logging.getLogger(__name__)
-
-
+DEFAULT_TEMPERATURE = 0.0
+# Ensure instructions meet minimum length requirement (40 chars for Bedrock)
+MIN_INSTRUCTION_LENGTH = 40
+DEFAULT_INSTRUCTION = "You are a helpful AI assistant. Be helpful, accurate, and concise in your responses."
 
 
 class BedrockAgent(Agent):
     """Bedrock implementation of the Agent interface"""
     
-    def __init__(self, agent_id: str, bedrock_runtime_client, bedrock_agent_runtime_client,
-                 threads_provider: BedrockThreadsProvider, metadata: BedrockMetadata, 
-                 agent_definition: AgentDefinition):
+    def __init__(self, agent_id: str, name: str, introduction: str, 
+                 reminder: str, owner_user_id: str, bedrock_options: BedrockAgentOptions):
         self.agent_id = agent_id
-        self.bedrock_runtime = bedrock_runtime_client  # Keep for model listing
-        self.bedrock_agent_runtime = bedrock_agent_runtime_client  # For invoke_agent
-        self.threads = threads_provider
-        self.metadata = metadata
-        self.agent_def = agent_definition
+        self.bedrock_agent_id = bedrock_options.bedrock_agent_id
+        self.bedrock_agent_alias_id = bedrock_options.bedrock_agent_alias_id
+
+        from bondable.bond.providers.bedrock.BedrockProvider import BedrockProvider
+        self.bond_provider: BedrockProvider = Config.config().get_provider()
+
+        bedrock_agent = self.bond_provider.bedrock_agent_client.get_agent(agentId=self.bedrock_agent_id)
+        if 'agent' not in bedrock_agent:
+            raise ValueError(f"Bedrock agent response does not have 'agent': {self.agent_id}")
+        if 'foundationModel' not in bedrock_agent['agent']:
+            raise ValueError(f"Bedrock agent response does not have 'foundationModel': {self.agent_id}")
+        if 'instruction' not in bedrock_agent['agent']:
+            raise ValueError(f"Bedrock agent response does not have 'instruction': {self.agent_id}")
         
-        # Get Bedrock-specific configuration
-        agent_record = self.metadata.get_bedrock_agent(agent_id)
-        
-        if agent_record:
-            self.model_id = agent_record.model_id or agent_definition.model
-            self.system_prompt = agent_record.system_prompt or agent_definition.instructions
-            self.temperature = float(agent_record.temperature) if agent_record.temperature else 0.7
-            self.max_tokens = agent_record.max_tokens or 4096
-            self.tools = agent_record.tools if hasattr(agent_record, 'tools') and agent_record.tools else []
-            # Get Bedrock Agent IDs if available
-            self.bedrock_agent_id = getattr(agent_record, 'bedrock_agent_id', None)
-            self.bedrock_agent_alias_id = getattr(agent_record, 'bedrock_agent_alias_id', None)
-        else:
-            # Use defaults from agent definition
-            self.model_id = agent_definition.model
-            self.system_prompt = agent_definition.instructions
-            self.temperature = 0.7
-            self.max_tokens = 4096
-            self.tools = []
-            self.bedrock_agent_id = None
-            self.bedrock_agent_alias_id = None
-        
-        LOGGER.info(f"Initialized BedrockAgent {agent_id} with model {self.model_id}")
+        self.name = name
+        self.description = bedrock_agent['agent']['description'] if 'description' in bedrock_agent['agent'] else ''
+        self.model = bedrock_agent['agent']['foundationModel']
+        self.instructions = bedrock_agent['agent']['instruction']
+        self.introduction = introduction
+        self.reminder = reminder
+        self.owner_user_id = owner_user_id
+        self.temperature = bedrock_options.temperature
+        self.tools = bedrock_options.tools 
+        self.tool_resources = bedrock_options.tool_resources 
+        self.mcp_tools = bedrock_options.mcp_tools
+        self.mcp_resources = bedrock_options.mcp_resources
+        self.metadata = bedrock_options.agent_metadata
+
+        LOGGER.info(f"Initialized BedrockAgent {self.agent_id} with model {self.model}")
         LOGGER.debug(f"  Bedrock Agent ID: {self.bedrock_agent_id}")
         LOGGER.debug(f"  Bedrock Alias ID: {self.bedrock_agent_alias_id}")
-        LOGGER.debug(f"  MCP tools from definition: {agent_definition.mcp_tools}")
-        LOGGER.debug(f"  MCP tools from record: {getattr(agent_record, 'mcp_tools', None) if agent_record else None}")
     
     def get_agent_id(self) -> str:
         """Get the agent's ID"""
         return self.agent_id
     
     def get_agent_definition(self) -> AgentDefinition:
-        """Get the agent's definition"""
-        return self.agent_def
+        agent_def = AgentDefinition(
+            id=self.agent_id,
+            name=self.name,
+            description=self.description,
+            instructions=self.instructions,
+            introduction=self.introduction,
+            reminder=self.reminder,
+            tools=self.tools,
+            tool_resources=self.tool_resources,
+            metadata=self.metadata,
+            model=self.model,
+            user_id=self.owner_user_id,
+            mcp_tools=self.mcp_tools,
+            mcp_resources=self.mcp_resources,
+        )
+        return agent_def
     
     def get_name(self) -> str:
         """Get the agent's name"""
-        return self.agent_def.name
+        return self.name
     
     def get_description(self) -> str:
         """Get the agent's description"""
-        return self.agent_def.description or ""
+        return self.description
     
     def get_metadata_value(self, key: str, default_value=None):
-        """Get a metadata value for the agent"""
-        if self.agent_def.metadata:
-            return self.agent_def.metadata.get(key, default_value)
-        return default_value
+        return self.metadata.get(key, default_value)
     
     def get_metadata(self) -> Dict[str, str]:
-        """Get all metadata for the agent"""
-        return self.agent_def.metadata or {}
+        return self.metadata
     
     def _yield_error_message(self, thread_id: str, error_message: str, 
                            error_code: Optional[str] = None) -> Generator[str, None, None]:
@@ -182,7 +196,7 @@ class BedrockAgent(Agent):
                 LOGGER.error(f"Error handling file {file_name}: {e}")
                 # Continue without failing the entire response
         
-        message_id = self.threads.add_message(
+        message_id = self.bond_provider.threads.add_message(
             thread_id=thread_id,
             user_id=user_id,
             role=message_role,
@@ -190,7 +204,7 @@ class BedrockAgent(Agent):
             content=message_content,
             metadata={
                 'agent_id': self.agent_id,
-                'model': self.model_id,
+                'model': self.model,
                 'bedrock_agent_id': self.bedrock_agent_id
             }
         )
@@ -226,13 +240,13 @@ class BedrockAgent(Agent):
             Message ID
         """
         # Get user ID from agent metadata
-        user_id = self.get_metadata_value('user_id')
+        user_id = self.bond_provider.threads.get_thread_owner(thread_id=thread_id)
         if not user_id:
             raise ValueError("Agent must have user_id in metadata")
         
         # Add the message to the thread
         # Note: session_id is extracted from thread_id in add_message
-        message_id = self.threads.add_message(
+        message_id = self.bond_provider.threads.add_message(
             thread_id=thread_id,
             user_id=user_id,
             role=override_role,
@@ -271,8 +285,8 @@ class BedrockAgent(Agent):
             LOGGER.error(f"Bedrock Agent ID not found for agent {self.agent_id}")
             LOGGER.error(f"Agent record exists: {self.metadata.get_bedrock_agent(self.agent_id) is not None}")
             raise ValueError("Bedrock Agent ID not configured. Please create a Bedrock Agent first.")
-        
-        user_id = self.get_metadata_value('user_id')
+
+        user_id = self.bond_provider.threads.get_thread_owner(thread_id=thread_id)
         if not user_id:
             raise ValueError("Agent must have user_id in metadata")
         
@@ -282,7 +296,7 @@ class BedrockAgent(Agent):
                 self.create_user_message(prompt, thread_id, attachments, override_role)
             else:
                 # If no prompt, we need to get the last user message
-                messages = self.threads.get_messages(thread_id, limit=1)
+                messages = self.bond_provider.threads.get_messages(thread_id, limit=1)
                 if not messages:
                     raise ValueError("No user message to respond to")
                 # Get the most recent message
@@ -292,8 +306,8 @@ class BedrockAgent(Agent):
                 prompt = last_msg.clob.get_content() if hasattr(last_msg, 'clob') else str(last_msg)
             
             # Get session ID and state from thread
-            session_id = self.threads.get_thread_session_id(thread_id)
-            session_state = self.threads.get_thread_session_state(thread_id, user_id)
+            session_id = self.bond_provider.threads.get_thread_session_id(thread_id)
+            session_state = self.bond_provider.threads.get_thread_session_state(thread_id, user_id)
             
             LOGGER.info(f"Invoking Bedrock Agent {self.bedrock_agent_id} with session {session_id}")
             
@@ -328,9 +342,16 @@ class BedrockAgent(Agent):
             # Add session state if available
             if session_state:
                 request['sessionState'] = session_state
+
+            LOGGER.debug(f"Using session state from thread: {session_state}")
+
+            # augment this with any code interpreter files from 
+            # for each file id in the tool_resource for this agent
+            # get the file details 
+            # get_file_details
             
             # Invoke the agent (this returns a streaming response)
-            response = self.bedrock_agent_runtime.invoke_agent(**request)
+            response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**request)
 
             # Process the streaming response
             new_session_state = None
@@ -342,15 +363,15 @@ class BedrockAgent(Agent):
                 event_count = 0
                 for event in event_stream:
                     event_count += 1
-                    LOGGER.debug(f"Processing event {event_count}: {list(event.keys())}")
+                    # LOGGER.debug(f"Processing event {event_count}: {list(event.keys())}")
                     
                     # Handle text chunks
                     if 'chunk' in event:
                         chunk = event['chunk']
-                        LOGGER.debug(f" --- Received chunk: {list(chunk.keys())}")
+                        # LOGGER.debug(f" --- Received chunk: {list(chunk.keys())}")
                         if 'bytes' in chunk:
                             text = chunk['bytes'].decode('utf-8')
-                            LOGGER.debug(f"Processing text chunk of length {len(text)}")
+                            # LOGGER.debug(f"Processing text chunk of length {len(text)}")
                             yield text
                             full_content += text
                     
@@ -372,7 +393,7 @@ class BedrockAgent(Agent):
 
                                 if full_content and len(full_content) > 0:
                                     # Need to save off any content here as a message
-                                    message_id = self.threads.add_message(
+                                    message_id = self.bond_provider.threads.add_message(
                                         message_id=response_id,
                                         thread_id=thread_id,
                                         user_id=user_id,
@@ -382,7 +403,7 @@ class BedrockAgent(Agent):
                                         attachments=attachments,
                                         metadata={
                                             'agent_id': self.agent_id,
-                                            'model': self.model_id,
+                                            'model': self.model,
                                             'bedrock_agent_id': self.bedrock_agent_id
                                         }
                                     )
@@ -433,7 +454,7 @@ class BedrockAgent(Agent):
                             }
                             
                             # Get continuation response
-                            continuation_response = self.bedrock_agent_runtime.invoke_agent(**continuation_request)
+                            continuation_response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**continuation_request)
                             continuation_stream = continuation_response.get('completion')
                             
                             if continuation_stream:
@@ -462,7 +483,7 @@ class BedrockAgent(Agent):
                                                 # from here
                                                 if full_content and len(full_content) > 0:
                                                     # Need to save off any content here as a message
-                                                    message_id = self.threads.add_message(
+                                                    message_id = self.bond_provider.threads.add_message(
                                                         message_id=response_id,
                                                         thread_id=thread_id,
                                                         user_id=user_id,
@@ -472,7 +493,7 @@ class BedrockAgent(Agent):
                                                         attachments=attachments,
                                                         metadata={
                                                             'agent_id': self.agent_id,
-                                                            'model': self.model_id,
+                                                            'model': self.model,
                                                             'bedrock_agent_id': self.bedrock_agent_id
                                                         }
                                                     )
@@ -517,7 +538,7 @@ class BedrockAgent(Agent):
             
             # Save the complete response to the thread
             if full_content and len(full_content) > 0:
-                self.threads.add_message(
+                self.bond_provider.threads.add_message(
                     message_id=response_id,
                     thread_id=thread_id,
                     user_id=user_id,
@@ -526,7 +547,7 @@ class BedrockAgent(Agent):
                     content=full_content,
                     metadata={
                         'agent_id': self.agent_id,
-                        'model': self.model_id,
+                        'model': self.model,
                         'bedrock_agent_id': self.bedrock_agent_id
                     }
                 )
@@ -535,7 +556,7 @@ class BedrockAgent(Agent):
             
             # Update session state if provided
             if new_session_state:
-                self.threads.update_thread_session_state(thread_id, user_id, new_session_state)
+                self.bond_provider.threads.update_thread_session_state(thread_id, user_id, new_session_state)
                 LOGGER.info(f"Updated session state for thread {thread_id}")
             
         except ClientError as e:
@@ -658,24 +679,35 @@ class BedrockAgent(Agent):
 class BedrockAgentProvider(AgentProvider):
     """Bedrock implementation of the AgentProvider interface"""
     
-    def __init__(self, bedrock_runtime_client, bedrock_agent_runtime_client,
-                 metadata: BedrockMetadata, threads_provider: BedrockThreadsProvider):
-        self.bedrock_runtime = bedrock_runtime_client
-        self.bedrock_agent_runtime = bedrock_agent_runtime_client
+    def __init__(self, metadata: BedrockMetadata):
         self.metadata = metadata
-        self.threads = threads_provider
-        # Get bedrock-agent client for agent management
-        self.bedrock_agent_client = None
-        try:
-            import boto3
-            self.bedrock_agent_client = boto3.client(
-                service_name='bedrock-agent',
-                region_name=os.getenv('AWS_REGION', 'us-east-1')
-            )
-        except Exception as e:
-            LOGGER.warning(f"Could not initialize bedrock-agent client: {e}")
         LOGGER.info("Initialized BedrockAgentProvider")
     
+    @override
+    def get_agent(self, agent_id: str) -> Agent:
+        session = self.metadata.get_db_session()
+        try:
+            agent_record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
+            if not agent_record:
+                raise ValueError(f"Agent {agent_id} not found in metadata")
+            bedrock_options = session.query(BedrockAgentOptions).filter_by(agent_id=agent_id).first()
+            if not bedrock_options:
+                raise ValueError(f"Bedrock options for agent {agent_id} not found in metadata")
+            return BedrockAgent(
+                agent_id=agent_id,
+                name=agent_record.name,
+                introduction=agent_record.introduction or "",
+                reminder=agent_record.reminder or "",
+                owner_user_id=agent_record.owner_user_id,
+                bedrock_options=bedrock_options
+            )
+        except Exception as e:
+            LOGGER.error(f"Error getting agent {agent_id}: {e}")
+            return None
+        finally:
+            session.close()
+
+    @override
     def delete_agent_resource(self, agent_id: str) -> bool:
         """
         Delete an agent resource.
@@ -685,17 +717,21 @@ class BedrockAgentProvider(AgentProvider):
         """
         try:
             # First get the Bedrock Agent info before deleting metadata
-            agent_record = self.metadata.get_bedrock_agent(agent_id)
-            bedrock_agent_id = getattr(agent_record, 'bedrock_agent_id', None) if agent_record else None
-            bedrock_agent_alias_id = getattr(agent_record, 'bedrock_agent_alias_id', None) if agent_record else None
+            agent: BedrockAgent = self.get_agent(agent_id=agent_id)
+            
+            # Store the Bedrock IDs if we found the agent
+            bedrock_agent_id = None
+            bedrock_agent_alias_id = None
+            if agent:
+                bedrock_agent_id = agent.bedrock_agent_id
+                bedrock_agent_alias_id = agent.bedrock_agent_alias_id
             
             # Delete from metadata
             session = self.metadata.get_db_session()
             try:
                 # Delete agent record (which now includes Bedrock-specific fields)
-                from bondable.bond.providers.metadata import AgentRecord
                 session.query(AgentRecord).filter_by(agent_id=agent_id).delete()
-                
+                session.query(BedrockAgentOptions).filter_by(agent_id=agent_id).delete()
                 session.commit()
                 LOGGER.info(f"Deleted agent {agent_id} from metadata")
                 
@@ -706,35 +742,12 @@ class BedrockAgentProvider(AgentProvider):
             finally:
                 session.close()
             
-            # Delete the Bedrock Agent if it exists
-            if bedrock_agent_id and self.bedrock_agent_client:
-                try:
-                    # Delete alias first if it exists and is not the test alias
-                    if bedrock_agent_alias_id and bedrock_agent_alias_id != 'TSTALIASID':
-                        try:
-                            LOGGER.info(f"Deleting Bedrock Agent alias {bedrock_agent_alias_id}")
-                            self.bedrock_agent_client.delete_agent_alias(
-                                agentId=bedrock_agent_id,
-                                agentAliasId=bedrock_agent_alias_id
-                            )
-                        except ClientError as e:
-                            if e.response['Error']['Code'] != 'ResourceNotFoundException':
-                                LOGGER.warning(f"Error deleting alias {bedrock_agent_alias_id}: {e}")
-                    
-                    # Delete the agent
-                    LOGGER.info(f"Deleting Bedrock Agent {bedrock_agent_id}")
-                    self.bedrock_agent_client.delete_agent(
-                        agentId=bedrock_agent_id,
-                        skipResourceInUseCheck=True  # Force delete even if in use
-                    )
-                    LOGGER.info(f"Successfully deleted Bedrock Agent {bedrock_agent_id}")
-                    
-                except ClientError as e:
-                    if e.response['Error']['Code'] == 'ResourceNotFoundException':
-                        LOGGER.info(f"Bedrock Agent {bedrock_agent_id} already deleted")
-                    else:
-                        LOGGER.warning(f"Error deleting Bedrock Agent {bedrock_agent_id}: {e}")
-                        # Don't fail the whole operation if we can't delete the Bedrock Agent
+            # Delete the Bedrock agent if we have the IDs
+            if bedrock_agent_id and bedrock_agent_alias_id:
+                delete_bedrock_agent(bedrock_agent_id=bedrock_agent_id,
+                                     bedrock_agent_alias_id=bedrock_agent_alias_id)
+            else:
+                LOGGER.warning(f"No Bedrock agent IDs found for {agent_id}, skipping AWS deletion")
                 
             return True
                 
@@ -742,8 +755,8 @@ class BedrockAgentProvider(AgentProvider):
             LOGGER.error(f"Error in delete_agent_resource: {e}")
             return False
     
-    def create_or_update_agent_resource(self, agent_def: AgentDefinition, 
-                                      owner_user_id: str) -> Agent:
+    @override
+    def create_or_update_agent_resource(self, agent_def: AgentDefinition, owner_user_id: str) -> Agent:
         """
         Create or update an agent.
         
@@ -754,181 +767,84 @@ class BedrockAgentProvider(AgentProvider):
         Returns:
             BedrockAgent instance
         """
-        try:
-            # Log the incoming agent definition
-            LOGGER.info(f"[BedrockAgent] Received AgentDefinition:")
-            LOGGER.info(f"  - name: {agent_def.name}")
-            LOGGER.info(f"  - mcp_tools: {agent_def.mcp_tools}")
-            LOGGER.info(f"  - mcp_resources: {agent_def.mcp_resources}")
-            LOGGER.info(f"  - has mcp_tools attr: {hasattr(agent_def, 'mcp_tools')}")
-            
-            # Generate agent ID if not provided
-            agent_id = agent_def.id or f"bedrock_agent_{uuid.uuid4()}"
-            
-            
-            # Store in base metadata
-            session = self.metadata.get_db_session()
-            try:
-                from bondable.bond.providers.metadata import AgentRecord
-                
-                # Check if agent exists
-                agent_record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
-                
-                if agent_record:
-                    # Update existing
-                    agent_record.name = agent_def.name
-                    agent_record.introduction = agent_def.introduction or ""
-                    agent_record.reminder = agent_def.reminder or ""
-                else:
-                    # Create new
-                    agent_record = AgentRecord(
-                        agent_id=agent_id,
-                        name=agent_def.name,
-                        introduction=agent_def.introduction or "",
-                        reminder=agent_def.reminder or "",
-                        owner_user_id=owner_user_id
-                    )
-                    session.add(agent_record)
-                
-                session.commit()
-                
-            except Exception as e:
-                session.rollback()
-                LOGGER.error(f"Error storing agent record: {e}")
-                raise
-            finally:
-                session.close()
-            
-            # Store Bedrock-specific configuration
-            model_to_store = agent_def.model or "us.anthropic.claude-3-haiku-20240307-v1:0"
-            
-            # Check if this is a new agent or update
-            existing_agent = self.metadata.get_bedrock_agent(agent_id)
-            
-            LOGGER.info(f"Creating/updating agent {agent_id} with MCP tools: {agent_def.mcp_tools}")
-            
-            if not existing_agent or not getattr(existing_agent, 'bedrock_agent_id', None):
-                # New agent - create Bedrock Agent
-                LOGGER.info(f"Creating new Bedrock Agent for {agent_id}")
-                bedrock_agent_id, bedrock_agent_alias_id = self._create_bedrock_agent(
-                    agent_id=agent_id,
-                    name=agent_def.name,
-                    instructions=agent_def.instructions,
-                    model=model_to_store,
-                    owner_user_id=owner_user_id,
-                    mcp_tools=agent_def.mcp_tools,
-                    mcp_resources=agent_def.mcp_resources
-                )
-                LOGGER.info(f"Created Bedrock Agent: {bedrock_agent_id}, Alias: {bedrock_agent_alias_id}")
-            else:
-                # Existing agent - use stored IDs
-                bedrock_agent_id = existing_agent.bedrock_agent_id
-                bedrock_agent_alias_id = existing_agent.bedrock_agent_alias_id
-                LOGGER.info(f"Using existing Bedrock Agent: {bedrock_agent_id}, Alias: {bedrock_agent_alias_id}")
-            
-            self.metadata.create_or_update_bedrock_agent(
-                agent_id=agent_id,
-                model_id=model_to_store,
-                system_prompt=agent_def.instructions,
-                temperature=float(agent_def.metadata.get('temperature', 0.7)) if agent_def.metadata else 0.7,
-                max_tokens=int(agent_def.metadata.get('max_tokens', 4096)) if agent_def.metadata else 4096,
-                tools=agent_def.tools,
-                knowledge_base_ids=agent_def.metadata.get('knowledge_base_ids', []) if agent_def.metadata else [],
-                bedrock_agent_id=bedrock_agent_id,
-                bedrock_agent_alias_id=bedrock_agent_alias_id,
-                mcp_tools=agent_def.mcp_tools,
-                mcp_resources=agent_def.mcp_resources
-            )
-            
-            # Update agent definition with ID and user
-            agent_def.id = agent_id
-            if not agent_def.metadata:
-                agent_def.metadata = {}
-            agent_def.metadata['user_id'] = owner_user_id
-            
-            # Create and return agent instance
-            agent = BedrockAgent(
-                agent_id=agent_id,
-                bedrock_runtime_client=self.bedrock_runtime,
-                bedrock_agent_runtime_client=self.bedrock_agent_runtime,
-                threads_provider=self.threads,
-                metadata=self.metadata,
-                agent_definition=agent_def
-            )
-            
-            LOGGER.info(f"Created/updated agent {agent_id} for user {owner_user_id}")
-            return agent
-            
-        except Exception as e:
-            LOGGER.error(f"Error creating/updating agent: {e}")
-            raise
-    
-    def get_agent(self, agent_id: str) -> Optional[Agent]:
-        """
-        Get an agent by ID.
+
+        # Log the incoming agent definition
+        LOGGER.info(f"[BedrockAgent] Received AgentDefinition:")
+        LOGGER.info(f"  - name: {agent_def.name}")
+        LOGGER.info(f"  - mcp_tools: {agent_def.mcp_tools}")
+        LOGGER.info(f"  - mcp_resources: {agent_def.mcp_resources}")
+        LOGGER.info(f"  - has mcp_tools attr: {hasattr(agent_def, 'mcp_tools')}")
         
-        Args:
-            agent_id: Agent ID
-            
-        Returns:
-            BedrockAgent instance or None if not found
-        """
+        # create or update the actual bedrock agent
+        agent_id = agent_def.id
+        bedrock_agent_id = None
+        bedrock_agent_alias_id = None
+        session = self.metadata.get_db_session()
+        bedrock_options = None
         try:
-            # Get base agent record
-            session = self.metadata.get_db_session()
-            try:
-                from bondable.bond.providers.metadata import AgentRecord
-                agent_record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
-                
-                if not agent_record:
-                    LOGGER.warning(f"Agent {agent_id} not found")
-                    return None
-                
-                # Get agent record with Bedrock configuration
-                agent_with_bedrock = self.metadata.get_bedrock_agent(agent_id)
-                if not agent_with_bedrock:
-                    LOGGER.warning(f"No agent record found for agent {agent_id}")
-                    return None
-                
-                
-                # Build agent definition
-                agent_def = AgentDefinition(
-                    user_id=agent_record.owner_user_id,  # Required parameter
-                    id=agent_id,
-                    name=agent_record.name,
-                    description="",  # Not stored in base record
-                    instructions=agent_with_bedrock.system_prompt or "",
-                    introduction=agent_record.introduction,
-                    reminder=agent_record.reminder,
-                    tools=agent_with_bedrock.tools if hasattr(agent_with_bedrock, 'tools') else [],
-                    model=agent_with_bedrock.model_id or "",
-                    metadata={
-                        'user_id': agent_record.owner_user_id,
-                        'temperature': str(agent_with_bedrock.temperature) if agent_with_bedrock.temperature else "0.7",
-                        'max_tokens': str(agent_with_bedrock.max_tokens) if agent_with_bedrock.max_tokens else "4096",
-                        'knowledge_base_ids': getattr(agent_with_bedrock, 'knowledge_base_ids', [])
-                    },
-                    mcp_tools=getattr(agent_with_bedrock, 'mcp_tools', []),
-                    mcp_resources=getattr(agent_with_bedrock, 'mcp_resources', [])
-                )
-                
-                # Create agent instance
-                return BedrockAgent(
+            if not agent_id:
+                agent_id = f"bedrock_agent_{uuid.uuid4().hex}"
+                bedrock_agent_id, bedrock_agent_alias_id = create_bedrock_agent(
                     agent_id=agent_id,
-                    bedrock_runtime_client=self.bedrock_runtime,
-                    bedrock_agent_runtime_client=self.bedrock_agent_runtime,
-                    threads_provider=self.threads,
-                    metadata=self.metadata,
-                    agent_definition=agent_def
+                    agent_def=agent_def
                 )
+                bedrock_options = BedrockAgentOptions(
+                    agent_id=agent_id,
+                    bedrock_agent_id=bedrock_agent_id,
+                    bedrock_agent_alias_id=bedrock_agent_alias_id,
+                    temperature=agent_def.temperature or DEFAULT_TEMPERATURE,
+                    tools=agent_def.tools or {},
+                    tool_resources=agent_def.tool_resources or {},
+                    mcp_tools=agent_def.mcp_tools or [],
+                    mcp_resources=agent_def.mcp_resources or [],
+                    agent_metadata=agent_def.metadata or {},
+                )
+                session.add(bedrock_options)
+            else:
+                bedrock_agent_id, bedrock_agent_alias_id = update_bedrock_agent(
+                    agent_id=agent_id,
+                    agent_def=agent_def
+                )
+                bedrock_options = session.query(BedrockAgentOptions).filter_by(agent_id=agent_id).first()
+                if bedrock_options:
+                    bedrock_options.bedrock_agent_id=bedrock_agent_id
+                    bedrock_options.bedrock_agent_alias_id=bedrock_agent_alias_id
+                    bedrock_options.temperature = agent_def.temperature or DEFAULT_TEMPERATURE
+                    bedrock_options.tools = agent_def.tools or {}
+                    bedrock_options.tool_resources = agent_def.tool_resources or {}
+                    bedrock_options.mcp_tools = agent_def.mcp_tools or []
+                    bedrock_options.mcp_resources = agent_def.mcp_resources or []
+                    bedrock_options.agent_metadata = agent_def.metadata or {}
+                else: 
+                    raise ValueError(f"Bedrock options for agent {agent_id} not found in database")
                 
-            finally:
-                session.close()
-                
+            session.commit()  
+            
+            bedrock_agent = BedrockAgent(
+                agent_id=agent_id,
+                name=agent_def.name,
+                introduction=agent_def.introduction,
+                reminder=agent_def.reminder,
+                owner_user_id=owner_user_id,
+                bedrock_options=bedrock_options
+            )
+            LOGGER.info(f"Stored agent record for {agent_id} with Bedrock IDs: {bedrock_agent_id}, {bedrock_agent_alias_id}")    
+            return bedrock_agent            
         except Exception as e:
-            LOGGER.error(f"Error getting agent {agent_id}: {e}")
-            return None
-    
+            session.rollback()
+            LOGGER.error(f"Error storing agent record: {e}")
+            raise
+        finally:
+            session.close()
+
+        # # Update agent definition with ID and user
+        # agent_def.id = agent_id
+        # if not agent_def.metadata:
+        #     agent_def.metadata = {}
+        # agent_def.metadata['user_id'] = owner_user_id
+
+
+    @override            
     def get_available_models(self) -> List[Dict[str, Any]]:
         """
         Get list of available models.
@@ -978,309 +894,3 @@ class BedrockAgentProvider(AgentProvider):
             LOGGER.error(f"Error getting available models: {e}")
             return []
     
-    def _create_bedrock_agent(self, agent_id: str, name: str, 
-                            instructions: str, model: str, owner_user_id: str,
-                            mcp_tools: List[str] = None, mcp_resources: List[str] = None) -> tuple[str, str]:
-        """
-        Create a Bedrock Agent for the Bond agent.
-        
-        Args:
-            agent_id: Bond agent ID (used as Bedrock agent name for uniqueness)
-            name: Display name for the agent
-            instructions: Agent instructions/system prompt
-            model: Model ID to use
-            owner_user_id: User who owns this agent
-            
-        Returns:
-            Tuple of (bedrock_agent_id, bedrock_agent_alias_id)
-        """
-        # Ensure instructions meet minimum length requirement (40 chars for Bedrock)
-        MIN_INSTRUCTION_LENGTH = 40
-        DEFAULT_INSTRUCTION = "You are a helpful AI assistant. Be helpful, accurate, and concise in your responses."
-        
-        if not instructions:
-            instructions = DEFAULT_INSTRUCTION
-        else:
-            # Pad with spaces if too short
-            instructions = instructions.ljust(MIN_INSTRUCTION_LENGTH)
-        
-        # Store MCP tools for later action group creation
-        self._pending_mcp_tools = mcp_tools
-        self._pending_mcp_resources = mcp_resources
-        
-        if not self.bedrock_agent_client:
-            # Fall back to environment variables if client not available
-            bedrock_agent_id = os.getenv('BEDROCK_AGENT_ID')
-            bedrock_agent_alias_id = os.getenv('BEDROCK_AGENT_ALIAS_ID')
-            
-            if not bedrock_agent_id:
-                raise ValueError(
-                    "Cannot create Bedrock Agent: bedrock-agent client not available "
-                    "and no BEDROCK_AGENT_ID environment variable set."
-                )
-            
-            LOGGER.warning(f"Using environment variable Bedrock Agent {bedrock_agent_id} for Bond agent {agent_id}")
-            return bedrock_agent_id, bedrock_agent_alias_id
-        
-        try:
-            # Step 1: Create the agent
-            LOGGER.info(f"Creating Bedrock Agent for Bond agent {agent_id}")
-            
-            # Get IAM role from environment or use default
-            agent_role_arn = os.getenv('BEDROCK_AGENT_ROLE_ARN')
-            if not agent_role_arn:
-                raise ValueError("BEDROCK_AGENT_ROLE_ARN environment variable must be set")
-            
-            # Use agent_id as the Bedrock agent name for guaranteed uniqueness
-            # Bedrock agent names must match pattern: ([0-9a-zA-Z][_-]?){1,100}
-            # Since agent_id is a UUID with format "bedrock_agent_<uuid>", we need to clean it
-            bedrock_agent_name = agent_id.replace('-', '_')
-            
-            # Create tags to store metadata
-            tags = {
-                'bond_agent_id': agent_id,
-                'bond_user_id': owner_user_id,
-                'bond_display_name': name
-            }
-            
-            create_response = self.bedrock_agent_client.create_agent(
-                agentName=bedrock_agent_name,
-                agentResourceRoleArn=agent_role_arn,
-                instruction=instructions,
-                foundationModel=model,
-                description=f"Bond agent '{name}' for user {owner_user_id}",
-                idleSessionTTLInSeconds=3600,  # 1 hour timeout
-                tags=tags
-            )
-            
-            bedrock_agent_id = create_response['agent']['agentId']
-            LOGGER.info(f"Created Bedrock Agent: {bedrock_agent_id}")
-            
-            # Step 2: Wait for agent to be created
-            self._wait_for_resource_status('agent', bedrock_agent_id, ['NOT_PREPARED', 'PREPARED'])
-            
-            # Step 3: Enable code interpreter (always enabled for all agents)
-            LOGGER.info(f"Enabling code interpreter for Bedrock Agent {bedrock_agent_id}")
-            try:
-                code_interpreter_response = self.bedrock_agent_client.create_agent_action_group(
-                    agentId=bedrock_agent_id,
-                    agentVersion='DRAFT',
-                    actionGroupName='CodeInterpreterActionGroup',
-                    parentActionGroupSignature='AMAZON.CodeInterpreter',
-                    actionGroupState='ENABLED'
-                )
-                LOGGER.info(f"Created code interpreter action group: {code_interpreter_response['agentActionGroup']['actionGroupId']}")
-            except ClientError as e:
-                LOGGER.warning(f"Failed to enable code interpreter: {e}")
-                # Continue without code interpreter rather than failing
-            
-            # Step 4: Prepare the agent
-            LOGGER.info(f"Preparing Bedrock Agent {bedrock_agent_id}")
-            self.bedrock_agent_client.prepare_agent(agentId=bedrock_agent_id)
-            
-            # Step 5: Wait for agent to be prepared
-            self._wait_for_resource_status('agent', bedrock_agent_id, ['PREPARED'])
-            
-            # Step 5.5: Create MCP action groups if any MCP tools specified
-            if mcp_tools:
-                self._create_mcp_action_groups(bedrock_agent_id, mcp_tools, mcp_resources or [])
-                # Re-prepare the agent after adding action groups
-                LOGGER.info(f"Re-preparing agent after adding MCP action groups")
-                self.bedrock_agent_client.prepare_agent(agentId=bedrock_agent_id)
-                self._wait_for_resource_status('agent', bedrock_agent_id, ['PREPARED'])
-            
-            # Step 6: Create alias
-            alias_name = f"bond-{uuid.uuid4().hex[:8]}"
-            LOGGER.info(f"Creating alias {alias_name} for Bedrock Agent {bedrock_agent_id}")
-            
-            alias_response = self.bedrock_agent_client.create_agent_alias(
-                agentId=bedrock_agent_id,
-                agentAliasName=alias_name,
-                description=f"Alias for Bond agent {agent_id}"
-            )
-            
-            bedrock_agent_alias_id = alias_response['agentAlias']['agentAliasId']
-            
-            # Step 7: Wait for alias to be prepared
-            self._wait_for_resource_status('alias', bedrock_agent_alias_id, ['PREPARED'], agent_id=bedrock_agent_id)
-            
-            LOGGER.info(f"Successfully created Bedrock Agent {bedrock_agent_id} with alias {bedrock_agent_alias_id}")
-            return bedrock_agent_id, bedrock_agent_alias_id
-            
-        except ClientError as e:
-            error_code = e.response['Error']['Code']
-            error_message = e.response['Error']['Message']
-            LOGGER.error(f"Failed to create Bedrock Agent: {error_code} - {error_message}")
-            
-            # Fall back to environment variables if available
-            bedrock_agent_id = os.getenv('BEDROCK_AGENT_ID')
-            if bedrock_agent_id:
-                LOGGER.warning(f"Falling back to environment variable Bedrock Agent {bedrock_agent_id}")
-                return bedrock_agent_id, os.getenv('BEDROCK_AGENT_ALIAS_ID')
-            
-            raise ValueError(f"Failed to create Bedrock Agent: {error_message}")
-        
-        except Exception as e:
-            LOGGER.error(f"Unexpected error creating Bedrock Agent: {e}")
-            raise
-    
-    def _create_mcp_action_groups(self, bedrock_agent_id: str, mcp_tools: List[str], mcp_resources: List[str]):
-        """
-        Create action groups for MCP tools.
-        
-        Args:
-            bedrock_agent_id: The Bedrock agent ID
-            mcp_tools: List of MCP tool names to create action groups for
-            mcp_resources: List of MCP resource names (for future use)
-        """
-        if not mcp_tools:
-            return
-            
-        try:
-            # Get MCP config
-            from bondable.bond.config import Config
-            config = Config.config()
-            mcp_config = config.get_mcp_config()
-            
-            if not mcp_config:
-                LOGGER.warning("MCP tools specified but no MCP config available")
-                return
-            
-            # Get tool definitions from MCP
-            from .BedrockMCP import get_mcp_tool_definitions_sync
-            mcp_tool_definitions = get_mcp_tool_definitions_sync(mcp_config, mcp_tools)
-            
-            if not mcp_tool_definitions:
-                LOGGER.warning("No MCP tool definitions found")
-                return
-            
-            # Build OpenAPI paths for MCP tools
-            paths = {}
-            for tool in mcp_tool_definitions:
-                # Prefix with _bond_mcp_tool_
-                tool_path = f"/_bond_mcp_tool_{tool['name']}"
-                operation_id = f"_bond_mcp_tool_{tool['name']}"
-                
-                paths[tool_path] = {
-                    "post": {
-                        "operationId": operation_id,
-                        "summary": tool.get('description', f"MCP tool {tool['name']}"),
-                        "description": tool.get('description', f"MCP tool {tool['name']}"),
-                        "responses": {
-                            "200": {
-                                "description": "Tool execution result",
-                                "content": {
-                                    "application/json": {
-                                        "schema": {
-                                            "type": "object",
-                                            "properties": {
-                                                "result": {
-                                                    "type": "string",
-                                                    "description": "Tool execution result"
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                # Add parameters if any
-                if tool.get('parameters'):
-                    paths[tool_path]["post"]["requestBody"] = {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": tool['parameters']
-                                }
-                            }
-                        }
-                    }
-            
-            # Create action group
-            action_group_spec = {
-                "actionGroupName": "MCPTools",
-                "description": "MCP (Model Context Protocol) tools for external integrations",
-                "actionGroupExecutor": {
-                    "customControl": "RETURN_CONTROL"  # Return control to client for execution
-                },
-                "apiSchema": {
-                    "payload": json.dumps({
-                        "openapi": "3.0.0",
-                        "info": {
-                            "title": "MCP Tools API",
-                            "version": "1.0.0",
-                            "description": "MCP tools for external integrations"
-                        },
-                        "paths": paths
-                    })
-                }
-            }
-            
-            LOGGER.info(f"Creating MCP action group with {len(paths)} tools")
-            action_response = self.bedrock_agent_client.create_agent_action_group(
-                agentId=bedrock_agent_id,
-                agentVersion="DRAFT",
-                **action_group_spec
-            )
-            
-            LOGGER.info(f"Created MCP action group: {action_response['agentActionGroup']['actionGroupId']}")
-            
-        except Exception as e:
-            LOGGER.error(f"Error creating MCP action groups: {e}")
-            # Continue without MCP tools rather than failing agent creation
-    
-    def _wait_for_resource_status(self, resource_type: str, resource_id: str, 
-                                 target_statuses: List[str], max_attempts: int = 30, 
-                                 delay: int = 2, agent_id: Optional[str] = None):
-        """
-        Generic method to wait for a resource to reach target status.
-        
-        Args:
-            resource_type: 'agent' or 'alias'
-            resource_id: The resource ID to check
-            target_statuses: List of acceptable statuses
-            max_attempts: Maximum number of attempts
-            delay: Delay between attempts in seconds
-            agent_id: Required for alias resources
-        """
-        import time
-        
-        failed_statuses = {
-            'agent': ['CREATE_FAILED', 'PREPARE_FAILED'],
-            'alias': ['FAILED']
-        }
-        
-        for attempt in range(max_attempts):
-            try:
-                if resource_type == 'agent':
-                    response = self.bedrock_agent_client.get_agent(agentId=resource_id)
-                    current_status = response['agent']['agentStatus']
-                else:  # alias
-                    response = self.bedrock_agent_client.get_agent_alias(
-                        agentId=agent_id,
-                        agentAliasId=resource_id
-                    )
-                    current_status = response['agentAlias']['agentAliasStatus']
-                
-                if current_status in target_statuses:
-                    LOGGER.info(f"{resource_type.capitalize()} {resource_id} reached status: {current_status}")
-                    return
-                
-                if current_status in failed_statuses.get(resource_type, []):
-                    raise ValueError(f"{resource_type.capitalize()} {resource_id} failed with status: {current_status}")
-                
-                LOGGER.debug(f"{resource_type.capitalize()} {resource_id} status: {current_status}, waiting...")
-                time.sleep(delay)
-                
-            except ClientError as e:
-                if e.response['Error']['Code'] == 'ResourceNotFoundException':
-                    LOGGER.debug(f"{resource_type.capitalize()} {resource_id} not found yet, waiting...")
-                    time.sleep(delay)
-                else:
-                    raise
-        
-        raise TimeoutError(f"{resource_type.capitalize()} {resource_id} did not reach status {target_statuses} after {max_attempts} attempts")
