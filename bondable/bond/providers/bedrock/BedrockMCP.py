@@ -8,11 +8,125 @@ import logging
 from typing import List, Dict, Any, Optional
 from fastmcp import Client
 import asyncio
+from bondable.bond.config import Config
 
 LOGGER = logging.getLogger(__name__)
 
+def _get_bedrock_agent_client() -> Any:
+    from bondable.bond.providers.bedrock.BedrockProvider import BedrockProvider
+    bond_provider: BedrockProvider = Config.config().get_provider()
+    return bond_provider.bedrock_agent_client
 
-async def get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List[str]) -> List[Dict[str, Any]]:
+def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_resources: List[str]):
+    """
+    Create action groups for MCP tools.
+    
+    Args:
+        bedrock_agent_id: The Bedrock agent ID
+        mcp_tools: List of MCP tool names to create action groups for
+        mcp_resources: List of MCP resource names (for future use)
+    """
+    if not mcp_tools:
+        return
+        
+    bedrock_agent_client = _get_bedrock_agent_client()
+
+    try:
+        # Get MCP config
+        mcp_config = Config.config().get_mcp_config()
+        
+        if not mcp_config:
+            LOGGER.error("MCP tools specified but no MCP config available")
+            return
+        
+        # Get tool definitions from MCP
+        mcp_tool_definitions = _get_mcp_tool_definitions_sync(mcp_config, mcp_tools)
+        
+        if not mcp_tool_definitions:
+            LOGGER.warning("No MCP tool definitions found")
+            return
+        
+        # Build OpenAPI paths for MCP tools
+        paths = {}
+        for tool in mcp_tool_definitions:
+            # Prefix with _bond_mcp_tool_
+            tool_path = f"/_bond_mcp_tool_{tool['name']}"
+            operation_id = f"_bond_mcp_tool_{tool['name']}"
+            
+            paths[tool_path] = {
+                "post": {
+                    "operationId": operation_id,
+                    "summary": tool.get('description', f"MCP tool {tool['name']}"),
+                    "description": tool.get('description', f"MCP tool {tool['name']}"),
+                    "responses": {
+                        "200": {
+                            "description": "Tool execution result",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "result": {
+                                                "type": "string",
+                                                "description": "Tool execution result"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            # Add parameters if any
+            if tool.get('parameters'):
+                paths[tool_path]["post"]["requestBody"] = {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": tool['parameters']
+                            }
+                        }
+                    }
+                }
+        
+        # Create action group
+        action_group_spec = {
+            "actionGroupName": "MCPTools",
+            "description": "MCP (Model Context Protocol) tools for external integrations",
+            "actionGroupExecutor": {
+                "customControl": "RETURN_CONTROL"  # Return control to client for execution
+            },
+            "apiSchema": {
+                "payload": json.dumps({
+                    "openapi": "3.0.0",
+                    "info": {
+                        "title": "MCP Tools API",
+                        "version": "1.0.0",
+                        "description": "MCP tools for external integrations"
+                    },
+                    "paths": paths
+                })
+            }
+        }
+        
+        LOGGER.info(f"Creating MCP action group with {len(paths)} tools")
+        action_response = bedrock_agent_client.create_agent_action_group(
+            agentId=bedrock_agent_id,
+            agentVersion="DRAFT",
+            **action_group_spec
+        )
+        
+        LOGGER.info(f"Created MCP action group: {action_response['agentActionGroup']['actionGroupId']}")
+        
+    except Exception as e:
+        LOGGER.error(f"Error creating MCP action groups: {e}")
+        # Continue without MCP tools rather than failing agent creation
+
+
+async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List[str]) -> List[Dict[str, Any]]:
     """
     Get tool definitions from MCP server.
     
@@ -70,7 +184,7 @@ async def get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List[
     return tool_definitions
 
 
-def get_mcp_tool_definitions_sync(mcp_config: Dict[str, Any], tool_names: List[str]) -> List[Dict[str, Any]]:
+def _get_mcp_tool_definitions_sync(mcp_config: Dict[str, Any], tool_names: List[str]) -> List[Dict[str, Any]]:
     """Synchronous wrapper for getting MCP tool definitions."""
     try:
         # Try to get the current event loop
@@ -78,11 +192,11 @@ def get_mcp_tool_definitions_sync(mcp_config: Dict[str, Any], tool_names: List[s
         # If we're in an async context, create a task
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(asyncio.run, get_mcp_tool_definitions(mcp_config, tool_names))
+            future = executor.submit(asyncio.run, _get_mcp_tool_definitions(mcp_config, tool_names))
             return future.result()
     except RuntimeError:
         # No event loop running, we can use asyncio.run directly
-        return asyncio.run(get_mcp_tool_definitions(mcp_config, tool_names))
+        return asyncio.run(_get_mcp_tool_definitions(mcp_config, tool_names))
 
 
 async def execute_mcp_tool(mcp_config: Dict[str, Any], tool_name: str, parameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

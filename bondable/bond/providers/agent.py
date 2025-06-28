@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from bondable.bond.definition import AgentDefinition
 from bondable.bond.broker import Broker
-from bondable.bond.providers.metadata import Metadata, AgentRecord, AgentGroup, GroupUser
+from bondable.bond.providers.metadata import Metadata, AgentRecord, AgentGroup, GroupUser, VectorStore
 from typing import List, Dict, Optional, Generator
 import logging
 import uuid
@@ -211,9 +211,34 @@ class AgentProvider(ABC):
         
     def delete_agent(self, agent_id: str) -> bool:
         """
-        Deletes a file from the configured backend file storage.
+        Deletes an agent and its associated resources (like default vector store).
         """
+        # First, try to find and delete the default vector store for this agent
+        try:
+            with self.metadata.get_db_session() as session:
+                # Find vector stores that are default for this agent
+                default_vector_stores = session.query(VectorStore).filter(
+                    VectorStore.default_for_agent_id == agent_id
+                ).all()
+                
+                for vector_store in default_vector_stores:
+                    try:
+                        # Get the vector stores provider from the parent provider
+                        # We need to import here to avoid circular imports
+                        from bondable.bond.config import Config
+                        provider = Config.config().get_provider()
+                        if hasattr(provider, 'vectorstores'):
+                            provider.vectorstores.delete_vector_store(vector_store.vector_store_id)
+                            LOGGER.info(f"Deleted default vector store {vector_store.vector_store_id} for agent {agent_id}")
+                    except Exception as e:
+                        LOGGER.error(f"Error deleting vector store {vector_store.vector_store_id}: {e}")
+        except Exception as e:
+            LOGGER.error(f"Error finding/deleting default vector stores for agent {agent_id}: {e}")
+        
+        # Delete the agent resource
         deleted_resource = self.delete_agent_resource(agent_id)
+        
+        # Delete the agent record from the database
         with self.metadata.get_db_session() as session:
             try:
                 deleted_rows_count = session.query(AgentRecord).filter(AgentRecord.agent_id == agent_id).delete()
@@ -250,7 +275,7 @@ class AgentProvider(ABC):
                 LOGGER.info(f"Agent record already exists for agent_id: {agent.get_agent_id()}")
                 
                 # Define fields to check and update
-                fields_to_check = ['name', 'introduction', 'reminder']
+                fields_to_check = ['name', 'introduction', 'reminder', 'tool_resources', 'model']
                 needs_update = False
                 
                 # Check each field for changes
@@ -274,16 +299,44 @@ class AgentProvider(ABC):
             else:
                 # if it does not exist, create a new record
                 LOGGER.info(f"Creating new agent record for agent_id: {agent.get_agent_id()}")
-                agent_def = agent.get_agent_definition()
                 agent_record = AgentRecord(
                     name=agent.get_name(), 
                     agent_id=agent.get_agent_id(), 
                     owner_user_id=user_id,
                     introduction=agent_def.introduction,
-                    reminder=agent_def.reminder
+                    reminder=agent_def.reminder, 
                 )
                 session.add(agent_record)
                 session.commit()  
+
+            # at this point we should have a valid agent record in the database with an agent_id
+            # Update the default vector store for the agent (for both new and existing agents)
+            # This ensures Bedrock agents get their vector stores linked properly
+            LOGGER.info(f"Ensuring default vector store for agent {agent.get_name()} (ID: {agent.get_agent_id()})")
+            LOGGER.info(f"Agent Definition Tool Resources: {agent_def.tool_resources}")
+
+            if "file_search" in agent_def.tool_resources and agent_def.tool_resources["file_search"] is not None:
+                file_search_vs_ids = agent_def.tool_resources["file_search"].get("vector_store_ids", [])
+                if file_search_vs_ids:
+                    vector_store_records = session.query(VectorStore).filter(VectorStore.vector_store_id.in_(file_search_vs_ids)).all()
+                    for vector_store_record in vector_store_records:
+                        if vector_store_record.name.startswith("default_vs_"):
+                            # Check if this vector store is already linked to an agent
+                            if vector_store_record.default_for_agent_id:
+                                if vector_store_record.default_for_agent_id == agent.get_agent_id():
+                                    # Already linked to this agent, nothing to do
+                                    LOGGER.info(f"Vector store {vector_store_record.name} is already linked to agent {agent.get_name()}")
+                                    continue
+                                else:
+                                    # Linked to a different agent - this is an error
+                                    LOGGER.error(f"Vector store {vector_store_record.name} is already linked to a different agent: {vector_store_record.default_for_agent_id}")
+                                    continue
+                            
+                            # Link the vector store to this agent
+                            vector_store_record.default_for_agent_id = agent.get_agent_id()
+                            session.commit()
+                            LOGGER.info(f"Updated vector store {vector_store_record.name} to be default for agent {agent.get_name()}")
+
         return agent     
 
 
@@ -390,10 +443,10 @@ class AgentProvider(ABC):
             system_user = self.metadata.get_or_create_system_user()
             
             # Create default agent definition with unique ID
-            default_agent_id = f"default_agent_{uuid.uuid4()}"
+            # default_agent_id = f"default_agent_{uuid.uuid4()}"
             default_agent_def = AgentDefinition(
                 user_id=system_user.id,
-                id=default_agent_id,
+                # id=default_agent_id,
                 name="Home",
                 description="Your AI assistant for various tasks",
                 instructions="You are a helpful AI assistant. Help users with their questions and tasks.",
@@ -401,7 +454,9 @@ class AgentProvider(ABC):
                 reminder="",
                 model=self.get_default_model(),
                 tools=[{"type": "code_interpreter"}, {"type": "file_search"}],  # Enable code interpreter and file search
-                metadata={"is_default": "true"}
+                metadata={"is_default": "true"},
+                temperature=0.7,
+                top_p=0.9
             )
             
             try:

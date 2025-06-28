@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 
-from sqlalchemy import ForeignKey, create_engine, Column, String, DateTime, func, PrimaryKeyConstraint, UniqueConstraint, Boolean
+from sqlalchemy import ForeignKey, create_engine, Column, String, DateTime, func, PrimaryKeyConstraint, UniqueConstraint, Boolean, JSON
 from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
 from sqlalchemy.sql import text
 import logging
@@ -32,6 +32,7 @@ class AgentRecord(Base):
     owner_user_id = Column(String, ForeignKey('users.id'), nullable=False)
     is_default = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=datetime.datetime.now)
+
 class FileRecord(Base):
     __tablename__ = "files"
     file_id = Column(String, primary_key=True)  # Unique file ID from provider
@@ -50,6 +51,7 @@ class VectorStore(Base):
     vector_store_id = Column(String, primary_key=True)  # Use vector_store_id as primary key
     name = Column(String, nullable=False)
     owner_user_id = Column(String, ForeignKey('users.id'), nullable=False)
+    default_for_agent_id = Column(String, ForeignKey('agents.agent_id'), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
     
     # Unique constraint on name + owner_user_id
