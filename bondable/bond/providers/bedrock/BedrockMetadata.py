@@ -5,7 +5,7 @@ This module extends the base Metadata class to add message storage capabilities
 since Bedrock doesn't have built-in thread/conversation management.
 """
 
-from sqlalchemy import Column, String, DateTime, JSON, ForeignKey, Integer, Index
+from sqlalchemy import Column, String, DateTime, JSON, ForeignKey, Integer, Index, Float
 from sqlalchemy.orm import relationship
 from bondable.bond.providers.metadata import Metadata, Base, Thread, AgentRecord, FileRecord, VectorStore
 import datetime
@@ -14,26 +14,45 @@ import logging
 from typing import List, Dict, Optional, Any, Tuple
 
 LOGGER = logging.getLogger(__name__)
-
+DEFAULT_TEMPERATURE = 0.0  # Default temperature for Bedrock agents
 
 # Extend the Thread model with Bedrock-specific fields
 # These fields support native Bedrock Agent session management
 Thread.session_id = Column(String, nullable=True)  # Bedrock Agent session ID
 Thread.session_state = Column(JSON, default=dict)  # Bedrock Agent session state
 
-# Extend the AgentRecord model with Bedrock-specific fields
-# These fields map Bond agents to AWS Bedrock Agents
-AgentRecord.bedrock_agent_id = Column(String, nullable=True)  # AWS Bedrock Agent ID
-AgentRecord.bedrock_agent_alias_id = Column(String, nullable=True)  # AWS Bedrock Agent Alias ID
-AgentRecord.model_id = Column(String, nullable=True)  # Model ID used by agent
-AgentRecord.system_prompt = Column(String, nullable=True)  # System prompt/instructions
-AgentRecord.temperature = Column(String, nullable=True)  # Temperature setting (stored as string for flexibility)
-AgentRecord.max_tokens = Column(Integer, nullable=True)  # Max tokens setting
-AgentRecord.tools = Column(JSON, default=list)  # Tool configurations
-AgentRecord.knowledge_base_ids = Column(JSON, default=list)  # Associated knowledge bases
-AgentRecord.guardrail_config = Column(JSON, nullable=True)  # Guardrail settings
-AgentRecord.mcp_tools = Column(JSON, default=list)  # MCP tools list
-AgentRecord.mcp_resources = Column(JSON, default=list)  # MCP resources list
+# # Extend the AgentRecord model with Bedrock-specific fields
+# # These fields map Bond agents to AWS Bedrock Agents
+# AgentRecord.bedrock_agent_id = Column(String, nullable=True)  # AWS Bedrock Agent ID
+# AgentRecord.bedrock_agent_alias_id = Column(String, nullable=True)  # AWS Bedrock Agent Alias ID
+# # AgentRecord.model_id = Column(String, nullable=True)  # Model ID used by agent
+# # AgentRecord.system_prompt = Column(String, nullable=True)  # System prompt/instructions
+# AgentRecord.temperature = Column(String, nullable=True)  # Temperature setting (stored as string for flexibility)
+# # AgentRecord.max_tokens = Column(Integer, nullable=True)  # Max tokens setting
+# AgentRecord.tools = Column(JSON, nullable=True)  # Tool configurations
+# AgentRecord.tool_resources = Column(JSON, nullable=True) 
+# AgentRecord.mcp_tools = Column(JSON, nullable=True)  # MCP tools list
+# AgentRecord.mcp_resources = Column(JSON, nullable=True)  # MCP resources list
+
+class BedrockAgentOptions(Base):
+    """Store Bedrock Agent options for each agent"""
+    __tablename__ = 'bedrock_agent_options'
+    
+    agent_id = Column(String, ForeignKey('agents.agent_id'), primary_key=True)
+    """Foreign key to AgentRecord"""
+
+    bedrock_agent_id = Column(String, nullable=False)  # AWS Bedrock Agent ID
+    bedrock_agent_alias_id = Column(String, nullable=False)  # AWS Bedrock Agent Alias ID
+    temperature = Column(Float, nullable=False, default=DEFAULT_TEMPERATURE)  
+    tools = Column(JSON, nullable=False, default=dict)  # Tool configurations
+    tool_resources = Column(JSON, nullable=False, default=dict)  # Tool resources configuration
+    mcp_tools = Column(JSON, nullable=False, default=dict)  # MCP tools list
+    mcp_resources = Column(JSON, nullable=False, default=dict)  # MCP resources list
+    agent_metadata = Column(JSON, nullable=True, default=dict)  # Additional metadata for the agent
+    
+    __table_args__ = (
+        Index('idx_bedrock_agent_id', 'bedrock_agent_id'),
+    )
 
 
 class BedrockMessage(Base):
@@ -157,19 +176,19 @@ class BedrockMetadata(Metadata):
         finally:
             session.close()
     
-    def get_conversation_messages(self, thread_id: str, user_id: str) -> List[Dict]:
-        """Get messages formatted for Bedrock Converse API"""
-        messages = self.get_messages(thread_id, user_id)
+    # def get_conversation_messages(self, thread_id: str, user_id: str) -> List[Dict]:
+    #     """Get messages formatted for Bedrock Converse API"""
+    #     messages = self.get_messages(thread_id, user_id)
         
-        # Convert to Bedrock format
-        bedrock_messages = []
-        for msg in messages:
-            bedrock_messages.append({
-                'role': msg.role,
-                'content': msg.content
-            })
+    #     # Convert to Bedrock format
+    #     bedrock_messages = []
+    #     for msg in messages:
+    #         bedrock_messages.append({
+    #             'role': msg.role,
+    #             'content': msg.content
+    #         })
         
-        return bedrock_messages
+    #     return bedrock_messages
     
     def delete_thread_messages(self, thread_id: str, user_id: str) -> int:
         """Delete all messages in a thread"""
@@ -224,117 +243,117 @@ class BedrockMetadata(Metadata):
         finally:
             session.close()
     
-    # Agent Management Methods
+    # # Agent Management Methods
     
-    def create_or_update_bedrock_agent(self, agent_id: str, model_id: str,
-                                      system_prompt: Optional[str] = None,
-                                      temperature: Optional[float] = None,
-                                      max_tokens: Optional[int] = None,
-                                      tools: Optional[List[Dict]] = None,
-                                      knowledge_base_ids: Optional[List[str]] = None,
-                                      guardrail_config: Optional[Dict] = None,
-                                      bedrock_agent_id: Optional[str] = None,
-                                      bedrock_agent_alias_id: Optional[str] = None,
-                                      mcp_tools: Optional[List[str]] = None,
-                                      mcp_resources: Optional[List[str]] = None) -> None:
-        """Update Bedrock-specific fields on an existing agent"""
-        LOGGER.info(f"[BedrockMetadata] create_or_update_bedrock_agent called with:")
-        LOGGER.info(f"  - agent_id: {agent_id}")
-        LOGGER.info(f"  - mcp_tools: {mcp_tools}")
-        LOGGER.info(f"  - mcp_resources: {mcp_resources}")
+    # def create_or_update_bedrock_agent(self, agent_id: str, model_id: str,
+    #                                   system_prompt: Optional[str] = None,
+    #                                   temperature: Optional[float] = None,
+    #                                   max_tokens: Optional[int] = None,
+    #                                   tools: Optional[List[Dict]] = None,
+    #                                   tool_resources: Optional[Dict] = None,
+    #                                   guardrail_config: Optional[Dict] = None,
+    #                                   bedrock_agent_id: Optional[str] = None,
+    #                                   bedrock_agent_alias_id: Optional[str] = None,
+    #                                   mcp_tools: Optional[List[str]] = None,
+    #                                   mcp_resources: Optional[List[str]] = None) -> None:
+    #     """Update Bedrock-specific fields on an existing agent"""
+    #     LOGGER.info(f"[BedrockMetadata] create_or_update_bedrock_agent called with:")
+    #     LOGGER.info(f"  - agent_id: {agent_id}")
+    #     LOGGER.info(f"  - mcp_tools: {mcp_tools}")
+    #     LOGGER.info(f"  - mcp_resources: {mcp_resources}")
         
-        session = self.get_db_session()
-        try:
-            agent = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
+    #     session = self.get_db_session()
+    #     try:
+    #         agent: AgentRecord = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
             
-            if not agent:
-                raise ValueError(f"Agent {agent_id} not found")
+    #         if not agent:
+    #             raise ValueError(f"Agent {agent_id} not found")
             
-            # Update Bedrock-specific fields
-            agent.model_id = model_id
-            if system_prompt is not None:
-                agent.system_prompt = system_prompt
-            if temperature is not None:
-                agent.temperature = str(temperature)
-            if max_tokens is not None:
-                agent.max_tokens = max_tokens
-            if tools is not None:
-                agent.tools = tools
-            if knowledge_base_ids is not None:
-                agent.knowledge_base_ids = knowledge_base_ids
-            if guardrail_config is not None:
-                agent.guardrail_config = guardrail_config
-            if bedrock_agent_id is not None:
-                agent.bedrock_agent_id = bedrock_agent_id
-            if bedrock_agent_alias_id is not None:
-                agent.bedrock_agent_alias_id = bedrock_agent_alias_id
-            if mcp_tools is not None:
-                agent.mcp_tools = mcp_tools
-                LOGGER.info(f"  - Set agent.mcp_tools to: {agent.mcp_tools}")
-            if mcp_resources is not None:
-                agent.mcp_resources = mcp_resources
-                LOGGER.info(f"  - Set agent.mcp_resources to: {agent.mcp_resources}")
+    #         # Update Bedrock-specific fields
+    #         agent.model_id = model_id
+    #         if system_prompt is not None:
+    #             agent.system_prompt = system_prompt
+    #         if temperature is not None:
+    #             agent.temperature = str(temperature)
+    #         if max_tokens is not None:
+    #             agent.max_tokens = max_tokens
+    #         if tools is not None:
+    #             agent.tools = tools
+    #         if tool_resources is not None:
+    #             agent.tool_resources = tool_resources
+    #         if guardrail_config is not None:
+    #             agent.guardrail_config = guardrail_config
+    #         if bedrock_agent_id is not None:
+    #             agent.bedrock_agent_id = bedrock_agent_id
+    #         if bedrock_agent_alias_id is not None:
+    #             agent.bedrock_agent_alias_id = bedrock_agent_alias_id
+    #         if mcp_tools is not None:
+    #             agent.mcp_tools = mcp_tools
+    #             LOGGER.info(f"  - Set agent.mcp_tools to: {agent.mcp_tools}")
+    #         if mcp_resources is not None:
+    #             agent.mcp_resources = mcp_resources
+    #             LOGGER.info(f"  - Set agent.mcp_resources to: {agent.mcp_resources}")
             
-            session.commit()
-            LOGGER.info(f"Updated Bedrock configuration for agent {agent_id}")
-            LOGGER.info(f"  - Final agent.mcp_tools: {agent.mcp_tools}")
-            LOGGER.info(f"  - Final agent.mcp_resources: {agent.mcp_resources}")
+    #         session.commit()
+    #         LOGGER.info(f"Updated Bedrock configuration for agent {agent_id}")
+    #         LOGGER.info(f"  - Final agent.mcp_tools: {agent.mcp_tools}")
+    #         LOGGER.info(f"  - Final agent.mcp_resources: {agent.mcp_resources}")
             
-        except Exception as e:
-            session.rollback()
-            LOGGER.error(f"Error updating Bedrock agent: {e}")
-            raise
-        finally:
-            session.close()
+    #     except Exception as e:
+    #         session.rollback()
+    #         LOGGER.error(f"Error updating Bedrock agent: {e}")
+    #         raise
+    #     finally:
+    #         session.close()
     
-    def get_bedrock_agent(self, agent_id: str) -> Optional[AgentRecord]:
-        """Get agent record with Bedrock-specific fields"""
-        session = self.get_db_session()
-        try:
-            agent = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
-            if not agent:
-                return None
+    # def get_bedrock_agent(self, agent_id: str) -> Optional[AgentRecord]:
+    #     """Get agent record with Bedrock-specific fields"""
+    #     session = self.get_db_session()
+    #     try:
+    #         agent = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
+    #         if not agent:
+    #             return None
             
-            # Detach from session so it can be used outside
-            session.expunge(agent)
-            return agent
-        finally:
-            session.close()
+    #         # Detach from session so it can be used outside
+    #         session.expunge(agent)
+    #         return agent
+    #     finally:
+    #         session.close()
     
     # Knowledge Base Management Methods
     
-    def create_knowledge_base_mapping(self, vector_store_id: str, 
-                                    knowledge_base_id: str,
-                                    embedding_model_arn: Optional[str] = None,
-                                    storage_configuration: Optional[Dict] = None) -> None:
-        """Update vector store with Bedrock knowledge base information"""
-        session = self.get_db_session()
-        try:
-            vector_store = session.query(VectorStore).filter_by(vector_store_id=vector_store_id).first()
-            if not vector_store:
-                raise ValueError(f"Vector store {vector_store_id} not found")
+    # def create_knowledge_base_mapping(self, vector_store_id: str, 
+    #                                 knowledge_base_id: str,
+    #                                 embedding_model_arn: Optional[str] = None,
+    #                                 storage_configuration: Optional[Dict] = None) -> None:
+    #     """Update vector store with Bedrock knowledge base information"""
+    #     session = self.get_db_session()
+    #     try:
+    #         vector_store = session.query(VectorStore).filter_by(vector_store_id=vector_store_id).first()
+    #         if not vector_store:
+    #             raise ValueError(f"Vector store {vector_store_id} not found")
             
-            vector_store.knowledge_base_id = knowledge_base_id
-            vector_store.embedding_model_arn = embedding_model_arn
-            vector_store.storage_configuration = storage_configuration
+    #         vector_store.knowledge_base_id = knowledge_base_id
+    #         vector_store.embedding_model_arn = embedding_model_arn
+    #         vector_store.storage_configuration = storage_configuration
             
-            session.commit()
-            LOGGER.info(f"Updated vector store {vector_store_id} with knowledge base {knowledge_base_id}")
-        except Exception as e:
-            session.rollback()
-            LOGGER.error(f"Error updating knowledge base mapping: {e}")
-            raise
-        finally:
-            session.close()
+    #         session.commit()
+    #         LOGGER.info(f"Updated vector store {vector_store_id} with knowledge base {knowledge_base_id}")
+    #     except Exception as e:
+    #         session.rollback()
+    #         LOGGER.error(f"Error updating knowledge base mapping: {e}")
+    #         raise
+    #     finally:
+    #         session.close()
     
-    def get_knowledge_base_id(self, vector_store_id: str) -> Optional[str]:
-        """Get the Knowledge Base ID for a vector store"""
-        session = self.get_db_session()
-        try:
-            vector_store = session.query(VectorStore).filter_by(vector_store_id=vector_store_id).first()
-            return vector_store.knowledge_base_id if vector_store and hasattr(vector_store, 'knowledge_base_id') else None
-        finally:
-            session.close()
+    # def get_knowledge_base_id(self, vector_store_id: str) -> Optional[str]:
+    #     """Get the Knowledge Base ID for a vector store"""
+    #     session = self.get_db_session()
+    #     try:
+    #         vector_store = session.query(VectorStore).filter_by(vector_store_id=vector_store_id).first()
+    #         return vector_store.knowledge_base_id if vector_store and hasattr(vector_store, 'knowledge_base_id') else None
+    #     finally:
+    #         session.close()
     
     # File Management Methods
     
