@@ -419,6 +419,7 @@ class OAIAAgentProvider(AgentProvider):
             LOGGER.warning(f"Could not retrieve AgentRecord for agent {assistant.id}: {e}")
 
         agent_def = AgentDefinition(
+            id=assistant.id,
             name=assistant.name,
             description=assistant.description,
             instructions=assistant.instructions,
@@ -427,11 +428,10 @@ class OAIAAgentProvider(AgentProvider):
             tools=assistant.tools,
             tool_resources=assistant.tool_resources,
             metadata=assistant.metadata,
-            id=assistant.id,
             model=assistant.model,
             user_id=assistant.metadata.get('user_id', None) if assistant.metadata else None,
             mcp_tools=mcp_tools,
-            mcp_resources=mcp_resources
+            mcp_resources=mcp_resources,
         )
         return agent_def
 
@@ -641,7 +641,9 @@ class OAIAAgentProvider(AgentProvider):
                         model=agent_def.model,
                         tools=agent_def.tools,
                         tool_resources=agent_def.tool_resources,
-                        metadata=agent_def.metadata
+                        metadata=agent_def.metadata, 
+                        temperature=agent_def.temperature,
+                        top_p=agent_def.top_p
                     )
                     LOGGER.info(f"Successfully updated OpenAI assistant for ID: {agent_def.id}")
                     LOGGER.info(f"Updated assistant has {len(openai_assistant_obj.tools)} tools")
@@ -668,7 +670,9 @@ class OAIAAgentProvider(AgentProvider):
                 model=agent_def.model, 
                 tools=agent_def.tools,
                 tool_resources=agent_def.tool_resources,
-                metadata=agent_def.metadata
+                metadata=agent_def.metadata, 
+                temperature=agent_def.temperature,
+                top_p=agent_def.top_p
             )
             agent_def.id = openai_assistant_obj.id # Update the input agent_def with the new ID
 
