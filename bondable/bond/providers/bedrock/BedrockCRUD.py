@@ -56,6 +56,9 @@ def create_bedrock_agent(agent_id: str, agent_def: AgentDefinition) -> tuple[str
     if agent_def.instructions:
         instructions = agent_def.instructions.ljust(MIN_INSTRUCTION_LENGTH)
     
+    if agent_def.description is None or agent_def.description.strip() == "":
+        agent_def.description = agent_def.name
+    
     try:
         # Step 1: Create the agent
         LOGGER.info(f"Creating Bedrock Agent with for bond agent {agent_id}")
@@ -158,6 +161,8 @@ def update_bedrock_agent(agent_def: AgentDefinition, bedrock_agent_id: str, bedr
         instructions = agent_def.instructions.ljust(MIN_INSTRUCTION_LENGTH)
 
     bedrock_agent_name = agent_def.id.replace('-', '_')
+    if agent_def.description is None or agent_def.description.strip() == "":
+        agent_def.description = agent_def.name
 
     try:
         # Step 1: Update the agent configuration
