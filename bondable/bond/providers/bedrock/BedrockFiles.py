@@ -7,10 +7,11 @@ import io
 import os
 import uuid
 import logging
-from typing import Optional, Tuple
+import base64
+from typing import Optional, Tuple, Dict, Any
 import boto3
 from botocore.exceptions import ClientError
-
+from bondable.bond.config import Config
 from bondable.bond.providers.files import FilesProvider
 from bondable.bond.providers.bedrock.BedrockMetadata import BedrockMetadata
 
@@ -32,10 +33,10 @@ class BedrockFilesProvider(FilesProvider):
             metadata: BedrockMetadata instance for storing file records
         """
         super().__init__(metadata)
+
         self.s3_client = s3_client
-        # Use AWS account ID in bucket name for uniqueness
-        aws_account_id = os.getenv('AWS_ACCOUNT_ID', '')
-        default_bucket = f"bond-bedrock-files-{aws_account_id}" if aws_account_id else 'bond-bedrock-files'
+        default_bucket_id = os.getenv('AWS_ACCOUNT_ID', uuid.uuid4().hex)
+        default_bucket = f"bond-bedrock-files-{default_bucket_id}"
         self.bucket_name = os.getenv('BEDROCK_S3_BUCKET', default_bucket)
         
         # Ensure bucket exists
@@ -65,6 +66,29 @@ class BedrockFilesProvider(FilesProvider):
                     raise
             else:
                 raise
+
+
+    def _get_key_from_file_id(self, file_id: str) -> str:
+        """
+        Extracts bucket name and S3 key from the file_id.
+        
+        Args:
+            file_id: S3 URI of the file (e.g., s3://bucket/key)
+        Returns:
+            The S3 key
+        """
+        if not file_id.startswith('s3://'):
+            raise ValueError(f"Invalid file_id format: {file_id}. Expected S3 URI format.")
+        
+        parts = file_id[5:].split('/', 1)
+        if len(parts) != 2:
+            raise ValueError(f"Invalid S3 URI format: {file_id}. Expected format s3://bucket/key.")
+        bucket_name = parts[0]
+        s3_key = parts[1]
+        if bucket_name != self.bucket_name:
+            raise ValueError(f"File ID does not match configured bucket: {file_id}")
+        return s3_key
+    
     
     def create_file_resource(self, file_path: str, file_bytes: io.BytesIO) -> str:
         """
@@ -79,8 +103,8 @@ class BedrockFilesProvider(FilesProvider):
         """
         try:
             # Generate unique file ID
-            file_id = f"bedrock_file_{uuid.uuid4().hex}"
-            
+            file_id = f"bond_file_{uuid.uuid4().hex}"
+
             # Create S3 key
             s3_key = f"files/{file_id}"
             
@@ -101,7 +125,10 @@ class BedrockFilesProvider(FilesProvider):
             )
             
             LOGGER.info(f"Uploaded file to S3: bucket={self.bucket_name}, key={s3_key}, file_id={file_id}")
-            return file_id
+
+            # the file_id to return is the uri of the file in S3
+            s3_url = f"s3://{self.bucket_name}/{s3_key}"
+            return s3_url
             
         except Exception as e:
             LOGGER.error(f"Failed to create file resource: {e}")
@@ -118,9 +145,10 @@ class BedrockFilesProvider(FilesProvider):
             True if deleted successfully, False otherwise
         """
         try:
-            # Create S3 key from file_id
-            s3_key = f"files/{file_id}"
+  
+            s3_key = self._get_key_from_file_id(file_id)         
             
+            # Use head_object to check if the object exists before deleting
             # Check if object exists first
             try:
                 self.s3_client.head_object(Bucket=self.bucket_name, Key=s3_key)
@@ -152,12 +180,12 @@ class BedrockFilesProvider(FilesProvider):
         Override to handle S3 file retrieval.
         
         Args:
-            file_tuple: Tuple of (file_path_or_id, optional_bytes)
+            file_tuple: Tuple of (file_id, optional_bytes)
             
         Returns:
             BytesIO object containing file content
         """
-        file_path_or_id = file_tuple[0]
+        file_id = file_tuple[0]
         file_bytes = file_tuple[1]
         
         # If bytes are already provided, use them
@@ -165,17 +193,15 @@ class BedrockFilesProvider(FilesProvider):
             return io.BytesIO(file_bytes)
         
         # Check if this is a file_id (starts with bedrock_file_)
-        if file_path_or_id.startswith('bedrock_file_'):
+        if file_id.startswith('s3://'):
+            s3_key = self._get_key_from_file_id(file_id)  
             try:
-                # Retrieve from S3
-                s3_key = f"files/{file_path_or_id}"
                 response = self.s3_client.get_object(
                     Bucket=self.bucket_name,
                     Key=s3_key
                 )
-                
                 content = response['Body'].read()
-                LOGGER.info(f"Retrieved file from S3: {file_path_or_id} ({len(content)} bytes)")
+                LOGGER.info(f"Retrieved file from S3: {file_id} ({len(content)} bytes)")
                 return io.BytesIO(content)
                 
             except ClientError as e:
@@ -184,3 +210,106 @@ class BedrockFilesProvider(FilesProvider):
         else:
             # Fall back to base implementation for local files
             return super().get_file_bytes(file_tuple)
+        
+
+    def get_files_invocation(self, tool_resources: Dict) -> Dict[str, Any]:
+        """
+        Map the tool resources to the Bedrock file structure. Use the mime_type and file_size
+        to detemine how to map things. Use the get_file_details() of the parent class
+        to get the file details and return the files in the format expected by Bedrock.
+        If the file is greater than 10MB, it should be returned as a S3 location.
+        If the file is less than 10MB, it should be returned as byte content.
+
+        The tool resources should look like this:
+        {
+            "code_interpreter": {
+                "file_ids": [
+                    "bedrock_file_d0efbb1d54634ed591ac29960774e42a"
+                ]
+            },
+            "file_search": {
+                "vector_store_ids": [
+                    "bedrock_vs_55c6e310-221d-44e7-a6a0-feb461209d01"
+                ]
+            }
+        }
+        and the schema for the output is:
+        'files': [
+            {
+                'name': 'string',
+                'source': {
+                    'byteContent': {
+                        'data': b'bytes',
+                        'mediaType': 'string'
+                    },
+                    's3Location': {
+                        'uri': 'string'
+                    },
+                    'sourceType': 'S3'|'BYTE_CONTENT'
+                },
+                'useCase': 'CODE_INTERPRETER'|'CHAT'
+            },
+        ],
+        """
+        files = []
+        
+        # Handle code_interpreter files
+        if 'code_interpreter' in tool_resources and 'file_ids' in tool_resources['code_interpreter']:
+            # Get all file details at once
+            file_details_list = self.get_file_details(tool_resources['code_interpreter']['file_ids'])
+            
+            for file_details in file_details_list:
+                file_id = file_details.file_id
+                file_size = file_details.file_size or 0
+                if file_size > 10 * 1024 * 1024:  # Greater than 10MB
+                    files.append({
+                        'name': os.path.basename(file_details.file_path),
+                        'source': {
+                            's3Location': {
+                                'uri': file_details.file_id
+                            },
+                            'sourceType': 'S3'
+                        },
+                        'useCase': 'CODE_INTERPRETER'
+                    })
+                else:  # Less than or equal to 10MB
+                    file_bytes = self.get_file_bytes((file_id, None))
+                    file_data = base64.b64encode(file_bytes.getvalue()).decode('utf-8')
+                    files.append({
+                        'name': os.path.basename(file_details.file_path),
+                        'source': {
+                            'byteContent': {
+                                'data': file_data,
+                                'mediaType': file_details.mime_type
+                            },
+                            'sourceType': 'BYTE_CONTENT'
+                        },
+                        'useCase': 'CODE_INTERPRETER'
+                    })
+
+        
+        # # Handle file_search vector stores
+        # if 'file_search' in tool_resources and 'vector_store_ids' in tool_resources['file_search']:
+        #     for vector_store_id in tool_resources['file_search']['vector_store_ids']:
+        #         # Assuming vector store IDs are mapped to file IDs
+        #         vector_store_files = self.bond_provider.vectorstores.get_vector_store_file_details([vector_store_id])
+        #         for file_id, details in vector_store_files.items():
+        #             if details:
+        #                 files.append({
+        #                     'name': os.path.basename(details[0]['s3_key']),
+        #                     'source': {
+        #                         'byteContent': {
+        #                             'data': None,  # Not used for S3 files
+        #                             'mediaType': details[0].get('mime_type', 'application/octet-stream')
+        #                         },
+        #                         's3Location': {
+        #                             'uri': f"s3://{self.bucket_name}/{details[0]['s3_key']}"
+        #                         },
+        #                         'sourceType': 'S3'
+        #                     },
+        #                     'useCase': 'CHAT'
+        #                 })
+        
+        return files if files else None
+
+
