@@ -16,6 +16,7 @@ class FileDetails:
     file_hash: str
     mime_type: str
     owner_user_id: str
+    file_size: Optional[int] = None  # Size in bytes, optional
     
     @classmethod
     def from_file_record(cls, file_record: FileRecord) -> 'FileDetails':
@@ -25,6 +26,7 @@ class FileDetails:
             file_path=file_record.file_path,
             file_hash=file_record.file_hash,
             mime_type=file_record.mime_type,
+            file_size=file_record.file_size,
             owner_user_id=file_record.owner_user_id
         )
 
@@ -81,6 +83,7 @@ class FilesProvider(ABC):
         file_bytes.seek(0)  
         content = file_bytes.read()
         file_hash  = hashlib.sha256(content).hexdigest()
+        file_size = len(content)
         
         # Detect mime type using Magika
         magika = Magika()
@@ -117,6 +120,7 @@ class FilesProvider(ABC):
                     file_hash=file_hash, 
                     file_id=content_match.file_id,  # Reuse existing file_id
                     mime_type=mime_type, 
+                    file_size=file_size,
                     owner_user_id=user_id
                 )
                 session.add(new_record)
@@ -131,6 +135,7 @@ class FilesProvider(ABC):
                 file_hash=file_hash, 
                 file_id=file_id, 
                 mime_type=mime_type, 
+                file_size=file_size,
                 owner_user_id=user_id
             )
             session.add(file_record)
