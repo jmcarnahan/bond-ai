@@ -34,7 +34,7 @@ class ThreadsProvider(ABC):
         pass
 
     @abstractmethod
-    def has_messages(self, thread_id, last_message_id) -> bool:
+    def has_messages(self, thread_id, last_message_id: Optional[str] = None) -> bool:
         pass
 
     @abstractmethod
@@ -168,13 +168,16 @@ class ThreadsProvider(ABC):
         """
         Deletes a thread by its id. Delete the resource if no users are left associated with it.
         """
-        with self.metadata.get_db_session() as session:   
-            deleted_resource: bool = False    
+        with self.metadata.get_db_session() as session:    
+            thread_count = session.query(Thread).filter_by(thread_id=thread_id).count()
+            # always delete the resource first because the provider may need more information about the thread
+            if thread_count > 0:
+                deleted_resource = self.delete_thread_resource(thread_id) 
+
             deleted_count = session.query(Thread).filter_by(thread_id=thread_id, user_id=user_id).delete()
             current_count = session.query(Thread).filter_by(thread_id=thread_id).count()
             session.commit()  
-            if current_count == 0:
-                deleted_resource = self.delete_thread_resource(thread_id)  
+
             if deleted_count > 0:
                 LOGGER.info(f"Deleted {deleted_count} DB records for thread_id: {thread_id} and user_id: {user_id} - remaining users: {current_count}")
                 return True
