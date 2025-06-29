@@ -47,6 +47,9 @@ class AgentDefinition:
 
         if user_id is None:
             raise ValueError("User ID must be provided for agent definition.")
+        
+        if name is None or name.strip() == "":
+            raise ValueError("Agent name must be provided and cannot be empty.")
 
         # load the tools
         self.tools = []
