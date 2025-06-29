@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 
-from sqlalchemy import ForeignKey, create_engine, Column, String, DateTime, func, PrimaryKeyConstraint, UniqueConstraint, Boolean, JSON
+from sqlalchemy import ForeignKey, create_engine, Column, String, DateTime, func, PrimaryKeyConstraint, UniqueConstraint, Boolean, JSON, Integer
 from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
 from sqlalchemy.sql import text
 import logging
@@ -20,6 +20,8 @@ class Thread(Base):
     thread_id = Column(String, nullable=False)
     user_id = Column(String, ForeignKey('users.id'), nullable=False)
     name = Column(String, default="New Thread")
+    session_id = Column(String, nullable=True)  # remote session ID if any
+    session_state = Column(JSON, default=dict)  # remote session state if any
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     __table_args__ = (PrimaryKeyConstraint('thread_id', 'user_id'),)
@@ -38,7 +40,8 @@ class FileRecord(Base):
     file_id = Column(String, primary_key=True)  # Unique file ID from provider
     file_path = Column(String, nullable=False)
     file_hash = Column(String, nullable=False)
-    mime_type = Column(String)
+    mime_type = Column(String, default="application/octet-stream")  # Default MIME type
+    file_size = Column(Integer, nullable=True)  # Size in bytes
     owner_user_id = Column(String, ForeignKey('users.id'), nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.now)
     
