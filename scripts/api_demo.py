@@ -74,6 +74,25 @@ class BondAPIDemo:
         response.raise_for_status()
         return response.json()
     
+    def get_available_models(self) -> tuple[list, str]:
+        """Get available models and identify the default model."""
+        response = requests.get(f"{self.base_url}/agents/models", headers=self.headers)
+        response.raise_for_status()
+        models = response.json()
+        
+        # Find the default model
+        default_model = None
+        for model in models:
+            if model.get('is_default', False):
+                default_model = model['name']
+                break
+        
+        # If no default is marked, use the first model
+        if not default_model and models:
+            default_model = models[0]['name']
+        
+        return models, default_model
+    
     def create_customer_data_file(self) -> str:
         """Create a temporary CSV file with fake customer data."""
         # Create temporary file
@@ -123,13 +142,13 @@ class BondAPIDemo:
         return result
     
     def create_agent(self, name: str, description: str = None, instructions: str = None, 
-                     file_ids: list = None) -> dict:
+                     file_ids: list = None, model: str = None) -> dict:
         """Create a new agent with optional code interpreter and files."""
         payload = {
             "name": name,
             "description": description or f"Demo agent: {name}",
             "instructions": instructions or "You are a helpful assistant. Be concise and friendly.",
-            "model": "gpt-4o",
+            "model": model or "gpt-4o",  # Use provided model or fallback to gpt-4o
             "tools": [],
             "metadata": {"demo": "true", "created_by": "api_demo_script"}
         }
@@ -356,25 +375,33 @@ def main():
         data_file_path = demo.create_customer_data_file()
         print(f"   ✅ Created temporary CSV file: {os.path.basename(data_file_path)}")
         
-        # Step 4: Upload the data file
+        # Step 4: Get available models and find the default
+        print("\n🔍 Fetching available models...")
+        models, default_model = demo.get_available_models()
+        print(f"   ✅ Found {len(models)} available models")
+        print(f"   ✅ Default model: {default_model}")
+        
+        # Step 5: Upload the data file
         print("\n📤 Uploading data file...")
         upload_result = demo.upload_file(data_file_path)
         file_id = upload_result['provider_file_id']
         print(f"   ✅ Uploaded file: {upload_result['file_name']} (ID: {file_id})")
         
-        # Step 5: Create an agent with code interpreter and the uploaded file
+        # Step 6: Create an agent with code interpreter and the uploaded file
         print("\n🤖 Creating agent with data analysis capabilities...")
         agent = demo.create_agent(
             name="Data Analysis Assistant",
             description="An agent capable of analyzing customer data using code interpreter",
             instructions="You are a data analyst assistant. You can analyze CSV data, create visualizations, and provide insights. When analyzing data, always start by examining the structure and contents of the file.",
-            file_ids=[file_id]
+            file_ids=[file_id],
+            model=default_model  # Use the default model from the API
         )
         agent_id = agent['agent_id']
         print(f"   ✅ Created agent: {agent['name']} (ID: {agent_id})")
+        print(f"       Model: {default_model}")
         print(f"       Agent has code_interpreter tool and access to the customer data file")
         
-        # Step 6: Get agent details
+        # Step 7: Get agent details
         print("\n🔍 Getting agent details...")
         agent_details = demo.get_agent_details(agent_id)
         print(f"   ✅ Agent: {agent_details['name']}")
@@ -389,13 +416,13 @@ def main():
         else:
             print(f"       Tool Resources: Not configured")
         
-        # Step 7: Create a thread
+        # Step 8: Create a thread
         print("\n💬 Creating conversation thread...")
         thread = demo.create_thread("Customer Data Analysis Chat")
         thread_id = thread['id']
         print(f"   ✅ Created thread: {thread['name']} (ID: {thread_id})")
         
-        # Step 8: Start data analysis conversation
+        # Step 9: Start data analysis conversation
         print("\n💭 Starting data analysis conversation...")
         
         # First message - Introduction and data exploration
@@ -413,7 +440,7 @@ def main():
         print(f"\n   👤 User: {prompt3}")
         response3 = demo.chat(thread_id, agent_id, prompt3)
         
-        # Step 9: Check thread messages with detailed information
+        # Step 10: Check thread messages with detailed information
         print(f"\n📨 Checking conversation history with message details...")
         messages = demo.get_thread_messages(thread_id)
         print(f"   ✅ Thread contains {len(messages)} messages")
@@ -431,7 +458,7 @@ def main():
                 content_preview += "..."
             print(f"      Content: {content_preview}")
         
-        # Step 10: Clean up resources
+        # Step 11: Clean up resources
         print(f"\n🧹 Cleaning up resources...")
         cleanup_results = demo.cleanup_all()
         
