@@ -56,7 +56,7 @@ class OAIAThreadsProvider(ThreadsProvider):
             raise e
         
     @override
-    def has_messages(self, thread_id, last_message_id) -> bool:
+    def has_messages(self, thread_id, last_message_id=None) -> bool:
         response = self.openai_client.beta.threads.messages.list(thread_id, limit=1, after=last_message_id)
         return not response.data
 
