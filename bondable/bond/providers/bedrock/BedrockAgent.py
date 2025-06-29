@@ -291,6 +291,12 @@ class BedrockAgent(Agent):
             raise ValueError("Agent must have user_id in metadata")
         
         try:
+
+            # Get session ID and state from thread
+            session_id = self.bond_provider.threads.get_thread_session_id(thread_id)
+            session_state = self.bond_provider.threads.get_thread_session_state(thread_id, user_id)
+            LOGGER.info(f"Invoking Bedrock Agent {self.bedrock_agent_id} with session {session_id}")
+
             # Add user message if prompt provided
             if prompt:
                 self.create_user_message(prompt, thread_id, attachments, override_role)
@@ -304,12 +310,6 @@ class BedrockAgent(Agent):
                 if last_msg.role != 'user':
                     raise ValueError("No user message to respond to")
                 prompt = last_msg.clob.get_content() if hasattr(last_msg, 'clob') else str(last_msg)
-            
-            # Get session ID and state from thread
-            session_id = self.bond_provider.threads.get_thread_session_id(thread_id)
-            session_state = self.bond_provider.threads.get_thread_session_state(thread_id, user_id)
-            
-            LOGGER.info(f"Invoking Bedrock Agent {self.bedrock_agent_id} with session {session_id}")
             
             # Build request for invoke_agent
             request = {
@@ -339,18 +339,23 @@ class BedrockAgent(Agent):
                 f'is_done="false">'
             )
 
+            # augment this with any code interpreter files from the tool_resources for this agent
+            # only do this for the first message
+            if self.bond_provider.threads.get_response_message_count(thread_id=thread_id) == 0:
+                session_files = self.bond_provider.files.get_files_invocation(self.tool_resources)
+                if session_files:
+                    session_state['files'] = session_files
+
+            # add files from attachments
+            if attachments:
+                LOGGER.info(f"Streaming response with attachments\n: {json.dumps(attachments, indent=2)}")
+
             # Add session state if available
-            if session_state:
-                request['sessionState'] = session_state
+            request['sessionState'] = session_state
 
-            LOGGER.debug(f"Using session state from thread: {session_state}")
-
-            # augment this with any code interpreter files from 
-            # for each file id in the tool_resource for this agent
-            # get the file details 
-            # get_file_details
             
             # Invoke the agent (this returns a streaming response)
+            LOGGER.debug(f"Sending request: {request}")
             response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**request)
 
             # Process the streaming response
@@ -556,8 +561,14 @@ class BedrockAgent(Agent):
             
             # Update session state if provided
             if new_session_state:
-                self.bond_provider.threads.update_thread_session_state(thread_id, user_id, new_session_state)
-                LOGGER.info(f"Updated session state for thread {thread_id}")
+                self.bond_provider.threads.update_thread_session(
+                    thread_id=thread_id, 
+                    user_id=user_id, 
+                    session_id=session_id,
+                    session_state=new_session_state)
+                LOGGER.debug(f"Updated session state for thread {thread_id}: session state \n{json.dumps(new_session_state, indent=4)}")
+            else:
+                LOGGER.debug("No updated session state was returned from bedrock")
             
         except ClientError as e:
             error_code = e.response['Error']['Code']
@@ -566,7 +577,7 @@ class BedrockAgent(Agent):
             yield from self._yield_error_message(thread_id, error_message, error_code)
             
         except Exception as e:
-            LOGGER.error(f"Unexpected error in stream_response: {e}")
+            LOGGER.exception(f"Unexpected error in stream_response: {e}")
             yield from self._yield_error_message(thread_id, str(e))
     
     def _handle_return_control(self, return_control: Dict[str, Any]) -> List[Dict[str, Any]]:
