@@ -58,7 +58,7 @@ class BedrockProvider(Provider):
         self.metadata = BedrockMetadata(metadata_db_url)
         
         # Initialize sub-providers
-        self.threads = BedrockThreadsProvider(self.metadata)
+        self.threads = BedrockThreadsProvider(bedrock_agent_runtime_client=self.bedrock_agent_runtime_client, metadata=self.metadata)
         
         # Initialize agent provider
         from .BedrockAgent import BedrockAgentProvider
@@ -66,7 +66,7 @@ class BedrockProvider(Provider):
         
         # Initialize files provider
         from .BedrockFiles import BedrockFilesProvider
-        self.files = BedrockFilesProvider(self.s3_client, self.metadata)
+        self.files = BedrockFilesProvider(s3_client=self.s3_client, metadata=self.metadata)
         
         # Initialize vector stores (stub for now)
         from .BedrockVectorStores import BedrockVectorStoresProvider

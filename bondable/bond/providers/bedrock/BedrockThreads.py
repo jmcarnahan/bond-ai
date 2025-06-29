@@ -7,11 +7,14 @@ sessionId and sessionState for Bedrock Agents.
 
 from bondable.bond.providers.threads import ThreadsProvider
 from bondable.bond.broker import BondMessage
-from .BedrockMetadata import BedrockMetadata
+from bondable.bond.providers.metadata import Thread
+from .BedrockMetadata import BedrockMetadata, BedrockMessage
 import uuid
 import logging
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 import datetime
+import boto3
+import json
 
 LOGGER = logging.getLogger(__name__)
 
@@ -19,10 +22,78 @@ LOGGER = logging.getLogger(__name__)
 class BedrockThreadsProvider(ThreadsProvider):
     """Thread management for Bedrock using metadata storage with session support"""
     
-    def __init__(self, metadata: BedrockMetadata):
+    def __init__(self, bedrock_agent_runtime_client: boto3.client, metadata: BedrockMetadata):
         self.metadata = metadata
+        self.bedrock_agent_runtime_client = bedrock_agent_runtime_client
         LOGGER.info("Initialized BedrockThreadsProvider with session support")
     
+
+    def _delete_thread_messages(self, thread_id: str, user_id: str) -> int:
+        """Delete all messages in a thread"""
+        session = self.metadata.get_db_session()
+        try:
+            count = session.query(BedrockMessage)\
+                .filter_by(thread_id=thread_id, user_id=user_id)\
+                .delete()
+            session.commit()
+            return count
+        except Exception as e:
+            session.rollback()
+            LOGGER.error(f"Error deleting messages: {e}")
+            raise
+        finally:
+            session.close()
+
+
+
+    # Message Management Methods
+    def _create_message(self, thread_id: str, user_id: str, role: str, message_type: str, 
+                      content: List[Dict], metadata: Optional[Dict] = None,
+                      session_id: Optional[str] = None, message_id: Optional[str] = None) -> str:
+        """Create a new message in a thread"""
+        session = self.metadata.get_db_session()
+        try:
+            # Get the session_id from thread if not provided
+            if not session_id:
+                thread = session.query(Thread)\
+                    .filter_by(thread_id=thread_id, user_id=user_id)\
+                    .first()
+                if thread:
+                    session_id = thread.session_id
+            
+            # Get the next message index for this thread
+            max_index = session.query(BedrockMessage.message_index)\
+                .filter_by(thread_id=thread_id, user_id=user_id)\
+                .order_by(BedrockMessage.message_index.desc())\
+                .first()
+            
+            message_index = (max_index[0] + 1) if max_index else 0
+            
+            message = BedrockMessage(
+                id=message_id or str(uuid.uuid4()),
+                thread_id=thread_id,
+                user_id=user_id,
+                session_id=session_id,
+                role=role,
+                type=message_type,
+                content=content,
+                message_index=message_index,
+                message_metadata=metadata or {}
+            )
+            
+            session.add(message)
+            session.commit()
+            
+            LOGGER.info(f"Created message {message.id} in thread {thread_id} with session {session_id} - message index {message_index}")
+            return message.id
+            
+        except Exception as e:
+            session.rollback()
+            LOGGER.error(f"Error creating message: {e}")
+            raise
+        finally:
+            session.close()
+
     def delete_thread_resource(self, thread_id: str) -> bool:
         """
         Delete a thread and all its messages.
@@ -36,6 +107,7 @@ class BedrockThreadsProvider(ThreadsProvider):
         try:
             # First delete all messages in the thread
             # Note: We don't have user_id here, so we'll need to delete all messages for this thread
+            from bondable.bond.providers.metadata import Thread
             session = self.metadata.get_db_session()
             try:
                 # Get all unique users who have messages in this thread
@@ -48,24 +120,28 @@ class BedrockThreadsProvider(ThreadsProvider):
                 # Delete messages for each user
                 total_deleted = 0
                 for (user_id,) in users_with_messages:
-                    count = self.metadata.delete_thread_messages(thread_id, user_id)
+                    count = self._delete_thread_messages(thread_id, user_id)
                     total_deleted += count
                 
+                # Before we delete the thread we need to delete the session in bedrock
+                # session_id = self.get_thread_session_id(thread_id=thread_id)
+                # if session_id is not None:
+                #     try:
+                #         response = self.bedrock_agent_runtime_client.delete_session(
+                #             sessionIdentifier=session_id
+                #         )
+                #         LOGGER.info(f"Deleted Bedrock session {session_id} associated with thread {thread_id}: {response}")
+                #     except Exception as bedrockExc:
+                #         LOGGER.exception(f"Error deleting bedrock session {session_id}: {bedrockExc}")
+                # else:
+                #     LOGGER.error(f"Unable to delete bedrock session for thread: {session_id} - no session id")
+
                 LOGGER.info(f"Deleted {total_deleted} messages from thread {thread_id}")
-                
-                # Delete the thread record from base threads table
-                from bondable.bond.providers.metadata import Thread
-                thread_count = session.query(Thread)\
-                    .filter_by(thread_id=thread_id)\
-                    .delete()
-                session.commit()
-                
-                LOGGER.info(f"Deleted thread {thread_id} and all associated messages")
                 return True
                 
             except Exception as e:
                 session.rollback()
-                LOGGER.error(f"Error deleting thread {thread_id}: {e}")
+                LOGGER.exception(f"Error deleting thread {thread_id}: {e}")
                 return False
             finally:
                 session.close()
@@ -81,17 +157,18 @@ class BedrockThreadsProvider(ThreadsProvider):
         Returns:
             A new thread ID (format: thread_{session_id})
         """
-        session_id = str(uuid.uuid4())  # Create session ID for Bedrock Agent
+        session_id = uuid.uuid4().hex
+
+        # response = self.bedrock_agent_runtime_client.create_session()
+        # if response: 
+        #     session_id = response['sessionId']
+
         thread_id = f"thread_{session_id}"  # Thread ID is based on session ID
-        
         LOGGER.info(f"Created new thread ID: {thread_id} with session ID: {session_id}")
-        
-        # Note: The actual thread record with session_id will be created when the first message is added
-        # This design ensures thread_id and session_id are always related
-        
+                
         return thread_id
     
-    def has_messages(self, thread_id: str, last_message_id: Optional[str]) -> bool:
+    def has_messages(self, thread_id: str, last_message_id: Optional[str] = None) -> bool:
         """
         Check if thread has new messages after the given message ID.
         
@@ -298,7 +375,7 @@ class BedrockThreadsProvider(ThreadsProvider):
             session.close()
         
         # Create the message with session_id
-        return self.metadata.create_message(
+        return self._create_message(
             message_id=message_id,
             thread_id=thread_id,
             user_id=user_id,
@@ -309,62 +386,48 @@ class BedrockThreadsProvider(ThreadsProvider):
             session_id=session_id
         )
     
-    def get_conversation_messages(self, thread_id: str, user_id: str) -> list:
-        """
-        Get messages formatted for Bedrock Converse API.
-        
-        Note: This method is deprecated when using Bedrock Agents.
-        The agent maintains conversation history internally using sessionId.
-        
-        Args:
-            thread_id: Thread ID
-            user_id: User ID
-            
-        Returns:
-            List of messages in Bedrock format
-        """
-        return self.metadata.get_conversation_messages(thread_id, user_id)
-    
-    # New methods for session management
     
     def get_thread_session_id(self, thread_id: str) -> Optional[str]:
         """Get the session ID for a thread"""
-        # Extract from thread_id format: thread_{session_id}
-        if thread_id and thread_id.startswith('thread_'):
-            session_id = thread_id[7:]  # More efficient than replace
-            if session_id:  # Validate it's not empty
-                return session_id
-        
-        # Fallback: query from database
+        # Query from database
         try:
             with self.metadata.get_db_session() as session:
                 from bondable.bond.providers.metadata import Thread
-                thread = session.query(Thread)\
+                thread: Thread = session.query(Thread)\
                     .filter_by(thread_id=thread_id)\
                     .first()
                 
-                return thread.session_id if thread and hasattr(thread, 'session_id') else None
+                if thread and thread.session_id:
+                    return thread.session_id
+                else:
+                    LOGGER.debug(f"No session ID found for thread {thread_id} in metadata - falling back to thread_id format")
                 
         except Exception as e:
             LOGGER.error(f"Error getting session ID for thread {thread_id}: {e}")
             return None
+        
+        # Fallback from thread_id format: thread_{session_id}
+        if thread_id and thread_id.startswith('thread_'):
+            session_id = thread_id[7:]  # More efficient than replace
+            if session_id:  # Validate it's not empty
+                return session_id
     
     def get_thread_session_state(self, thread_id: str, user_id: str) -> Optional[Dict[str, Any]]:
         """Get the session state for a thread"""
         try:
             with self.metadata.get_db_session() as session:
                 from bondable.bond.providers.metadata import Thread
-                thread = session.query(Thread)\
+                thread: Thread = session.query(Thread)\
                     .filter_by(thread_id=thread_id, user_id=user_id)\
                     .first()
                 
-                return thread.session_state if thread else None
+                return thread.session_state if thread else {}
                 
         except Exception as e:
             LOGGER.error(f"Error getting session state: {e}")
             return None
     
-    def update_thread_session_state(self, thread_id: str, user_id: str, session_state: Dict[str, Any]) -> bool:
+    def update_thread_session(self, thread_id: str, user_id: str, session_id: str, session_state: Dict[str, Any]) -> bool:
         """Update the session state for a thread"""
         session = self.metadata.get_db_session()
         try:
@@ -375,6 +438,7 @@ class BedrockThreadsProvider(ThreadsProvider):
             
             if thread:
                 thread.session_state = session_state
+                thread.session_id = session_id
                 thread.updated_at = datetime.datetime.now()
                 session.commit()
                 LOGGER.info(f"Updated session state for thread {thread_id}")
@@ -413,3 +477,31 @@ class BedrockThreadsProvider(ThreadsProvider):
         except Exception as e:
             LOGGER.error(f"Error getting thread info: {e}")
             return None
+        
+    def list_sessions(self, max_results=100):
+        response = self.bedrock_agent_runtime_client.list_sessions(
+            maxResults=max_results,
+        )
+        return response['sessionSummaries']
+    
+    def get_response_message_count(self, thread_id: str, role: str = 'assistant') -> int:
+        """
+        Get the count of assistant messages in a thread.
+        
+        Args:
+            thread_id: The thread ID
+            
+        Returns:
+            Count of messages with role 'assistant'
+        """
+        try:
+            with self.metadata.get_db_session() as session:
+                from bondable.bond.providers.bedrock.BedrockMetadata import BedrockMessage
+                count = session.query(BedrockMessage)\
+                    .filter_by(thread_id=thread_id, role=role)\
+                    .count()
+                return count
+        except Exception as e:
+            LOGGER.error(f"Error getting assistant message count for thread {thread_id}: {e}")
+            return 0
+
