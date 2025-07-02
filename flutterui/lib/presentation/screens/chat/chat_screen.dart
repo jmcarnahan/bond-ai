@@ -1,17 +1,17 @@
-import 'dart:convert';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart' show PlatformFile;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 
 import 'package:flutterui/providers/thread_chat/thread_chat_providers.dart';
 import 'package:flutterui/providers/thread_provider.dart';
 import 'package:flutterui/providers/services/service_providers.dart';
-import 'package:flutterui/providers/cached_agent_details_provider.dart';
+import 'package:flutterui/data/models/agent_model.dart';
 import '../../../core/utils/logger.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/chat_app_bar.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/message_input_bar.dart';
+import 'package:flutterui/presentation/screens/chat/widgets/agent_sidebar.dart';
+import 'package:flutterui/presentation/screens/chat/widgets/chat_messages_list.dart';
 import 'package:flutterui/presentation/widgets/app_drawer.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 import 'package:flutterui/providers/notification_provider.dart';
@@ -42,9 +42,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   // Cache for decoded images to prevent repeated base64 decoding
   final Map<String, Uint8List> _imageCache = {};
 
+  // Track current agent locally to allow switching without navigation
+  late String _currentAgentId;
+  late String _currentAgentName;
+
   @override
   void initState() {
     super.initState();
+    _currentAgentId = widget.agentId;
+    _currentAgentName = widget.agentName;
     _textFieldFocusNode.addListener(_onFocusChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeChatSession();
@@ -104,7 +110,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       operation: () async {
         // Get agent service from providers
         final agentService = ref.read(agentServiceProvider);
-        final agentDetails = await agentService.getAgentDetails(widget.agentId);
+        final agentDetails = await agentService.getAgentDetails(
+          _currentAgentId,
+        );
 
         if (agentDetails.introduction != null &&
             agentDetails.introduction!.trim().isNotEmpty) {
@@ -113,7 +121,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
           // Send introduction with null thread_id (backend will create thread)
           await chatNotifier.sendIntroduction(
-            agentId: widget.agentId,
+            agentId: _currentAgentId,
             introduction: agentDetails.introduction!.trim(),
           );
         } else {
@@ -219,6 +227,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     });
   }
 
+  void _handleAgentSwitch(AgentListItemModel agent) {
+    // Only update local state when switching from sidebar
+    // This prevents screen reconstruction and thread changes
+    setState(() {
+      _currentAgentId = agent.id;
+      _currentAgentName = agent.name;
+    });
+  }
+
   void _sendMessage() {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
@@ -231,7 +248,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
     // Just send the message - backend will create thread if needed
     chatNotifier.sendMessage(
-      agentId: widget.agentId,
+      agentId: _currentAgentId,
       prompt: text,
       attachedFiles: hasAttachement ? _fileAttachments : null,
     );
@@ -245,6 +262,36 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       }
     });
+  }
+
+  void _createNewThread() async {
+    logger.i("[ChatScreen] Creating new thread");
+
+    await withErrorHandling(
+      operation: () async {
+        // Create a new thread
+        final newThread = await ref
+            .read(threadsProvider.notifier)
+            .addThread(name: 'New Conversation');
+
+        if (newThread != null) {
+          logger.i("[ChatScreen] Thread created: ${newThread.id}");
+
+          // Clear current chat session
+          final chatNotifier = ref.read(chatSessionNotifierProvider.notifier);
+          chatNotifier.clearChatSession();
+
+          // Set the new thread as current
+          chatNotifier.setCurrentThread(newThread.id);
+
+          // Check if the agent has an introduction to send
+          _checkAndSendIntroductionIfNeeded();
+        }
+      },
+      ref: ref,
+      errorMessage: 'Failed to create new thread.',
+      isCritical: false,
+    );
   }
 
   @override
@@ -265,43 +312,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   @override
   Widget build(BuildContext context) {
     final chatState = ref.watch(chatSessionNotifierProvider);
-
-    // Listen for new messages
-    ref.listen(
-      chatSessionNotifierProvider.select((state) => state.messages.length),
-      (previous, current) {
-        if (current > (previous ?? 0)) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (_scrollController.hasClients && mounted) {
-              _scrollController.jumpTo(
-                _scrollController.position.maxScrollExtent,
-              );
-            }
-          });
-        }
-      },
-    );
-
-    // Listen for content changes during streaming
-    ref.listen(
-      chatSessionNotifierProvider.select(
-        (state) =>
-            state.messages.isNotEmpty && state.isSendingMessage
-                ? state.messages.last.content
-                : null,
-      ),
-      (_, current) {
-        if (current != null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (_scrollController.hasClients && mounted) {
-              _scrollController.jumpTo(
-                _scrollController.position.maxScrollExtent,
-              );
-            }
-          });
-        }
-      },
-    );
 
     ref.listen<String?>(selectedThreadIdProvider, (previousId, newId) {
       if (widget.initialThreadId == null && previousId != newId) {
@@ -345,240 +355,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       drawer: const AppDrawer(),
-      appBar: ChatAppBar(agentName: widget.agentName),
-      body: Column(
+      appBar: ChatAppBar(agentName: _currentAgentName),
+      body: Row(
         children: [
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(
-                vertical: 8.0,
-                horizontal: 72.0,
-              ),
-              itemCount: chatState.messages.length,
-              itemBuilder: (context, index) {
-                final message = chatState.messages[index];
-
-                // Skip rendering messages with empty content (except when showing typing indicator)
-                if (message.content.isEmpty &&
-                    !(message.role == 'assistant' &&
-                        chatState.isSendingMessage &&
-                        index == chatState.messages.length - 1)) {
-                  return const SizedBox.shrink();
-                }
-
-                Widget content;
-                if ((message.type == 'image_file' || message.type == 'image') &&
-                    message.imageData != null) {
-                  try {
-                    final cacheKey = message.id;
-                    Uint8List imageBytes;
-
-                    if (_imageCache.containsKey(cacheKey)) {
-                      imageBytes = _imageCache[cacheKey]!;
-                    } else {
-                      imageBytes = base64Decode(message.imageData!);
-                      _imageCache[cacheKey] = imageBytes;
-                    }
-
-                    content = Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxWidth: MediaQuery.of(context).size.width * 0.6,
-                            maxHeight: 300,
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.memory(
-                              imageBytes,
-                              fit: BoxFit.contain,
-                              gaplessPlayback: true,
-                            ),
-                          ),
-                        ),
-                        if (message.content.isNotEmpty &&
-                            message.content != '[Image]')
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8.0),
-                            child: Text(
-                              message.content,
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                          ),
-                      ],
-                    );
-                  } catch (e) {
-                    content = Text(
-                      'Error loading image',
-                      style: const TextStyle(fontSize: 14, color: Colors.red),
-                    );
-                  }
-                } else {
-                  // Show typing indicator for empty assistant messages while streaming
-                  if (message.role == 'assistant' &&
-                      chatState.isSendingMessage &&
-                      index == chatState.messages.length - 1 &&
-                      message.content.isEmpty) {
-                    content = const Text('...', style: TextStyle(fontSize: 14));
-                  } else if (message.role == 'assistant' &&
-                      message.type == 'text') {
-                    content = Builder(
-                      builder: (context) {
-                        final defaultStyle = DefaultTextStyle.of(context).style;
-                        return MarkdownBody(
-                          data: message.content,
-                          styleSheet: MarkdownStyleSheet.fromTheme(
-                            Theme.of(context),
-                          ).copyWith(
-                            p: defaultStyle,
-                            h1: defaultStyle.copyWith(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            h2: defaultStyle.copyWith(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            h3: defaultStyle.copyWith(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            code: defaultStyle.copyWith(
-                              fontFamily: 'monospace',
-                              backgroundColor: defaultStyle.color?.withValues(
-                                alpha: 0.08,
-                              ),
-                            ),
-                          ),
-                          selectable: true,
-                        );
-                      },
-                    );
-                  } else {
-                    content = Text(
-                      message.content,
-                      style: const TextStyle(fontSize: 14),
-                    );
-                  }
-                }
-
-                // Determine if this is a user message
-                final isUserMessage = message.role == 'user';
-                final theme = Theme.of(context);
-                final colorScheme = theme.colorScheme;
-
-                return RepaintBoundary(
-                  child: Padding(
-                    key: ValueKey(message.id),
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 6.0,
-                      horizontal: 16.0,
-                    ),
-                    child: Row(
-                      mainAxisAlignment:
-                          isUserMessage
-                              ? MainAxisAlignment.end
-                              : MainAxisAlignment.start,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (!isUserMessage) ...[
-                          Column(
-                            children: [
-                              CircleAvatar(
-                                backgroundColor:
-                                    colorScheme.surfaceContainerHighest,
-                                radius: 16,
-                                child: Icon(
-                                  Icons.smart_toy_outlined,
-                                  color: colorScheme.primary,
-                                  size: 20,
-                                ),
-                              ),
-                              if (message.agentId != null)
-                                Container(
-                                  width: 32,
-                                  margin: const EdgeInsets.only(top: 2),
-                                  child: ref.watch(getCachedAgentDetailsProvider(message.agentId!)).when(
-                                    data: (agent) => agent != null
-                                        ? Text(
-                                            agent.name,
-                                            style: TextStyle(
-                                              fontSize: 9,
-                                              color: colorScheme.onSurface.withAlpha(179),
-                                            ),
-                                            textAlign: TextAlign.center,
-                                            overflow: TextOverflow.ellipsis,
-                                            maxLines: 1,
-                                          )
-                                        : const SizedBox.shrink(),
-                                    loading: () => const SizedBox.shrink(),
-                                    error: (_, __) => const SizedBox.shrink(),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        Flexible(
-                          child: Container(
-                            constraints: BoxConstraints(
-                              maxWidth:
-                                  MediaQuery.of(context).size.width * 0.75,
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 10.0,
-                              horizontal: 14.0,
-                            ),
-                            decoration: BoxDecoration(
-                              color:
-                                  isUserMessage
-                                      ? colorScheme.primary
-                                      : Colors.transparent,
-                              borderRadius: BorderRadius.circular(16.0),
-                            ),
-                            child: DefaultTextStyle(
-                              style: TextStyle(
-                                color:
-                                    isUserMessage
-                                        ? colorScheme.onPrimary
-                                        : colorScheme.onSurfaceVariant,
-                                fontSize: 14,
-                              ),
-                              child: content,
-                            ),
-                          ),
-                        ),
-                        if (isUserMessage) ...[
-                          const SizedBox(width: 8),
-                          CircleAvatar(
-                            backgroundColor: colorScheme.primary.withValues(
-                              alpha: 0.8,
-                            ),
-                            radius: 16,
-                            child: Icon(
-                              Icons.person_outline,
-                              color: colorScheme.onPrimary,
-                              size: 20,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
+          AgentSidebar(
+            currentAgentId: _currentAgentId,
+            onAgentSelected: _handleAgentSwitch,
           ),
-          MessageInputBar(
-            textController: _textController,
-            focusNode: _textFieldFocusNode,
-            isTextFieldFocused: _isTextFieldFocused,
-            isSendingMessage: chatState.isSendingMessage,
-            onSendMessage: _sendMessage,
-            onFileAttachmentsChanged: _onAttachmentsChanged,
-            attachments: _fileAttachments,
+          Expanded(
+            child: Column(
+              children: [
+                Expanded(
+                  child: ChatMessagesList(
+                    scrollController: _scrollController,
+                    imageCache: _imageCache,
+                  ),
+                ),
+                MessageInputBar(
+                  textController: _textController,
+                  focusNode: _textFieldFocusNode,
+                  isTextFieldFocused: _isTextFieldFocused,
+                  isSendingMessage: chatState.isSendingMessage,
+                  onSendMessage: _sendMessage,
+                  onFileAttachmentsChanged: _onAttachmentsChanged,
+                  attachments: _fileAttachments,
+                  onCreateNewThread: _createNewThread,
+                ),
+              ],
+            ),
           ),
         ],
       ),
