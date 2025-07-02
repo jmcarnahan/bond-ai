@@ -25,7 +25,7 @@ root:
 
 loggers:
     bondable:
-        level: DEBUG
+        level: INFO
         handlers: [default, debug_file_handler]
         propagate: false
 
