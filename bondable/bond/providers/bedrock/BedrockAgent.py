@@ -606,29 +606,45 @@ class BedrockAgent(Agent):
             
             if action_input:
                 api_path = action_input.get('apiPath')
-                
+
                 # Check if this is an MCP tool
                 if api_path and api_path.startswith('/_bond_mcp_tool_'):
                     # Extract tool name
                     tool_name = api_path.replace('/_bond_mcp_tool_', '')
                     
+                    LOGGER.info(f"Executing MCP tool: {tool_name}")
+                    LOGGER.debug(f"Tool name: {tool_name}, action input: {action_input}")
+
                     # Get parameters
                     parameters = {}
-                    if 'parameters' in action_input:
+                    
+                    # First check if parameters are in the 'parameters' array
+                    if 'parameters' in action_input and action_input['parameters']:
                         # Parameters might be in different formats
                         for param in action_input['parameters']:
                             if 'name' in param and 'value' in param:
                                 parameters[param['name']] = param['value']
-                    elif 'requestBody' in action_input:
+                    
+                    # Also check requestBody (parameters might be there instead or in addition)
+                    if 'requestBody' in action_input and not parameters:
                         # Parameters might be in request body
                         request_body = action_input.get('requestBody', {})
                         content = request_body.get('content', {})
                         if 'application/json' in content:
-                            body_str = content['application/json'].get('body', '{}')
-                            try:
-                                parameters = json.loads(body_str)
-                            except json.JSONDecodeError:
-                                LOGGER.error(f"Failed to parse request body JSON: {body_str}")
+                            json_content = content['application/json']
+                            
+                            # Check if parameters are in 'properties' array format
+                            if 'properties' in json_content:
+                                for prop in json_content['properties']:
+                                    if 'name' in prop and 'value' in prop:
+                                        parameters[prop['name']] = prop['value']
+                            # Otherwise check for 'body' string format
+                            elif 'body' in json_content:
+                                body_str = json_content.get('body', '{}')
+                                try:
+                                    parameters = json.loads(body_str)
+                                except json.JSONDecodeError:
+                                    LOGGER.error(f"Failed to parse request body JSON: {body_str}")
                     
                     LOGGER.info(f"Executing MCP tool: {tool_name} with parameters: {parameters}")
                     
