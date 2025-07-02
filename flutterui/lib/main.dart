@@ -417,9 +417,6 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
         case 'Threads':
           pages.add(const ThreadsScreen());
           break;
-        case 'Profile':
-          pages.add(const ProfileScreen());
-          break;
       }
     }
 
