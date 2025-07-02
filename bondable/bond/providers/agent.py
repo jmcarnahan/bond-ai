@@ -347,17 +347,40 @@ class AgentProvider(ABC):
 
     def get_agent_records(self, user_id: str) -> List[Dict[str, str]]:
         with self.metadata.get_db_session() as session:
-            # first get the agent records that are owwned by the user
-            results: List[AgentRecord] = session.query(AgentRecord).filter(AgentRecord.owner_user_id == user_id).all()
-            agent_records = [
+            agent_records = []
+            
+            # First, check for the default agent (Home)
+            default_agent = session.query(AgentRecord).filter(AgentRecord.is_default == True).first()
+            default_agent_id = None
+            
+            if default_agent:
+                default_agent_id = default_agent.agent_id
+                # Check if user owns the default agent
+                is_owned = default_agent.owner_user_id == user_id
+                agent_records.append({
+                    "name": default_agent.name,
+                    "agent_id": default_agent.agent_id,
+                    "owned": is_owned
+                })
+            
+            # Get the agent records that are owned by the user (excluding default if already added)
+            query = session.query(AgentRecord).filter(AgentRecord.owner_user_id == user_id)
+            if default_agent_id:
+                query = query.filter(AgentRecord.agent_id != default_agent_id)
+            results: List[AgentRecord] = query.all()
+            
+            owned_records = [
                 {"name": record.name, "agent_id": record.agent_id, "owned": True} for record in results
             ]
+            agent_records.extend(owned_records)
             
-            # Get owned agent IDs to avoid duplicates
+            # Get owned agent IDs to avoid duplicates (including default if owned)
             owned_agent_ids = {record.agent_id for record in results}
+            if default_agent and default_agent.owner_user_id == user_id:
+                owned_agent_ids.add(default_agent_id)
 
-            # then get the agent records that are shared with the user via groups
-            # exclude agents that the user already owns
+            # Get the agent records that are shared with the user via groups
+            # exclude agents that the user already owns and the default agent
             shared_results: List[AgentRecord] = (
                 session.query(AgentRecord)
                 .join(AgentGroup, AgentRecord.agent_id == AgentGroup.agent_id)
@@ -368,12 +391,16 @@ class AgentProvider(ABC):
                 )
                 .all()
             )
+            
+            # Filter out default agent from shared results if it exists
+            if default_agent_id:
+                shared_results = [agent for agent in shared_results if agent.agent_id != default_agent_id]
+            
             shared_agent_records = [
                 {"name": agent.name, "agent_id": agent.agent_id, "owned": False} for agent in shared_results
             ]
-
-            # combine owned and shared agent records (no duplicates now)
             agent_records.extend(shared_agent_records)
+            
             return agent_records
         
     def list_agents(self, user_id) -> List[Agent]:
