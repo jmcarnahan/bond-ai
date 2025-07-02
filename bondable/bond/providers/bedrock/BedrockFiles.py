@@ -8,8 +8,8 @@ import os
 import uuid
 import logging
 import base64
-from typing import Optional, Tuple, Dict, Any
 import boto3
+from typing import Optional, Tuple, Dict, Any
 from botocore.exceptions import ClientError
 from bondable.bond.config import Config
 from bondable.bond.providers.files import FilesProvider
@@ -29,7 +29,7 @@ class BedrockFilesProvider(FilesProvider):
         Initialize Bedrock Files provider.
         
         Args:
-            s3_client: Boto3 S3 client
+            s3_client: S3 client
             metadata: BedrockMetadata instance for storing file records
         """
         super().__init__(metadata)

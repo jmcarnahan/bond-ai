@@ -13,6 +13,7 @@ class MessageInputBar extends ConsumerStatefulWidget {
   final VoidCallback onSendMessage;
   final void Function(List<PlatformFile>) onFileAttachmentsChanged;
   final List<PlatformFile> attachments;
+  final VoidCallback? onCreateNewThread;
 
   const MessageInputBar({
     super.key,
@@ -22,7 +23,8 @@ class MessageInputBar extends ConsumerStatefulWidget {
     required this.isSendingMessage,
     required this.onSendMessage,
     required this.onFileAttachmentsChanged,
-    required this.attachments
+    required this.attachments,
+    this.onCreateNewThread,
   });
 
   @override
@@ -33,20 +35,19 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
   late final FocusNode _keyboardFocusNode;
 
   Future<void> _pickFiles() async {
-    final result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-    );
+    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
 
     if (result != null && result.files.isNotEmpty) {
-      final updated = List<PlatformFile>.from(widget.attachments)..addAll(result.files);
+      final updated = List<PlatformFile>.from(widget.attachments)
+        ..addAll(result.files);
       widget.onFileAttachmentsChanged(List.unmodifiable(updated));
     }
   }
 
- void _onAttachmentRemoved(PlatformFile file) {
-  final updated = List<PlatformFile>.from(widget.attachments)..remove(file);
-  widget.onFileAttachmentsChanged(updated);
-}
+  void _onAttachmentRemoved(PlatformFile file) {
+    final updated = List<PlatformFile>.from(widget.attachments)..remove(file);
+    widget.onFileAttachmentsChanged(updated);
+  }
 
   @override
   void initState() {
@@ -85,11 +86,20 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
         children: [
           MessageAttachmentBar(
             attachments: widget.attachments,
-            onAttachmentRemoved: _onAttachmentRemoved
+            onAttachmentRemoved: _onAttachmentRemoved,
           ),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              if (widget.onCreateNewThread != null) ...[
+                _buildActionButton(
+                  icon: Icons.add_rounded,
+                  onPressed:
+                      widget.isSendingMessage ? null : widget.onCreateNewThread,
+                  tooltip: 'New thread',
+                ),
+                const SizedBox(width: 12.0),
+              ],
               Expanded(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
@@ -97,32 +107,41 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                     borderRadius: BorderRadius.circular(28.0),
                     color: colorScheme.surfaceContainerHighest,
                     border: Border.all(
-                      color: widget.isTextFieldFocused 
-                          ? colorScheme.primary 
-                          : colorScheme.outline,
+                      color:
+                          widget.isTextFieldFocused
+                              ? colorScheme.primary
+                              : colorScheme.outline,
                       width: widget.isTextFieldFocused ? 2.0 : 1.0,
                     ),
-                    boxShadow: widget.isTextFieldFocused ? [
-                      BoxShadow(
-                        color: colorScheme.primary.withValues(alpha: 0.1),
-                        blurRadius: 8,
-                        spreadRadius: 1,
-                      ),
-                    ] : null,
+                    boxShadow:
+                        widget.isTextFieldFocused
+                            ? [
+                              BoxShadow(
+                                color: colorScheme.primary.withValues(
+                                  alpha: 0.1,
+                                ),
+                                blurRadius: 8,
+                                spreadRadius: 1,
+                              ),
+                            ]
+                            : null,
                   ),
                   child: Material(
                     color: Colors.transparent,
-                    child: Padding( 
-                      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 2.0),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20.0,
+                        vertical: 2.0,
+                      ),
                       child: KeyboardListener(
                         focusNode: _keyboardFocusNode,
                         onKeyEvent: (KeyEvent event) {
-                          if (event is KeyDownEvent && 
-                            event.logicalKey == LogicalKeyboardKey.enter &&
-                            !HardwareKeyboard.instance.isShiftPressed &&
-                            !widget.isSendingMessage &&
-                            widget.textController.text.trim().isNotEmpty) {
-                              widget.onSendMessage();
+                          if (event is KeyDownEvent &&
+                              event.logicalKey == LogicalKeyboardKey.enter &&
+                              !HardwareKeyboard.instance.isShiftPressed &&
+                              !widget.isSendingMessage &&
+                              widget.textController.text.trim().isNotEmpty) {
+                            widget.onSendMessage();
                           }
                         },
                         child: TextField(
@@ -136,9 +155,10 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                             fontSize: 16,
                           ),
                           decoration: InputDecoration(
-                            hintText: widget.isSendingMessage 
-                                ? '${appTheme.name} is typing...' 
-                                : 'Type your message here...',
+                            hintText:
+                                widget.isSendingMessage
+                                    ? '${appTheme.name} is typing...'
+                                    : 'Type your message here...',
                             hintStyle: TextStyle(
                               color: colorScheme.onSurfaceVariant,
                               fontSize: 16,
@@ -147,10 +167,13 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                             enabledBorder: InputBorder.none,
                             focusedBorder: InputBorder.none,
                             filled: false,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 14.0),
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 14.0,
+                            ),
                           ),
                           onSubmitted: (value) {
-                            if (!widget.isSendingMessage && value.trim().isNotEmpty) {
+                            if (!widget.isSendingMessage &&
+                                value.trim().isNotEmpty) {
                               widget.onSendMessage();
                             }
                           },
@@ -169,38 +192,39 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
               const SizedBox(width: 8.0),
               widget.isSendingMessage
                   ? Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: colorScheme.primary.withValues(alpha: 0.1),
-                      ),
-                      child: Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5, 
-                            color: colorScheme.primary,
-                          ),
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: colorScheme.primary.withValues(alpha: 0.1),
+                    ),
+                    child: Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: colorScheme.primary,
                         ),
                       ),
-                    )
-                  : _buildActionButton(
-                      icon: Icons.send_rounded,
-                      onPressed: widget.textController.text.trim().isEmpty 
-                          ? null 
-                          : widget.onSendMessage,
-                      tooltip: 'Send message',
-                      isPrimary: true,
                     ),
+                  )
+                  : _buildActionButton(
+                    icon: Icons.send_rounded,
+                    onPressed:
+                        widget.textController.text.trim().isEmpty
+                            ? null
+                            : widget.onSendMessage,
+                    tooltip: 'Send message',
+                    isPrimary: true,
+                  ),
             ],
           ),
         ],
-      )
+      ),
     );
   }
-  
+
   Widget _buildActionButton({
     required IconData icon,
     required VoidCallback? onPressed,
@@ -210,30 +234,35 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isEnabled = onPressed != null;
-    
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: isPrimary && isEnabled
-            ? colorScheme.primary
-            : isEnabled 
+        color:
+            isPrimary && isEnabled
+                ? colorScheme.primary
+                : isEnabled
                 ? colorScheme.surfaceContainerHighest
                 : colorScheme.surfaceContainerHigh,
-        boxShadow: isPrimary && isEnabled ? [
-          BoxShadow(
-            color: colorScheme.primary.withValues(alpha: 0.3),
-            blurRadius: 8,
-            spreadRadius: 0,
-          ),
-        ] : null,
+        boxShadow:
+            isPrimary && isEnabled
+                ? [
+                  BoxShadow(
+                    color: colorScheme.primary.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    spreadRadius: 0,
+                  ),
+                ]
+                : null,
       ),
       child: IconButton(
         icon: Icon(
           icon,
-          color: isPrimary && isEnabled
-              ? colorScheme.onPrimary
-              : isEnabled 
+          color:
+              isPrimary && isEnabled
+                  ? colorScheme.onPrimary
+                  : isEnabled
                   ? colorScheme.onSurface
                   : colorScheme.onSurfaceVariant,
           size: 24,

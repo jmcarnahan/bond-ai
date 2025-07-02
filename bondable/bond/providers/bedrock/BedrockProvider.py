@@ -62,7 +62,7 @@ class BedrockProvider(Provider):
         
         # Initialize agent provider
         from .BedrockAgent import BedrockAgentProvider
-        self.agents = BedrockAgentProvider(self.metadata)
+        self.agents = BedrockAgentProvider(bedrock_client=self.bedrock_client, metadata=self.metadata)
         
         # Initialize files provider
         from .BedrockFiles import BedrockFilesProvider
@@ -85,28 +85,45 @@ class BedrockProvider(Provider):
         """Initialize AWS service clients"""
         # Get AWS configuration from environment
         self.aws_region = os.getenv('AWS_REGION', 'us-west-2')
-        
+        aws_session = None
+        try:
+            aws_profile = os.getenv('AWS_PROFILE', None)
+            if aws_profile:
+                aws_session: boto3.Session = boto3.Session(
+                    profile_name=aws_profile,
+                    region_name=self.aws_region
+                )
+            else:
+                aws_session: boto3.Session = boto3.Session(
+                    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID', None),
+                    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY', None),
+                    region_name=self.aws_region
+                )  
+        except Exception as e:
+            LOGGER.error(f"Error creating AWS session: {e}")
+            raise ValueError("Failed to create AWS session. Check your AWS credentials and configuration.")
+
         # Initialize Bedrock clients
         try:
-            self.bedrock_client = boto3.client(
+            self.bedrock_client = aws_session.client(
                 service_name='bedrock',
                 region_name=self.aws_region
             )
-            self.bedrock_runtime_client = boto3.client(
+            self.bedrock_runtime_client = aws_session.client(
                 service_name='bedrock-runtime',
                 region_name=self.aws_region
             )
-            self.bedrock_agent_client = boto3.client(
+            self.bedrock_agent_client = aws_session.client(
                 service_name='bedrock-agent',
                 region_name=self.aws_region
             )
-            self.bedrock_agent_runtime_client = boto3.client(
+            self.bedrock_agent_runtime_client = aws_session.client(
                 service_name='bedrock-agent-runtime',
                 region_name=self.aws_region
             )
             
             # S3 client for file storage
-            self.s3_client = boto3.client(
+            self.s3_client = aws_session.client(
                 service_name='s3',
                 region_name=self.aws_region
             )
