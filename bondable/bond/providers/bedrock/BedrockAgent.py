@@ -11,6 +11,7 @@ import json
 import logging
 import base64
 import hashlib
+import boto3
 from typing import List, Dict, Optional, Generator, Any
 from botocore.exceptions import ClientError
 from typing_extensions import override
@@ -24,6 +25,7 @@ from bondable.bond.providers.metadata import AgentRecord
 from .BedrockCRUD import create_bedrock_agent, update_bedrock_agent, delete_bedrock_agent, get_bedrock_agent
 from .BedrockMCP import execute_mcp_tool_sync
 from .BedrockMetadata import BedrockMetadata, BedrockAgentOptions
+from .BedrockProvider import BedrockProvider
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_TEMPERATURE = 0.0
@@ -40,8 +42,6 @@ class BedrockAgent(Agent):
         self.agent_id = agent_id
         self.bedrock_agent_id = bedrock_options.bedrock_agent_id
         self.bedrock_agent_alias_id = bedrock_options.bedrock_agent_alias_id
-
-        from bondable.bond.providers.bedrock.BedrockProvider import BedrockProvider
         self.bond_provider: BedrockProvider = Config.config().get_provider()
 
         bedrock_agent = self.bond_provider.bedrock_agent_client.get_agent(agentId=self.bedrock_agent_id)
@@ -104,7 +104,10 @@ class BedrockAgent(Agent):
         return self.metadata.get(key, default_value)
     
     def get_metadata(self) -> Dict[str, str]:
-        return self.metadata
+        # Include owner_user_id in metadata for frontend compatibility
+        metadata = self.metadata.copy() if self.metadata else {}
+        metadata['owner_user_id'] = self.owner_user_id
+        return metadata
     
     def _yield_error_message(self, thread_id: str, error_message: str, 
                            error_code: Optional[str] = None) -> Generator[str, None, None]:
@@ -690,7 +693,8 @@ class BedrockAgent(Agent):
 class BedrockAgentProvider(AgentProvider):
     """Bedrock implementation of the AgentProvider interface"""
     
-    def __init__(self, metadata: BedrockMetadata):
+    def __init__(self, bedrock_client: boto3.client, metadata: BedrockMetadata):
+        self.bedrock_client = bedrock_client
         self.metadata = metadata
         LOGGER.info("Initialized BedrockAgentProvider")
     
@@ -872,12 +876,7 @@ class BedrockAgentProvider(AgentProvider):
             else:
                 # Fallback: we need the bedrock client (not runtime) to list models
                 # Try to get it from the bedrock_agent_client's session
-                import boto3
-                bedrock_client = boto3.client(
-                    service_name='bedrock',
-                    region_name=os.getenv('AWS_REGION', 'us-east-1')
-                )
-                response = bedrock_client.list_foundation_models(
+                response = self.bedrock_client.list_foundation_models(
                     byOutputModality='TEXT'
                 )
                 models = []
