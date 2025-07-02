@@ -816,14 +816,12 @@ class BedrockAgentProvider(AgentProvider):
                 )
                 session.add(bedrock_options)
             else:
-                bedrock_agent_id, bedrock_agent_alias_id = update_bedrock_agent(
-                    agent_id=agent_id,
-                    agent_def=agent_def
-                )
                 bedrock_options = session.query(BedrockAgentOptions).filter_by(agent_id=agent_id).first()
                 if bedrock_options:
-                    bedrock_options.bedrock_agent_id=bedrock_agent_id
-                    bedrock_options.bedrock_agent_alias_id=bedrock_agent_alias_id
+                    bedrock_agent_id = bedrock_options.bedrock_agent_id
+                    bedrock_agent_alias_id = bedrock_options.bedrock_agent_alias_id
+
+                    # Update existing options
                     bedrock_options.temperature = agent_def.temperature or DEFAULT_TEMPERATURE
                     bedrock_options.tools = agent_def.tools or {}
                     bedrock_options.tool_resources = agent_def.tool_resources or {}
@@ -833,6 +831,12 @@ class BedrockAgentProvider(AgentProvider):
                 else: 
                     raise ValueError(f"Bedrock options for agent {agent_id} not found in database")
                 
+                bedrock_agent_id, bedrock_agent_alias_id = update_bedrock_agent(
+                    agent_def=agent_def,
+                    bedrock_agent_id=bedrock_agent_id,
+                    bedrock_agent_alias_id=bedrock_agent_alias_id
+                )
+
             session.commit()  
             
             bedrock_agent = BedrockAgent(
