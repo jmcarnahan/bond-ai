@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:flutterui/providers/create_agent_form_provider.dart';
-import 'package:flutterui/providers/models_provider.dart';
 import 'widgets/agent_form_fields.dart';
 import 'widgets/agent_files_table.dart';
 import 'widgets/agent_model_section.dart';

@@ -1,0 +1,1549 @@
+name,category,tag1,tag2,tag3
+3d_rotation,action,perspective,modeling,transform
+accessibility,action,handicap,inclusive,support
+accessibility_new,action,updated,modern,inclusive
+accessible,action,wheelchair,disability,support
+accessible_forward,action,movement,direction,mobility
+account_balance,action,bank,institution,finance
+account_balance_wallet,action,payment,money,billfold
+account_box,action,profile,user,rectangle
+account_circle,action,avatar,profile,user
+add_shopping_cart,action,purchase,checkout,ecommerce
+add_task,action,checklist,complete,todo
+add_to_drive,action,upload,cloud,storage
+addchart,action,graph,statistics,analytics
+admin_panel_settings,action,dashboard,control,configure
+alarm,action,clock,reminder,alert
+alarm_add,action,schedule,reminder,create
+alarm_off,action,disable,silent,mute
+alarm_on,action,active,ringing,alert
+all_inbox,action,messages,folder,mail
+all_out,action,expand,maximize,fullscreen
+analytics,action,statistics,metrics,dashboard
+anchor,action,link,nautical,secure
+android,action,mobile,robot,operating system
+announcement,action,alert,megaphone,broadcast
+api,action,developer,code,interface
+app_blocking,action,restrict,disable,prevent
+arrow_circle_down,action,download,descend,beneath
+arrow_circle_up,action,upload,ascend,upward
+arrow_right_alt,action,next,forward,proceed
+article,action,document,content,text
+aspect_ratio,action,screen size,dimensions,scaling
+assessment,action,analytics,metrics,report
+assignment,action,task,homework,document
+assignment_ind,action,personal,user task,individual
+assignment_late,action,overdue,deadline,delayed
+assignment_return,action,submit,give back,handover
+assignment_returned,action,completed,submitted,delivered
+assignment_turned_in,action,complete,finished,submitted
+autorenew,action,refresh,cycle,repeat
+backup,action,save,cloud,storage
+backup_table,action,data storage,spreadsheet,archive
+batch_prediction,action,forecast,analytics,machine learning
+book,action,reading,literature,library
+book_online,action,reservation,digital,scheduling
+bookmark,action,favorite,save,marker
+bookmark_border,action,outline,unfilled,save page
+bookmarks,action,collection,saved items,favorites
+bug_report,action,issue,defect,error
+build,action,wrench,settings,tools
+build_circle,action,maintenance,configure,round
+cached,action,refresh,sync,reload
+calendar_today,action,date,schedule,planner
+calendar_view_day,action,agenda,timeline,schedule
+camera_enhance,action,photo,improve,optimize
+cancel_schedule_send,action,abort,delay,postpone
+card_giftcard,action,present,voucher,coupon
+card_membership,action,loyalty,access,subscription
+card_travel,action,ticket,passport,boarding
+change_history,action,log,timeline,records
+check_circle,action,complete,approved,verified
+check_circle_outline,action,verified,complete,success
+chrome_reader_mode,action,article,distraction free,text view
+circle_notifications,action,alerts,updates,badge
+class,action,bookmark,education,category
+close_fullscreen,action,minimize,exit,collapse
+code,action,programming,developer,syntax
+comment_bank,action,feedback,messages,storage
+commute,action,travel,transportation,journey
+compare_arrows,action,exchange,swap,transfer
+compress,action,shrink,reduce,minimize
+contact_page,action,address book,profile info,directory
+contact_support,action,help desk,customer service,assistance
+contactless,action,wireless,tap payment,nfc
+copyright,action,legal rights,intellectual property,protection
+credit_card,action,payment method,debit,banking
+dangerous,action,warning,hazard,alert
+dashboard,action,overview,control panel,metrics
+dashboard_customize,action,settings panel,widgets,personalize
+date_range,action,calendar,schedule,period
+delete,action,remove,trash,erase
+delete_forever,action,permanent remove,erase,trash
+delete_outline,action,remove,trash bin,recycle
+description,action,document,text file,details
+disabled_by_default,action,blocked,inactive,restricted
+dns,action,server,network,domain
+done,action,complete,checkmark,success
+done_all,action,checked,verified,approved
+done_outline,action,checkmark,verified,bordered
+donut_large,action,loading,progress,circular
+donut_small,action,spinner,loading,progress
+drag_indicator,action,handle,reorder,gripper
+dynamic_form,action,adaptive,responsive,interactive
+eco,action,green,sustainable,environmental
+edit_off,action,readonly,locked,disabled
+eject,action,remove,media,disconnect
+euro_symbol,action,currency,money,financial
+event,action,calendar,schedule,appointment
+event_seat,action,theater,reservation,booking
+exit_to_app,action,logout,external,redirect
+expand,action,enlarge,maximize,fullscreen
+explore,action,compass,navigation,discover
+explore_off,action,disabled,inactive,hidden
+extension,action,plugin,addon,puzzle
+face,action,person,profile,identity
+face_unlock,action,security,biometric,authentication
+fact_check,action,verify,validate,accuracy
+favorite,action,heart,like,bookmark
+favorite_border,action,outline,unfilled,wishlist
+feedback,action,comment,review,response
+file_present,action,document,available,exists
+filter_alt,action,sort options,refine,funnel
+filter_list_alt,action,sort data,organize,categorize
+find_in_page,action,search document,locate,magnify
+find_replace,action,swap text,edit,substitute
+fingerprint,action,biometric,security,identity
+fit_screen,action,resize,maximize,adjust
+flaky,action,unstable,unreliable,inconsistent
+flight_land,action,arrival,descend,airplane
+flight_takeoff,action,departure,ascend,airplane
+flip_to_back,action,rotate,reverse,behind
+flip_to_front,action,rotate,layer,bring forward
+g_translate,action,language,interpret,multilingual
+gavel,action,justice,legal,hammer
+get_app,action,download,install,save
+gif,action,animation,image,motion
+grade,action,star,rate,favorite
+grading,action,evaluate,review,assess
+group_work,action,collaborate,team,project
+help,action,support,question,info
+help_center,action,support,assistance,resources
+help_outline,action,question mark,support,information
+highlight_alt,action,select,focus,emphasize
+highlight_off,action,cancel,remove,clear
+history,action,clock,recent,timeline
+history_toggle_off,action,disable,clear,reset
+home,action,house,main,dashboard
+home_filled,action,house,solid,main
+horizontal_split,action,divide,layout,sections
+hourglass_disabled,action,inactive,blocked,unavailable
+hourglass_empty,action,loading,waiting,timer
+hourglass_full,action,timer,waiting,loading
+http,action,protocol,web,network
+https,action,secure,encrypted,protection
+important_devices,action,hardware,electronics,priority
+info,action,help,details,about
+info_outline,action,help,circle,details
+input,action,enter,field,form
+integration_instructions,action,setup,guide,manual
+invert_colors,action,contrast,negative,reverse
+label,action,tag,sticker,badge
+label_important,action,priority,bookmark,flag
+label_important_outline,action,priority,bookmark,hollow
+label_off,action,disabled,hidden,remove
+label_outline,action,hollow,tag,border
+language,action,translate,global,international
+launch,action,external,open,arrow
+leaderboard,action,ranking,stats,chart
+lightbulb,action,idea,bright,solution
+lightbulb_outline,action,idea,hollow,solution
+line_style,action,border,stroke,pattern
+line_weight,action,thickness,stroke,border
+list,action,menu,items,bullets
+lock,action,secure,protected,private
+lock_clock,action,timer,scheduled,timeout
+lock_open,action,unlocked,access,unsecured
+lock_outline,action,security,border,hollow
+login,action,signin,enter,access
+logout,action,signout,exit,disconnect
+loyalty,action,rewards,points,membership
+mark_as_unread,action,message,pending,notification
+markunread_mailbox,action,post box,letterbox,delivery
+maximize,action,fullscreen,expand,enlarge
+mediation,action,negotiate,resolve,compromise
+minimize,action,shrink,collapse,reduce
+model_training,action,machine learning,ai,dataset
+next_plan,action,schedule,upcoming,agenda
+nightlight_round,action,dark mode,evening,moon
+not_accessible,action,restricted,blocked,disabled
+not_started,action,pending,queued,inactive
+note_add,action,create memo,document,compose
+offline_bolt,action,lightning,power,disconnected
+offline_pin,action,checkmark,verified,disconnected
+online_prediction,action,forecast,analytics,estimate
+opacity,action,transparent,fade,visibility
+open_in_browser,action,webpage,launch,view
+open_in_full,action,maximize,expand,fullscreen
+open_in_new,action,external,launch,redirect
+open_with,action,arrows,select,choose
+outbond,action,external,redirect,export
+outbox,action,sent,mail,delivery
+outgoing_mail,action,send,envelope,dispatch
+outlet,action,power,socket,electrical
+pageview,action,search,magnify,preview
+pan_tool,action,grab,drag,gesture
+payment,action,money,credit card,transaction
+pending,action,waiting,processing,queue
+pending_actions,action,tasks,workflow,incomplete
+perm_camera_mic,action,media,recording,access
+perm_contact_calendar,action,schedule,events,planner
+perm_data_setting,action,configure,system,preferences
+perm_device_information,action,system specs,hardware details,tech info
+perm_identity,action,profile access,user data,credentials
+perm_media,action,gallery access,file storage,content library
+perm_phone_msg,action,text access,sms control,messaging rights
+perm_scan_wifi,action,network search,signal detect,wireless access
+pets,action,animals,companions,furry friends
+picture_in_picture,action,video overlay,floating window,mini player
+picture_in_picture_alt,action,video mode,screen overlay,compact view
+plagiarism,action,copy check,duplicate scan,originality
+play_for_work,action,business game,corporate fun,team activity
+polymer,action,development,web framework,coding
+power_settings_new,action,shutdown,on off,restart
+pregnant_woman,action,maternity,expectant,mother
+preview,action,view,sample,peek
+print,action,document,paper,output
+privacy_tip,action,security,shield,protect
+published_with_changes,action,update,modified,edited
+query_builder,action,search,database,filter
+question_answer,action,faq,support,help
+quickreply,action,message,chat,respond
+receipt,action,bill,invoice,payment
+record_voice_over,action,microphone,narration,audio
+redeem,action,gift,coupon,voucher
+remove_done,action,cancel,undo,revert
+remove_shopping_cart,action,clear,empty,delete
+reorder,action,sort,arrange,organize
+report_problem,action,alert,warning,error
+request_page,action,form,document,application
+restore,action,reset,recover,revert
+restore_from_trash,action,undelete,recover,retrieve
+restore_page,action,recover document,backup file,undo changes
+room,action,location pin,map marker,place point
+rounded_corner,action,smooth edge,curved border,soft angle
+rowing,action,water sport,paddle boat,exercise fitness
+rule,action,guideline,policy,standard
+saved_search,action,bookmark query,favorite filter,stored lookup
+schedule,action,calendar time,appointment,planner
+schedule_send,action,delayed delivery,future message,timed dispatch
+search,action,find,magnify,lookup
+search_off,action,disable find,cancel lookup,stop query
+segment,action,menu bars,hamburger,navigation
+send_and_archive,action,mail,store,folder
+settings,action,gear,preferences,options
+settings_applications,action,tools,config,system
+settings_backup_restore,action,sync,cloud,recovery
+settings_bluetooth,action,wireless,pairing,connection
+settings_brightness,action,display,light,screen
+settings_cell,action,mobile,network,signal
+settings_ethernet,action,lan,network,internet
+settings_input_antenna,action,signal,broadcast,reception
+settings_input_component,action,hardware port,connection,interface
+settings_input_composite,action,av port,analog,video cable
+settings_input_hdmi,action,digital port,display,multimedia
+settings_input_svideo,action,video port,analog,connector
+settings_overscan,action,display area,screen fit,resolution
+settings_phone,action,mobile config,cellular,device options
+settings_power,action,energy,battery,shutdown
+settings_remote,action,control,wireless,device
+settings_voice,action,speech,microphone,audio
+shop,action,store,purchase,retail
+shop_two,action,retail store,purchase,marketplace
+shopping_bag,action,retail,purchase,merchandise
+shopping_basket,action,container,groceries,purchases
+shopping_cart,action,checkout,trolley,purchases
+smart_button,action,interactive,clickable,interface
+source,action,code,origin,development
+speaker_notes,action,comments,presentation,remarks
+speaker_notes_off,action,muted,disabled,silent
+spellcheck,action,grammar,correction,proofreading
+star_rate,action,review,ranking,feedback
+stars,action,favorite,rating,bookmark
+sticky_note_2,action,memo,reminder,post-it
+store,action,shop,retail,market
+subject,action,text,content,lines
+subtitles_off,action,captions,disabled,muted
+supervised_user_circle,action,admin,management,profile
+supervisor_account,action,admin,manager,overseer
+support,action,help,assistance,service
+swap_horiz,action,exchange,transfer,arrows
+swap_horizontal_circle,action,exchange,rotate,arrows
+swap_vert,action,exchange direction,flip arrows,reorder items
+swap_vertical_circle,action,exchange arrows,round switch,cycle order
+swipe,action,gesture control,touch motion,slide finger
+sync_alt,action,bidirectional,exchange data,mirror arrows
+system_update_alt,action,download arrow,install software,upgrade device
+tab,action,browser page,navigation menu,window panel
+tab_unselected,action,inactive page,disabled window,outline box
+table_view,action,grid layout,spreadsheet,data cells
+text_rotate_up,action,flip words,vertical text,angle letters
+text_rotate_vertical,action,sideways text,perpendicular words,column writing
+text_rotation_angledown,action,tilt text,diagonal text,downward slope
+text_rotation_angleup,action,tilt text,diagonal text,upward slope
+text_rotation_down,action,vertical text,flip text,upside down
+text_rotation_none,action,horizontal text,normal text,default align
+theaters,action,cinema,movie,entertainment
+thumb_down,action,dislike,negative,feedback
+thumb_down_off_alt,action,dislike outline,negative empty,feedback hollow
+thumb_up,action,like,positive,approve
+thumb_up_off_alt,action,like outline,positive empty,approve hollow
+thumbs_up_down,action,vote,rate,feedback
+timeline,action,chronological,sequence,history
+toc,action,contents,chapters,index
+today,action,calendar,current,date
+toll,action,payment,fee,charge
+touch_app,action,tap,click,gesture
+tour,action,guide,walkthrough,tutorial
+track_changes,action,revision,history,edit
+translate,action,language,international,conversion
+trending_down,action,decrease,decline,falling
+trending_flat,action,steady,neutral,stable
+trending_up,action,growth,increase,upward
+turned_in,action,bookmark,saved,favorite
+turned_in_not,action,unsaved,remove,unmarked
+unpublished,action,draft,private,hidden
+update,action,refresh,sync,reload
+upgrade,action,premium,level up,improve
+verified,action,authentic,approved,checked
+verified_user,action,trusted,secure,authenticated
+vertical_split,action,divide,columns,layout
+view_agenda,action,schedule,list,timeline
+view_array,action,grid layout,organize,display
+view_carousel,action,slideshow,rotate,gallery
+view_column,action,vertical,split,divide
+view_day,action,calendar,schedule,timeline
+view_headline,action,text,news,title
+view_in_ar,action,augmented,virtual,3d
+view_list,action,menu,items,bulleted
+view_module,action,grid,tiles,blocks
+view_quilt,action,mosaic,pattern,tiles
+view_sidebar,action,panel,navigation,menu
+view_stream,action,list layout,feed view,content flow
+view_week,action,calendar view,schedule grid,time blocks
+visibility,action,show,eye open,reveal
+visibility_off,action,hide,concealed,private
+voice_over_off,action,mute audio,narration disabled,silent mode
+watch_later,action,bookmark time,schedule,reminder
+wifi_protected_setup,action,network security,connection config,wireless safety
+work,action,business,briefcase,office
+work_off,action,vacation mode,break time,unavailable
+work_outline,action,job icon,business line,career
+wysiwyg,action,text editor,formatting,rich text
+youtube_searched_for,action,video search,find content,browse media
+zoom_in,action,magnify,enlarge,expand
+zoom_out,action,reduce,shrink,minimize
+add_alert,alert,notification,reminder,bell
+auto_delete,alert,cleanup,remove,scheduled
+error,alert,problem,failure,invalid
+error_outline,alert,warning,issue,alert
+notification_important,alert,priority,urgent,critical
+warning,alert,caution,danger,attention
+warning_amber,alert,caution,alert triangle,hazard
+10k,av,resolution,video quality,display
+1k,av,resolution,video quality,display
+1k_plus,av,resolution,video quality,enhanced
+2k,av,resolution,video quality,display
+2k_plus,av,resolution,video quality,enhanced
+3k,av,resolution,video quality,display
+3k_plus,av,resolution,video quality,enhanced
+4k,av,resolution,video quality,display
+4k_plus,av,resolution,video quality,enhanced
+5g,av,cellular network,wireless speed,mobile data
+5k,av,video quality,resolution,display format
+5k_plus,av,ultra hd,high resolution,premium quality
+6k,av,video format,screen quality,display mode
+6k_plus,av,ultra hd,premium video,enhanced quality
+7k,av,video format,screen resolution,display standard
+7k_plus,av,ultra hd,premium format,enhanced display
+8k,av,ultra hd,high definition,screen quality
+8k_plus,av,premium video,maximum quality,superior display
+9k,av,video format,screen resolution,display mode
+9k_plus,av,resolution quality,video format,high definition
+add_to_queue,av,playlist,next item,media list
+airplay,av,streaming,wireless display,cast screen
+album,av,music collection,record,playlist
+art_track,av,music visual,song info,media details
+av_timer,av,countdown,duration,stopwatch
+branding_watermark,av,logo overlay,trademark,copyright
+call_to_action,av,prompt button,engage,interactive
+closed_caption,av,subtitles,transcript,accessibility
+closed_caption_disabled,av,subtitles off,no text,muted text
+closed_caption_off,av,subtitles,accessibility,disabled
+control_camera,av,adjust,navigation,pan
+equalizer,av,audio,mixer,levels
+explicit,av,warning,mature,adult
+fast_forward,av,skip,next,speed
+fast_rewind,av,previous,reverse,back
+featured_play_list,av,recommended,highlights,curated
+featured_video,av,recommended,highlight,showcase
+fiber_dvr,av,recording,television,digital
+fiber_manual_record,av,capture,recording,dot
+fiber_new,av,latest,recent,badge
+fiber_pin,av,attach,bookmark,marker
+fiber_smart_record,av,recording,capture,media
+forward_10,av,skip,advance,seek
+forward_30,av,skip,advance,seek
+forward_5,av,skip,advance,seek
+games,av,play,entertainment,controller
+hd,av,quality,resolution,display
+hearing,av,audio,sound,accessibility
+hearing_disabled,av,mute,silent,accessibility
+high_quality,av,premium,resolution,hd
+library_add,av,collection,new,playlist
+library_add_check,av,verified,complete,success
+library_books,av,reading,collection,literature
+library_music,av,playlist,songs,collection
+loop,av,repeat,cycle,infinite
+mic,av,audio,recording,voice
+mic_none,av,outline,empty,inactive
+mic_off,av,mute,silent,disabled
+missed_video_call,av,unavailable,unanswered,failed
+movie,av,film,cinema,entertainment
+music_video,av,performance,concert,multimedia
+new_releases,av,latest,fresh,updated
+not_interested,av,blocked,cancel,decline
+note,av,musical,sound,melody
+pause,av,stop,break,interrupt
+pause_circle_filled,av,stop,solid,button
+pause_circle_outline,av,stop,border,button
+play_arrow,av,start,begin,triangle
+play_circle_filled,av,start,solid,button
+play_circle_outline,av,start button,media control,hollow ring
+play_disabled,av,blocked,inactive,unavailable
+playlist_add,av,new list,create queue,media collection
+playlist_add_check,av,confirmed,verified,complete
+playlist_play,av,start queue,media list,begin sequence
+queue,av,lineup,waiting list,sequence
+queue_music,av,tracks list,song order,audio sequence
+queue_play_next,av,upcoming,following item,sequential
+radio,av,broadcast,wireless,tuner
+recent_actors,av,performers,cast list,latest users
+remove_from_queue,av,delete playlist,media list,deselect
+repeat,av,loop,cycle,playback
+repeat_on,av,enabled,active,loop mode
+repeat_one,av,single track,loop once,individual
+repeat_one_on,av,enabled single,active loop,track repeat
+replay,av,restart,playback,begin again
+replay_10,av,rewind seconds,backward,skip back
+replay_30,av,rewind seconds,backward,skip back
+replay_5,av,rewind seconds,backward,skip back
+replay_circle_filled,av,round button,restart,solid
+sd,av,memory card,storage device,flash drive
+shuffle,av,random,mix order,randomize
+shuffle_on,av,random active,mixing enabled,randomizing
+skip_next,av,forward,advance,jump ahead
+skip_previous,av,backward,rewind,jump back
+slow_motion_video,av,timeframe,playback speed,frame rate
+snooze,av,delay,postpone,remind later
+sort_by_alpha,av,alphabetical,organize text,name order
+speed,av,velocity,rate,tempo
+stop,av,halt,end playback,terminate
+stop_circle,av,pause button,halt playback,end media
+subscriptions,av,feed updates,channel list,content stream
+subtitles,av,closed caption,text overlay,translation
+surround_sound,av,audio system,speakers,theater mode
+video_call,av,conference,chat room,meeting
+video_label,av,tag clip,metadata,description
+video_library,av,collection,playlist,archive
+video_settings,av,preferences,controls,options
+videocam,av,recording,camera,streaming
+videocam_off,av,disabled,muted,inactive
+volume_down,av,quiet,sound control,audio level
+volume_mute,av,silent,no sound,audio disable
+volume_off,av,silence,audio disabled,no audio
+volume_up,av,loud,increase sound,audio boost
+web,av,browser,internet,website
+web_asset,av,resource,media,content
+add_ic_call,communication,phone,dial,contact
+alternate_email,communication,at symbol,contact,address
+app_registration,communication,signup,account,enroll
+business,communication,company,office,corporate
+call,communication,phone,dial,contact
+call_end,communication,hangup,disconnect,terminate
+call_made,communication,outgoing,dialed,arrow
+call_merge,communication,conference,combine,join
+call_missed,communication,unanswered,unavailable,notification
+call_missed_outgoing,communication,failed,unreached,attempt
+call_received,communication,incoming,answered,accept
+call_split,communication,separate,divide,fork
+cancel_presentation,communication,stop,meeting,slideshow
+cell_wifi,communication,network,signal,connection
+chat,communication,message,conversation,dialogue
+chat_bubble,communication,message,speech,dialog
+chat_bubble_outline,communication,message,empty,hollow
+clear_all,communication,delete,remove,reset
+comment,communication,feedback,reply,message
+contact_mail,communication,address,inbox,person
+contact_phone,communication,directory,call,person
+contacts,communication,address book,directory,people
+desktop_access_disabled,communication,blocked,computer,restricted
+dialer_sip,communication,telephone,voip,internet
+dialpad,communication,keypad,phone,numeric
+domain_disabled,communication,blocked,website,offline
+domain_verification,communication,check,website,security
+duo,communication,video,chat,conference
+email,communication,message,mail,inbox
+forum,communication,discussion,comments,chat
+forward_to_inbox,communication,send,share,transfer
+hourglass_bottom,communication,timer,waiting,loading
+hourglass_top,communication,timer,progress,loading
+import_contacts,communication,address,people,sync
+import_export,communication,transfer,sync,exchange
+invert_colors_off,communication,disabled,grayscale,monochrome
+list_alt,communication,menu,items,checklist
+live_help,communication,support,chat,assistance
+location_off,communication,disabled,gps,tracking
+location_on,communication,gps,pin,tracking
+mail_outline,communication,envelope,message,inbox
+mark_chat_read,communication,message,complete,checked
+mark_chat_unread,communication,message,pending,notification
+mark_email_read,communication,inbox,complete,checked
+mark_email_unread,communication,notification,inbox,new mail
+message,communication,chat,text,conversation
+mobile_screen_share,communication,cast,streaming,mirror
+more_time,communication,clock,schedule,extend
+nat,communication,network,routing,translation
+no_sim,communication,card,cellular,disabled
+pause_presentation,communication,slideshow,stop,break
+person_add_disabled,communication,block,restrict,unavailable
+person_search,communication,find,lookup,directory
+phone,communication,telephone,contact,dial
+phone_disabled,communication,blocked call,offline mode,unavailable
+phone_enabled,communication,active call,available,connected
+phonelink_erase,communication,clear data,remove device,wipe
+phonelink_lock,communication,secure device,protection,restricted
+phonelink_ring,communication,locate device,alert sound,find phone
+phonelink_setup,communication,configure device,initialize,pairing
+portable_wifi_off,communication,disconnected,offline,hotspot disabled
+present_to_all,communication,share screen,broadcast,display
+print_disabled,communication,blocked,unavailable,offline
+qr_code,communication,scan,barcode,matrix
+qr_code_scanner,communication,barcode,scan device,mobile reader
+read_more,communication,expand text,show details,continue reading
+ring_volume,communication,sound level,phone audio,ringer settings
+rss_feed,communication,news updates,blog syndication,web content
+rtt,communication,real time,text relay,accessibility
+screen_share,communication,cast display,mirror content,present online
+sentiment_satisfied_alt,communication,happy face,emoji rating,feedback smile
+speaker_phone,communication,hands free,loud audio,conference call
+stay_current_landscape,communication,horizontal mode,device rotation,wide view
+stay_current_portrait,communication,vertical mode,upright position,tall view
+stay_primary_landscape,communication,horizontal mode,screen rotation,device orientation
+stay_primary_portrait,communication,vertical mode,screen rotation,device orientation
+stop_screen_share,communication,end broadcast,disable sharing,presentation end
+swap_calls,communication,switch lines,toggle conversation,alternate phones
+textsms,communication,message bubble,chat box,instant message
+unsubscribe,communication,opt out,cancel service,remove list
+voicemail,communication,recorded message,phone inbox,missed call
+vpn_key,communication,security access,network password,authentication
+wifi_calling,communication,internet phone,voip,wireless call
+add,content,plus sign,create new,insert item
+add_box,content,create new,square plus,insert item
+add_circle,content,create new,round plus,insert item
+add_circle_outline,content,create new,round plus,insert item
+add_link,content,chain connect,hyperlink,url insert
+amp_stories,content,mobile content,web stories,social media
+archive,content,storage box,save files,repository
+attribution,content,credit source,reference,cite author
+backspace,content,delete key,erase text,remove char
+ballot,content,voting form,checklist,election
+biotech,content,laboratory,science,research
+block,content,restrict,forbidden,cancel
+block_flipped,content,mirror,reverse,alternate
+bolt,content,lightning,power,energy
+calculate,content,math,compute,arithmetic
+clear,content,remove,erase,delete
+content_copy,content,duplicate,clone,replicate
+content_cut,content,scissors,trim,remove
+content_paste,content,clipboard,insert,transfer
+create,content,edit,write,compose
+delete_sweep,content,cleanup,remove all,purge
+drafts,content,unfinished,pending,temporary
+dynamic_feed,content,live updates,streaming,realtime
+file_copy,content,duplicate,backup,clone
+filter_list,content,sort,organize,search
+flag,content,mark,important,bookmark
+font_download,content,typography,text style,typeface
+forward,content,send,next,advance
+gesture,content,touch,swipe,motion
+how_to_reg,content,signup,enroll,account
+how_to_vote,content,ballot,election,polling
+inbox,content,messages,folder,storage
+insights,content,analytics,statistics,trends
+inventory,content,stock,supplies,warehouse
+link,content,chain,url,connect
+link_off,content,disconnect,unchain,broken
+low_priority,content,minimal,unimportant,secondary
+mail,content,envelope,message,letter
+markunread,content,unopened,new,pending
+move_to_inbox,content,transfer,archive,organize
+next_week,content,calendar,schedule,future
+outlined_flag,content,banner,mark,pennant
+policy,content,rules,security,guidelines
+push_pin,content,tack,attach,bookmark
+redo,content,forward,repeat,retry
+remove,content,minus,delete,subtract
+remove_circle,content,minus,delete,cancel
+remove_circle_outline,content,minus,delete,cancel
+reply,content,respond,message,backward
+reply_all,content,respond,group,everyone
+report,content,alert,warning,notify
+report_gmailerrorred,content,warning,alert,notification
+report_off,content,disabled,hidden,cancel
+save,content,store,download,backup
+save_alt,content,download,export,archive
+select_all,content,checkbox,highlight,multiple
+send,content,paper plane,message,submit
+shield,content,protection,security,defense
+sort,content,filter,organize,arrange
+square_foot,content,measurement,dimension,area
+stacked_bar_chart,content,analytics,statistics,visualization
+stream,content,flow,content feed,timeline
+tag,content,label,category,metadata
+text_format,content,typography,styling,font
+unarchive,content,restore,extract,retrieve
+undo,content,revert,previous,back
+waves,content,ripple,water,motion
+weekend,content,leisure,relaxation,break
+where_to_vote,content,location,polling,ballot
+access_alarm,device,clock,timer,alert
+access_alarms,device,reminder,schedule,notification
+access_time,device,clock,schedule,duration
+ad_units,device,banner,advertising,display
+add_alarm,device,clock,reminder,schedule
+add_to_home_screen,device,shortcut,install,mobile
+airplanemode_active,device,flight,travel,offline
+airplanemode_inactive,device,disabled,connected,grounded
+battery_20,device,low,charging,power
+battery_30,device,charging,power,level
+battery_50,device,half,charging,power
+battery_60,device,charging,power,level
+battery_80,device,power level,device status,energy remaining
+battery_90,device,power level,device status,nearly full
+battery_alert,device,warning,low power,critical
+battery_charging_20,device,power up,plugged in,recharging
+battery_charging_30,device,power up,plugged in,recharging
+battery_charging_50,device,power up,half full,recharging
+battery_charging_60,device,power up,mostly full,recharging
+battery_charging_80,device,power up,almost full,recharging
+battery_charging_90,device,power up,nearly full,recharging
+battery_charging_full,device,complete,powered up,maximum
+battery_full,device,charged,power level,complete
+battery_std,device,normal,power status,default
+battery_unknown,device,error,undetected,question mark
+bluetooth,device,wireless,connectivity,pairing
+bluetooth_connected,device,paired,synced,active
+bluetooth_disabled,device,offline,inactive,disconnected
+bluetooth_searching,device,scanning,pairing mode,discovery
+brightness_auto,device,adaptive,automatic,smart
+brightness_high,device,maximum,sunny,intense
+brightness_low,device,dim,minimal,dark
+brightness_medium,device,light level,display setting,screen adjust
+data_usage,device,network stats,bandwidth meter,traffic monitor
+developer_mode,device,coding tools,debug options,programming
+device_thermostat,device,temperature control,climate setting,hvac
+devices,device,hardware,electronics,gadgets
+dvr,device,recorder,video storage,playback
+gps_fixed,device,location found,satellite lock,navigation
+gps_not_fixed,device,searching signal,locating,connecting
+gps_off,device,location disabled,navigation inactive,disconnected
+graphic_eq,device,audio levels,sound mixer,equalizer
+location_disabled,device,gps off,tracking blocked,position unavailable
+location_searching,device,gps active,finding position,radar scan
+mobile_friendly,device,responsive design,phone compatible,optimized view
+mobile_off,device,phone disabled,airplane mode,device inactive
+network_cell,device,signal bars,cellular data,mobile coverage
+network_wifi,device,wireless signal,internet connection,hotspot
+nfc,device,contactless payment,wireless transfer,tap connect
+reset_tv,device,restart display,reboot screen,power cycle
+screen_lock_landscape,device,horizontal orientation,rotation locked,wide view
+screen_lock_portrait,device,vertical orientation,rotation locked,tall view
+screen_lock_rotation,device,orientation lock,display secure,prevent rotate
+screen_rotation,device,display orient,auto rotate,pivot view
+screen_search_desktop,device,monitor find,computer query,display lookup
+sd_storage,device,memory card,flash drive,external memory
+send_to_mobile,device,phone transfer,device sync,wireless share
+settings_system_daydream,device,screensaver mode,display idle,sleep mode
+signal_cellular_0_bar,device,no service,network empty,disconnected
+signal_cellular_1_bar,device,weak network,poor connection,low signal
+signal_cellular_2_bar,device,medium network,partial signal,fair connection
+signal_cellular_3_bar,device,strong network,good signal,high connection
+signal_cellular_4_bar,device,full strength,mobile network,connectivity
+signal_cellular_alt,device,network bars,reception,wireless
+signal_cellular_connected_no_internet_0_bar,device,offline,disconnected,weak
+signal_cellular_connected_no_internet_1_bar,device,poor,limited,weak
+signal_cellular_connected_no_internet_2_bar,device,moderate,partial,medium
+signal_cellular_connected_no_internet_3_bar,device,good,strong,high
+signal_cellular_connected_no_internet_4_bar,device,maximum,full,strong
+signal_cellular_no_sim,device,card missing,inactive,disabled
+signal_cellular_null,device,empty,unavailable,inactive
+signal_cellular_off,device,disabled,airplane mode,disconnected
+signal_wifi_0_bar,device,no connection,weak network,disconnected
+signal_wifi_1_bar,device,poor connection,weak network,limited access
+signal_wifi_1_bar_lock,device,secured network,poor connection,protected access
+signal_wifi_2_bar,device,moderate connection,partial strength,fair network
+signal_wifi_2_bar_lock,device,secured network,moderate strength,protected access
+signal_wifi_3_bar,device,good connection,strong network,reliable access
+signal_wifi_3_bar_lock,device,secured network,good strength,protected access
+signal_wifi_4_bar,device,full strength,excellent connection,maximum power
+signal_wifi_4_bar_lock,device,secured network,full strength,protected access
+signal_wifi_off,device,disabled network,no connection,inactive wireless
+storage,device,database,hard drive,memory
+thermostat,device,temperature,climate,heating
+usb,device,connector,peripheral,port
+wallpaper,device,background,theme,display
+widgets,device,tools,gadgets,components
+wifi_lock,device,secure,protected,encrypted
+wifi_tethering,device,hotspot,sharing,network
+add_chart,editor,graph,analytics,visualization
+add_comment,editor,feedback,message,reply
+attach_file,editor,upload,document,paperclip
+attach_money,editor,currency,payment,financial
+bar_chart,editor,statistics,analytics,graph
+border_all,editor,grid,outline,table
+border_bottom,editor,underline,edge,formatting
+border_clear,editor,remove,erase,clean
+border_color,editor,paint,highlight,style
+border_horizontal,editor,rows,lines,divider
+border_inner,editor,inside,cell,interior
+border_left,editor,side,margin,edge
+border_outer,editor,frame,perimeter,boundary
+border_right,editor,edge margin,boundary line,side frame
+border_style,editor,line type,edge format,outline design
+border_top,editor,upper edge,header line,margin above
+border_vertical,editor,column divider,upright line,side separator
+bubble_chart,editor,scatter plot,data circles,visual graph
+drag_handle,editor,move grip,grabber dots,reorder control
+format_align_center,editor,middle text,balanced layout,centered content
+format_align_justify,editor,even spacing,full width,distributed text
+format_align_left,editor,start position,ragged right,text begin
+format_align_right,editor,end position,ragged left,text end
+format_bold,editor,strong text,emphasize,typography
+format_clear,editor,remove style,reset text,clean
+format_color_fill,editor,paint bucket,background,shade
+format_color_reset,editor,remove color,default,undo
+format_color_text,editor,font color,lettering,highlight
+format_indent_decrease,editor,margin left,outdent,align
+format_indent_increase,editor,margin right,tab,paragraph
+format_italic,editor,slanted,emphasis,typography
+format_line_spacing,editor,leading,paragraph gap,vertical
+format_list_bulleted,editor,unordered,dots,menu
+format_list_numbered,editor,ordered list,enumerate,sequence
+format_list_numbered_rtl,editor,arabic numbers,right aligned,reverse order
+format_paint,editor,style brush,copy format,text style
+format_quote,editor,citation,blockquote,reference
+format_shapes,editor,geometry,drawing,objects
+format_size,editor,text scale,font height,typography
+format_strikethrough,editor,cross out,delete text,remove
+format_textdirection_l_to_r,editor,writing mode,horizontal,western
+format_textdirection_r_to_l,editor,arabic,hebrew,reverse
+format_underlined,editor,emphasis,highlight,underscore
+functions,editor,math formula,equation,calculate
+height,editor,measurement,vertical size,dimension
+highlight,editor,marker,emphasize,select
+horizontal_rule,editor,divider,separator,line break
+insert_chart,editor,graph,analytics,statistics
+insert_chart_outlined,editor,graph border,analytics,diagram
+insert_comment,editor,feedback,message,note
+insert_drive_file,editor,document,upload,new file
+insert_emoticon,editor,smiley,emoji,mood
+insert_invitation,editor,calendar,event,schedule
+insert_link,editor,hyperlink,url,chain
+insert_photo,editor,image,picture,gallery
+linear_scale,editor,slider,measure,gradient
+margin,editor,spacing,padding,border
+merge_type,editor,combine,join,format
+mode,editor,edit,pencil,writing
+mode_comment,editor,feedback,chat,message
+mode_edit,editor,modify,pencil,write
+monetization_on,editor,payment,currency,finance
+money_off,editor,free,unpaid,cancel
+money_off_csred,editor,no payment,cancel cash,financial block
+multiline_chart,editor,graph trends,data lines,analytics
+notes,editor,memo pad,document,writing
+padding,editor,spacing,margin,layout
+pie_chart,editor,statistics,data circle,percentage
+pie_chart_outline,editor,graph border,statistics,analytics
+pie_chart_outlined,editor,data circle,graph border,statistics
+post_add,editor,new entry,create content,document plus
+publish,editor,upload,share content,release
+scatter_plot,editor,data points,distribution,correlation
+score,editor,points,grade,ranking
+short_text,editor,snippet,brief,summary
+show_chart,editor,graph,analytics,visualization
+space_bar,editor,keyboard,spacing,gap
+stacked_line_chart,editor,layers,trends,analytics
+strikethrough_s,editor,delete,formatting,crossed
+subscript,editor,below,formatting,typography
+superscript,editor,above,formatting,typography
+table_chart,editor,grid,spreadsheet,data
+table_rows,editor,list,grid,horizontal
+text_fields,editor,typography,formatting,input
+title,editor,heading,formatting,style
+vertical_align_bottom,editor,position,layout,formatting
+vertical_align_center,editor,middle,position,layout
+vertical_align_top,editor,position,layout,formatting
+wrap_text,editor,flow,paragraph,formatting
+approval,file,confirm,validate,accept
+attach_email,file,document,send,upload
+attachment,file,paperclip,file,upload
+cloud,file,storage,online,sync
+cloud_circle,file,storage,round,sync
+cloud_done,file,complete,success,finished
+cloud_download,file,save,fetch,retrieve
+cloud_off,file,disconnect,offline,disabled
+cloud_queue,file,pending,waiting,processing
+cloud_upload,file,send,store,backup
+create_new_folder,file,add,directory,organize
+download,file,save,transfer,receive
+download_done,file,complete,success,received
+drive_file_move,file,transfer,relocate,organize
+drive_file_move_outline,file,transfer,relocate,document
+drive_file_rename_outline,file,edit,modify,document
+drive_folder_upload,file,cloud,storage,transfer
+file_download,file,save,arrow,retrieve
+file_download_done,file,complete,checkmark,success
+file_upload,file,send,arrow,cloud
+folder,file,directory,storage,container
+folder_open,file,access,view,browse
+folder_shared,file,collaborate,group,access
+grid_view,file,tiles,thumbnail,layout
+request_quote,file,estimate,pricing,invoice
+rule_folder,file,policy,guidelines,organize
+snippet_folder,file,code,excerpts,samples
+text_snippet,file,document,excerpt,content
+topic,file,subject,category,discussion
+upload,file,transfer,send,cloud
+upload_file,file,document,transfer,cloud
+workspaces_filled,file,collaboration,solid,projects
+workspaces_outline,file,collaboration,hollow,projects
+browser_not_supported,hardware,incompatible,error,unsupported
+cast,hardware,streaming,wireless display,screen share
+cast_connected,hardware,streaming active,mirroring,wireless link
+cast_for_education,hardware,classroom,learning,remote teaching
+computer,hardware,desktop,workstation,monitor
+connected_tv,hardware,smart tv,display,screen
+desktop_mac,hardware,apple,imac,monitor
+desktop_windows,hardware,pc,monitor,microsoft
+developer_board,hardware,circuit,hardware,microchip
+device_hub,hardware,network,connection,router
+device_unknown,hardware,mystery,unidentified,error
+devices_other,hardware,peripherals,electronics,gadgets
+dock,hardware,charging,station,connector
+gamepad,hardware,controller,joystick,gaming
+headset,hardware,audio,earphones,listening
+headset_mic,hardware,audio,communication,recording
+headset_off,hardware,muted,disabled,disconnected
+keyboard,hardware,typing,input,peripheral
+keyboard_arrow_down,hardware,navigation,dropdown,expand
+keyboard_arrow_left,hardware,navigation,previous,back
+keyboard_arrow_right,hardware,navigation,next,forward
+keyboard_arrow_up,hardware,directional,navigation,upward
+keyboard_backspace,hardware,delete,erase,remove
+keyboard_capslock,hardware,uppercase,capital,letters
+keyboard_hide,hardware,minimize,collapse,close
+keyboard_return,hardware,enter,submit,newline
+keyboard_tab,hardware,indent,spacing,navigate
+keyboard_voice,hardware,dictation,microphone,speech
+laptop,hardware,portable,computer,notebook
+laptop_chromebook,hardware,google,portable,device
+laptop_mac,hardware,apple,device,portable
+laptop_windows,hardware,pc,notebook,device
+memory,hardware,ram,chip,storage
+monitor,hardware,display,screen,desktop
+mouse,hardware,cursor,pointer,peripheral
+phone_android,hardware,mobile,smartphone,device
+phone_iphone,hardware,mobile,smartphone,ios
+phonelink,hardware,sync,connect,pair
+phonelink_off,hardware,disconnect,unpaired,disabled
+point_of_sale,hardware,terminal,register,payment
+power_input,hardware,socket,adapter,electrical
+router,hardware,network,wifi device,internet gateway
+scanner,hardware,digitize,document reader,imaging device
+security,hardware,protection,shield,lock
+sim_card,hardware,mobile chip,cellular,phone memory
+smartphone,hardware,mobile device,cellphone,handset
+speaker,hardware,audio,sound device,amplifier
+speaker_group,hardware,audio system,stereo,multiroom
+tablet,hardware,touchscreen,portable,slate
+tablet_android,hardware,google device,touchscreen,mobile computing
+tablet_mac,hardware,ipad,apple device,touchscreen
+toys,hardware,playtime,children,entertainment
+tv,hardware,television,screen,display
+videogame_asset,hardware,controller,gaming,console
+watch,hardware,timepiece,wearable,smartwatch
+sensor_door,home,security,monitoring,detector
+sensor_window,home,security,monitoring,detector
+10mp,image,camera,resolution,megapixel
+11mp,image,camera,resolution,megapixel
+12mp,image,camera,resolution,megapixel
+13mp,image,camera,resolution,megapixel
+14mp,image,camera,resolution,megapixel
+15mp,image,camera,resolution,megapixel
+16mp,image,camera,resolution,megapixel
+17mp,image,camera,resolution,megapixel
+18mp,image,camera,resolution,megapixel
+19mp,image,camera,resolution,megapixel
+20mp,image,camera,resolution,megapixel
+21mp,image,camera,resolution,megapixel
+22mp,image,camera,resolution,megapixel
+23mp,image,camera,resolution,megapixel
+24mp,image,resolution,camera,megapixel
+2mp,image,resolution,camera,megapixel
+3mp,image,resolution,camera,megapixel
+4mp,image,resolution,camera,megapixel
+5mp,image,resolution,camera,megapixel
+6mp,image,resolution,camera,megapixel
+7mp,image,resolution,camera,megapixel
+8mp,image,resolution,camera,megapixel
+9mp,image,resolution,camera,megapixel
+add_a_photo,image,camera,capture,upload
+add_photo_alternate,image,upload,gallery,insert
+add_to_photos,image,library,collection,save
+adjust,image,brightness,contrast,settings
+animation,image,motion,sequence,playback
+assistant,image,help,support,guide
+assistant_photo,image,enhance,optimize,improve
+audiotrack,image,music,sound,media
+auto_awesome,image,magic,enhance,sparkle
+auto_awesome_mosaic,image,collage,grid,layout
+auto_awesome_motion,image,animate,dynamic,movement
+auto_fix_high,image,enhance,magic wand,photo edit
+auto_fix_normal,image,enhance,photo edit,standard
+auto_fix_off,image,disabled,inactive,no enhance
+auto_stories,image,slideshow,gallery,presentation
+bedtime,image,sleep,night,moon
+blur_circular,image,radial,smooth,round
+blur_linear,image,straight,gradient,directional
+blur_off,image,sharp,disabled,clear
+blur_on,image,soften,smooth,effect
+brightness_1,image,light,circle,illumination
+brightness_2,image,moon phase,night mode,dark theme
+brightness_3,image,crescent moon,dim light,evening mode
+brightness_4,image,contrast mode,light dark,display setting
+brightness_5,image,sunlight,full light,daytime mode
+brightness_6,image,partial sun,medium light,afternoon mode
+brightness_7,image,maximum light,sunny mode,full bright
+broken_image,image,error photo,corrupted file,missing picture
+brush,image,paint tool,drawing,artistic
+burst_mode,image,sequential shots,rapid photo,multiple capture
+camera,image,photo device,snapshot,photography
+camera_alt,image,photo capture,snapshot,shutter
+camera_front,image,selfie,portrait,forward facing
+camera_rear,image,main lens,back view,primary camera
+camera_roll,image,photo gallery,image strip,film strip
+cases,image,protection,covers,enclosure
+center_focus_strong,image,sharp,autofocus,targeting
+center_focus_weak,image,blur,soft focus,diffused
+circle,image,round,geometric,shape
+collections,image,gallery,album,photos
+collections_bookmark,image,saved albums,favorite photos,library
+color_lens,image,palette,paint,artistic
+colorize,image,dropper,picker,sampling
+compare,image,side by side,difference,analyze
+control_point,image,adjust,marker,target
+control_point_duplicate,image,clone,copy,multiply
+crop,image,trim,resize,frame
+crop_16_9,image,widescreen,landscape,video
+crop_3_2,image,photography,standard,print
+crop_5_4,image,portrait,photo,classic
+crop_7_5,image,postcard,landscape,print
+crop_din,image,rectangle,aspect ratio,frame
+crop_free,image,resize,unconstrained,flexible
+crop_landscape,image,horizontal,widescreen,rectangular
+crop_original,image,native,source size,unchanged
+crop_portrait,image,vertical,tall,upright
+crop_rotate,image,adjust,spin,transform
+crop_square,image,equal sides,box,instagram
+dehaze,image,clarity,sharpen,filter
+details,image,information,specs,metadata
+dirty_lens,image,smudge,blurry,cleanup
+edit,image,modify,pencil,write
+euro,image,currency,money,payment
+exposure,image,brightness,lighting,photo
+exposure_neg_1,image,darker,decrease,photography
+exposure_neg_2,image,darkest,reduce,shadow
+exposure_plus_1,image,brighter,increase,lighten
+exposure_plus_2,image,brightest,illuminate,maximize
+exposure_zero,image,neutral,normal,reset
+face_retouching_natural,image,beautify,portrait,smooth
+filter,image,funnel,refine,sort
+filter_1,image,numeric,photo effect,overlay
+filter_2,image,numeric,image edit,overlay
+filter_3,image,numeric,photo edit,overlay
+filter_4,image,numeric,image effect,overlay
+filter_5,image,numeric,photo style,overlay
+filter_6,image,numeric,image style,overlay
+filter_7,image,numeric,photo mode,overlay
+filter_8,image,numeric,image mode,overlay
+filter_9,image,numeric,photo layer,overlay
+filter_9_plus,image,greater than,image layer,overlay
+filter_b_and_w,image,photo,picture,visual
+filter_center_focus,image,photo,picture,visual
+filter_drama,image,photo,picture,visual
+filter_frames,image,photo,picture,visual
+filter_hdr,image,photo,picture,visual
+filter_none,image,photo,picture,visual
+filter_tilt_shift,image,photo,picture,visual
+filter_vintage,image,photo,picture,visual
+flare,image,photo,picture,visual
+flash_auto,image,photo,picture,visual
+flash_off,image,lightning disabled,no strobe,camera light
+flash_on,image,lightning enabled,strobe active,photo light
+flip,image,mirror image,rotate photo,invert picture
+flip_camera_android,image,selfie mode,rotate lens,switch view
+flip_camera_ios,image,selfie mode,rotate lens,switch view
+gradient,image,color blend,fade effect,smooth transition
+grain,image,texture effect,noise filter,photo style
+grid_off,image,guidelines hidden,overlay disabled,composition free
+grid_on,image,guidelines visible,overlay enabled,composition aid
+hdr_enhanced_select,image,dynamic range,exposure balance,photo quality
+hdr_off,image,disabled,photo mode,camera setting
+hdr_on,image,enabled,photo mode,camera setting
+hdr_strong,image,enhanced,photo mode,high contrast
+hdr_weak,image,subtle,photo mode,low contrast
+healing,image,repair,retouch,fix photo
+image,image,picture,photo,graphic
+image_aspect_ratio,image,dimensions,proportions,scaling
+image_not_supported,image,error,broken,invalid
+image_search,image,find,browse,locate
+iso,image,sensitivity,exposure,camera speed
+landscape,image,scenery,nature,outdoor
+leak_add,image,blend,merge,overlay
+leak_remove,image,separate,unblend,disconnect
+lens,image,camera,focus,optical
+linked_camera,image,connected,wireless,remote
+looks,image,filters,effects,styles
+looks_3,image,filter,preset,effect
+looks_4,image,filter,preset,effect
+looks_5,image,filter,preset,effect
+looks_6,image,filter,preset,effect
+looks_one,image,numeric,first,digit
+looks_two,image,numeric,second,digit
+loupe,image,magnify,zoom,examine
+mic_external_off,image,mute,disabled,microphone
+mic_external_on,image,recording,enabled,microphone
+monochrome_photos,image,grayscale,blackwhite,filter
+motion_photos_off,image,static,disabled,still
+motion_photos_on,image,animated,enabled,moving
+motion_photos_pause,image,stopped,waiting,temporary
+motion_photos_paused,image,halted,suspended,inactive
+movie_creation,image,film reel,cinema,production
+movie_filter,image,effects,editing,overlay
+mp,image,megapixel,resolution,quality
+music_note,image,audio,melody,sound
+music_off,image,mute,silent,disabled
+nature,image,outdoors,landscape,environment
+nature_people,image,outdoors,hiking,recreation
+navigate_before,image,previous,arrow left,back
+navigate_next,image,forward,arrow right,advance
+palette,image,colors,art,painting
+panorama,image,landscape,photo,wide view
+panorama_fish_eye,image,circular,lens,distorted
+panorama_horizontal,image,landscape,widescreen,photo
+panorama_horizontal_select,image,choose,widescreen,capture
+panorama_photosphere,image,360 view,immersive,spherical
+panorama_photosphere_select,image,choose,360 view,immersive
+panorama_vertical,image,portrait,tall,upright
+panorama_vertical_select,image,choose,portrait,tall
+panorama_wide_angle,image,broad,expansive,ultra wide
+panorama_wide_angle_select,image,choose,broad,ultra wide
+photo,image,picture,image,snapshot
+photo_album,image,gallery,collection,memories
+photo_camera,image,capture,shoot,lens
+photo_camera_back,image,rear,main,primary
+photo_camera_front,image,selfie,portrait,facing
+photo_filter,image,effects,editing,enhance
+photo_library,image,archive,storage,repository
+photo_size_select_actual,image,original,dimensions,native
+photo_size_select_large,image,enlarge,expand,maximize
+photo_size_select_small,image,minimize,shrink,reduce
+picture_as_pdf,image,document,convert,export
+portrait,image,headshot,photo,profile
+receipt_long,image,invoice,bill,transaction
+remove_red_eye,image,visibility,show,view
+rotate_90_degrees_ccw,image,counterclockwise,turn,transform
+rotate_left,image,counterclockwise,spin,turn
+rotate_right,image,clockwise,spin,turn
+shutter_speed,image,camera,exposure,photography
+slideshow,image,presentation,gallery,display
+straighten,image,align,level,adjust
+style,image,design,formatting,customize
+switch_camera,image,flip,selfie,rotate
+switch_video,image,recording,flip,toggle
+tag_faces,image,emoji,smile,recognition
+texture,image,pattern,surface,material
+timelapse,image,sequence,interval,photography
+timer,image,countdown,stopwatch,delay
+timer_10,image,countdown,seconds,delay
+timer_3,image,countdown,seconds,delay
+timer_off,image,disable,cancel,stop
+tonality,image,contrast,grayscale,brightness
+transform,image,rotate,resize,modify
+tune,image,adjust,settings,customize
+view_comfy,image,grid,spacious,gallery
+view_compact,image,dense,condensed,thumbnail
+vignette,image,fade,border,darkening
+wb_auto,image,automatic,camera,lighting
+wb_cloudy,image,overcast,camera,lighting
+wb_incandescent,image,indoor,bulb,lighting
+wb_iridescent,image,fluorescent,lighting,shimmer
+wb_shade,image,shadow,lighting,exposure
+wb_sunny,image,brightness,daylight,weather
+wb_twighlight,image,dusk,evening,sunset
+360,maps,panorama,view,rotation
+add_business,maps,company,store,commercial
+add_location,maps,pin,marker,place
+add_location_alt,maps,waypoint,destination,coordinate
+add_road,maps,street,highway,path
+agriculture,maps,farming,crops,rural
+alt_route,maps,detour,navigation,directions
+atm,maps,cash machine,banking,money withdrawal
+attractions,maps,tourist spot,landmark,sightseeing
+badge,maps,identification,credential,permit
+bakery_dining,maps,pastries,bread shop,patisserie
+beenhere,maps,checked in,visited,marked location
+bike_scooter,maps,rental,transportation,mobility
+breakfast_dining,maps,morning meal,early food,cafe
+brunch_dining,maps,late morning,casual meal,weekend
+bus_alert,maps,transit warning,delay notice,route update
+car_rental,maps,vehicle hire,auto lease,temporary transport
+car_repair,maps,mechanic,auto service,garage
+category,maps,classify,folder,organize
+celebration,maps,party,festive,event
+cleaning_services,maps,housekeeping,janitor,maintenance
+compass_calibration,maps,navigation,magnetic,orientation
+delivery_dining,maps,takeout,food service,courier
+departure_board,maps,schedule,transit,timetable
+design_services,maps,creative,artwork,graphics
+dinner_dining,maps,restaurant,meal,supper
+directions,maps,navigation,route,wayfinding
+directions_bike,maps,cycling,pedal,route
+directions_boat,maps,ferry,marine,sailing
+directions_bus,maps,coach,transport,public
+directions_car,maps,auto,driving,vehicle
+directions_railway,maps,train,tracks,locomotive
+directions_run,maps,jogging,exercise,fitness
+directions_subway,maps,metro,underground,tube
+directions_transit,maps,commute,station,terminal
+directions_walk,maps,pedestrian,stroll,footpath
+dry_cleaning,maps,laundry,service,garment
+edit_attributes,maps,modify properties,customize details,map settings
+edit_location,maps,modify pin,change position,update place
+edit_road,maps,modify street,change route,update path
+electric_bike,maps,ebike,pedal assist,cycling
+electric_car,maps,ev,tesla,vehicle
+electric_moped,maps,scooter,vespa,motorized
+electric_rickshaw,maps,tuk tuk,auto taxi,three wheeler
+electric_scooter,maps,escooter,standing,mobility
+electrical_services,maps,power supply,charging point,utility
+ev_station,maps,charging point,power outlet,tesla supercharger
+fastfood,maps,restaurant,takeout,burger
+festival,maps,celebration,carnival,event
+flight,maps,airplane,travel,airport
+hail,maps,taxi,rideshare,transportation
+handyman,maps,repair,tools,maintenance
+hardware,maps,tools,equipment,supplies
+home_repair_service,maps,maintenance,contractor,renovation
+hotel,maps,lodging,accommodation,motel
+hvac,maps,cooling,heating,ventilation
+icecream,maps,dessert,frozen,sweet
+layers,maps,stack,overlay,mapping
+layers_clear,maps,remove,hide,disable
+liquor,maps,alcohol,drinks,spirits
+local_activity,maps,events,entertainment,ticket
+local_airport,maps,travel,plane,terminal
+local_atm,maps,banking,cash,money
+local_bar,maps,drinks,nightlife,pub
+local_cafe,maps,coffee,restaurant,bistro
+local_car_wash,maps,cleaning,automotive,service
+local_convenience_store,maps,shop,minimart,retail
+local_dining,maps,restaurant,food,cutlery
+local_drink,maps,beverage,refreshment,glass
+local_fire_department,maps,emergency,rescue,firefighter
+local_florist,maps,flowers,bouquet,plants
+local_gas_station,maps,fuel,petrol,automotive
+local_grocery_store,maps,supermarket,food,shopping
+local_hospital,maps,medical,emergency,healthcare
+local_hotel,maps,lodging,accommodation,motel
+local_laundry_service,maps,cleaning,washing,dryclean
+local_library,maps,books,reading,study
+local_mall,maps,shopping center,retail,marketplace
+local_movies,maps,cinema,theater,film
+local_offer,maps,discount,deal,coupon
+local_parking,maps,garage,car spot,vehicle
+local_pharmacy,maps,drugstore,medicine,prescription
+local_phone,maps,telephone,contact,call
+local_pizza,maps,restaurant,food,delivery
+local_play,maps,entertainment,activities,recreation
+local_police,maps,security,emergency,law
+local_post_office,maps,mail,shipping,postal
+local_printshop,maps,printer,document,office
+local_see,maps,camera,photo,snapshot
+local_shipping,maps,delivery,truck,freight
+local_taxi,maps,cab,transportation,rideshare
+location_pin,maps,marker,destination,waypoint
+lunch_dining,maps,food,restaurant,meal
+map,maps,navigation,directions,geography
+maps_ugc,maps,community,feedback,contribute
+medical_services,maps,healthcare,hospital,emergency
+menu_book,maps,restaurant,dining,catalog
+miscellaneous_services,maps,maintenance,repair,tools
+money,maps,currency,payment,cash
+moped,maps,scooter,vehicle,transport
+multiple_stop,maps,waypoints,route,destinations
+museum,maps,gallery,exhibits,cultural
+my_location,maps,position,gps,current
+navigation,maps,directions,compass,wayfinding
+near_me,maps,proximity,nearby,closest
+near_me_disabled,maps,unavailable,inactive,offline
+nightlife,maps,entertainment,bars,clubs
+no_meals,maps,food restricted,dining blocked,restaurant ban
+no_meals_ouline,maps,food restricted,dining blocked,restaurant ban
+no_transfer,maps,transit blocked,route denied,transport ban
+not_listed_location,maps,unknown place,mystery spot,unlisted area
+park,maps,green space,recreation,outdoor area
+pedal_bike,maps,cycling,bicycle,transportation
+person_pin,maps,user location,profile marker,avatar point
+person_pin_circle,maps,user location,profile marker,avatar spot
+pest_control,maps,exterminator,bug spray,insect removal
+pest_control_rodent,maps,mouse trap,rat control,vermin removal
+pin_drop,maps,location marker,map point,destination
+place,maps,location pin,landmark,destination
+plumbing,maps,pipes,repair service,maintenance
+railway_alert,maps,train warning,track notice,transit caution
+ramen_dining,maps,noodles,asian food,soup bowl
+rate_review,maps,feedback,comments,testimonial
+restaurant,maps,dining,eatery,food service
+restaurant_menu,maps,food list,dining options,dishes
+run_circle,maps,jogging,exercise,fitness
+satellite,maps,space,orbital,navigation
+set_meal,maps,dining,restaurant,food
+store_mall_directory,maps,shopping,retail,shops
+streetview,maps,panorama,navigation,roads
+subway,maps,metro,underground,transit
+takeout_dining,maps,delivery,food,carryout
+taxi_alert,maps,warning,cab,caution
+terrain,maps,landscape,topography,elevation
+theater_comedy,maps,performance,entertainment,shows
+traffic,maps,congestion,vehicles,roadway
+train,maps,railway,transit,transportation
+tram,maps,rail,streetcar,transport
+transfer_within_a_station,maps,interchange,platform,connection
+transit_enterexit,maps,doorway,passage,gateway
+trip_origin,maps,start point,beginning,departure
+two_wheeler,maps,motorcycle,scooter,vehicle
+volunteer_activism,maps,charity,helping,donate
+wine_bar,maps,tavern,drinks,restaurant
+wrong_location,maps,incorrect,error,misdirect
+zoom_out_map,maps,expand,fullscreen,maximize
+app_settings_alt,navigation,configure,preferences,options
+apps,navigation,grid layout,menu view,dashboard
+arrow_back,navigation,previous,return,navigate
+arrow_back_ios,navigation,previous,chevron,mobile
+arrow_downward,navigation,download,below,descend
+arrow_drop_down,navigation,expand,menu,collapse
+arrow_drop_down_circle,navigation,expand,round,menu
+arrow_drop_up,navigation,collapse,minimize,upward
+arrow_forward,navigation,next,proceed,continue
+arrow_forward_ios,navigation,next,chevron,mobile
+arrow_left,navigation,previous,west,backward
+arrow_right,navigation,next,forward,navigate
+arrow_upward,navigation,ascend,rise,vertical
+assistant_direction,navigation,guide,wayfinding,route
+assistant_navigation,navigation,gps,guidance,location
+campaign,navigation,announce,megaphone,broadcast
+cancel,navigation,stop,exit,terminate
+check,navigation,confirm,approve,complete
+chevron_left,navigation,previous,back,navigate
+chevron_right,navigation,next,forward,navigate
+close,navigation,exit,dismiss,remove
+double_arrow,navigation,forward direction,next step,fast forward
+east,navigation,right direction,next page,forward move
+expand_less,navigation,collapse up,minimize,fold menu
+expand_more,navigation,dropdown,show more,unfold
+first_page,navigation,beginning,start position,initial view
+fullscreen,navigation,maximize,zoom view,enlarge
+fullscreen_exit,navigation,minimize,restore view,shrink
+home_work,navigation,remote office,workplace,telecommute
+last_page,navigation,ending,final view,finish
+legend_toggle,navigation,key switch,map info,show symbols
+menu,navigation,hamburger,navigation drawer,sidebar
+menu_open,navigation,expanded,drawer visible,show navigation
+more_horiz,navigation,ellipsis,additional options,overflow
+more_vert,navigation,kebab,additional options,dropdown
+north,navigation,upward,direction,compass
+north_east,navigation,diagonal,direction,upright
+north_west,navigation,diagonal,direction,upleft
+offline_share,navigation,local transfer,bluetooth,nearby
+payments,navigation,money,transaction,billing
+pivot_table_chart,navigation,data grid,spreadsheet,analytics
+refresh,navigation,reload,update,sync
+south,navigation,downward,bottom,direction
+south_east,navigation,diagonal,corner,direction
+south_west,navigation,diagonal,corner,direction
+subdirectory_arrow_left,navigation,return,back,nested
+subdirectory_arrow_right,navigation,forward,next,nested
+switch_left,navigation,change,move,direction
+switch_right,navigation,change,move,direction
+unfold_less,navigation,collapse,minimize,compact
+unfold_more,navigation,expand,maximize,show
+waterfall_chart,navigation,data visualization,analytics,statistics
+west,navigation,left direction,previous,backward
+account_tree,notification,hierarchy,organization,flowchart
+adb,notification,android debug,developer,mobile
+add_call,notification,phone,conference,dial
+airline_seat_flat,notification,recline,sleeping,comfort
+airline_seat_flat_angled,notification,recline,position,comfort
+airline_seat_individual_suite,notification,private,luxury,firstclass
+airline_seat_legroom_extra,notification,spacious,premium,comfort
+airline_seat_legroom_normal,notification,standard,economy,basic
+airline_seat_legroom_reduced,notification,cramped space,economy class,tight fit
+airline_seat_recline_extra,notification,comfort plus,spacious,relaxed
+airline_seat_recline_normal,notification,standard seat,basic position,default angle
+bluetooth_audio,notification,wireless sound,headphones,speaker
+confirmation_number,notification,ticket code,booking id,verification
+directions_off,notification,navigation disabled,no route,path blocked
+disc_full,notification,storage limit,no space,capacity
+do_disturb,notification,quiet mode,silence,mute
+do_disturb_alt,notification,quiet alert,block notifications,focus mode
+do_disturb_off,notification,notifications on,alerts enabled,sound active
+do_disturb_on,notification,silence mode,block alerts,quiet time
+do_not_disturb,notification,quiet mode,mute alerts,silence all
+do_not_disturb_alt,notification,block calls,silence phone,alternate mute
+do_not_disturb_off,notification,alerts enabled,notifications on,sound active
+do_not_disturb_on,notification,mute mode,block notifications,silent status
+drive_eta,notification,arrival time,travel duration,route estimate
+enhanced_encryption,notification,security plus,advanced protection,extra secure
+event_available,notification,free slot,calendar open,schedule free
+event_busy,notification,occupied time,calendar blocked,schedule full
+event_note,notification,calendar memo,schedule reminder,meeting details
+folder_special,notification,starred,important,bookmarked
+imagesearch_roller,notification,paint,design,artwork
+live_tv,notification,broadcast,streaming,television
+mms,notification,multimedia,picture message,attachment
+more,notification,additional,options,menu
+network_check,notification,connectivity,status,verified
+network_locked,notification,secure,protected,restricted
+no_encryption,notification,unsecured,unprotected,vulnerable
+no_encryption_gmailerrorred,notification,warning,unsecured mail,risk
+ondemand_video,notification,streaming,playback,media
+personal_video,notification,webcam,streaming,selfie
+phone_bluetooth_speaker,notification,wireless,audio,handsfree
+phone_callback,notification,return,missed,reminder
+phone_forwarded,notification,transfer,redirect,divert
+phone_in_talk,notification,active,ongoing,connected
+phone_locked,notification,secure,blocked,restricted
+phone_missed,notification,unanswered,unavailable,notification
+phone_paused,notification,hold,waiting,suspended
+power,notification,energy,switch,button
+power_off,notification,shutdown,disable,terminate
+priority_high,notification,urgent,important,warning
+sd_card,notification,storage,memory,digital
+sd_card_alert,notification,warning,error,memory
+sim_card_alert,notification,warning,mobile,error
+sms,notification,message,text,mobile
+sms_failed,notification,error,undelivered,warning
+support_agent,notification,help,customer,service
+sync,notification,update,refresh,backup
+sync_disabled,notification,offline,stopped,inactive
+sync_problem,notification,error,warning,failed
+system_update,notification,software upgrade,device maintenance,installation
+tap_and_play,notification,nfc payment,contactless,wireless transfer
+time_to_leave,notification,departure alert,schedule reminder,commute notice
+tv_off,notification,screen disabled,power down,display inactive
+vibration,notification,phone alert,silent mode,haptic feedback
+voice_chat,notification,audio call,speech bubble,conversation
+vpn_lock,notification,secure network,private browsing,encrypted
+wc,notification,restroom,bathroom,facilities
+wifi,notification,wireless,internet,network signal
+wifi_off,notification,disconnected,no internet,offline mode
+ac_unit,places,cooling system,temperature,climate
+airport_shuttle,places,transportation,transfer,travel
+all_inclusive,places,resort,package,unlimited
+apartment,places,residential,housing,building
+baby_changing_station,places,restroom,nursery,facilities
+backpack,places,luggage,bag,travel
+bathtub,places,bathroom,shower,washing
+beach_access,places,seaside,coastal,swimming
+bento,places,lunch,japanese,meal
+business_center,places,office,workspace,corporate
+carpenter,places,location,venue,building
+casino,places,location,venue,building
+charging_station,places,location,venue,building
+checkroom,places,location,venue,building
+child_care,places,location,venue,building
+child_friendly,places,location,venue,building
+corporate_fare,places,location,venue,building
+countertops,places,location,venue,building
+do_not_step,places,location,venue,building
+do_not_touch,places,location,venue,building
+dry,places,laundry,cleaning,moisture free
+elevator,places,lift,vertical transport,accessibility
+escalator,places,moving stairs,automatic,transport
+escalator_warning,places,safety,caution,hazard
+family_restroom,places,bathroom,changing room,inclusive
+fence,places,barrier,boundary,security
+fire_extinguisher,places,safety,emergency,protection
+fitness_center,places,gym,workout,health
+food_bank,places,donation,charity,pantry
+foundation,places,base,construction,structure
+free_breakfast,places,coffee cup,morning meal,hotel service
+golf_course,places,sports venue,putting green,recreation
+grass,places,lawn,nature,outdoor
+hot_tub,places,spa,jacuzzi,relaxation
+house,places,home,residential,dwelling
+house_siding,places,exterior,cladding,construction
+kitchen,places,cooking,appliances,culinary
+meeting_room,places,conference,office space,boardroom
+microwave,places,appliance,heating,cooking
+night_shelter,places,homeless,emergency,housing
+no_backpack,places,prohibited bags,storage banned,luggage restricted
+no_cell,places,phone prohibited,mobile banned,silent zone
+no_drinks,places,beverages prohibited,liquid banned,refreshments restricted
+no_flash,places,camera restricted,lighting prohibited,photo rules
+no_food,places,eating prohibited,snacks banned,dining restricted
+no_meeting_room,places,space unavailable,conference restricted,room closed
+no_photography,places,cameras prohibited,pictures banned,image restricted
+no_stroller,places,carriage prohibited,pram banned,buggy restricted
+pool,places,swimming area,water facility,aquatic center
+rice_bowl,places,asian cuisine,food container,dining dish
+roofing,places,house top,shelter,construction
+room_preferences,places,settings,customize,options
+room_service,places,hotel,delivery,dining
+rv_hookup,places,camping,utilities,trailer
+smoke_free,places,prohibited,health,clean
+smoking_rooms,places,permitted,designated,tobacco
+soap,places,hygiene,bathroom,cleaning
+spa,places,massage,wellness,relaxation
+sports_bar,places,pub,television,drinks
+stairs,places,steps,stairwell,elevation
+storefront,places,retail,shop,business
+stroller,places,baby,carriage,transport
+tapas,places,appetizers,spanish,snacks
+tty,places,telephone,hearing,accessibility
+umbrella,places,rain,shelter,protection
+wash,places,clean,laundry,hygiene
+water_damage,places,flood,leak,moisture
+wheelchair_pickup,places,accessible,transport,mobility
+6_ft_apart,social,distance,safety,spacing
+add_moderator,social,admin,security,management
+architecture,social,building design,blueprint,structure
+cake,social,birthday,dessert,celebration
+clean_hands,social,hygiene,sanitize,washing
+connect_without_contact,social,wireless,remote,touchless
+construction,social,building,renovation,worksite
+coronavirus,social,covid,virus,pandemic
+deck,social,patio,outdoor,terrace
+domain,social,website,network,internet
+elderly,social,senior,aging,retired
+emoji_emotions,social,faces,feelings,expressions
+emoji_events,social,trophy,achievement,celebration
+emoji_flags,social,banner,national,patriotic
+emoji_food_beverage,social,dining,restaurant,meal
+emoji_nature,social,outdoors,environmental,wildlife
+emoji_objects,social,items,tools,things
+emoji_people,social,persons,faces,users
+emoji_symbols,social,signs,marks,icons
+emoji_transportation,social,vehicles,travel,transit
+engineering,social,technical,mechanical,construction
+facebook,social,social media,networking,connect
+fireplace,social,hearth,cozy,warmth
+follow_the_signs,social,directions,guidance,wayfinding
+group,social,people,team,community
+group_add,social,invite,join,recruit
+groups,social,crowd,gathering,multiple
+history_edu,social,learning,academic,scroll
+ios_share,social,export,send,upload
+king_bed,social,luxury,master,sleep
+location_city,social,urban,skyline,downtown
+luggage,social,travel,suitcase,baggage
+masks,social,face covering,protection,safety
+military_tech,social,medal,achievement,badge
+mood,social,happy face,smile,positive
+mood_bad,social,frown,unhappy,negative
+nights_stay,social,moon,dark,evening
+no_luggage,social,baggage free,restricted,prohibited
+notifications,social,alert,bell,reminder
+notifications_active,social,ringing,enabled,important
+notifications_none,social,empty,cleared,inactive
+notifications_off,social,silent,muted,disabled
+notifications_paused,social,muted alerts,silent mode,disabled bell
+outdoor_grill,social,barbecue,cookout,bbq
+pages,social,documents,sheets,files
+party_mode,social,celebration,festive,entertainment
+people,social,group,users,community
+people_alt,social,users,crowd,team
+people_outline,social,contacts,members,group
+person,social,user,profile,individual
+person_add,social,invite,join,register
+person_add_alt,social,signup,enroll,recruit
+person_add_alt_1,social,new user,invite,signup
+person_outline,social,profile,avatar,contact
+person_remove,social,delete user,unfollow,block
+person_remove_alt_1,social,unfriend,disconnect,ban
+plus_one,social,upvote,increment,like
+poll,social,survey,statistics,voting
+precision_manufacturing,social,factory,robot,automation
+psychology,social,mind,brain,mental
+public,social,globe,worldwide,network
+public_off,social,private,hidden,restricted
+recommend,social,thumbs up,favorite,endorse
+reduce_capacity,social,limit,occupancy,spacing
+remove_moderator,social,revoke,demote,unassign
+sanitizer,social,disinfect,hygiene,cleaner
+school,social,education,academic,learning
+science,social,laboratory,research,experiment
+self_improvement,social,meditation,wellness,growth
+sentiment_dissatisfied,social,unhappy,frown,negative
+sentiment_neutral,social,indifferent,meh,expressionless
+sentiment_satisfied,social,happy,smile,positive
+sentiment_very_dissatisfied,social,unhappy face,crying emoji,upset mood
+sentiment_very_satisfied,social,happy face,grinning emoji,joyful mood
+share,social,send link,forward,distribute
+sick,social,ill person,unwell,disease
+single_bed,social,twin mattress,sleeping,furniture
+sports,social,athletic,exercise,recreation
+sports_baseball,social,bat ball,diamond,pitcher
+sports_basketball,social,hoop,court,dribble
+sports_cricket,social,wicket,batsman,pitch
+sports_esports,social,gaming,controller,videogames
+sports_football,social,american game,pigskin,touchdown
+sports_golf,social,putting,club,tee
+sports_handball,social,throwing,indoor,olympic
+sports_hockey,social,puck,stick,rink
+sports_kabaddi,social,wrestling,indian,contact
+sports_mma,social,fighting,martial arts,combat
+sports_motorsports,social,racing,vehicle,speedway
+sports_rugby,social,scrum,tackle,pitch
+sports_soccer,social,futbol,pitch,goal
+sports_tennis,social,racquet,court,serve
+sports_volleyball,social,beach game,team sport,athletic
+switch_account,social,profile change,user swap,login
+thumb_down_alt,social,dislike,negative,feedback
+thumb_up_alt,social,approve,positive,like
+whatshot,social,trending,popular,fire
+check_box,toggle,selected,marked,complete
+check_box_outline_blank,toggle,empty,unselected,inactive
+indeterminate_check_box,toggle,partial,neutral,minus
+radio_button_checked,toggle,selected,active,filled
+radio_button_unchecked,toggle,empty,deselected,inactive
+star,toggle,favorite,rating,bookmark
+star_border,toggle,unrated,outline,empty
+star_border_purple500,toggle,colored,outlined,unselected
+star_half,toggle,partial,rating,incomplete
+star_outline,toggle,unfilled,hollow,unrated
+star_purple500,toggle,colored,filled,selected
+toggle_off,toggle,disabled,inactive,switch
+toggle_on,toggle,enabled,active,switch

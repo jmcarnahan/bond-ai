@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/models_provider.dart';
-import 'package:flutterui/core/theme/app_theme.dart';
 
 class AgentModelSection extends ConsumerWidget {
   const AgentModelSection({super.key});
@@ -40,10 +39,10 @@ class AgentModelSection extends ConsumerWidget {
                 return Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: theme.colorScheme.outline.withOpacity(0.2),
+                      color: theme.colorScheme.outline.withValues(alpha: 0.2),
                     ),
                   ),
                   child: Row(
@@ -71,8 +70,8 @@ class AgentModelSection extends ConsumerWidget {
                                   : 'Models are still loading or unavailable',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: defaultModel == null 
-                                    ? theme.colorScheme.error.withOpacity(0.8)
-                                    : theme.colorScheme.onSurface.withOpacity(0.6),
+                                    ? theme.colorScheme.error.withValues(alpha: 0.8)
+                                    : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                               ),
                             ),
                           ],
@@ -85,7 +84,7 @@ class AgentModelSection extends ConsumerWidget {
               loading: () => Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -111,10 +110,10 @@ class AgentModelSection extends ConsumerWidget {
               error: (error, stack) => Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.errorContainer.withOpacity(0.1),
+                  color: theme.colorScheme.errorContainer.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: theme.colorScheme.error.withOpacity(0.3),
+                    color: theme.colorScheme.error.withValues(alpha: 0.3),
                   ),
                 ),
                 child: Row(
