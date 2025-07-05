@@ -5,6 +5,7 @@ import 'package:flutterui/providers/core_providers.dart';
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/providers/config_provider.dart';
 import 'package:flutterui/providers/agent_provider.dart';
+import 'package:flutterui/presentation/widgets/agent_icon.dart';
 import 'package:flutterui/main.dart';
 
 class AgentCard extends ConsumerWidget {
@@ -83,12 +84,13 @@ class AgentCard extends ConsumerWidget {
                 )
               else
                 const SizedBox(height: 12), // Space when no edit button
-              // Agent icon
-              CircleAvatar(
-                backgroundColor: colorScheme.primary,
-                foregroundColor: colorScheme.onPrimary,
-                radius: 16,
-                child: const Icon(Icons.smart_toy_outlined, size: 20),
+              // Agent icon - slightly bigger for agent cards
+              AgentIcon(
+                agentName: agent.name,
+                metadata: agent.metadata,
+                size: 56,
+                showBackground: true,
+                isSelected: false,
               ),
               const SizedBox(height: 4),
               // Agent name
