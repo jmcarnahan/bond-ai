@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/data/models/agent_model.dart';
 import 'package:flutterui/providers/agent_provider.dart';
+import 'package:flutterui/presentation/widgets/agent_icon.dart';
 
 class AgentSidebar extends ConsumerWidget {
   final String currentAgentId;
@@ -73,112 +74,49 @@ class _AgentIconButton extends StatelessWidget {
     required this.onTap,
   });
 
-  String _getAgentAbbreviation(String name) {
-    final trimmedName = name.trim();
-
-    // Special case for 'Home'
-    if (trimmedName.toLowerCase() == 'home') {
-      return 'Home';
-    }
-
-    // Split into words and filter out 'Agent' if it's the last word
-    var words =
-        trimmedName.split(' ').where((word) => word.isNotEmpty).toList();
-    if (words.isEmpty) return '?';
-
-    // Remove 'Agent' if it's the last word (case-insensitive)
-    if (words.length > 1 && words.last.toLowerCase() == 'agent') {
-      words = words.sublist(0, words.length - 1);
-    }
-
-    // If we have no words left after removing 'Agent', use the original
-    if (words.isEmpty) {
-      words = trimmedName.split(' ').where((word) => word.isNotEmpty).toList();
-    }
-
-    // Generate abbreviation based on remaining words
-    if (words.length == 1) {
-      final word = words[0];
-      // For single words, use first letter or first two if very short
-      if (word.length <= 3) {
-        return word.toUpperCase();
-      } else {
-        return word[0].toUpperCase();
-      }
-    } else if (words.length == 2) {
-      // For two words, use first letter of each
-      return words.map((w) => w[0].toUpperCase()).join('');
-    } else {
-      // For 3+ words, prioritize important words (skip common ones)
-      final skipWords = {
-        'the',
-        'and',
-        'of',
-        'for',
-        'to',
-        'in',
-        'on',
-        'at',
-        'by',
-      };
-      final importantWords =
-          words.where((w) => !skipWords.contains(w.toLowerCase())).toList();
-
-      if (importantWords.isEmpty) {
-        // If all words are common, use first letters of first two words
-        return words.take(2).map((w) => w[0].toUpperCase()).join('');
-      } else if (importantWords.length == 1) {
-        // If only one important word, use its first letter
-        return importantWords[0][0].toUpperCase();
-      } else {
-        // Use first letters of important words, max 2 characters
-        return importantWords.take(2).map((w) => w[0].toUpperCase()).join('');
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
-      child: Tooltip(
-        message: agent.name,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(24),
-          child: Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color:
-                  isSelected
-                      ? colorScheme.primary.withValues(alpha: 0.2)
-                      : colorScheme.surfaceContainerHighest,
-              border:
-                  isSelected
-                      ? Border.all(color: colorScheme.primary, width: 2)
-                      : null,
-            ),
-            child: Center(
-              child: Text(
-                _getAgentAbbreviation(agent.name),
-                style: TextStyle(
-                  color:
-                      isSelected
-                          ? colorScheme.primary
-                          : colorScheme.onSurfaceVariant,
-                  fontSize:
-                      _getAgentAbbreviation(agent.name).length > 2 ? 12 : 14,
-                  fontWeight: FontWeight.w600,
-                ),
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Tooltip(
+            message: agent.name,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(24),
+              child: AgentIcon(
+                agentName: agent.name,
+                metadata: agent.metadata,
+                size: 48,
+                showBackground: true,
+                isSelected: isSelected,
               ),
             ),
           ),
-        ),
+          const SizedBox(height: 2),
+          // Agent name below icon
+          SizedBox(
+            width: 56,
+            child: Text(
+              agent.name,
+              style: TextStyle(
+                color: isSelected
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
+                fontSize: 10,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }
