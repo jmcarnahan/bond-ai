@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
 
 class TypingIndicator extends StatefulWidget {
   final Color? dotColor;
