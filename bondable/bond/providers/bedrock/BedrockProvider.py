@@ -62,7 +62,7 @@ class BedrockProvider(Provider):
         
         # Initialize agent provider
         from .BedrockAgent import BedrockAgentProvider
-        self.agents = BedrockAgentProvider(bedrock_client=self.bedrock_client, metadata=self.metadata)
+        self.agents = BedrockAgentProvider(bedrock_client=self.bedrock_client, bedrock_agent_client=self.bedrock_agent_client, metadata=self.metadata)
         
         # Initialize files provider
         from .BedrockFiles import BedrockFilesProvider
