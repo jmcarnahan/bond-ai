@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutterui/data/models/message_model.dart';
 import 'package:flutterui/providers/cached_agent_details_provider.dart';
+import 'package:flutterui/presentation/widgets/agent_icon.dart';
 
 class ChatMessageItem extends ConsumerWidget {
   final Message message;
@@ -222,39 +223,79 @@ class _AssistantAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        CircleAvatar(
-          backgroundColor: colorScheme.surfaceContainerHighest,
-          radius: 16,
-          child: Icon(
-            Icons.smart_toy_outlined,
-            color: colorScheme.primary,
-            size: 20,
-          ),
+    if (message.agentId == null) {
+      // Fallback for messages without agentId
+      return CircleAvatar(
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        radius: 16,
+        child: Icon(
+          Icons.smart_toy_outlined,
+          color: colorScheme.primary,
+          size: 20,
         ),
-        if (message.agentId != null)
-          Container(
-            width: 32,
-            margin: const EdgeInsets.only(top: 2),
-            child: ref.watch(getCachedAgentDetailsProvider(message.agentId!)).when(
-              data: (agent) => agent != null
-                  ? Text(
-                      agent.name,
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: colorScheme.onSurface.withAlpha(179),
-                      ),
-                      textAlign: TextAlign.center,
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                    )
-                  : const SizedBox.shrink(),
-              loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
+      );
+    }
+    
+    return ref.watch(getCachedAgentDetailsProvider(message.agentId!)).when(
+      data: (agent) {
+        if (agent == null) {
+          // Fallback if agent not found
+          return CircleAvatar(
+            backgroundColor: colorScheme.surfaceContainerHighest,
+            radius: 16,
+            child: Icon(
+              Icons.smart_toy_outlined,
+              color: colorScheme.primary,
+              size: 20,
             ),
-          ),
-      ],
+          );
+        }
+        
+        return Column(
+          children: [
+            // Smaller icon for chat messages
+            AgentIcon(
+              agentName: agent.name,
+              metadata: agent.metadata,
+              size: 32,
+              showBackground: true,
+              isSelected: false,
+            ),
+            Container(
+              width: 32,
+              margin: const EdgeInsets.only(top: 2),
+              child: Text(
+                agent.name,
+                style: TextStyle(
+                  fontSize: 9,
+                  color: colorScheme.onSurface.withAlpha(179),
+                ),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+          ],
+        );
+      },
+      loading: () => CircleAvatar(
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        radius: 16,
+        child: const SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      ),
+      error: (_, __) => CircleAvatar(
+        backgroundColor: colorScheme.surfaceContainerHighest,
+        radius: 16,
+        child: Icon(
+          Icons.smart_toy_outlined,
+          color: colorScheme.primary,
+          size: 20,
+        ),
+      ),
     );
   }
 }

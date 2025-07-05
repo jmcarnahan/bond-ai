@@ -658,6 +658,8 @@ class BedrockAgent(Agent):
                         if mcp_config:
                             result = execute_mcp_tool_sync(mcp_config, tool_name, parameters)
                             
+                            LOGGER.info(f"Executed MCP tool {tool_name} with result: \n{json.dumps(result, indent=2)}")
+
                             # Format response
                             response_body = json.dumps({
                                 "result": result.get('result', result.get('error', 'Unknown error'))
@@ -679,6 +681,8 @@ class BedrockAgent(Agent):
                             if 'apiInvocationInput' in inv_input:
                                 tool_response = {"apiResult": tool_response}
                             
+                            LOGGER.debug(f"Executed MCP tool {tool_name} with response: \n{json.dumps(tool_response, indent=2)}")
+
                             results.append(tool_response)
                         else:
                             LOGGER.error("No MCP config available")
@@ -709,10 +713,178 @@ class BedrockAgent(Agent):
 class BedrockAgentProvider(AgentProvider):
     """Bedrock implementation of the AgentProvider interface"""
     
-    def __init__(self, bedrock_client: boto3.client, metadata: BedrockMetadata):
+    def __init__(self, bedrock_client: boto3.client, bedrock_agent_client: boto3.client, metadata: BedrockMetadata):
         self.bedrock_client = bedrock_client
+        self.bedrock_agent_client = bedrock_agent_client
         self.metadata = metadata
         LOGGER.info("Initialized BedrockAgentProvider")
+    
+    def select_material_icon(self, name: str, description: str, instructions: str = None) -> str:
+        """
+        Select a Material Icon and color for an agent using Bedrock Converse API.
+        
+        Args:
+            name: Agent name
+            description: Agent description  
+            instructions: Agent instructions (optional)
+            
+        Returns:
+            JSON string with icon name and color
+        """
+        try:
+            # Get the provider instance to access Bedrock runtime client
+            provider: BedrockProvider = Config.config().get_provider()
+            runtime_client = provider.bedrock_runtime_client
+            
+            # Read the material icons metadata
+            import csv
+            icons_data = []
+            icons_file_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'assets', 'material_icons_metadata.csv')
+            with open(icons_file_path, 'r') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    icons_data.append(row)
+            
+            # Convert icons data to a compact format for the prompt
+            icons_list = []
+            for icon in icons_data:
+                icon_str = f"{icon['name']}|{icon['category']}|{icon['tag1']},{icon['tag2']},{icon['tag3']}"
+                icons_list.append(icon_str)
+            
+            # Special case for Home agent
+            if name.lower() == "home":
+                return json.dumps({
+                    "icon_name": "home",
+                    "color": "#4CAF50"  # Material Green
+                })
+            
+            # Build the prompt for icon and color selection
+            prompt_parts = [
+                f"Select the most appropriate Material Icon and background color for an AI agent with the following characteristics:",
+                f"Name: {name}",
+                f"Description: {description}"
+            ]
+            
+            # If instructions are provided, add them
+            if instructions:
+                prompt_parts.append(f"Purpose: {instructions}")
+            
+            prompt = "\n".join(prompt_parts)
+            prompt += "\n\nSelect the icon that best represents this agent's name and purpose, and choose a distinctive color that fits the agent's theme."
+            
+            # System prompt for structured output
+            system_prompt = f"""You are an expert at selecting appropriate icons and colors from Google's Material Icons library.
+
+The Material Icons dataset contains {len(icons_data)} icons. Each icon is formatted as:
+icon_name|category|tag1,tag2,tag3
+
+Your task is to:
+1. Select the SINGLE MOST APPROPRIATE icon based on the agent's name and description
+2. Choose a distinctive background color that fits the agent's theme
+
+Your response should be a JSON object with the following structure:
+{{
+    "icon_name": "the_icon_name",
+    "color": "#HEXCODE",
+    "reasoning": "Brief explanation of choices"
+}}
+
+ICON GUIDELINES:
+1. For a "Pirate Agent", look for icons that exist in the list:
+   - Good existing icons: "dangerous", "warning", "flag", "outlined_flag", "report_problem"
+2. For a "Cowboy Agent", look for icons that can represent western themes:
+   - Good existing icons: "label" (badge), "circle_notifications" (sheriff badge style)
+3. For a "Data Agent", look for icons that exist in the list with data/analytics themes:
+   - Good existing icons: "query_builder", "table_view", "storage"
+4. For a "Analytics Agent", look for icons that represent analytics:
+   - Good existing icons: "analytics", "bar_chart", "pie_chart"
+4. Always prefer icons that directly represent the agent's name over abstract concepts
+5. The icon should be instantly recognizable as representing the agent
+6. CRITICAL: Only use icon names that EXACTLY match entries in the provided list - never invent icon names
+
+COLOR GUIDELINES:
+1. Use distinctive colors that match the agent's theme:
+   - Pirate: Deep red (#B71C1C), dark purple (#4A148C), or black (#212121)
+   - Cowboy: Saddle brown (#8B4513), rust (#D84315), or tan (#D2691E)
+   - Data/Analytics: Blue (#1976D2), teal (#00796B), or indigo (#303F9F)
+   - Science/Tech: Purple (#7B1FA2), deep blue (#1565C0), or cyan (#00ACC1)
+2. IMPORTANT: Vary the shade based on the specific agent name and description:
+   - Use the agent's full name to determine lightness/darkness within the color family
+   - For example, "Data Agent" might use standard blue (#1976D2), while "Data Fetcher" should use a lighter (#42A5F5) or darker (#0D47A1) shade
+   - Consider the description: "Database" themes might be darker, "Analytics" themes lighter
+   - Even agents with similar purposes should have distinguishable shades
+3. Use colors with good contrast against white backgrounds
+4. Prefer material design colors but vary the shade (use 300-900 variants)
+5. The exact shade should be deterministic based on the name - the same name should always get the same color
+
+COMPLETE ICON LIST:
+{chr(10).join(icons_list)}
+
+Remember: Return ONLY the icon name that exists in the above list, and a valid hex color code."""
+            
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "text": prompt
+                        }
+                    ]
+                }
+            ]
+            
+            # Use the model from environment or default
+            model_id = os.getenv('BEDROCK_DEFAULT_MODEL', 'us.anthropic.claude-3-5-sonnet-20241022-v2:0')
+            
+            # Call the converse API
+            response = runtime_client.converse(
+                modelId=model_id,
+                messages=messages,
+                system=[{"text": system_prompt}],
+                inferenceConfig={
+                    "maxTokens": 512,
+                    "temperature": 0.3  # Lower temperature for more consistent selection
+                }
+            )
+            
+            # Extract the response
+            response_text = response['output']['message']['content'][0]['text']
+            
+            # Log the raw response for debugging
+            LOGGER.debug(f"Raw response from LLM for agent '{name}': {response_text}")
+            
+            # Try to parse as JSON - look for the first complete JSON object
+            import re
+            # More robust regex to find JSON object with icon_name
+            json_match = re.search(r'\{[^}]*"icon_name"[^}]*\}', response_text, re.DOTALL)
+            if json_match:
+                json_text = json_match.group()
+                try:
+                    result = json.loads(json_text)
+                    icon_name = result.get('icon_name', '')
+                    color = result.get('color', '#757575')  # Default grey
+                    if icon_name:
+                        LOGGER.info(f"Selected Material Icon '{icon_name}' with color '{color}' for agent '{name}': {result.get('reasoning', 'No reasoning provided')}")
+                        return json.dumps({
+                            "icon_name": icon_name,
+                            "color": color
+                        })
+                except json.JSONDecodeError as e:
+                    LOGGER.error(f"Failed to parse JSON for agent '{name}': {e}")
+                    LOGGER.error(f"JSON text was: {json_text}")
+            
+            LOGGER.warning(f"Could not extract icon name from response for agent '{name}'")
+            return json.dumps({
+                "icon_name": "smart_toy",
+                "color": "#757575"  # Default grey
+            })
+            
+        except Exception as e:
+            LOGGER.error(f"Error selecting Material Icon for agent '{name}': {e}")
+            return json.dumps({
+                "icon_name": "smart_toy",
+                "color": "#757575"  # Default grey
+            })
     
     @override
     def get_agent(self, agent_id: str) -> Agent:
@@ -830,6 +1002,18 @@ class BedrockAgentProvider(AgentProvider):
                     mcp_resources=agent_def.mcp_resources or [],
                     agent_metadata=agent_def.metadata or {},
                 )
+                # Select the Material icon if not provided
+                LOGGER.debug(f"Creating new agent '{agent_def.name}' - selecting material icon")
+                icon_data = self.select_material_icon(
+                    name=agent_def.name,
+                    description=agent_def.description or "",
+                    instructions=agent_def.instructions or ""
+                )
+                bedrock_options.agent_metadata['icon_svg'] = icon_data
+                # Mark the field as modified to ensure SQLAlchemy detects the change
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(bedrock_options, 'agent_metadata')
+                LOGGER.info(f"Selected icon data '{icon_data}' for new agent '{agent_def.name}'")
                 session.add(bedrock_options)
             else:
                 bedrock_options = session.query(BedrockAgentOptions).filter_by(agent_id=agent_id).first()
@@ -847,6 +1031,36 @@ class BedrockAgentProvider(AgentProvider):
                 else: 
                     raise ValueError(f"Bedrock options for agent {agent_id} not found in database")
                 
+                # Only update icon if name or description changed
+                existing_agent_record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
+                # Get current Bedrock agent to check description
+                current_bedrock_agent = self.bedrock_agent_client.get_agent(agentId=bedrock_agent_id)
+                current_description = current_bedrock_agent['agent'].get('description', '') if 'agent' in current_bedrock_agent else ''
+                
+                LOGGER.debug(f"Checking if icon update needed for agent '{agent_def.name}':")
+                LOGGER.debug(f"  - Current name: '{existing_agent_record.name if existing_agent_record else 'N/A'}'")
+                LOGGER.debug(f"  - New name: '{agent_def.name}'")
+                LOGGER.debug(f"  - Current description: '{current_description}'")
+                LOGGER.debug(f"  - New description: '{agent_def.description or ''}'")
+                
+                if (existing_agent_record and 
+                    (existing_agent_record.name != agent_def.name or 
+                     current_description != (agent_def.description or ''))):
+                    LOGGER.debug(f"Icon update triggered - name or description changed")
+                    icon_data = self.select_material_icon(
+                        name=agent_def.name,
+                        description=agent_def.description or "",
+                        instructions=agent_def.instructions or ""
+                    )
+                    bedrock_options.agent_metadata['icon_svg'] = icon_data
+                    # Mark the field as modified to ensure SQLAlchemy detects the change
+                    from sqlalchemy.orm.attributes import flag_modified
+                    flag_modified(bedrock_options, 'agent_metadata')
+                    LOGGER.info(f"Updated icon data for agent '{agent_def.name}' to '{icon_data}'")
+                else:
+                    LOGGER.debug(f"No icon update needed - name and description unchanged")
+                    current_icon = bedrock_options.agent_metadata.get('icon_svg', 'none')
+                    LOGGER.debug(f"Current icon for agent '{agent_def.name}': '{current_icon}'")
                 bedrock_agent_id, bedrock_agent_alias_id = update_bedrock_agent(
                     agent_def=agent_def,
                     bedrock_agent_id=bedrock_agent_id,
