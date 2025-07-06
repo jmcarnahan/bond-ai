@@ -7,7 +7,10 @@ sessionId and sessionState for Bedrock Agents.
 
 from bondable.bond.providers.threads import ThreadsProvider
 from bondable.bond.broker import BondMessage
+from bondable.bond.config import Config
 from bondable.bond.providers.metadata import Thread
+from bondable.bond.providers.files import FileDetails
+from bondable.bond.providers.provider import Provider
 from .BedrockMetadata import BedrockMetadata, BedrockMessage
 import uuid
 import logging
@@ -22,9 +25,10 @@ LOGGER = logging.getLogger(__name__)
 class BedrockThreadsProvider(ThreadsProvider):
     """Thread management for Bedrock using metadata storage with session support"""
     
-    def __init__(self, bedrock_agent_runtime_client: boto3.client, metadata: BedrockMetadata):
+    def __init__(self, bedrock_agent_runtime_client: boto3.client, provider: Provider, metadata: BedrockMetadata):
         self.metadata = metadata
         self.bedrock_agent_runtime_client = bedrock_agent_runtime_client
+        self.bond_provider: Provider = provider
         LOGGER.info("Initialized BedrockThreadsProvider with session support")
     
 
@@ -241,33 +245,29 @@ class BedrockThreadsProvider(ThreadsProvider):
                     .order_by(BedrockMessage.message_index.asc())\
                     .limit(limit)
                 
+                
                 for msg in query.all():
                     # Convert content to text if it's a list with a single text item
                     content_text = ""
-                    if isinstance(msg.content, list):
-                        for content_item in msg.content:
-                            if isinstance(content_item, dict) and 'text' in content_item:
-                                content_text += content_item['text']
-                    elif isinstance(msg.content, str):
-                        content_text = msg.content
-                    
-                    # Extract attachments if any
                     attachments = []
+                    if isinstance(msg.content, str):
+                        content_text = msg.content
                     if isinstance(msg.content, list):
                         for content_item in msg.content:
                             if isinstance(content_item, dict):
-                                if 'image' in content_item:
-                                    # Image attachment
+                                if 'text' in content_item:
+                                    content_text += content_item['text']
+                                elif 'file' in content_item:
                                     attachments.append({
-                                        'type': 'image',
-                                        'data': content_item['image']
+                                        'type': 'file',
+                                        'data': content_item['file']
                                     })
-                                elif 'document' in content_item:
-                                    # Document attachment
-                                    attachments.append({
-                                        'type': 'document',
-                                        'data': content_item['document']
-                                    })
+                                else:
+                                    LOGGER.warning(f"Unknown content item in message {msg.id}: {content_item}")
+                            else:
+                                LOGGER.warning(f"Unexpected content type in message {msg.id}: {type(content_item)}")
+                    else:
+                        content_text = str(msg.content)
                     
                     # Determine message type based on stored type or attachments
                     message_type = msg.type if msg.type else "text"
@@ -289,13 +289,20 @@ class BedrockThreadsProvider(ThreadsProvider):
                         content=content_text  # This initializes the clob with the content
                     )
                     
+                    LOGGER.debug(f"Get messages - message {msg.id}/{msg.role}/{message_type} - attachments: {attachments}")
+
                     # Store additional attributes that aren't part of the constructor
-                    bond_message.message_index = msg.message_index
-                    bond_message.metadata = msg.message_metadata
-                    bond_message.attachments = attachments if attachments else None
-                    bond_message.session_id = msg.session_id  # Include session ID
-                    bond_message.agent_id = agent_id  # Include agent ID
-                    
+                    bond_message.metadata = msg.message_metadata or {}
+                    bond_message.metadata['message_index'] = msg.message_index
+                    bond_message.metadata['session_id'] = msg.session_id  # Include session ID
+                    bond_message.metadata['agent_id'] = agent_id  # Include agent ID
+                    bond_message.metadata['attachments'] = attachments if attachments else None
+
+                    # bond_message.message_index = msg.message_index
+                    # bond_message.attachments = attachments if attachments else None
+                    # bond_message.session_id = msg.session_id  # Include session ID
+                    # bond_message.agent_id = agent_id  # Include agent ID
+
                     messages[msg.id] = bond_message
                 
                 LOGGER.info(f"Retrieved {len(messages)} messages from thread {thread_id}")
@@ -338,15 +345,20 @@ class BedrockThreadsProvider(ThreadsProvider):
         
         # Add attachments
         if attachments:
-            for attachment in attachments:
-                if attachment.get('type') == 'image':
-                    bedrock_content.append({
-                        'image': attachment['data']
-                    })
-                elif attachment.get('type') == 'document':
-                    bedrock_content.append({
-                        'document': attachment['data']
-                    })
+            file_ids = [attachment['file_id'] for attachment in attachments if 'file_id' in attachment]
+            file_details_list: FileDetails = self.bond_provider.files.get_file_details(file_ids=file_ids)
+            for file_details in file_details_list:
+                LOGGER.debug(f"Add messages - message {message_id} - attachments: {file_details}")
+                bedrock_content.append({
+                    'file': {
+                        'file_id': file_details.file_id,
+                        'file_path': file_details.file_path,
+                        'file_hash': file_details.file_hash,
+                        'mime_type': file_details.mime_type,
+                        'owner_user_id': file_details.owner_user_id,
+                        'file_size': file_details.file_size
+                    }
+                })                
         
         # Ensure thread exists in metadata with session_id
         session = self.metadata.get_db_session()
