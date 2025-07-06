@@ -23,3 +23,4 @@ class MessageRef(BaseModel):
     image_data: Optional[str] = None  # Base64 image data for image_file types
     agent_id: Optional[str] = None
     is_error: bool = False
+    metadata: Optional[dict] = None
