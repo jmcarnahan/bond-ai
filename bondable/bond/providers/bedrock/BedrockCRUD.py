@@ -61,7 +61,7 @@ def create_bedrock_agent(agent_id: str, agent_def: AgentDefinition) -> tuple[str
     
     try:
         # Step 1: Create the agent
-        LOGGER.info(f"Creating Bedrock Agent with for bond agent {agent_id}")
+        LOGGER.debug(f"Creating Bedrock Agent with for bond agent {agent_id} with ARN {agent_role_arn}")
         
         # Use agent_id as the Bedrock agent name for guaranteed uniqueness
         # Bedrock agent names must match pattern: ([0-9a-zA-Z][_-]?){1,100}
