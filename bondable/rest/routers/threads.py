@@ -126,15 +126,17 @@ async def get_messages(
                         actual_content = '[Image]'
             
             # Extract agent_id - BondMessage objects have agent_id attribute directly
-            agent_id = getattr(msg_obj, 'agent_id', None)
-            
+            metadata = getattr(msg_obj, 'metadata', {})
+            agent_id = metadata['agent_id'] if 'agent_id' in metadata else None
+
             message_refs.append(MessageRef(
                 id=getattr(msg_obj, 'message_id', getattr(msg_obj, 'id', "unknown_id")),
                 type=message_type,
                 role=msg_role,
                 content=actual_content,
                 image_data=image_data,
-                agent_id=agent_id
+                agent_id=agent_id,
+                metadata=metadata
             ))
         return message_refs
         
