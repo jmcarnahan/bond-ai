@@ -58,7 +58,7 @@ class BedrockProvider(Provider):
         self.metadata = BedrockMetadata(metadata_db_url)
         
         # Initialize sub-providers
-        self.threads = BedrockThreadsProvider(bedrock_agent_runtime_client=self.bedrock_agent_runtime_client, metadata=self.metadata)
+        self.threads = BedrockThreadsProvider(bedrock_agent_runtime_client=self.bedrock_agent_runtime_client, provider=self, metadata=self.metadata)
         
         # Initialize agent provider
         from .BedrockAgent import BedrockAgentProvider

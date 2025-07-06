@@ -247,6 +247,7 @@ class BedrockAgent(Agent):
         if not user_id:
             raise ValueError("Agent must have user_id in metadata")
         
+
         # Add the message to the thread
         # Note: session_id is extracted from thread_id in add_message
         message_id = self.bond_provider.threads.add_message(
@@ -331,15 +332,12 @@ class BedrockAgent(Agent):
             response_id = str(uuid.uuid4())
             response_type = "text"
             response_role = "assistant"
-            yield (
-                f'<_bondmessage '
-                f'id="{response_id}" '
-                f'thread_id="{thread_id}" '
-                f'agent_id="{self.agent_id}" '
-                f'type="{response_type}" '
-                f'role="{response_role}" '
-                f'is_error="false" '
-                f'is_done="false">'
+            yield self._create_bond_message_tag(
+                message_id=response_id,
+                thread_id=thread_id,
+                agent_id=self.agent_id,
+                message_type=response_type,
+                role=response_role
             )
 
             # augment this with any code interpreter files from the tool_resources for this agent
@@ -351,14 +349,30 @@ class BedrockAgent(Agent):
 
             # add files from attachments
             if attachments:
-                LOGGER.info(f"Streaming response with attachments\n: {json.dumps(attachments, indent=2)}")
+                LOGGER.debug(f"Streaming response with attachments\n: {json.dumps(attachments, indent=2)}")
+                attachment_files = self.bond_provider.files.convert_attachments_to_files(attachments)
+                if attachment_files:
+                    if 'files' not in session_state:
+                        session_state['files'] = []
+                    session_state['files'].extend(attachment_files)
 
             # Add session state if available
             request['sessionState'] = session_state
+            
+            # Log session state files for debugging
+            if 'files' in session_state:
+                LOGGER.debug(f"Session state contains {len(session_state['files'])} files")
+                for i, file in enumerate(session_state['files']):
+                    LOGGER.debug(f"  File {i}: {file.get('name')} - {file.get('source', {}).get('sourceType')}")
 
             
             # Invoke the agent (this returns a streaming response)
-            LOGGER.debug(f"Sending request: {request}")
+            # Log request without session state for readability
+            request_log = {k: v for k, v in request.items() if k != 'sessionState'}
+            LOGGER.debug(f"Sending request (without sessionState): {request_log}")
+            if 'sessionState' in request and 'files' in request['sessionState']:
+                LOGGER.debug(f"Session state files count: {len(request['sessionState']['files'])}")
+            LOGGER.debug(f"Invoking Bedrock Agent {self.bedrock_agent_id} with request: {json.dumps(request, indent=2)}")
             response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**request)
 
             # Process the streaming response
@@ -375,11 +389,8 @@ class BedrockAgent(Agent):
                     
                     # Handle text chunks
                     if 'chunk' in event:
-                        chunk = event['chunk']
-                        # LOGGER.debug(f" --- Received chunk: {list(chunk.keys())}")
-                        if 'bytes' in chunk:
-                            text = chunk['bytes'].decode('utf-8')
-                            # LOGGER.debug(f"Processing text chunk of length {len(text)}")
+                        text = self._handle_chunk_event(event['chunk'])
+                        if text:
                             yield text
                             full_content += text
                     
@@ -388,147 +399,62 @@ class BedrockAgent(Agent):
                         files_event = event['files']
                         if 'files' in files_event:
                             for file_info in files_event['files']:
-                                # Check for duplicate files
-                                file_hash = self._compute_file_hash(file_info)
-                                if file_hash:
-                                    if file_hash in seen_file_hashes:
-                                        # Duplicate file - log and skip
-                                        file_name = file_info.get('name', 'unknown')
-                                        LOGGER.debug(f"Skipping duplicate file: {file_name} (hash: {file_hash})")
-                                        continue
-                                    seen_file_hashes.add(file_hash)
-                                
-
-                                if full_content and len(full_content) > 0:
-                                    # Need to save off any content here as a message
-                                    message_id = self.bond_provider.threads.add_message(
-                                        message_id=response_id,
-                                        thread_id=thread_id,
-                                        user_id=user_id,
-                                        role=response_role,
-                                        message_type=response_type,
-                                        content=full_content,
-                                        attachments=attachments,
-                                        metadata={
-                                            'agent_id': self.agent_id,
-                                            'model': self.model,
-                                            'bedrock_agent_id': self.bedrock_agent_id
-                                        }
-                                    )
-                                    full_content = ''
-
-                                # finish the text message
-                                yield '</_bondmessage>'
-                                # send the file message
-                                yield from self._handle_file_event(file_info=file_info, 
-                                                                   thread_id=thread_id, 
-                                                                   user_id=user_id)
-                                
-                                # start a new text message
-                                response_id = str(uuid.uuid4())
-                                yield (
-                                    f'<_bondmessage '
-                                    f'id="{response_id}" '
-                                    f'thread_id="{thread_id}" '
-                                    f'agent_id="{self.agent_id}" '
-                                    f'type="{response_type}" '
-                                    f'role="{response_role}" '
-                                    f'is_error="false" '
-                                    f'is_done="false">'
+                                # Use helper method to handle file event
+                                new_response_id = yield from self._handle_file_event_streaming(
+                                    file_info=file_info,
+                                    thread_id=thread_id,
+                                    user_id=user_id,
+                                    current_response_id=response_id,
+                                    full_content=full_content,
+                                    attachments=attachments,
+                                    seen_file_hashes=seen_file_hashes
                                 )
+                                
+                                # Update response_id and reset content if a new message was started
+                                if new_response_id != response_id:
+                                    response_id = new_response_id
+                                    full_content = ''
 
                     # Handle returnControl events for MCP tools
                     elif 'returnControl' in event:
                         return_control = event['returnControl']
                         LOGGER.info("Received returnControl event for tool execution")
                         
-                        # Handle the tool execution
-                        tool_results = self._handle_return_control(return_control)
+                        # Handle continuation response
+                        continuation_generator = self._handle_continuation_response(
+                            return_control=return_control,
+                            session_id=session_id,
+                            thread_id=thread_id,
+                            seen_file_hashes=seen_file_hashes,
+                            attachments=attachments
+                        )
                         
-                        if tool_results:
-                            # Continue the agent with the tool results
-                            continuation_request = {
-                                'agentId': self.bedrock_agent_id,
-                                'agentAliasId': self.bedrock_agent_alias_id,
-                                'sessionId': session_id,
-                                'sessionState': {
-                                    'invocationId': return_control.get('invocationId'),
-                                    'returnControlInvocationResults': tool_results
-                                },
-                                'enableTrace': True,
-                                'streamingConfigurations': {
-                                    'streamFinalResponse': True
-                                }
-                            }
-                            
-                            # Get continuation response
-                            continuation_response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**continuation_request)
-                            continuation_stream = continuation_response.get('completion')
-                            
-                            if continuation_stream:
-                                for cont_event in continuation_stream:
-                                    if 'chunk' in cont_event:
-                                        chunk = cont_event['chunk']
-                                        if 'bytes' in chunk:
-                                            text = chunk['bytes'].decode('utf-8')
-                                            yield text
-                                            full_content += text
-                                    elif 'files' in cont_event:
-                                        # Handle files in continuation stream
-                                        files_event = cont_event['files']
-                                        if 'files' in files_event:
-                                            for file_info in files_event['files']:
-                                                # Check for duplicate files
-                                                file_hash = self._compute_file_hash(file_info)
-                                                if file_hash:
-                                                    if file_hash in seen_file_hashes:
-                                                        # Duplicate file - log and skip
-                                                        file_name = file_info.get('name', 'unknown')
-                                                        LOGGER.debug(f"Skipping duplicate file in continuation: {file_name} (hash: {file_hash})")
-                                                        continue
-                                                    seen_file_hashes.add(file_hash)
-                                                
-                                                # from here
-                                                if full_content and len(full_content) > 0:
-                                                    # Need to save off any content here as a message
-                                                    message_id = self.bond_provider.threads.add_message(
-                                                        message_id=response_id,
-                                                        thread_id=thread_id,
-                                                        user_id=user_id,
-                                                        role=response_role,
-                                                        message_type=response_type,
-                                                        content=full_content,
-                                                        attachments=attachments,
-                                                        metadata={
-                                                            'agent_id': self.agent_id,
-                                                            'model': self.model,
-                                                            'bedrock_agent_id': self.bedrock_agent_id
-                                                        }
-                                                    )
-                                                    full_content = ''
-
-                                                # finish the text message
-                                                yield '</_bondmessage>'
-                                                # send the file message
-                                                yield from self._handle_file_event(file_info=file_info, 
-                                                                                    thread_id=thread_id, 
-                                                                                    user_id=user_id)
-                                                
-                                                # start a new text message
-                                                response_id = str(uuid.uuid4())
-                                                yield (
-                                                    f'<_bondmessage '
-                                                    f'id="{response_id}" '
-                                                    f'thread_id="{thread_id}" '
-                                                    f'agent_id="{self.agent_id}" '
-                                                    f'type="{response_type}" '
-                                                    f'role="{response_role}" '
-                                                    f'is_error="false" '
-                                                    f'is_done="false">'
-                                                )
-
-                                    elif 'sessionState' in cont_event:
-                                        new_session_state = cont_event['sessionState']
+                        for cont_item in continuation_generator:
+                            if isinstance(cont_item, str):
+                                # It's text content
+                                yield cont_item
+                                full_content += cont_item
+                            elif isinstance(cont_item, dict) and 'files_event' in cont_item:
+                                # Handle files in continuation
+                                files_event = cont_item['files_event']['files']
+                                if 'files' in files_event:
+                                    for file_info in files_event['files']:
+                                        new_response_id = yield from self._handle_file_event_streaming(
+                                            file_info=file_info,
+                                            thread_id=thread_id,
+                                            user_id=user_id,
+                                            current_response_id=response_id,
+                                            full_content=full_content,
+                                            attachments=attachments,
+                                            seen_file_hashes=seen_file_hashes
+                                        )
+                                        if new_response_id != response_id:
+                                            response_id = new_response_id
+                                            full_content = ''
+                            elif isinstance(cont_item, dict):
+                                # Final result with session state
+                                if cont_item.get('session_state'):
+                                    new_session_state = cont_item['session_state']
                     
                     # Handle session state updates
                     elif 'sessionState' in event:
@@ -576,7 +502,7 @@ class BedrockAgent(Agent):
         except ClientError as e:
             error_code = e.response['Error']['Code']
             error_message = str(e)
-            LOGGER.error(f"Bedrock Agent API error: {error_code} - {error_message}")
+            LOGGER.exception(f"Bedrock Agent API error: {error_code} - {error_message} - {e}")
             yield from self._yield_error_message(thread_id, error_message, error_code)
             
         except Exception as e:
@@ -708,6 +634,177 @@ class BedrockAgent(Agent):
                         results.append(error_response)
         
         return results
+    
+    def _create_bond_message_tag(self, message_id: str, thread_id: str, agent_id: str, 
+                                 message_type: str = "text", role: str = "assistant", 
+                                 is_error: bool = False) -> str:
+        """
+        Create a bond message opening tag.
+        
+        Args:
+            message_id: Unique message ID
+            thread_id: Thread ID
+            agent_id: Agent ID
+            message_type: Type of message (text, image_file, etc.)
+            role: Role of message sender
+            is_error: Whether this is an error message
+            
+        Returns:
+            Bond message opening tag string
+        """
+        return (
+            f'<_bondmessage '
+            f'id="{message_id}" '
+            f'thread_id="{thread_id}" '
+            f'agent_id="{agent_id}" '
+            f'type="{message_type}" '
+            f'role="{role}" '
+            f'is_error="{str(is_error).lower()}" '
+            f'is_done="false">'
+        )
+    
+    def _handle_file_event_streaming(self, file_info: Dict[str, Any], thread_id: str, 
+                                   user_id: str, current_response_id: str, 
+                                   full_content: str, attachments: Optional[List] = None,
+                                   seen_file_hashes: set = None) -> Generator[str, None, str]:
+        """
+        Handle file events during streaming, yielding bond messages.
+        
+        Args:
+            file_info: File information from Bedrock
+            thread_id: Thread ID
+            user_id: User ID  
+            current_response_id: Current response message ID
+            full_content: Accumulated text content
+            attachments: Optional attachments
+            seen_file_hashes: Set of already seen file hashes
+            
+        Yields:
+            Bond message chunks
+            
+        Returns:
+            New response ID for continuation
+        """
+        # Check for duplicate files
+        if seen_file_hashes is not None:
+            file_hash = self._compute_file_hash(file_info)
+            if file_hash:
+                if file_hash in seen_file_hashes:
+                    file_name = file_info.get('name', 'unknown')
+                    LOGGER.debug(f"Skipping duplicate file: {file_name} (hash: {file_hash})")
+                    return current_response_id
+                seen_file_hashes.add(file_hash)
+        
+        # Save any accumulated text content
+        if full_content and len(full_content) > 0:
+            self.bond_provider.threads.add_message(
+                message_id=current_response_id,
+                thread_id=thread_id,
+                user_id=user_id,
+                role="assistant",
+                message_type="text",
+                content=full_content,
+                attachments=attachments,
+                metadata={
+                    'agent_id': self.agent_id,
+                    'model': self.model,
+                    'bedrock_agent_id': self.bedrock_agent_id
+                }
+            )
+        
+        # Close current text message
+        yield '</_bondmessage>'
+        
+        # Send the file message
+        yield from self._handle_file_event(file_info=file_info, 
+                                         thread_id=thread_id, 
+                                         user_id=user_id)
+        
+        # Start a new text message
+        new_response_id = str(uuid.uuid4())
+        yield self._create_bond_message_tag(
+            message_id=new_response_id,
+            thread_id=thread_id,
+            agent_id=self.agent_id,
+            message_type="text",
+            role="assistant"
+        )
+        
+        return new_response_id
+    
+    def _handle_chunk_event(self, chunk: Dict[str, Any]) -> Optional[str]:
+        """
+        Handle a chunk event from Bedrock streaming.
+        
+        Args:
+            chunk: The chunk event data
+            
+        Returns:
+            Decoded text if available, None otherwise
+        """
+        if 'bytes' in chunk:
+            text = chunk['bytes'].decode('utf-8')
+            return text
+        return None
+    
+    def _handle_continuation_response(self, return_control: Dict[str, Any], session_id: str,
+                                    thread_id: str, seen_file_hashes: set,
+                                    attachments: Optional[List] = None) -> Generator[str, None, Dict[str, Any]]:
+        """
+        Handle continuation response after tool execution.
+        
+        Args:
+            return_control: The returnControl event data
+            session_id: Session ID
+            thread_id: Thread ID
+            seen_file_hashes: Set of already seen file hashes
+            attachments: Optional attachments
+            
+        Yields:
+            Response chunks
+            
+        Returns:
+            Dictionary with accumulated content and new session state
+        """
+        tool_results = self._handle_return_control(return_control)
+        full_content = ""
+        new_session_state = None
+        
+        if tool_results:
+            # Continue the agent with the tool results
+            continuation_request = {
+                'agentId': self.bedrock_agent_id,
+                'agentAliasId': self.bedrock_agent_alias_id,
+                'sessionId': session_id,
+                'sessionState': {
+                    'invocationId': return_control.get('invocationId'),
+                    'returnControlInvocationResults': tool_results
+                },
+                'enableTrace': True,
+                'streamingConfigurations': {
+                    'streamFinalResponse': True
+                }
+            }
+            
+            # Get continuation response
+            continuation_response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**continuation_request)
+            continuation_stream = continuation_response.get('completion')
+            
+            if continuation_stream:
+                for cont_event in continuation_stream:
+                    if 'chunk' in cont_event:
+                        text = self._handle_chunk_event(cont_event['chunk'])
+                        if text:
+                            yield text
+                            full_content += text
+                    elif 'files' in cont_event:
+                        # Note: File handling in continuation is handled by the caller
+                        # We just pass the event through
+                        yield {'files_event': cont_event}
+                    elif 'sessionState' in cont_event:
+                        new_session_state = cont_event['sessionState']
+        
+        return {'full_content': full_content, 'session_state': new_session_state}
 
 
 class BedrockAgentProvider(AgentProvider):
@@ -1092,8 +1189,6 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
         #     agent_def.metadata = {}
         # agent_def.metadata['user_id'] = owner_user_id
 
-
-    @override            
     def get_available_models(self) -> List[Dict[str, Any]]:
         """
         Get list of available models.
