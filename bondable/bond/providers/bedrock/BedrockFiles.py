@@ -9,7 +9,7 @@ import uuid
 import logging
 import base64
 import boto3
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, List
 from botocore.exceptions import ClientError
 from bondable.bond.config import Config
 from bondable.bond.providers.files import FilesProvider
@@ -68,14 +68,14 @@ class BedrockFilesProvider(FilesProvider):
                 raise
 
 
-    def _get_key_from_file_id(self, file_id: str) -> str:
+    def _get_key_from_file_id(self, file_id: str) -> Tuple[str, str]:
         """
         Extracts bucket name and S3 key from the file_id.
         
         Args:
             file_id: S3 URI of the file (e.g., s3://bucket/key)
         Returns:
-            The S3 key
+            Tuple of (bucket_name, s3_key)
         """
         if not file_id.startswith('s3://'):
             raise ValueError(f"Invalid file_id format: {file_id}. Expected S3 URI format.")
@@ -85,9 +85,12 @@ class BedrockFilesProvider(FilesProvider):
             raise ValueError(f"Invalid S3 URI format: {file_id}. Expected format s3://bucket/key.")
         bucket_name = parts[0]
         s3_key = parts[1]
+        
+        # Log warning if bucket doesn't match but still allow access
         if bucket_name != self.bucket_name:
-            raise ValueError(f"File ID does not match configured bucket: {file_id}")
-        return s3_key
+            LOGGER.warning(f"File ID bucket '{bucket_name}' does not match configured bucket '{self.bucket_name}'")
+            
+        return bucket_name, s3_key
     
     
     def create_file_resource(self, file_path: str, file_bytes: io.BytesIO) -> str:
@@ -146,12 +149,12 @@ class BedrockFilesProvider(FilesProvider):
         """
         try:
   
-            s3_key = self._get_key_from_file_id(file_id)         
+            bucket_name, s3_key = self._get_key_from_file_id(file_id)         
             
             # Use head_object to check if the object exists before deleting
             # Check if object exists first
             try:
-                self.s3_client.head_object(Bucket=self.bucket_name, Key=s3_key)
+                self.s3_client.head_object(Bucket=bucket_name, Key=s3_key)
             except ClientError as e:
                 if e.response['Error']['Code'] == '404':
                     LOGGER.warning(f"File not found in S3: {file_id}")
@@ -161,11 +164,11 @@ class BedrockFilesProvider(FilesProvider):
             
             # Delete from S3
             self.s3_client.delete_object(
-                Bucket=self.bucket_name,
+                Bucket=bucket_name,
                 Key=s3_key
             )
             
-            LOGGER.info(f"Deleted file from S3: bucket={self.bucket_name}, key={s3_key}")
+            LOGGER.info(f"Deleted file from S3: bucket={bucket_name}, key={s3_key}")
             return True
             
         except ClientError as e:
@@ -192,12 +195,12 @@ class BedrockFilesProvider(FilesProvider):
         if file_bytes is not None:
             return io.BytesIO(file_bytes)
         
-        # Check if this is a file_id (starts with bedrock_file_)
+        # Check if this is a file_id (starts with s3://)
         if file_id.startswith('s3://'):
-            s3_key = self._get_key_from_file_id(file_id)  
+            bucket_name, s3_key = self._get_key_from_file_id(file_id)  
             try:
                 response = self.s3_client.get_object(
-                    Bucket=self.bucket_name,
+                    Bucket=bucket_name,
                     Key=s3_key
                 )
                 content = response['Body'].read()
@@ -311,5 +314,76 @@ class BedrockFilesProvider(FilesProvider):
         #                 })
         
         return files if files else None
+    
+    def convert_attachments_to_files(self, attachments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Convert attachments from the stream_response format to Bedrock file format.
+        Small files (<10MB) are sent as BYTE_CONTENT, larger files use S3 location.
+        
+        Args:
+            attachments: List of attachment dictionaries with file_id and tools
+            
+        Returns:
+            List of files in Bedrock format
+        """
+        files = []
+        
+        for attachment in attachments:
+            file_id = attachment.get('file_id')
+            if not file_id or not file_id.startswith('s3://'):
+                LOGGER.warning(f"Skipping invalid attachment file_id: {file_id}")
+                continue
+                
+            # Get file details to check size and get metadata
+            try:
+                file_details_list = self.get_file_details([file_id])
+                if not file_details_list:
+                    LOGGER.warning(f"No file details found for attachment: {file_id}")
+                    continue
+                
+                file_details = file_details_list[0]
+                file_size = file_details.file_size or 0
+                
+                # Determine use case based on tool type
+                use_case = 'CHAT'  # Default
+                tools = attachment.get('tools', [])
+                for tool in tools:
+                    if tool.get('type') == 'code_interpreter':
+                        use_case = 'CODE_INTERPRETER'
+                        break
+                
+                # Check file size to determine how to send it
+                if file_size > 0:  # Always use S3 location for attachments
+                    files.append({
+                        'name': os.path.basename(file_details.file_path),
+                        'source': {
+                            's3Location': {
+                                'uri': file_id
+                            },
+                            'sourceType': 'S3'
+                        },
+                        'useCase': use_case
+                    })
+                else:  # Less than or equal to 10MB - send as byte content
+                    LOGGER.info(f"Retrieving file from S3: {file_id} ({file_size} bytes)")
+                    file_bytes = self.get_file_bytes((file_id, None))
+                    file_data = base64.b64encode(file_bytes.getvalue()).decode('utf-8')
+                    files.append({
+                        'name': os.path.basename(file_details.file_path),
+                        'source': {
+                            'byteContent': {
+                                'data': file_data,
+                                'mediaType': file_details.mime_type
+                            },
+                            'sourceType': 'BYTE_CONTENT'
+                        },
+                        'useCase': use_case
+                    })
+                    
+            except Exception as e:
+                LOGGER.error(f"Error processing attachment {file_id}: {e}")
+                continue
+            
+        return files
 
 
