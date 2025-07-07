@@ -66,7 +66,7 @@ class BedrockProvider(Provider):
         
         # Initialize files provider
         from .BedrockFiles import BedrockFilesProvider
-        self.files = BedrockFilesProvider(s3_client=self.s3_client, metadata=self.metadata)
+        self.files = BedrockFilesProvider(s3_client=self.s3_client, provider=self, metadata=self.metadata)
         
         # Initialize vector stores (stub for now)
         from .BedrockVectorStores import BedrockVectorStoresProvider
