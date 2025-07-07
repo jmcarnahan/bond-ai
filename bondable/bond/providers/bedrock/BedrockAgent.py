@@ -295,210 +295,120 @@ class BedrockAgent(Agent):
             raise ValueError("Agent must have user_id in metadata")
         
         try:
-
             # Get session ID and state from thread
             session_id = self.bond_provider.threads.get_thread_session_id(thread_id)
             session_state = self.bond_provider.threads.get_thread_session_state(thread_id, user_id)
             LOGGER.info(f"Invoking Bedrock Agent {self.bedrock_agent_id} with session {session_id}")
 
-            # Add user message if prompt provided
+            # Add user message if needed
             if prompt:
                 self.create_user_message(prompt, thread_id, attachments, override_role)
-            else:
-                # If no prompt, we need to get the last user message
+            elif not prompt:
+                # Get the last user message
                 messages = self.bond_provider.threads.get_messages(thread_id, limit=1)
                 if not messages:
                     raise ValueError("No user message to respond to")
-                # Get the most recent message
                 last_msg = list(messages.values())[0]
                 if last_msg.role != 'user':
                     raise ValueError("No user message to respond to")
                 prompt = last_msg.clob.get_content() if hasattr(last_msg, 'clob') else str(last_msg)
-            
-            # Build request for invoke_agent
-            request = {
-                'agentId': self.bedrock_agent_id,
-                'agentAliasId': self.bedrock_agent_alias_id,
-                'sessionId': session_id,
-                'inputText': prompt,
-                'enableTrace': True,  # Enable for debugging
-                'streamingConfigurations': {
-                    'streamFinalResponse': True  # Enable streaming!
-                }
-            }
-            
-            # Generate Bond message start tag
-            full_content = ""
-            response_id = str(uuid.uuid4())
-            response_type = "text"
-            response_role = "assistant"
-            yield self._create_bond_message_tag(
-                message_id=response_id,
-                thread_id=thread_id,
-                agent_id=self.agent_id,
-                message_type=response_type,
-                role=response_role
-            )
 
-            # augment this with any code interpreter files from the tool_resources for this agent
+            # Augment this with any files from the tool_resources for this agent
             # only do this for the first message
+            all_files = []
             if self.bond_provider.threads.get_response_message_count(thread_id=thread_id) == 0:
                 session_files = self.bond_provider.files.get_files_invocation(self.tool_resources)
                 if session_files:
-                    session_state['files'] = session_files
+                    all_files.extend(session_files)
 
-            # add files from attachments
+            # Add files from attachments
             if attachments:
                 LOGGER.debug(f"Streaming response with attachments\n: {json.dumps(attachments, indent=2)}")
                 attachment_files = self.bond_provider.files.convert_attachments_to_files(attachments)
                 if attachment_files:
-                    if 'files' not in session_state:
-                        session_state['files'] = []
-                    session_state['files'].extend(attachment_files)
+                    all_files.extend(attachment_files)
 
-            # Add session state if available
-            request['sessionState'] = session_state
+            # Check the number of files in session state
+            if len(all_files) > 5:
+                LOGGER.error(f"Session state has {len(all_files)} files, which exceeds Bedrock limits")
+                raise ValueError("Request has too many files. Bedrock supports a maximum of 5 files per request.")
             
-            # Log session state files for debugging
-            if 'files' in session_state:
-                LOGGER.debug(f"Session state contains {len(session_state['files'])} files")
-                for i, file in enumerate(session_state['files']):
-                    LOGGER.debug(f"  File {i}: {file.get('name')} - {file.get('source', {}).get('sourceType')}")
-
-            
-            # Invoke the agent (this returns a streaming response)
-            # Log request without session state for readability
-            request_log = {k: v for k, v in request.items() if k != 'sessionState'}
-            LOGGER.debug(f"Sending request (without sessionState): {request_log}")
-            if 'sessionState' in request and 'files' in request['sessionState']:
-                LOGGER.debug(f"Session state files count: {len(request['sessionState']['files'])}")
-            LOGGER.debug(f"Invoking Bedrock Agent {self.bedrock_agent_id} with request: {json.dumps(request, indent=2)}")
-            response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**request)
-
-            # Process the streaming response
-            new_session_state = None
-            seen_file_hashes = set()  # Track files we've already sent
-            
-            # The response contains an EventStream that we need to iterate
-            event_stream = response.get('completion')
-            if event_stream:
-                event_count = 0
-                for event in event_stream:
-                    event_count += 1
-                    # LOGGER.debug(f"Processing event {event_count}: {list(event.keys())}")
-                    
-                    # Handle text chunks
-                    if 'chunk' in event:
-                        text = self._handle_chunk_event(event['chunk'])
-                        if text:
-                            yield text
-                            full_content += text
-                    
-                    # Handle files event (this is where files from code interpreter come)
-                    elif 'files' in event:
-                        files_event = event['files']
-                        if 'files' in files_event:
-                            for file_info in files_event['files']:
-                                # Use helper method to handle file event
-                                new_response_id = yield from self._handle_file_event_streaming(
-                                    file_info=file_info,
-                                    thread_id=thread_id,
-                                    user_id=user_id,
-                                    current_response_id=response_id,
-                                    full_content=full_content,
-                                    attachments=attachments,
-                                    seen_file_hashes=seen_file_hashes
-                                )
-                                
-                                # Update response_id and reset content if a new message was started
-                                if new_response_id != response_id:
-                                    response_id = new_response_id
-                                    full_content = ''
-
-                    # Handle returnControl events for MCP tools
-                    elif 'returnControl' in event:
-                        return_control = event['returnControl']
-                        LOGGER.info("Received returnControl event for tool execution")
-                        
-                        # Handle continuation response
-                        continuation_generator = self._handle_continuation_response(
-                            return_control=return_control,
-                            session_id=session_id,
-                            thread_id=thread_id,
-                            seen_file_hashes=seen_file_hashes,
-                            attachments=attachments
-                        )
-                        
-                        for cont_item in continuation_generator:
-                            if isinstance(cont_item, str):
-                                # It's text content
-                                yield cont_item
-                                full_content += cont_item
-                            elif isinstance(cont_item, dict) and 'files_event' in cont_item:
-                                # Handle files in continuation
-                                files_event = cont_item['files_event']['files']
-                                if 'files' in files_event:
-                                    for file_info in files_event['files']:
-                                        new_response_id = yield from self._handle_file_event_streaming(
-                                            file_info=file_info,
-                                            thread_id=thread_id,
-                                            user_id=user_id,
-                                            current_response_id=response_id,
-                                            full_content=full_content,
-                                            attachments=attachments,
-                                            seen_file_hashes=seen_file_hashes
-                                        )
-                                        if new_response_id != response_id:
-                                            response_id = new_response_id
-                                            full_content = ''
-                            elif isinstance(cont_item, dict):
-                                # Final result with session state
-                                if cont_item.get('session_state'):
-                                    new_session_state = cont_item['session_state']
-                    
-                    # Handle session state updates
-                    elif 'sessionState' in event:
-                        new_session_state = event['sessionState']
-                        LOGGER.debug("Received session state update")
-
-                    elif 'trace' in event:
-                        event_trace = event['trace']
-                        LOGGER.debug(f" --- Received trace: {list(event_trace.keys())}")
+            # Separate files by use case
+            if all_files:
+                chat_files, code_files = self._separate_files_by_use_case(all_files)
                 
-                LOGGER.info(f"Processed {event_count} events from completion stream")
-            
-            # Close the Bond message
-            yield '</_bondmessage>'
-            
-            # Save the complete response to the thread
-            if full_content and len(full_content) > 0:
-                self.bond_provider.threads.add_message(
-                    message_id=response_id,
-                    thread_id=thread_id,
-                    user_id=user_id,
-                    role=response_role,
-                    message_type=response_type,
-                    content=full_content,
-                    metadata={
-                        'agent_id': self.agent_id,
-                        'model': self.model,
-                        'bedrock_agent_id': self.bedrock_agent_id
-                    }
-                )
+                # Log file distribution
+                LOGGER.info(f"File distribution: {len(chat_files)} CHAT files, {len(code_files)} CODE_INTERPRETER files")
+                
+                # Check if we have mixed file types
+                if chat_files and code_files:
+                    LOGGER.info("Processing mixed file types in two phases")
+                    
+                    # Phase 1: Process CHAT files with context-gathering prompt
+                    phase1_prompt = f"""I'm providing some documents for context. Please analyze these documents and keep their content in mind for the upcoming question.
 
-                LOGGER.info(f"Saved assistant response to thread {thread_id}")
+Documents are attached.
+
+Original question: {prompt}
+
+Please briefly acknowledge the documents and indicate you're ready to proceed with the analysis."""
+                    
+                    yield from self._process_bedrock_invocation(
+                        prompt=phase1_prompt,
+                        thread_id=thread_id,
+                        session_id=session_id,
+                        session_state=session_state,
+                        files=chat_files,
+                        attachments=attachments,
+                        override_role=override_role,
+                        user_id=user_id,
+                        phase_metadata={'phase': 'document_analysis', 'phase_number': 1}
+                    )
+                    
+                    # Phase 2: Process CODE_INTERPRETER files with the original prompt
+                    phase2_prompt = f"""Now, using the context from the documents I just analyzed, please address the original question with the data files provided:
+
+{prompt}
+
+Please integrate any relevant insights from the documents with your analysis of the data."""
+                    
+                    yield from self._process_bedrock_invocation(
+                        prompt=phase2_prompt,
+                        thread_id=thread_id,
+                        session_id=session_id,
+                        session_state=session_state,
+                        files=code_files,
+                        attachments=None,  # Don't re-send attachments in phase 2
+                        override_role=override_role,
+                        user_id=user_id,
+                        phase_metadata={'phase': 'data_analysis', 'phase_number': 2}
+                    )
+                    
+                    return  # Exit early for mixed files
             
-            # Update session state if provided
-            if new_session_state:
-                self.bond_provider.threads.update_thread_session(
-                    thread_id=thread_id, 
-                    user_id=user_id, 
-                    session_id=session_id,
-                    session_state=new_session_state)
-                LOGGER.debug(f"Updated session state for thread {thread_id}: session state \n{json.dumps(new_session_state, indent=4)}")
-            else:
-                LOGGER.debug("No updated session state was returned from bedrock")
+            # Single file type or no files - process normally
+            LOGGER.info(f"Processing with single file type or no files")
+            if all_files:
+                LOGGER.info(f"Session state contains {len(all_files)} files")
+                for i, file in enumerate(all_files):
+                    LOGGER.debug(f"  File {i}: {file.get('name')} - {file.get('source', {}).get('sourceType')}")
             
+            # Set files in session state if we have any
+            if all_files:
+                session_state['files'] = all_files
+            
+            # Process normally with all the original logic intact
+            yield from self._process_bedrock_invocation(
+                prompt=prompt,
+                thread_id=thread_id,
+                session_id=session_id,
+                session_state=session_state,
+                files=all_files if all_files else None,
+                attachments=attachments,
+                override_role=override_role,
+                user_id=user_id,
+            )
+                
         except ClientError as e:
             error_code = e.response['Error']['Code']
             error_message = str(e)
@@ -746,6 +656,219 @@ class BedrockAgent(Agent):
             text = chunk['bytes'].decode('utf-8')
             return text
         return None
+    
+    def _separate_files_by_use_case(self, files: List[Dict[str, Any]]) -> tuple[List[Dict], List[Dict]]:
+        """
+        Separate files by their use case.
+        
+        Args:
+            files: List of file dictionaries with 'useCase' field
+            
+        Returns:
+            Tuple of (chat_files, code_files)
+        """
+        chat_files = []
+        code_files = []
+        
+        for file in files:
+            # The useCase should already be set by the file conversion process
+            use_case = file.get('useCase', 'CHAT')  # Default to CHAT if not specified
+            
+            if use_case == 'CODE_INTERPRETER':
+                code_files.append(file)
+            else:
+                chat_files.append(file)
+        
+        return chat_files, code_files
+    
+    def _process_bedrock_invocation(self, prompt: Optional[str], thread_id: str, session_id: str,
+                                   session_state: Dict[str, Any], files: Optional[List[Dict]],
+                                   attachments: Optional[List], override_role: str, user_id: str,
+                                   phase_metadata: Optional[Dict] = None) -> Generator[str, None, None]:
+        """
+        Process a single Bedrock invocation with the given files.
+        
+        This method contains all the common logic for processing responses,
+        handling files, MCP tools, etc.
+        
+        Args:
+            prompt: The prompt to send to Bedrock
+            thread_id: Thread ID
+            session_id: Session ID
+            session_state: Current session state
+            files: Files to include in this invocation (already have useCase set)
+            attachments: Original attachments (only used for first invocation)
+            override_role: Role for user message
+            user_id: User ID
+            phase_metadata: Optional metadata to include (e.g., phase information)
+            
+        Yields:
+            Response chunks in Bond message format
+        """
+        # Update session state with files if provided
+        updated_session_state = session_state.copy()
+        if files:
+            updated_session_state['files'] = files
+            LOGGER.info(f"Session state contains {len(files)} files")
+            for i, file in enumerate(files):
+                LOGGER.debug(f"  File {i}: {file.get('name')} - useCase: {file.get('useCase')}")
+
+        # Build request
+        request = {
+            'agentId': self.bedrock_agent_id,
+            'agentAliasId': self.bedrock_agent_alias_id,
+            'sessionId': session_id,
+            'inputText': prompt,
+            'enableTrace': True,
+            'sessionState': updated_session_state,
+            'streamingConfigurations': {
+                'streamFinalResponse': True
+            }
+        }
+        
+        # Log request
+        request_log = {k: v for k, v in request.items() if k != 'sessionState'}
+        LOGGER.debug(f"Sending request (without sessionState): {request_log}")
+        if 'sessionState' in request and 'files' in request['sessionState']:
+            LOGGER.debug(f"Session state files count: {len(request['sessionState']['files'])}")
+        
+        # Initialize response tracking
+        full_content = ""
+        response_id = str(uuid.uuid4())
+        response_type = "text"
+        response_role = "assistant"
+        seen_file_hashes = set()
+        new_session_state = None
+        
+        # Start bond message
+        yield self._create_bond_message_tag(
+            message_id=response_id,
+            thread_id=thread_id,
+            agent_id=self.agent_id,
+            message_type=response_type,
+            role=response_role
+        )
+        
+        # Invoke agent
+        LOGGER.info(f"Invoking Bedrock Agent {self.bedrock_agent_id} with request")
+        response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**request)
+        
+        # Process streaming response
+        event_stream = response.get('completion')
+        if event_stream:
+            event_count = 0
+            for event in event_stream:
+                event_count += 1
+                
+                # Handle text chunks
+                if 'chunk' in event:
+                    text = self._handle_chunk_event(event['chunk'])
+                    if text:
+                        yield text
+                        full_content += text
+                
+                # Handle files event
+                elif 'files' in event:
+                    files_event = event['files']
+                    if 'files' in files_event:
+                        for file_info in files_event['files']:
+                            new_response_id = yield from self._handle_file_event_streaming(
+                                file_info=file_info,
+                                thread_id=thread_id,
+                                user_id=user_id,
+                                current_response_id=response_id,
+                                full_content=full_content,
+                                attachments=attachments if not phase_metadata else None,
+                                seen_file_hashes=seen_file_hashes
+                            )
+                            
+                            if new_response_id != response_id:
+                                response_id = new_response_id
+                                full_content = ''
+                
+                # Handle returnControl events for MCP tools
+                elif 'returnControl' in event:
+                    return_control = event['returnControl']
+                    LOGGER.info("Received returnControl event for tool execution")
+                    
+                    continuation_generator = self._handle_continuation_response(
+                        return_control=return_control,
+                        session_id=session_id,
+                        thread_id=thread_id,
+                        seen_file_hashes=seen_file_hashes,
+                        attachments=attachments if not phase_metadata else None
+                    )
+                    
+                    for cont_item in continuation_generator:
+                        if isinstance(cont_item, str):
+                            yield cont_item
+                            full_content += cont_item
+                        elif isinstance(cont_item, dict) and 'files_event' in cont_item:
+                            files_event = cont_item['files_event']['files']
+                            if 'files' in files_event:
+                                for file_info in files_event['files']:
+                                    new_response_id = yield from self._handle_file_event_streaming(
+                                        file_info=file_info,
+                                        thread_id=thread_id,
+                                        user_id=user_id,
+                                        current_response_id=response_id,
+                                        full_content=full_content,
+                                        attachments=attachments if not phase_metadata else None,
+                                        seen_file_hashes=seen_file_hashes
+                                    )
+                                    if new_response_id != response_id:
+                                        response_id = new_response_id
+                                        full_content = ''
+                        elif isinstance(cont_item, dict):
+                            if cont_item.get('session_state'):
+                                new_session_state = cont_item['session_state']
+                
+                # Handle session state updates
+                elif 'sessionState' in event:
+                    new_session_state = event['sessionState']
+                    LOGGER.debug("Received session state update")
+                
+                elif 'trace' in event:
+                    event_trace = event['trace']
+                    LOGGER.debug(f" --- Received trace: {list(event_trace.keys())}")
+            
+            LOGGER.info(f"Processed {event_count} events from completion stream")
+        
+        # Close bond message
+        yield '</_bondmessage>'
+        
+        # Save response if we have content
+        if full_content:
+            # Build metadata
+            metadata = {
+                'agent_id': self.agent_id,
+                'model': self.model,
+                'bedrock_agent_id': self.bedrock_agent_id
+            }
+            # Add phase metadata if provided
+            if phase_metadata:
+                metadata.update(phase_metadata)
+            
+            self.bond_provider.threads.add_message(
+                message_id=response_id,
+                thread_id=thread_id,
+                user_id=user_id,
+                role=response_role,
+                message_type=response_type,
+                content=full_content,
+                metadata=metadata
+            )
+            LOGGER.info(f"Saved assistant response to thread {thread_id}")
+        
+        # Update session state if provided
+        if new_session_state:
+            self.bond_provider.threads.update_thread_session(
+                thread_id=thread_id,
+                user_id=user_id,
+                session_id=session_id,
+                session_state=new_session_state
+            )
+            LOGGER.debug(f"Updated session state for thread {thread_id}")
     
     def _handle_continuation_response(self, return_control: Dict[str, Any], session_id: str,
                                     thread_id: str, seen_file_hashes: set,
@@ -1124,7 +1247,15 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                     bedrock_options.tool_resources = agent_def.tool_resources or {}
                     bedrock_options.mcp_tools = agent_def.mcp_tools or []
                     bedrock_options.mcp_resources = agent_def.mcp_resources or []
+                    
+                    # Preserve existing icon_svg when updating metadata
+                    existing_icon_svg = bedrock_options.agent_metadata.get('icon_svg') if bedrock_options.agent_metadata else None
                     bedrock_options.agent_metadata = agent_def.metadata or {}
+                    if existing_icon_svg and 'icon_svg' not in bedrock_options.agent_metadata:
+                        bedrock_options.agent_metadata['icon_svg'] = existing_icon_svg
+                        # Mark the field as modified to ensure SQLAlchemy detects the change
+                        from sqlalchemy.orm.attributes import flag_modified
+                        flag_modified(bedrock_options, 'agent_metadata')
                 else: 
                     raise ValueError(f"Bedrock options for agent {agent_id} not found in database")
                 

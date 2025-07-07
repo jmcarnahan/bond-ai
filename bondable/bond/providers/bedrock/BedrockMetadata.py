@@ -61,6 +61,19 @@ class BedrockMessage(Base):
         Index('idx_session_id', 'session_id'),  # Index for session-based queries
     )
 
+class BedrockVectorStoreFile(Base):
+    """Store file associations for vector stores in Bedrock"""
+    __tablename__ = 'bedrock_vector_store_files'
+    
+    vector_store_id = Column(String, ForeignKey('vector_stores.vector_store_id'), primary_key=True)
+    file_id = Column(String, ForeignKey('files.file_id'), primary_key=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    
+    # Create index for efficient lookups
+    __table_args__ = (
+        Index('idx_vector_store_file', 'vector_store_id', 'file_id'),
+    )
+
 # Extend the VectorStore model with Bedrock Knowledge Base fields
 VectorStore.knowledge_base_id = Column(String, nullable=True, unique=True)  # AWS Knowledge Base ID
 VectorStore.embedding_model_arn = Column(String, nullable=True)  # Embedding model ARN
