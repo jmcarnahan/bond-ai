@@ -89,7 +89,7 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
             onAttachmentRemoved: _onAttachmentRemoved,
           ),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (widget.onCreateNewThread != null) ...[
                 _buildActionButton(
@@ -103,6 +103,7 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
               Expanded(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
+                  constraints: const BoxConstraints(minHeight: 48),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(28.0),
                     color: colorScheme.surfaceContainerHighest,
@@ -168,7 +169,7 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                             focusedBorder: InputBorder.none,
                             filled: false,
                             contentPadding: const EdgeInsets.symmetric(
-                              vertical: 14.0,
+                              vertical: 12.0,
                             ),
                           ),
                           onSubmitted: (value) {
@@ -237,6 +238,8 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
+      width: 48,
+      height: 48,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color:
@@ -269,6 +272,10 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
         ),
         tooltip: tooltip,
         onPressed: onPressed,
+        constraints: const BoxConstraints(
+          minWidth: 48,
+          minHeight: 48,
+        ),
       ),
     );
   }
