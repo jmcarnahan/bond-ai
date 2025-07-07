@@ -12,11 +12,19 @@ import boto3
 from typing import Optional, Tuple, Dict, Any, List
 from botocore.exceptions import ClientError
 from bondable.bond.config import Config
-from bondable.bond.providers.files import FilesProvider
+from bondable.bond.providers.provider import Provider
+from bondable.bond.providers.files import FilesProvider, FileDetails
 from bondable.bond.providers.bedrock.BedrockMetadata import BedrockMetadata
 
 LOGGER = logging.getLogger(__name__)
-
+CODE_INTERPRETER_MIME_TYPES = {
+    "text/csv",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/x-excel",
+    "application/x-msexcel",
+    "text/tab-separated-values",
+}
 
 class BedrockFilesProvider(FilesProvider):
     """
@@ -24,7 +32,7 @@ class BedrockFilesProvider(FilesProvider):
     Implements only the required abstract methods.
     """
     
-    def __init__(self, s3_client: boto3.client, metadata: BedrockMetadata):
+    def __init__(self, s3_client: boto3.client, provider: Provider, metadata: BedrockMetadata):
         """
         Initialize Bedrock Files provider.
         
@@ -38,6 +46,7 @@ class BedrockFilesProvider(FilesProvider):
         default_bucket_id = os.getenv('AWS_ACCOUNT_ID', uuid.uuid4().hex)
         default_bucket = f"bond-bedrock-files-{default_bucket_id}"
         self.bucket_name = os.getenv('BEDROCK_S3_BUCKET', default_bucket)
+        self.bond_provider: Provider = provider
         
         # Ensure bucket exists
         self._ensure_bucket_exists()
@@ -254,42 +263,40 @@ class BedrockFilesProvider(FilesProvider):
             },
         ],
         """
-        files = []
         
+        file_details_list = []
+
         # Handle code_interpreter files
         if 'code_interpreter' in tool_resources and 'file_ids' in tool_resources['code_interpreter']:
             # Get all file details at once
             file_details_list = self.get_file_details(tool_resources['code_interpreter']['file_ids'])
             
-            for file_details in file_details_list:
-                file_id = file_details.file_id
-                file_size = file_details.file_size or 0
-                if file_size > 10 * 1024 * 1024:  # Greater than 10MB
-                    files.append({
-                        'name': os.path.basename(file_details.file_path),
-                        'source': {
-                            's3Location': {
-                                'uri': file_details.file_id
-                            },
-                            'sourceType': 'S3'
-                        },
-                        'useCase': 'CODE_INTERPRETER'
-                    })
-                else:  # Less than or equal to 10MB
-                    file_bytes = self.get_file_bytes((file_id, None))
-                    file_data = base64.b64encode(file_bytes.getvalue()).decode('utf-8')
-                    files.append({
-                        'name': os.path.basename(file_details.file_path),
-                        'source': {
-                            'byteContent': {
-                                'data': file_data,
-                                'mediaType': file_details.mime_type
-                            },
-                            'sourceType': 'BYTE_CONTENT'
-                        },
-                        'useCase': 'CODE_INTERPRETER'
-                    })
+        # Handle file_search vector stores - for now just include them in chat
+        if 'file_search' in tool_resources and 'vector_store_ids' in tool_resources['file_search']:
+            for vector_store_id in tool_resources['file_search']['vector_store_ids']:
+                # Assuming vector store IDs are mapped to file IDs
+                vector_store_files: Dict[str, List[FileDetails]] = self.bond_provider.vectorstores.get_vector_store_file_details([vector_store_id])
+                for file_id, details_list in vector_store_files.items():
+                    if details_list:
+                        file_details_list.extend(details_list)
 
+        # in the code below map the mime_type to useCase using CODE_INTERPRETER_MIME_TYPES, if the mime_type is in CODE_INTERPRETER_MIME_TYPES, use 'CODE_INTERPRETER', otherwise use 'CHAT'
+        files = []
+        for file_details in file_details_list:
+            file_id = file_details.file_id
+            mime_type = file_details.mime_type or 'application/octet-stream'
+            
+            # Determine useCase based on mime_type
+            files.append({
+                'name': os.path.basename(file_details.file_path),
+                'source': {
+                    's3Location': {
+                        'uri': file_details.file_id
+                    },
+                    'sourceType': 'S3'
+                },
+                'useCase': 'CODE_INTERPRETER' if mime_type in CODE_INTERPRETER_MIME_TYPES else 'CHAT'
+            })
         
         # # Handle file_search vector stores
         # if 'file_search' in tool_resources and 'vector_store_ids' in tool_resources['file_search']:
