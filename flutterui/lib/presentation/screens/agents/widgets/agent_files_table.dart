@@ -11,16 +11,21 @@ class AgentFilesTable extends ConsumerWidget {
     final formState = ref.watch(createAgentFormProvider);
     final formNotifier = ref.read(createAgentFormProvider.notifier);
 
-    final files = formState.uploadedFiles.map((file) => FileInfo(
-      fileId: file.fileId,
-      fileName: file.fileName,
-      mimeType: file.mimeType,
-      selectedTool: file.selectedTool,
-    )).toList();
+    final files =
+        formState.uploadedFiles
+            .map(
+              (file) => FileInfo(
+                fileId: file.fileId,
+                fileName: file.fileName,
+                mimeType: file.mimeType,
+                selectedTool: file.selectedTool,
+              ),
+            )
+            .toList();
 
     return BondAIContainer(
       icon: Icons.folder_open,
-      title: 'Uploaded Files',
+      title: 'Uploaded Files (Max 5)',
       actionButton: BondAIUploadButton(
         onPressed: () => formNotifier.uploadFile(),
         isUploading: formState.isUploadingFile,
@@ -32,13 +37,15 @@ class AgentFilesTable extends ConsumerWidget {
           isUploading: formState.isUploadingFile,
           onAddFile: () => formNotifier.uploadFile(),
           onRemoveFile: (fileId) => formNotifier.removeFile(fileId),
-          onToolChanged: (fileId, tool) => formNotifier.updateFileSelectedTool(fileId, tool),
+          onToolChanged:
+              (fileId, tool) =>
+                  formNotifier.updateFileSelectedTool(fileId, tool),
           enabled: !formState.isLoading,
           emptyStateMessage: 'No files uploaded yet',
-          emptyStateDescription: 'Upload files to use with Code Interpreter or File Search',
+          emptyStateDescription:
+              'Upload files for your agent (e.g. PDFs, CSVs, images, etc.). You can include up to 5 files.',
         ),
       ],
     );
   }
-
 }

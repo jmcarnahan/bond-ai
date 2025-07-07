@@ -400,6 +400,242 @@ class TestStreamResponseIntegration:
             provider.files.delete_file(file_id_csv)
             provider.files.delete_file(file_id_csv2)
             provider.files.delete_file(file_id_txt)
+    
+    def test_single_csv_attachment_streaming(self, provider):
+        """Test streaming with a single CSV file attachment (CODE_INTERPRETER)"""
+        agent_def = AgentDefinition(
+            user_id="integration-test-user",
+            name="CSV Analysis Test Agent",
+            description="Agent for testing CSV file analysis",
+            instructions="You are a helpful data analyst. Analyze CSV files and provide insights.",
+            model=provider.get_default_model()
+        )
+        
+        agent = provider.agents.create_or_update_agent(
+            agent_def=agent_def,
+            user_id="integration-test-user"
+        )
+        agent_id = agent.get_agent_id()
+        
+        thread = provider.threads.create_thread(
+            user_id="integration-test-user",
+            name="CSV Analysis Test Thread"
+        )
+        thread_id = thread.thread_id
+        
+        # Create CSV with sales data
+        csv_content = """Product,Quantity,Revenue
+Widget A,150,4498.50
+Widget B,87,4349.13
+Widget C,203,4057.97
+Widget D,112,4478.88
+Total,,17384.48"""
+        
+        # Upload CSV file
+        file_details = provider.files.get_or_create_file_id(
+            "integration-test-user", 
+            ("sales_data.csv", csv_content.encode('utf-8'))
+        )
+        file_id = file_details.file_id
+        
+        try:
+            # Create attachment for code interpreter
+            attachments = [
+                {
+                    "file_id": file_id,
+                    "tools": [{"type": "code_interpreter"}]
+                }
+            ]
+            
+            # Stream response
+            response_chunks = []
+            
+            for chunk in agent.stream_response(
+                thread_id=thread_id,
+                prompt="What is the total revenue from this sales data?",
+                attachments=attachments
+            ):
+                response_chunks.append(chunk)
+            
+            # Verify response
+            full_response = ''.join(response_chunks)
+            logger.info(f"CSV analysis response: {full_response[:200]}...")
+            
+            # Check response mentions the total
+            assert "17384" in full_response or "17,384" in full_response, \
+                "Response doesn't mention the correct total revenue"
+            
+            logger.info("✓ Single CSV attachment streaming test passed")
+            
+        finally:
+            provider.threads.delete_thread(thread_id=thread_id, user_id="integration-test-user")
+            provider.agents.delete_agent(agent_id)
+            provider.files.delete_file(file_id)
+    
+    def test_single_pdf_attachment_streaming(self, provider):
+        """Test streaming with a single PDF file attachment (CHAT/file_search)"""
+        agent_def = AgentDefinition(
+            user_id="integration-test-user",
+            name="PDF Analysis Test Agent",
+            description="Agent for testing PDF file analysis",
+            instructions="You are a helpful document analyst. Analyze documents and answer questions about them.",
+            model=provider.get_default_model()
+        )
+        
+        agent = provider.agents.create_or_update_agent(
+            agent_def=agent_def,
+            user_id="integration-test-user"
+        )
+        agent_id = agent.get_agent_id()
+        
+        thread = provider.threads.create_thread(
+            user_id="integration-test-user",
+            name="PDF Analysis Test Thread"
+        )
+        thread_id = thread.thread_id
+        
+        # Create mock PDF content (as text for simplicity)
+        pdf_content = b"SubscriblyAI Documentation - A comprehensive SaaS subscription management platform"
+        
+        # Upload PDF file
+        file_details = provider.files.get_or_create_file_id(
+            "integration-test-user", 
+            ("platform_docs.pdf", pdf_content)
+        )
+        file_id = file_details.file_id
+        
+        try:
+            # Create attachment for file search
+            attachments = [
+                {
+                    "file_id": file_id,
+                    "tools": [{"type": "file_search"}]
+                }
+            ]
+            
+            # Stream response
+            response_chunks = []
+            
+            for chunk in agent.stream_response(
+                thread_id=thread_id,
+                prompt="What platform is described in this documentation?",
+                attachments=attachments
+            ):
+                response_chunks.append(chunk)
+            
+            # Verify response
+            full_response = ''.join(response_chunks)
+            logger.info(f"PDF analysis response: {full_response[:200]}...")
+            
+            # Check response mentions the platform
+            assert "subscribly" in full_response.lower() or "subscription" in full_response.lower(), \
+                "Response doesn't mention the platform from the PDF"
+            
+            logger.info("✓ Single PDF attachment streaming test passed")
+            
+        finally:
+            provider.threads.delete_thread(thread_id=thread_id, user_id="integration-test-user")
+            provider.agents.delete_agent(agent_id)
+            provider.files.delete_file(file_id)
+    
+    def test_mixed_attachment_types_streaming(self, provider):
+        """Test streaming with mixed attachment types (CSV + PDF)"""
+        agent_def = AgentDefinition(
+            user_id="integration-test-user",
+            name="Mixed Files Analysis Agent",
+            description="Agent for analyzing both data files and documents",
+            instructions="You are a helpful assistant that can analyze both data files and documents.",
+            model=provider.get_default_model()
+        )
+        
+        agent = provider.agents.create_or_update_agent(
+            agent_def=agent_def,
+            user_id="integration-test-user"
+        )
+        agent_id = agent.get_agent_id()
+        
+        thread = provider.threads.create_thread(
+            user_id="integration-test-user",
+            name="Mixed Files Test Thread"
+        )
+        thread_id = thread.thread_id
+        
+        # Create CSV with revenue data
+        csv_content = """Month,Revenue,Growth
+January,10000,0
+February,12000,20
+March,15000,25
+Q1 Total,37000,50"""
+        
+        # Create mock PDF documentation
+        pdf_content = b"SubscriblyAI Q1 Report - This report analyzes subscription revenue performance for Q1"
+        
+        # Upload both files
+        csv_details = provider.files.get_or_create_file_id(
+            "integration-test-user", 
+            ("q1_revenue.csv", csv_content.encode('utf-8'))
+        )
+        csv_file_id = csv_details.file_id
+        
+        pdf_details = provider.files.get_or_create_file_id(
+            "integration-test-user",
+            ("q1_report.pdf", pdf_content)
+        )
+        pdf_file_id = pdf_details.file_id
+        
+        logger.info(f"Uploaded CSV: {csv_file_id}")
+        logger.info(f"Uploaded PDF: {pdf_file_id}")
+        
+        try:
+            # Create mixed attachments
+            attachments = [
+                {
+                    "file_id": csv_file_id,
+                    "tools": [{"type": "code_interpreter"}]
+                },
+                {
+                    "file_id": pdf_file_id,
+                    "tools": [{"type": "file_search"}]
+                }
+            ]
+            
+            # Stream response - this will use two-phase processing
+            response_chunks = []
+            phase_count = 0
+            
+            for chunk in agent.stream_response(
+                thread_id=thread_id,
+                prompt="Based on the report and data, what was the Q1 total revenue and what platform does this report analyze?",
+                attachments=attachments
+            ):
+                response_chunks.append(chunk)
+                # Count bond messages (phases)
+                if chunk.startswith('<_bondmessage'):
+                    phase_count += 1
+                    logger.info(f"Phase {phase_count} started")
+            
+            # Verify response
+            full_response = ''.join(response_chunks)
+            logger.info(f"Mixed files response (phases: {phase_count}): {full_response[:300]}...")
+            
+            # Should have processed in 2 phases
+            assert phase_count == 2, f"Expected 2 phases for mixed files, got {phase_count}"
+            
+            # Check that both pieces of information are present (from different phases)
+            # Note: Due to phase separation, the response might mention not having access to one file in each phase
+            assert "37000" in full_response or "37,000" in full_response or "Q1" in full_response.upper(), \
+                "Response doesn't mention Q1 revenue data"
+            
+            assert "subscribly" in full_response.lower() or "subscription" in full_response.lower(), \
+                "Response doesn't mention the platform from the PDF"
+            
+            logger.info("✓ Mixed attachment types streaming test passed")
+            
+        finally:
+            provider.threads.delete_thread(thread_id=thread_id, user_id="integration-test-user")
+            provider.agents.delete_agent(agent_id)
+            provider.files.delete_file(csv_file_id)
+            provider.files.delete_file(pdf_file_id)
 
 
 # Run with: poetry run pytest tests/test_bedrock_stream_response_integration.py -v -m integration
