@@ -33,22 +33,31 @@ def delete_agent(agent_id: str) -> bool:
         bool: True if deletion was successful, False otherwise
     """
     try:
+        # Determine provider based on agent ID format
+        import os
+        if agent_id.startswith('bedrock_agent_'):
+            os.environ['BOND_PROVIDER_CLASS'] = 'bondable.bond.providers.bedrock.BedrockProvider.BedrockProvider'
+            logger.info("Detected Bedrock agent ID, using Bedrock provider")
+        elif agent_id.startswith('asst_'):
+            os.environ['BOND_PROVIDER_CLASS'] = 'bondable.bond.providers.openai.OAIAProvider.OAIAProvider'
+            logger.info("Detected OpenAI agent ID, using OpenAI provider")
+        
         # Initialize configuration and provider
         config = Config.config()
         provider = config.get_provider()
         
         logger.info(f"Attempting to delete agent with ID: {agent_id}")
         
-        # Check if agent exists
-        agent = provider.agents.get_agent(agent_id)
-        if not agent:
-            logger.error(f"Agent with ID '{agent_id}' not found")
-            return False
+        # Delete the agent directly without checking existence first
+        # This avoids issues with reconstructing AgentDefinition for agents with missing resources
+        result = provider.agents.delete_agent(agent_id)
+        
+        if result:
+            logger.info(f"Successfully deleted agent with ID: {agent_id}")
+        else:
+            logger.warning(f"Agent with ID '{agent_id}' may not exist or was already deleted")
             
-        # Delete the agent
-        provider.agents.delete_agent(agent_id)
-        logger.info(f"Successfully deleted agent with ID: {agent_id}")
-        return True
+        return result
         
     except Exception as e:
         logger.error(f"Error deleting agent: {e}", exc_info=True)
