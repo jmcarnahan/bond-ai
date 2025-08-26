@@ -16,7 +16,7 @@ cp .env.example .env
 
 # Run all components (in separate terminals)
 # 1. MCP Server
-fastmcp run scripts/my_server.py --transport streamable-http --port 5555
+fastmcp run scripts/sample_mcp_server.py --transport streamable-http --port 5555
 
 # 2. Backend API
 uvicorn bondable.rest.main:app --reload --host 0.0.0.0 --port 8000
@@ -120,7 +120,7 @@ You'll need three terminal windows to run all components:
 ### Terminal 1: MCP Server
 ```bash
 # From project root
-fastmcp run scripts/my_server.py --transport streamable-http --port 5555
+fastmcp run scripts/sample_mcp_server.py --transport streamable-http --port 5555
 ```
 
 ### Terminal 2: Backend API
@@ -160,8 +160,8 @@ bond-ai/
 │   └── rest/         # FastAPI application
 ├── flutterui/        # Flutter frontend
 ├── scripts/          # Utility scripts
-│   ├── my_server.py  # MCP server implementation
-│   └── my_client.py  # MCP client example
+│   ├── sample_mcp_server.py  # Sample MCP server implementation
+│   └── sample_mcp_client.py  # Sample MCP client example
 └── tests/            # Test suite
 ```
 
