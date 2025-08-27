@@ -171,6 +171,7 @@ def test_thread_message_continuity(provider):
         assert not has_new, "Should not have new messages after last message"
         
         # Get conversation messages (if available)
+         # TODO: this method was removed. Need to replace with get_messages()
         if hasattr(threads, 'get_conversation_messages'):
             convo = threads.get_conversation_messages(thread_id, "test_user")
             print(f"\n✓ Got {len(convo)} conversation messages")

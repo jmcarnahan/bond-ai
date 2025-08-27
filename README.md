@@ -1,237 +1,281 @@
 # Bond AI
 
-Bond AI leverages OpenAI's Assistant APi to help develop Generative AI agents and chatbots with access to your own tools, APIs and data sources. Bond AI also has a web UI with a built-in chat interface and is extensible to other interfaces with access to these agents. 
+A full-stack application for creating and using AI agents with OpenAI or AWS Bedrock APIs. Features a FastAPI backend with MCP (Model Context Protocol) support and a Flutter web frontend.
 
+## Quick Start
 
-## Features
+```bash
+# Clone and setup
+git clone https://github.com/jmcarnahan/bond-ai.git
+cd bond-ai
 
-- Simple definition of agents with tools and data
-- Automatic discovery of agents
-- Built-in threads, tool access and data integration from the Assistants API
-- Google authentication support
-- Thread sharing between users
-- Modular design with agents, threads, and pages
+# Backend setup
+poetry install
+cp .env.example .env
+# Edit .env with your API keys
 
-## Getting Started
+# Run all components (in separate terminals)
+# 1. MCP Server
+fastmcp run scripts/sample_mcp_server.py --transport streamable-http --port 5555
 
-### Prerequisites
+# 2. Backend API
+uvicorn bondable.rest.main:app --reload --host 0.0.0.0 --port 8000
 
-- Python 3.12
-- Poetry
-
-### Installation
-
-1. Clone the repository:
-
-    ```sh
-    git clone https://github.com/yourusername/bond-ai.git
-    cd bond-ai
-    ```
-
-2. Install dependencies using Poetry:
-
-    ```sh
-    poetry config virtualenvs.in-project true
-
-    poetry install
-
-    poetry build
-
-    poetry shell
-
-    source $(poetry env info --path)/bin/activate
-    ```
-
-3. Set up environment variables:
-
-    gcloud auth application-default login
-
-    gcloud config set project <your-project-id>
-
-    gcloud config get-value project
-
-    Create a .env file in the project root directory and add the following variables:
-
-    ```env
-    OPENAI_API_KEY=your_openai_api_key
-    OPENAI_PROJECT=you_openai_project_id
-    OPENAI_DEPLOYMENT=openai_model #(e.g. "gpt-4o-mini")
-
-    # or
-    # AZURE_OPENAI_API_KEY=your_azure_openai_api_key
-    # AZURE_OPENAI_ENDPOINT=your_azure_openai_endpoint
-    # AZURE_OPENAI_API_VERSION=api_version (e.g. 2024-08-01-preview)
-    
-    AUTH_ENABLED=True
-    GOOGLE_AUTH_CREDS_PATH=path_to_your_google_auth_creds.json
-    GOOGLE_AUTH_REDIRECT_URI=your_redirect_uri_for_this_app
-
-    METADATA_DB_URL=database_url_for_metadata #(e.g. sqlite:///.metadata.db)
-    ```
-
-### Running the Application
-
-To start the application, run the following command:
-
-```sh
-python -m bond_ai.app.start --server.port=8080 --server.address=0.0.0.0
+# 3. Frontend (from flutterui directory)
+cd flutterui && flutter run -d chrome --web-port=5000 --target lib/main.dart
 ```
 
-### Running the Frontend (Flutter UI)
+## Prerequisites
 
-The frontend is a Flutter application located in the `flutterui` directory.
+- **Python 3.12** 
+- **Poetry** (for Python dependency management)
+- **Flutter SDK** (3.7.2 or higher)
+- **Chrome browser** (for Flutter web development)
+- **API Keys**: Either OpenAI API key OR AWS credentials for Bedrock
 
-**Prerequisites:**
+## Installation
 
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) installed on your system.
+### Backend Setup
 
-**Steps to run the frontend:**
+1. **Install Poetry** (if not already installed):
+```bash
+curl -sSL https://install.python-poetry.org | python3 -
+```
 
-1.  **Navigate to the Flutter project directory:**
-    ```sh
-    cd flutterui
-    ```
+2. **Install Python dependencies**:
+```bash
+poetry config virtualenvs.in-project true
+poetry install
+poetry shell
+```
 
-2.  **Get Flutter dependencies:**
-    ```sh
-    flutter pub get
-    ```
+3. **Configure environment**:
+```bash
+cp .env.example .env
+```
 
-3.  **Run the Flutter application (web):**
-    ```sh
-    flutter run -d chrome --web-port 5000
-    ```
-    This will launch the application in a Chrome browser. You can also run it on other supported platforms (e.g., Android, iOS, desktop) if configured.
+Edit `.env` and configure your provider:
 
-4.  **Generate Theme (if needed):**
-    The project uses a script to generate theme files. If you make changes to theme configurations in `flutterui/theme_configs/` or `flutterui/lib/core/theme/base_theme.dart`, you might need to re-run the theme generation script:
-    ```sh
-    dart run tool/generate_theme.dart
-    ```
-    Or, if you are in the `flutterui` directory:
-    ```sh
-    dart tool/generate_theme.dart
-    ```
+#### For OpenAI:
+```env
+BOND_PROVIDER_CLASS="bondable.bond.providers.openai.OAIAProvider.OAIAProvider"
+OPENAI_KEY="sk-proj-YOUR_API_KEY"
+OPENAI_PROJECT="proj_YOUR_PROJECT_ID"
+OPENAI_DEFAULT_MODEL="gpt-4o"
+```
 
-**Working with Assets:**
+#### For AWS Bedrock:
+```env
+BOND_PROVIDER_CLASS="bondable.bond.providers.bedrock.BedrockProvider.BedrockProvider"
+AWS_ACCESS_KEY_ID="your_access_key"
+AWS_SECRET_ACCESS_KEY="your_secret_key"
+AWS_REGION="us-east-1"
+BEDROCK_DEFAULT_MODEL="us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+```
 
-- All static assets (images, fonts, etc.) should be placed in the `flutterui/assets/` directory.
-- After adding new assets, ensure they are declared in the `flutterui/pubspec.yaml` file if you are not using the general `assets/` folder declaration. The current configuration `assets: - assets/` includes all files in the `assets` directory.
-- You can then reference these assets in your Flutter code, for example: `Image.asset('assets/your_image.png')`.
+4. **Configure authentication** (optional but recommended):
+```env
+JWT_SECRET_KEY="$(openssl rand -hex 32)"  # Generate a secure key
+OAUTH2_ENABLED_PROVIDERS=google
+```
 
-**Customizing the Theme:**
+### Frontend Setup
 
-The Flutter UI uses a theming system that allows for customization through JSON configuration files and a base theme Dart file.
+1. **Navigate to Flutter directory**:
+```bash
+cd flutterui
+```
 
-1.  **Theme Configuration Files (`flutterui/theme_configs/`):**
-    -   Theme configurations are defined as JSON files in the `flutterui/theme_configs/` directory (e.g., `default_theme.json`, `mcafee_config.json`).
-    -   Each JSON file defines theme-specific properties like `name`, `brandingMessage`, `logo` (asset path), `logoIcon` (asset path), and Material Design color values (primary, secondary, background, etc.).
-    -   **Example JSON structure:**
-        ```json
-        {
-          "name": "My Custom Theme",
-          "brandingMessage": "Welcome to my custom app!",
-          "logo": "assets/custom_logo.png",
-          "logoIcon": "assets/custom_icon.png",
-          "themeColors": {
-            "primary": "#FF0000",
-            "secondary": "#00FF00",
-            "background": "#FFFFFF",
-            "surface": "#F0F0F0",
-            "error": "#B00020",
-            "onPrimary": "#FFFFFF",
-            "onSecondary": "#000000",
-            "onBackground": "#000000",
-            "onSurface": "#000000",
-            "onError": "#FFFFFF",
-            "brightness": "light" // "light" or "dark"
-          }
-        }
-        ```
-    -   Ensure your logo and icon paths in the JSON correctly point to files within the `flutterui/assets/` directory.
+2. **Install Flutter dependencies**:
+```bash
+flutter pub get
+```
 
-2.  **Base Theme (`flutterui/lib/core/theme/base_theme.dart`):**
-    -   The `BaseTheme` class in this file provides default values and the core structure for the theme.
-    -   The theme generation script uses this `BaseTheme` as a fallback if a specific theme configuration is not found or if certain values are missing in a JSON config.
-    -   You can modify `base_theme.dart` to change default behaviors or add more complex theme logic that cannot be represented in JSON.
+3. **Configure frontend environment**:
+```bash
+cp .env.example .env  # Create if doesn't exist
+```
 
-3.  **Generating Your Theme:**
-    -   After creating or modifying a theme JSON configuration (e.g., `my_theme_config.json`) or updating `base_theme.dart`, you need to run the theme generation script.
-    -   This script reads the specified theme configuration (or falls back to `BaseTheme` if no config is provided) and generates `flutterui/lib/core/theme/generated_theme.dart`.
-    -   The script accepts the following arguments:
-        -   `-c, --config`: Path to the theme JSON configuration file.
-        -   `-o, --output`: Path to output the generated Dart theme file (defaults to `lib/core/theme/generated_theme.dart` relative to the `flutterui` directory).
+Edit `flutterui/.env`:
+```env
+API_BASE_URL=http://localhost:8000
+ENABLE_AGENTS=true
+```
 
-    -   **To generate a theme from a specific configuration file (e.g., `my_example_theme_config.json`):**
-        This command must be run from the **root of the project** (e.g., the `bond-ai` directory).
-        ```sh
-        dart flutterui/tool/generate_theme.dart --config flutterui/theme_configs/my_example_theme_config.json --output flutterui/lib/core/theme/generated_theme.dart
-        ```
-        Replace `my_example_theme_config.json` with the actual name of your configuration file. The `--output` argument specifies where the `generated_theme.dart` file will be saved; the path shown is the default used by the application.
+4. **Choose a theme** (optional):
+```bash
+# Use generic Bond AI theme (default)
+dart tool/generate_theme.dart
 
-    -   **Alternative if inside the `flutterui` directory:**
-        If you have navigated into the `flutterui` directory, the command would be:
-        ```sh
-        dart tool/generate_theme.dart --config theme_configs/my_example_theme_config.json --output lib/core/theme/generated_theme.dart
-        ```
+# OR use McAfee theme
+dart tool/generate_theme.dart --config theme_configs/mcafee_config.json
+```
 
-    -   **To generate a theme using the `BaseTheme` defaults (no JSON config):**
-        This command also needs to be run from the appropriate directory.
-        From the project root (`bond-ai`):
-        ```sh
-        dart flutterui/tool/generate_theme.dart --output flutterui/lib/core/theme/generated_theme.dart
-        ```
-        Or from the `flutterui` directory:
-        ```sh
-        dart tool/generate_theme.dart --output lib/core/theme/generated_theme.dart
-        ```
-        This will use the `BaseTheme` defined in `flutterui/lib/core/theme/base_theme.dart` as the source.
+For more theming options, see the [Flutter Theming Guide](flutterui/THEMING.md).
 
-    -   The `generated_theme.dart` file is then used by the application to apply the theme. **Do not edit `flutterui/lib/core/theme/generated_theme.dart` directly**, as your changes will be overwritten the next time the script runs.
+## Running the Application
 
-### Running Tests
+You'll need three terminal windows to run all components:
 
-To run the tests, use the following command:
+### Terminal 1: MCP Server
+```bash
+# From project root
+fastmcp run scripts/sample_mcp_server.py --transport streamable-http --port 5555
+```
 
-```sh
+### Terminal 2: Backend API
+```bash
+# From project root
+uvicorn bondable.rest.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Terminal 3: Frontend
+```bash
+# From flutterui directory
+flutter run -d chrome --web-port=5000 --target lib/main.dart
+```
+
+Access the application at: **http://localhost:5000**
+
+## Architecture Overview
+
+### Backend (`bondable/`)
+- **FastAPI REST API** - Main backend service
+- **Provider System** - Abstracts OpenAI and AWS Bedrock APIs
+- **MCP Integration** - Model Context Protocol for tool access
+- **Authentication** - OAuth2 support (Google, Okta)
+
+### Frontend (`flutterui/`)
+- **Flutter Web** - Cross-platform UI framework
+- **Riverpod** - State management
+- **Real-time Updates** - Optional Firestore integration
+- **Customizable Themes** - Switch between branded themes (see [Theming Guide](flutterui/THEMING.md))
+
+### Key Directories
+```
+bond-ai/
+├── bondable/          # Backend Python package
+│   ├── bond/         # Core agent logic
+│   │   └── providers/ # AI provider implementations
+│   └── rest/         # FastAPI application
+├── flutterui/        # Flutter frontend
+├── scripts/          # Utility scripts
+│   ├── sample_mcp_server.py  # Sample MCP server implementation
+│   └── sample_mcp_client.py  # Sample MCP client example
+└── tests/            # Test suite
+```
+
+## API Documentation
+
+Once running, access the interactive API documentation:
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+
+## Testing
+
+Run the test suite:
+```bash
 poetry run pytest
 ```
 
-This will execute all the tests in the `tests` directory and provide a summary of the results.
+For specific test categories:
+```bash
+poetry run pytest tests/test_rest_api.py  # API tests
+poetry run pytest tests/test_bedrock_*.py  # Bedrock tests
+```
 
-The primary source code is located in the `bond_ai` directory, and the test code is in the `tests` directory. This project uses Poetry for dependency management and setup.
+## Environment Variables
 
-### Contributing
+### Essential Configuration
 
-We welcome contributions to the Bond AI project! To contribute, please follow these steps:
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `BOND_PROVIDER_CLASS` | AI provider class | `bondable.bond.providers.openai.OAIAProvider.OAIAProvider` |
+| `JWT_SECRET_KEY` | JWT signing key | Generate with `openssl rand -hex 32` |
+| `BOND_METADATA_DB_URL` | Database URL | `sqlite:///bond_metadata.db` |
 
-1. Fork the repository on GitHub.
-2. Clone your forked repository to your local machine:
+### Provider-Specific
 
-  ```sh
-  git clone https://github.com/yourusername/bond-ai.git
-  cd bond-ai
-  ```
+**OpenAI:**
+- `OPENAI_KEY` - API key
+- `OPENAI_PROJECT` - Project ID
+- `OPENAI_DEFAULT_MODEL` - Default model
 
-3. Create a new branch for your feature or bugfix:
+**AWS Bedrock:**
+- `AWS_ACCESS_KEY_ID` - AWS access key
+- `AWS_SECRET_ACCESS_KEY` - AWS secret key
+- `AWS_REGION` - AWS region
+- `BEDROCK_DEFAULT_MODEL` - Default Bedrock model
+- `BEDROCK_S3_BUCKET` - S3 bucket for files
+- `BEDROCK_AGENT_ROLE_ARN` - IAM role for agents
 
-  ```sh
-  git checkout -b your-feature-branch
-  ```
+### Optional Features
 
-4. Make your changes and commit them with a descriptive message:
+**OAuth2 Authentication:**
+- `OAUTH2_ENABLED_PROVIDERS` - Comma-separated providers
+- Google OAuth: `GOOGLE_AUTH_CREDS_JSON`
+- Okta OAuth: `OKTA_DOMAIN`, `OKTA_CLIENT_ID`, `OKTA_CLIENT_SECRET`
 
-  ```sh
-  git add .
-  git commit -m "Description of your changes"
-  ```
+**MCP Configuration:**
+- `BOND_MCP_CONFIG` - JSON configuration for MCP servers
 
-5. Push your changes to your forked repository:
+## Troubleshooting
 
-  ```sh
-  git push origin your-feature-branch
-  ```
+### Common Issues
 
-6. Open a pull request on the original repository and describe your changes in detail.
+**Port already in use:**
+```bash
+# Kill process on port 8000
+lsof -ti:8000 | xargs kill -9
 
-Thank you for contributing!
+# Kill process on port 5555
+lsof -ti:5555 | xargs kill -9
+```
+
+**Flutter web not loading:**
+- Ensure Chrome is installed
+- Check CORS settings in `bondable/rest/main.py`
+- Verify `API_BASE_URL` in `flutterui/.env`
+
+**Authentication errors:**
+- Regenerate JWT_SECRET_KEY
+- Check OAuth2 redirect URIs match configuration
+
+**AWS Bedrock issues:**
+- Verify model access in AWS Console
+- Check IAM permissions
+- Ensure S3 bucket exists and is accessible
+
+### Logs
+
+Backend logs location: `logs/bondable_debug.log`
+
+Enable debug logging:
+```python
+# In bondable/rest/logging_config.yaml
+level: DEBUG
+```
+
+## Additional Documentation
+
+- [AWS Bedrock Setup Guide](bondable/bond/providers/bedrock/AWS_SETUP.md)
+- [OAuth2 Configuration](docs/oauth2-configuration.md)
+- [API Migration Guide](docs/BEDROCK_AGENTS_MIGRATION_PLAN.md)
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+MIT License - see LICENSE file for details
+
+## Support
+
+For issues and questions:
+- GitHub Issues: https://github.com/jmcarnahan/bond-ai/issues
+- Documentation: See `/docs` directory for detailed guides
