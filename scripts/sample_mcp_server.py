@@ -1,4 +1,5 @@
 from fastmcp import FastMCP
+from typing import List, Dict, Any
 
 mcp = FastMCP("My MCP Server")
 
@@ -18,7 +19,6 @@ def current_time() -> str:
 def example_resource() -> str:
     print("Called: Accessing example resource")
     return "This is an example resource content."
-
 
 if __name__ == "__main__":
     mcp.run()
