@@ -49,14 +49,33 @@ final isUserNavigatingProvider = StateProvider<bool>((ref) => false);
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Load environment variables
-  await dotenv.load(fileName: ".env");
-
-  // Override API base URL from environment
-  final apiBaseUrl = dotenv.env['API_BASE_URL'] ?? 'http://localhost:8000';
-  if (ApiConstants.baseUrl.isEmpty) {
-    ApiConstants.baseUrl = apiBaseUrl;
+  // Initialize dotenv - this ensures dotenv.env is always safe to access
+  // If .env file doesn't exist, dotenv will have an empty map but won't throw errors
+  try {
+    await dotenv.load(fileName: ".env");
+    logger.i('.env file loaded successfully');
+  } catch (e) {
+    // .env file not found - initialize with empty map to prevent errors
+    dotenv.testLoad(fileInput: '');
+    logger.i('No .env file found, initialized with empty configuration');
   }
+  
+  // Set API base URL from .env or compile-time constants
+  if (ApiConstants.baseUrl.isEmpty) {
+    final apiBaseUrl = dotenv.env['API_BASE_URL'] ?? 'http://localhost:8000';
+    ApiConstants.baseUrl = apiBaseUrl;
+    logger.i('Using API base URL: $apiBaseUrl');
+  } else {
+    logger.i('Using compile-time API base URL: ${ApiConstants.baseUrl}');
+  }
+
+  // Use compile-time API_BASE_URL if provided (for deployed environments)
+  const apiBaseUrlFromEnv = String.fromEnvironment('API_BASE_URL', defaultValue: '');
+  if (apiBaseUrlFromEnv.isNotEmpty) {
+    ApiConstants.baseUrl = apiBaseUrlFromEnv;
+    logger.i('Using API_BASE_URL from compile-time constant: $apiBaseUrlFromEnv');
+  }
+  // Otherwise, baseUrl is already set from .env file or defaults above
 
   // Initialize Firebase
   try {
