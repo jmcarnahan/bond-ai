@@ -2,6 +2,10 @@
 
 A full-stack application for creating and using AI agents with OpenAI or AWS Bedrock APIs. Features a FastAPI backend with MCP (Model Context Protocol) support and a Flutter web frontend.
 
+## 🚀 Deployment
+
+For AWS deployment instructions, see **[deployment/README.md](deployment/README.md)**. All deployment-related files (Docker, Terraform, scripts) are in the `deployment/` directory.
+
 ## Quick Start
 
 ```bash
@@ -192,7 +196,7 @@ poetry run pytest tests/test_bedrock_*.py  # Bedrock tests
 |----------|-------------|---------|
 | `BOND_PROVIDER_CLASS` | AI provider class | `bondable.bond.providers.openai.OAIAProvider.OAIAProvider` |
 | `JWT_SECRET_KEY` | JWT signing key | Generate with `openssl rand -hex 32` |
-| `BOND_METADATA_DB_URL` | Database URL | `sqlite:///bond_metadata.db` |
+| `METADATA_DB_URL` | Database URL | `sqlite:///bond_metadata.db` |
 
 ### Provider-Specific
 
