@@ -83,8 +83,10 @@ class BedrockProvider(Provider):
     
     def _init_aws_clients(self):
         """Initialize AWS service clients"""
-        # Get AWS configuration from environment
-        self.aws_region = os.getenv('AWS_REGION', 'us-west-2')
+        # Get AWS configuration from environment - REQUIRED
+        self.aws_region = os.getenv('AWS_REGION')
+        if not self.aws_region:
+            raise ValueError("AWS_REGION environment variable must be set. Please set AWS_REGION to your desired AWS region (e.g., us-east-2)")
         aws_session = None
         try:
             aws_profile = os.getenv('AWS_PROFILE', None)
