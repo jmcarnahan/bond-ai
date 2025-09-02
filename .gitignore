@@ -3,6 +3,7 @@
 **/.bondcache.db
 # data # Commented out to allow flutterui/lib/data to be tracked
 archive
+**/.archive
 __pycache__
 pytest.ini
 dist
@@ -17,8 +18,30 @@ creds
 .vscode/
 *.code-workspace
 
+**/.DS_Store
+
 # iOS Firebase configuration (deployment-specific)
 flutterui/ios/Runner/GoogleService-Info.plist
 
 # Logs
 logs/
+
+docs/
+
+# deployment/*
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+**/.playwright-mcp
