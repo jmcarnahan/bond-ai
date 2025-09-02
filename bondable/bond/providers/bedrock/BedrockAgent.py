@@ -75,6 +75,13 @@ class BedrockAgent(Agent):
         return self.agent_id
     
     def get_agent_definition(self) -> AgentDefinition:
+        # Include Bedrock-specific IDs in metadata for debugging
+        enhanced_metadata = self.metadata.copy() if self.metadata else {}
+        enhanced_metadata.update({
+            'bedrock_agent_id': self.bedrock_agent_id,
+            'bedrock_agent_alias_id': self.bedrock_agent_alias_id
+        })
+        
         agent_def = AgentDefinition(
             id=self.agent_id,
             name=self.name,
@@ -84,7 +91,7 @@ class BedrockAgent(Agent):
             reminder=self.reminder,
             tools=self.tools,
             tool_resources=self.tool_resources,
-            metadata=self.metadata,
+            metadata=enhanced_metadata,
             model=self.model,
             user_id=self.owner_user_id,
             mcp_tools=self.mcp_tools,
@@ -749,9 +756,17 @@ Please integrate any relevant insights from the documents with your analysis of 
             role=response_role
         )
         
+        # Log essential debug info
+        LOGGER.debug(f"Invoking Bedrock Agent - ID: {self.bedrock_agent_id}, Alias: {self.bedrock_agent_alias_id}, Region: {self.bond_provider.aws_region}")
+        LOGGER.debug(f"Session: {session_id}, Thread: {thread_id}, User: {user_id}")
+        
         # Invoke agent
-        LOGGER.info(f"Invoking Bedrock Agent {self.bedrock_agent_id} with request")
-        response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**request)
+        LOGGER.info(f"Invoking Bedrock Agent {self.bedrock_agent_id}")
+        try:
+            response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**request)
+        except Exception as e:
+            LOGGER.error(f"Bedrock invocation failed - Agent: {self.bedrock_agent_id}, Error: {str(e)}")
+            raise
         
         # Process streaming response
         event_stream = response.get('completion')
@@ -1207,6 +1222,21 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
         try:
             if not agent_id:
                 agent_id = f"bedrock_agent_{uuid.uuid4().hex}"
+                
+                # Create the parent AgentRecord first to satisfy foreign key constraint
+                agent_record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
+                if not agent_record:
+                    agent_record = AgentRecord(
+                        agent_id=agent_id,
+                        name=agent_def.name,
+                        introduction=agent_def.introduction or "",
+                        reminder=agent_def.reminder or "",
+                        owner_user_id=owner_user_id
+                    )
+                    session.add(agent_record)
+                    session.flush()  # Flush to ensure the record exists before creating child records
+                    LOGGER.info(f"Created AgentRecord for {agent_id}")
+                
                 bedrock_agent_id, bedrock_agent_alias_id = create_bedrock_agent(
                     agent_id=agent_id,
                     agent_def=agent_def
@@ -1259,8 +1289,28 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                 else: 
                     raise ValueError(f"Bedrock options for agent {agent_id} not found in database")
                 
-                # Only update icon if name or description changed
+                # Update the AgentRecord if it exists (it should exist from create_or_update_agent)
                 existing_agent_record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
+                if existing_agent_record:
+                    # Update the AgentRecord fields
+                    existing_agent_record.name = agent_def.name
+                    existing_agent_record.introduction = agent_def.introduction or ""
+                    existing_agent_record.reminder = agent_def.reminder or ""
+                    existing_agent_record.owner_user_id = owner_user_id
+                    session.flush()
+                    LOGGER.info(f"Updated AgentRecord for {agent_id}")
+                else:
+                    # If somehow the AgentRecord doesn't exist, create it
+                    LOGGER.warning(f"AgentRecord not found for {agent_id}, creating it now")
+                    agent_record = AgentRecord(
+                        agent_id=agent_id,
+                        name=agent_def.name,
+                        introduction=agent_def.introduction or "",
+                        reminder=agent_def.reminder or "",
+                        owner_user_id=owner_user_id
+                    )
+                    session.add(agent_record)
+                    session.flush()
                 # Get current Bedrock agent to check description
                 current_bedrock_agent = self.bedrock_agent_client.get_agent(agentId=bedrock_agent_id)
                 current_description = current_bedrock_agent['agent'].get('description', '') if 'agent' in current_bedrock_agent else ''
