@@ -4,8 +4,15 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Provider to check if agents feature is enabled in mobile interface
 final isAgentsEnabledProvider = Provider<bool>((ref) {
+  // Check compile-time constant first (for production builds)
+  const compileTimeAgents = String.fromEnvironment('ENABLE_AGENTS', defaultValue: '');
+  if (compileTimeAgents.isNotEmpty) {
+    return compileTimeAgents.toLowerCase() == 'true';
+  }
+  
+  // Check .env file (for local development)
   final enableAgents = dotenv.env['ENABLE_AGENTS']?.toLowerCase();
-  return enableAgents == 'true';
+  return enableAgents == 'true' || enableAgents == null; // Default to true if not specified
 });
 
 /// Provider for bottom navigation items based on configuration
