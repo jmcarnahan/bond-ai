@@ -1,0 +1,67 @@
+# Exclude environment files from Docker builds
+**/.env
+**/.env.*
+**/env.local
+**/.env.local
+**/.env.*.local
+
+# Exclude git files
+.git
+.gitignore
+
+# Exclude documentation
+*.md
+README*
+LICENSE
+
+# Exclude test files
+**/test
+**/tests
+**/__tests__
+**/*.test.*
+**/*.spec.*
+
+# Exclude node_modules and Flutter dependencies
+**/node_modules
+**/build
+**/.dart_tool
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/.pub-cache
+**/.pub
+
+# Exclude IDE files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Exclude Python cache
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.Python
+**/*.egg-info
+**/.pytest_cache
+**/.venv
+**/venv
+
+# Exclude terraform files
+terraform/.terraform
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfvars
+terraform/.terraform.lock.hcl
+
+# Exclude AWS and credentials
+.aws
+**/credentials
+**/config
+
+# Exclude logs
+*.log
+**/logs

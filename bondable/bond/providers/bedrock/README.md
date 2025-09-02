@@ -59,7 +59,7 @@ export BEDROCK_S3_BUCKET=your-bucket-name  # For file storage
 export BOND_PROVIDER_CLASS=bondable.bond.providers.bedrock.BedrockProvider.BedrockProvider
 
 # Database (uses Bond's standard database configuration)
-export BOND_METADATA_DB_URL=sqlite:///bond_metadata.db
+export METADATA_DB_URL=sqlite:///bond_metadata.db
 ```
 
 ### AWS Permissions Required
