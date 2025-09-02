@@ -1,0 +1,29 @@
+# Archive directory with old/backup files
+.archive/
+
+# Terraform state files
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/tfplan
+terraform/watch_*
+terraform/*tfplan*
+
+# Old backup files (in case any are created)
+*.old
+*.full
+*.backup
+*.original
+*.phased
+
+# Terraform local directories (already in terraform/.gitignore but for safety)
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
