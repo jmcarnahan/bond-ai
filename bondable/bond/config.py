@@ -95,14 +95,28 @@ class Config:
 
 
     def get_secret_value(self, secret_id, default=""):
-        try:
-            secrets = self.get_secrets_client()
-            secret_name = f"projects/{self.project_id}/secrets/{secret_id}/versions/latest"
-            response = secrets.access_secret_version(name=secret_name)
-            return response.payload.data.decode("UTF-8")
-        except Exception as e:
-            LOGGER.error(f"Error getting secret value {secret_id}: {e}")
-            return default
+        # Check if we're using AWS
+        aws_region = os.getenv('AWS_REGION', '')
+        if aws_region:
+            # Use AWS Secrets Manager
+            try:
+                import boto3
+                client = boto3.client('secretsmanager', region_name=aws_region)
+                response = client.get_secret_value(SecretId=secret_id)
+                return response['SecretString']
+            except Exception as e:
+                LOGGER.error(f"Error getting AWS secret value {secret_id}: {e}")
+                return default
+        else:
+            # Use GCP Secrets Manager
+            try:
+                secrets = self.get_secrets_client()
+                secret_name = f"projects/{self.project_id}/secrets/{secret_id}/versions/latest"
+                response = secrets.access_secret_version(name=secret_name)
+                return response.payload.data.decode("UTF-8")
+            except Exception as e:
+                LOGGER.error(f"Error getting GCP secret value {secret_id}: {e}")
+                return default
 
     @classmethod
     @bond_cache
@@ -267,7 +281,25 @@ class Config:
         """Get Okta OAuth2 configuration."""
         domain = os.getenv('OKTA_DOMAIN', '')
         client_id = os.getenv('OKTA_CLIENT_ID', '')
+        
+        # Check if client secret is in environment variable or needs to be fetched from Secrets Manager
         client_secret = os.getenv('OKTA_CLIENT_SECRET', '')
+        if not client_secret:
+            # Try to get from Secrets Manager
+            secret_name = os.getenv('OKTA_SECRET_NAME', '')
+            if secret_name:
+                LOGGER.info(f"Getting Okta client secret from Secrets Manager: {secret_name}")
+                try:
+                    secret_json = self.get_secret_value(secret_name, '{}')
+                    secret_data = json.loads(secret_json)
+                    client_secret = secret_data.get('client_secret', '')
+                    if not client_secret:
+                        LOGGER.error(f"No 'client_secret' field found in secret {secret_name}")
+                except Exception as e:
+                    LOGGER.error(f"Failed to get Okta client secret from Secrets Manager: {e}")
+            else:
+                LOGGER.warning("No OKTA_CLIENT_SECRET or OKTA_SECRET_NAME configured")
+        
         redirect_uri = os.getenv('OKTA_REDIRECT_URI', 'http://localhost:8000/auth/okta/callback')
         scopes_str = os.getenv('OKTA_SCOPES', 'openid, profile, email')
         scopes = [scope.strip() for scope in scopes_str.split(",")]
