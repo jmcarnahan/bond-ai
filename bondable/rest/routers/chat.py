@@ -20,7 +20,6 @@ async def chat(
     provider: Provider = Depends(get_bond_provider)
 ):
     """Stream chat responses for a specific thread and agent."""
-    LOGGER.info(f"Chat request: thread_id={request_body.thread_id}, agent_id={request_body.agent_id}, override_role={request_body.override_role}")
     
     # Handle thread creation if thread_id is None
     thread_id = request_body.thread_id
@@ -76,6 +75,16 @@ async def chat(
         if not agent_instance:
             LOGGER.warning(f"Agent {request_body.agent_id} not found for chat.")
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found.")
+        
+        # Debug agent instance details
+        LOGGER.debug(f"Chat Message Details:")
+        LOGGER.debug(f"  Agent Name: {agent_instance.get_name()}")
+        if hasattr(agent_instance, 'model'):
+            LOGGER.debug(f"  Agent Model: {agent_instance.model}")
+        if hasattr(agent_instance, 'bedrock_agent_id'):
+            LOGGER.debug(f"  Bedrock Agent ID: {agent_instance.bedrock_agent_id}")
+        if hasattr(agent_instance, 'bedrock_agent_alias_id'):
+            LOGGER.debug(f"  Bedrock Alias ID: {agent_instance.bedrock_agent_alias_id}")
 
         # Check if this is a default agent (accessible to all users)
         is_default_agent = False
