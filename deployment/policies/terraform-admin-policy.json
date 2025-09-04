@@ -1,0 +1,44 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "iam:*",
+        "ec2:*",
+        "vpc:*",
+        "rds:*",
+        "s3:*",
+        "secretsmanager:*",
+        "ecr:*",
+        "apprunner:*",
+        "logs:*",
+        "sts:AssumeRole",
+        "sts:GetCallerIdentity",
+        "elasticloadbalancing:*",
+        "autoscaling:*",
+        "cloudwatch:*",
+        "kms:*",
+        "tag:*",
+        "resource-groups:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateServiceLinkedRole"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "iam:AWSServiceName": [
+            "apprunner.amazonaws.com",
+            "rds.amazonaws.com",
+            "elasticloadbalancing.amazonaws.com"
+          ]
+        }
+      }
+    }
+  ]
+}
