@@ -35,6 +35,8 @@ docs/
 *.tfstate
 *.tfstate.*
 *.tfplan
+*.tfvars.local
+.terraform.lock.hcl
 crash.log
 crash.*.log
 override.tf
@@ -44,4 +46,12 @@ override.tf.json
 .terraformrc
 terraform.rc
 
+# Temporary files
+/tmp/
+*.tmp
+*.log
+
 **/.playwright-mcp
+
+deployment/**/environments/*.tfvars
+!deployment/**/environments/example.tfvars
