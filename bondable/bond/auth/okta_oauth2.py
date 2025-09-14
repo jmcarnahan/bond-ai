@@ -27,7 +27,8 @@ class OktaOAuth2Provider(OAuth2Provider):
             "client_secret": "your_client_secret", 
             "redirect_uri": "http://localhost:8080/auth/okta/callback",
             "scopes": ["openid", "profile", "email"],
-            "valid_emails": []  # Optional: restrict access to specific emails
+            "valid_emails": [],  # Optional: restrict access to specific emails
+            "auth_server": "default"  # Optional: "default" or "" for org server
         }
         """
         super().__init__(config)
@@ -40,7 +41,18 @@ class OktaOAuth2Provider(OAuth2Provider):
         # Ensure domain doesn't have trailing slash
         self.domain = config["domain"].rstrip('/')
         
-        LOGGER.debug(f"Okta OAuth2 initialized: domain={self.domain} redirect_uri={config['redirect_uri']} scopes={config['scopes']}")
+        # Determine which authorization server to use
+        # Use org server by default for trial accounts to avoid 'sub' claim issues
+        self.auth_server = config.get("auth_server", "")
+        if self.auth_server == "default":
+            self.auth_server_path = "/oauth2/default"
+        elif self.auth_server:
+            self.auth_server_path = f"/oauth2/{self.auth_server}"
+        else:
+            # Use org authorization server (empty string means use org server)
+            self.auth_server_path = "/oauth2"
+        
+        LOGGER.debug(f"Okta OAuth2 initialized: domain={self.domain} auth_server_path={self.auth_server_path} redirect_uri={config['redirect_uri']} scopes={config['scopes']}")
     
     def get_auth_url(self) -> str:
         """Generate Okta OAuth2 authorization URL."""
@@ -52,13 +64,13 @@ class OktaOAuth2Provider(OAuth2Provider):
             'state': 'bond-ai-auth'  # You might want to make this more secure/random
         }
         
-        auth_url = f"{self.domain}/oauth2/default/v1/authorize?{urlencode(auth_params)}"
+        auth_url = f"{self.domain}{self.auth_server_path}/v1/authorize?{urlencode(auth_params)}"
         LOGGER.debug(f"Generated Okta auth URL: {auth_url}")
         return auth_url
     
     def _exchange_code_for_tokens(self, auth_code: str) -> Dict[str, Any]:
         """Exchange authorization code for access and ID tokens."""
-        token_url = f"{self.domain}/oauth2/default/v1/token"
+        token_url = f"{self.domain}{self.auth_server_path}/v1/token"
         
         token_data = {
             'grant_type': 'authorization_code',
@@ -85,7 +97,7 @@ class OktaOAuth2Provider(OAuth2Provider):
     
     def _get_user_info_from_token(self, access_token: str) -> Dict[str, Any]:
         """Get user information from Okta using access token."""
-        userinfo_url = f"{self.domain}/oauth2/default/v1/userinfo"
+        userinfo_url = f"{self.domain}{self.auth_server_path}/v1/userinfo"
         
         headers = {
             'Authorization': f'Bearer {access_token}',
