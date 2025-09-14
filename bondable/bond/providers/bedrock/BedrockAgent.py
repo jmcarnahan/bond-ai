@@ -1390,6 +1390,7 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                     byOutputModality='TEXT'
                 )
                 models = []
+                # Always use cross-region inference models with us. prefix
                 default_model = os.getenv('BEDROCK_DEFAULT_MODEL', 'us.anthropic.claude-3-haiku-20240307-v1:0')
                 
                 for model in response.get('modelSummaries', []):
