@@ -1,514 +1,386 @@
-# Bond AI Complete Deployment Guide
+# Bond AI Deployment Guide
 
-This directory contains **everything** needed to deploy Bond AI to AWS, including:
-- Docker configurations for containerization
-- Terraform infrastructure-as-code
-- Deployment automation with Makefile
-- Security policies and scripts
-- Complete deployment documentation
+## Overview
+This directory contains everything needed to deploy Bond AI to AWS using Terraform and Docker.
 
-## Current Status (as of 2025-09-02)
+## Current Deployment Status (September 10, 2025)
+✅ **Successfully deployed to us-west-2 with existing VPC**
+- Backend: https://gmqf3e9my8.us-west-2.awsapprunner.com
+- Frontend: https://vsjnx2fai9.us-west-2.awsapprunner.com
+- Both services running and healthy
 
-✅ **Fully Deployed and Operational**  
-✅ **Phase 1 Complete**: Infrastructure (VPC, RDS, S3, ECR, IAM)  
-✅ **Phase 2 Complete**: Backend API deployed to App Runner  
-✅ **Phase 3 Complete**: Frontend deployed with backend URL  
-✅ **Phase 4 Complete**: Post-deployment configuration (CORS, redirects)  
-✅ **OAuth Working**: Okta authentication configured and tested  
-✅ **Phased Deployment**: Single `make deploy` command works (with timeouts handled)  
-
-## Quick Reference
-
-### Common Commands
-
-| Command | Description |
-|---------|-------------|
-| `make help` | Show all available commands |
-| `make init` | Initialize Terraform (first time) |
-| `make deploy` | Deploy everything |
-| `make deploy-backend` | Deploy backend only |
-| `make deploy-frontend` | Deploy frontend only |
-| `make rebuild` | Force rebuild Docker images |
-| `make test` | Run tests |
-| `make logs-backend` | Tail backend logs |
-| `make logs-frontend` | Tail frontend logs |
-| `make status` | Check deployment status |
-| `make destroy` | Destroy all infrastructure |
-
-### Environment Selection
-
-```bash
-# Use different environments
-make use-dev deploy     # Development
-make use-staging deploy # Staging
-make use-prod deploy    # Production
-```
-
-## 📚 Deployment Documentation
-
-**[See DEPLOYMENT_GUIDE.md for complete deployment instructions](./DEPLOYMENT_GUIDE.md)**
-
-The deployment now uses a phased approach to ensure proper ordering:
-1. **Phase 1**: Infrastructure (VPC, RDS, S3, ECR, IAM)
-2. **Phase 2**: Backend Service (Docker build + deployment)
-3. **Phase 3**: Frontend Service (Docker build with backend URL + deployment)
-4. **Phase 4**: Post-deployment configuration (CORS, redirects)
-
-## Quick Start
-
-### ⚠️ Important: Manual Okta Configuration Required
-
-After deployment, you MUST manually add the backend callback URL to your Okta application:
-- The exact URL will be displayed at the end of deployment
-- Without this step, OAuth login will not work
-- See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md#-important-post-deployment-manual-steps) for details
-
-### Directory Organization
-
-All deployment-related files are consolidated here, separate from application code:
-- **Docker files**: Container definitions at deployment root
-- **Terraform**: Infrastructure code in `terraform/` subdirectory
-- **Makefile**: Simplified commands at deployment root
-- **Documentation**: Deployment-specific docs in `docs/`
-- **Scripts & Policies**: Supporting files in their own directories
-
-## Prerequisites
-
-1. **AWS CLI configured**
-   ```bash
-   aws configure
-   # Enter your AWS Access Key ID, Secret, and region (us-east-1)
-   ```
-
-2. **AWS IAM Permissions**
-   Apply the policy in `terraform-admin-policy.json` to your AWS user:
-   ```bash
-   aws iam put-user-policy --user-name YOUR_USERNAME \
-     --policy-name TerraformAdminPolicy \
-     --policy-document file://terraform-admin-policy.json
-   ```
-
-3. **Terraform installed** (version 1.5+ recommended)
-   ```bash
-   terraform version
-   ```
-
-4. **Docker installed** (for building images)
-   ```bash
-   docker --version
-   ```
-
-5. **ECR login configured**
-   ```bash
-   aws ecr get-login-password --region us-east-1 | \
-     docker login --username AWS --password-stdin \
-     119684128788.dkr.ecr.us-east-1.amazonaws.com
-   ```
-
-6. **Okta OAuth Secret** (for authentication)
-   ```bash
-   # Create the secret in AWS Secrets Manager
-   aws secretsmanager create-secret \
-     --name bond-ai-dev-okta-secret \
-     --secret-string '{"client_secret":"YOUR_OKTA_CLIENT_SECRET"}' \
-     --region us-east-1
-   ```
-
-### Deploy Everything (Simplified)
-
-```bash
-# From deployment directory
-cd deployment
-
-# Initialize (first time only)
-make init
-
-# Deploy everything with one command
-make deploy
-```
-
-This single command will:
-1. Create all AWS resources (VPC, RDS, App Runner, ECR, etc.)
-2. Build and push backend Docker image
-3. Build and push frontend Docker image with backend URL
-4. Update backend with frontend URL for CORS
-5. Start both applications
-
-### Deploy Backend Only
-
-```bash
-# From deployment directory
-make deploy-backend
-```
-
-### Deploy Frontend Only
-
-```bash
-# From deployment directory
-make deploy-frontend
-```
-
-### Force Rebuild Docker Images
-
-```bash
-# From deployment directory
-make rebuild
-```
-
-### Update Configuration Only
-
-```bash
-# From deployment directory
-make update-config
-```
-
-## Infrastructure Components
-
-### Deployed Resources
-
-| Component | Resource | Details |
-|-----------|----------|---------|
-| **Networking** | VPC | 10.0.0.0/16 CIDR block |
-| | Public Subnets | 2 subnets for App Runner |
-| | Database Subnets | 2 subnets for RDS |
-| | VPC Connector | Enables App Runner → RDS access |
-| **Database** | RDS PostgreSQL | db.t3.micro, 20GB storage |
-| | Secrets Manager | Database credentials |
-| **Backend** | App Runner | Auto-scaling container service |
-| | ECR Repository | Docker image registry |
-| | S3 Bucket | File uploads storage |
-| **Security** | IAM Roles | App Runner instance & ECR access |
-| | Security Groups | Network access control |
-| | JWT Secret | Authentication key in Secrets Manager |
-
-### Service URLs (Current Deployment - us-east-2)
-
-- **Frontend Application**: https://qqbpevxfxs.us-east-2.awsapprunner.com
-- **Backend API**: https://aqyrw7q9i8.us-east-2.awsapprunner.com
-- **Health Check**: https://aqyrw7q9i8.us-east-2.awsapprunner.com/health
-- **Okta Login**: https://aqyrw7q9i8.us-east-2.awsapprunner.com/login/okta
-- **API Documentation**: https://aqyrw7q9i8.us-east-2.awsapprunner.com/docs
-
-## Configuration Files
-
-### `main.tf`
-Main infrastructure definition containing all AWS resources.
-
-### `variables.tf`
-Variable definitions with defaults.
-
-### `outputs.tf`
-Output values like URLs, ARNs, and resource IDs.
-
-### `environments/minimal-us-east-2.tfvars`
-Current deployment environment configuration:
-```hcl
-environment = "dev"
-aws_region  = "us-east-2"  # Using us-east-2 region
-
-# Database
-db_instance_class    = "db.t3.micro"  # Free tier eligible
-db_allocated_storage = 20              # Minimum RDS storage
-
-# Okta OAuth Configuration
-oauth2_providers = "okta"
-okta_domain      = "https://trial-9457917.okta.com"
-okta_client_id   = "0oas1uz67oWaTK8iP697"
-okta_scopes      = "openid,profile,email"
-okta_secret_name = "bond-ai-dev-okta-secret"
-
-# These are dynamically updated during deployment
-okta_redirect_uri = "https://BACKEND_URL/auth/okta/callback"
-jwt_redirect_uri = "https://FRONTEND_URL"
-
-# Bedrock Agent Configuration
-bedrock_agent_role_name = "BondAIBedrockAgentRole"
-
-# CORS Configuration - dynamically updated in Phase 4
-cors_allowed_origins = "http://localhost,http://localhost:3000,http://localhost:5000"
-```
-
-### Deployment Directory Structure
+## Directory Structure
 
 ```
 deployment/
-├── README.md                # This file
-├── Makefile                 # Simplified deployment commands
-├── Dockerfile.backend       # Backend container configuration
-├── Dockerfile.frontend      # Frontend container configuration
-├── terraform/               # Infrastructure as Code
-│   ├── main.tf             # Core AWS resources
-│   ├── frontend.tf         # Frontend-specific resources
-│   ├── backend.tf          # Terraform state configuration
-│   ├── post-deployment-config.tf  # Automated builds and updates
-│   ├── variables.tf        # Input variables
-│   ├── versions.tf         # Terraform version requirements
-│   ├── environments/       # Environment-specific configurations
-│   │   ├── minimal.tfvars  # Minimal dev environment
-│   │   ├── dev.tfvars      # Development environment
-│   │   ├── staging.tfvars  # Staging environment
-│   │   └── prod.tfvars     # Production environment
-│   └── modules/            # Reusable Terraform modules
-├── scripts/                 # Deployment scripts
-│   └── deploy_backend.sh   # Legacy deployment script
-├── policies/                # Security policies
-│   ├── terraform-admin-policy.json  # IAM policy for Terraform
-│   └── add-terraform-policy.sh      # Script to apply IAM policy
-└── docs/                    # Deployment documentation
-    ├── AWS_DEPLOYMENT_PLAN.md       # Architecture and phases
-    └── DEPLOYMENT_STATUS.md         # Current deployment status
+├── terraform-existing-vpc/     # Deploy using existing VPC
+│   ├── environments/          # Environment-specific configurations
+│   └── *.tf                   # Terraform configuration files
+├── terraform-create-vpc/       # Deploy creating new VPC
+├── terraform/                  # Original deployment (us-east-1)
+├── Dockerfile.backend          # Backend container configuration
+├── Dockerfile.frontend         # Frontend container configuration
+├── DEPLOYMENT_FIX_GUIDE.md     # Comprehensive deployment fixes
+├── monitor-deployment.sh       # Real-time deployment monitoring
+├── setup-vpc-for-region.sh     # Create VPC in new AWS account
+└── test-vpc-availability.sh    # Test VPC configuration
+
 ```
 
-### `terraform-admin-policy.json`
-IAM policy for Terraform administration with permissions for:
-- EC2 & VPC management
-- RDS database operations
-- Secrets Manager access
-- S3 bucket operations
-- ECR registry access
-- App Runner management
-- IAM role and policy management
-- CloudWatch logs
-- KMS key management
+## Quick Start
 
-## Environment Variables
+### Prerequisites
+1. AWS CLI configured with appropriate credentials
+2. Terraform installed (v1.0+)
+3. Docker installed and running
+4. Poetry installed (for Python dependencies)
 
-The following environment variables are configured in App Runner:
+## 🚀 Complete Deployment Process
 
+When deploying to a new AWS account, follow these steps in order:
+
+### Step 1: Verify or Create VPC
+
+#### Option A: Use Existing VPC
 ```bash
-# Database connection (password from Secrets Manager)
-DATABASE_SECRET_ARN=${database_secret_arn}
+# Test if you have an existing VPC that can be used
+cd deployment
+./test-vpc-availability.sh
 
-# JWT authentication (from Secrets Manager)
-JWT_SECRET_KEY=${jwt_secret}
-JWT_REDIRECT_URI=${jwt_redirect_uri}
-
-# AWS configuration
-AWS_REGION=us-east-1
-S3_BUCKET_NAME=${s3_bucket_name}
-BEDROCK_AGENT_ROLE_ARN=${bedrock_agent_role_arn}
-
-# AI Provider
-BOND_PROVIDER_CLASS=bondable.bond.providers.bedrock.BedrockProvider.BedrockProvider
-
-# OAuth Configuration
-OAUTH2_PROVIDERS=${oauth2_providers}
-OKTA_DOMAIN=${okta_domain}
-OKTA_CLIENT_ID=${okta_client_id}
-OKTA_SCOPES=${okta_scopes}
-OKTA_SECRET_NAME=${okta_secret_name}
-OKTA_REDIRECT_URI=${okta_redirect_uri}
-
-# CORS Configuration
-CORS_ALLOWED_ORIGINS=${cors_allowed_origins}
+# This will show:
+# - Existing VPCs in your account
+# - Available subnets
+# - Whether you can create new VPCs (quota check)
 ```
 
-## Common Operations
-
-### View Infrastructure Status
+#### Option B: Create New VPC
 ```bash
-# List all resources
+# Create a new VPC with proper configuration
+cd deployment
+./setup-vpc-for-region.sh us-west-2
+
+# This creates:
+# - VPC with CIDR 10.0.0.0/16
+# - 2 public subnets
+# - 2 private subnets  
+# - Internet Gateway
+# - NAT Gateway
+# - Route tables
+
+# Save the VPC ID that's output - you'll need it for deployment
+```
+
+### Step 2: Clean Up Any Previous Deployment
+
+If you've deployed before and want to start fresh:
+
+```bash
+cd deployment/terraform-existing-vpc
+
+# Check if there's existing state
 terraform state list
 
-# Show specific resource details
-terraform state show aws_apprunner_service.backend
+# If there is, destroy everything
+terraform destroy -var-file=environments/us-west-2-existing-vpc.tfvars -auto-approve
 
-# Get outputs
-terraform output
-terraform output -json | jq
+# Clean up ECR repositories
+aws ecr delete-repository --repository-name bond-ai-dev-backend --region us-west-2 --force
+aws ecr delete-repository --repository-name bond-ai-dev-frontend --region us-west-2 --force
+
+# Remove state files for fresh start
+rm -f terraform.tfstate terraform.tfstate.backup
 ```
 
-### Update Configuration
+### Step 3: Configure and Deploy
+
+#### For Existing VPC:
 ```bash
-# Modify environments/minimal.tfvars then:
-terraform plan -var-file=environments/minimal.tfvars
-terraform apply -var-file=environments/minimal.tfvars
+cd deployment/terraform-existing-vpc
+
+# Copy the example configuration
+cp environments/example.tfvars environments/my-deployment.tfvars
+
+# Edit the configuration file
+vi environments/my-deployment.tfvars
+# Required changes:
+#   - existing_vpc_id = "vpc-YOUR-VPC-ID-HERE"  # From Step 1
+#   - aws_region = "your-region"
+#   - okta_domain = "https://your-domain.okta.com"
+#   - okta_client_id = "your-okta-client-id"
+
+# Store Okta secret in AWS Secrets Manager
+aws secretsmanager create-secret \
+  --name bond-ai-dev-okta-secret \
+  --secret-string '{"client_secret":"YOUR_OKTA_CLIENT_SECRET"}' \
+  --region your-region
+
+# Initialize Terraform
+terraform init
+
+# Deploy everything
+terraform apply -var-file=environments/my-deployment.tfvars -auto-approve
 ```
 
-### Access Secrets
+#### For New VPC:
 ```bash
-# Database password
-aws secretsmanager get-secret-value \
-  --secret-id $(terraform output -raw database_secret_name) \
-  --query SecretString --output text | jq
+cd deployment/terraform-create-vpc
 
-# JWT secret
-aws secretsmanager get-secret-value \
-  --secret-id bond-ai-dev-jwt-20250827043014065200000002 \
-  --query SecretString --output text
+# Copy the example configuration
+cp environments/example.tfvars environments/my-deployment.tfvars
+
+# Edit the configuration file
+vi environments/my-deployment.tfvars
+# Required changes:
+#   - aws_region = "your-region"
+#   - availability_zones = ["your-region-a", "your-region-b"]
+#   - okta_domain = "https://your-domain.okta.com"
+#   - okta_client_id = "your-okta-client-id"
+
+# Store Okta secret (same as above)
+aws secretsmanager create-secret \
+  --name bond-ai-dev-okta-secret \
+  --secret-string '{"client_secret":"YOUR_OKTA_CLIENT_SECRET"}' \
+  --region your-region
+
+# Initialize Terraform
+terraform init
+
+# Deploy everything
+terraform apply -var-file=environments/my-deployment.tfvars -auto-approve
 ```
 
-### Monitor Services
-```bash
-# Check App Runner status
-aws apprunner describe-service \
-  --service-arn $(terraform output -raw app_runner_service_arn) \
-  --query "Service.Status"
+### Deployment Timeline
+- Initial deployment: ~30 minutes total
+- Code updates: 5-20 minutes depending on what changed
 
-# View App Runner logs (in AWS Console)
-# Navigate to: App Runner > bond-ai-dev-backend > Logs
-```
+## 🚀 Deploying Code Changes
 
-### Destroy Infrastructure (CAREFUL!)
-```bash
-# Review what will be destroyed
-terraform plan -destroy -var-file=environments/minimal.tfvars
-
-# Destroy all resources
-terraform destroy -var-file=environments/minimal.tfvars
-```
-
-## Configuration Strategy
-
-### Environment Variables vs Dynamic Discovery
-
-We use **environment variables** for all configuration instead of dynamic service discovery (previously used S3 config bucket). This approach:
-- Eliminates circular dependencies between services
-- Simplifies local development
-- Follows cloud-native best practices
-- Makes debugging easier
+**Important**: You do NOT need Makefiles or separate Docker commands. Everything is handled by Terraform!
 
 ### How It Works
 
-1. **Initial Deploy**: Services are created with placeholder configurations
-2. **Build Phase**: Docker images are built automatically by Terraform
-3. **Update Phase**: Backend runtime variables are updated with frontend URL for CORS
-4. **Final State**: Both services have correct cross-references
+When you run `terraform apply`, it automatically:
+1. **Detects code changes** via timestamp triggers in `build-stages.tf`
+2. **Rebuilds Docker images** for backend and/or frontend
+3. **Pushes to ECR** repositories
+4. **Updates App Runner services** with new images
+5. **Handles all dependencies** correctly
 
-### Local Development
+### Deploying Backend Changes (Python)
 
-For local development, the app uses `.env` files:
+After modifying any Python code in `bondable/`:
 
-**Backend** (`/bondable/.env`):
-```env
-CORS_ALLOWED_ORIGINS=http://localhost,http://localhost:3000,http://localhost:5000
-JWT_REDIRECT_URI=http://localhost:3000
+```bash
+cd deployment/terraform-existing-vpc
+terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars -auto-approve
 ```
 
-**Frontend** (`/flutterui/.env`):
-```env
-API_BASE_URL=http://localhost:8000
-ENABLE_AGENTS=true
+This will:
+- Rebuild the backend Docker image with your changes
+- Push to ECR
+- Update the App Runner backend service
+- Backend typically redeploys in ~3-5 minutes
+
+### Deploying Frontend Changes (Flutter)
+
+After modifying any Flutter code in `flutterui/`:
+
+```bash
+cd deployment/terraform-existing-vpc
+terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars -auto-approve
 ```
 
-## Docker Build Process
+This will:
+- Rebuild the frontend Docker image with your changes
+- Push to ECR
+- Update the App Runner frontend service
+- Frontend typically redeploys in ~3-5 minutes
 
-### Automated Build Process
+### Deploying Both Backend and Frontend
 
-Docker builds are now automated within Terraform using `null_resource` provisioners:
-1. **Backend Build**: Automatically builds when Terraform runs
-2. **Frontend Build**: Builds with backend URL as build argument
-3. **Multi-arch Support**: Builds for both AMD64 and ARM64
-4. **ECR Push**: Automatically pushes to ECR repository
+If you've changed both backend and frontend code:
 
-### Build Requirements
+```bash
+cd deployment/terraform-existing-vpc
+terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars -auto-approve
+```
 
-- **Multi-architecture**: Must build for both AMD64 (AWS) and ARM64 (Mac M1/M2)
-- **ECR Login**: Must authenticate to push images
-- **Docker Buildx**: Required for multi-platform builds
-- **Build Context**: Must run from project root where Dockerfile.backend exists
+The same command handles everything! Terraform will:
+- Rebuild both Docker images
+- Deploy backend first (frontend depends on it)
+- Deploy frontend with the backend URL
+- Update CORS configuration
 
-### Build Process Flow
+### What About the Makefiles?
 
-1. **First Deployment**:
-   - Terraform creates ECR repository
-   - Build and push Docker image
-   - Terraform deploys App Runner with image
+**You don't need them!** The Makefiles in this directory were for the original deployment approach. The current `terraform-existing-vpc` setup is completely self-contained:
 
-2. **Updates**:
-   - Modify backend code
-   - Rebuild and push new image (same tag)
-   - Use Terraform `-replace` to force new deployment
+- ❌ **No need for**: `make deploy`, `make build`, etc.
+- ✅ **Just use**: `terraform apply`
+
+The Terraform configuration includes:
+- `build-stages.tf` - Handles Docker builds and ECR pushes
+- `backend.tf` & `frontend.tf` - Manage App Runner services
+- `post-deployment-updates.tf` - Updates CORS after deployment
+
+### Quick Deploy Script (Optional)
+
+For convenience, you can create an alias or script:
+
+```bash
+# Add to your ~/.bashrc or ~/.zshrc
+alias deploy-bond='cd /Users/jcarnahan/projects/bond-ai/deployment/terraform-existing-vpc && terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars -auto-approve'
+
+# Then just run:
+deploy-bond
+```
+
+
+## Monitoring Deployment
+
+Run the monitoring script in a separate terminal:
+
+```bash
+./monitor-deployment.sh
+```
+
+This shows real-time status of:
+- Terraform state
+- AWS resources
+- Service health checks
+
+## Configuration Files
+
+### For Existing VPC (us-west-2)
+`terraform-existing-vpc/environments/us-west-2-existing-vpc.tfvars`:
+- VPC ID: vpc-0a10b710daf789382
+- Region: us-west-2
+- Bedrock Model: us.anthropic.claude-sonnet-4-20250514-v1:0
+
+### For New VPC Creation
+`terraform-create-vpc/environments/dev.tfvars`:
+- Creates new VPC with proper subnets
+- Configures NAT Gateway for private subnets
+- Sets up security groups
+
+## Key Components
+
+### Infrastructure
+- **RDS PostgreSQL**: Database with encrypted storage
+- **App Runner**: Serverless container hosting for backend/frontend
+- **ECR**: Docker image repositories
+- **S3**: File uploads bucket
+- **VPC**: Network isolation with private subnets
+
+### Security
+- **IAM Roles**: Least-privilege access
+- **Secrets Manager**: Database and OAuth credentials
+- **Security Groups**: Network access control
+- **Bedrock Agent Role**: AI model access
+
+### Authentication
+- **Okta OAuth2**: SSO authentication
+- **JWT**: Token-based API authentication
+
+## Deployment Timeline
+
+### Initial Deployment (from scratch)
+Typical deployment takes ~30 minutes:
+1. RDS Database: ~7 minutes
+2. Backend Docker build: ~2 minutes
+3. Backend App Runner: ~3 minutes
+4. Frontend Docker build: ~12 minutes (waits for backend)
+5. Frontend App Runner: ~3 minutes
+6. Post-deployment updates: ~2 minutes
+
+### Code Updates (existing infrastructure)
+Much faster - only rebuilds and redeploys changed services:
+- Backend only update: ~5-7 minutes
+- Frontend only update: ~15 minutes (includes build time)
+- Both services: ~20 minutes
 
 ## Troubleshooting
 
-### App Runner Deployment Failed
-1. Check logs in AWS Console: App Runner > Service > Logs
-2. Verify Docker image exists in ECR
-3. Check environment variables are set correctly
-4. Ensure IAM roles have necessary permissions
+### Common Issues
 
-### Database Connection Issues
-1. Verify VPC connector is attached to App Runner
-2. Check security group allows port 5432
-3. Confirm database is in available state
-4. Validate connection string format
+1. **Frontend service not created**: Fixed in latest version - proper dependency chain
+2. **Backend URL changes**: Fixed - post-deployment update no longer recreates service
+3. **CORS errors**: Backend starts with wildcard CORS, updated post-deployment
+4. **VPC limits**: Use existing VPC or request limit increase
 
-### Docker Build Issues
+### Verification Commands
+
 ```bash
-# Clean up Docker resources
-docker system prune -a --volumes
+# Check service status
+aws apprunner list-services --region us-west-2 \
+  --query 'ServiceSummaryList[?contains(ServiceName, `bond-ai`)]'
 
-# Recreate buildx builder
-docker buildx rm multiarch0
-docker buildx create --name multiarch0 --use
+# Test backend health
+curl https://[backend-url]/health
+
+# Check Terraform state
+terraform state list
+
+# View deployment outputs
+terraform output
 ```
 
-### Terraform State Issues
-```bash
-# Refresh state
-terraform refresh -var-file=environments/minimal.tfvars
+## Clean Up / Destroy Everything
 
-# Force recreation of specific resource
-terraform apply -replace="aws_apprunner_service.backend" -var-file=environments/minimal.tfvars
+To destroy all resources and start fresh:
+
+```bash
+cd deployment/terraform-existing-vpc
+
+# Destroy all Terraform-managed infrastructure
+terraform destroy -var-file=environments/us-west-2-existing-vpc.tfvars -auto-approve
+
+# Force delete ECR repositories (they may contain images)
+aws ecr delete-repository --repository-name bond-ai-dev-backend --region us-west-2 --force
+aws ecr delete-repository --repository-name bond-ai-dev-frontend --region us-west-2 --force
+
+# Optional: Clean up state files for a completely fresh start
+rm -f terraform.tfstate terraform.tfstate.backup
 ```
 
-## Cost Optimization
+### What Gets Destroyed
+- App Runner services (backend & frontend)
+- RDS database  
+- S3 uploads bucket
+- IAM roles and policies
+- Security groups
+- VPC connector
+- Secrets in Secrets Manager
 
-Current monthly costs (dev environment):
-- RDS PostgreSQL (db.t3.micro): ~$15-16
-- Backend App Runner (0.25 vCPU, 0.5GB): ~$15-20
-- Frontend App Runner (0.25 vCPU, 0.5GB): ~$15-20
-- NAT Gateway (if running): ~$45
-- S3 & ECR: <$2
-- **Total**: ~$45-60/month (without NAT: ~$100/month with NAT)
+### What Remains
+- The existing VPC (not managed by this Terraform)
+- Okta secret (if created outside Terraform)
 
-To reduce costs:
-1. Stop App Runner service when not in use
-2. Use RDS stop/start for development
-3. Clean up old ECR images regularly
-4. Review and delete unused S3 objects
+### Redeploy After Destroy
+After destroying, you can redeploy fresh:
+```bash
+terraform init  # If you removed state files
+terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars -auto-approve
+```
 
-## Security Best Practices
+## Important Notes
 
-1. **Never commit secrets** - Use Secrets Manager
-2. **Rotate credentials regularly** - Update JWT secret periodically
-3. **Use least privilege IAM** - Grant only necessary permissions
-4. **Enable logging** - Monitor access and errors
-5. **Keep infrastructure updated** - Apply security patches
+1. **Never commit secrets** - Use AWS Secrets Manager
+2. **Always specify region** - Services are region-specific
+3. **Monitor costs** - App Runner and RDS incur ongoing charges
+4. **Backup database** - Before major changes
+5. **Test locally first** - Use poetry for local development
 
-## Known Issues & Solutions
+## Related Documentation
 
-### Deployment Timeouts
-- **Issue**: `make deploy` may timeout during App Runner service creation (10+ minutes)
-- **Solution**: Continue with remaining phases manually:
-  ```bash
-  make deploy-phase3  # If Phase 2 timed out
-  make deploy-phase4  # After Phase 3 completes
-  ```
-
-### Manual Okta Configuration Required
-- **Issue**: Okta redirect URI must be manually configured after deployment
-- **Solution**: The deployment output shows the exact URL to add to your Okta app settings
-
-## Next Steps
-
-### Production Readiness
-1. Enable RDS Multi-AZ for high availability
-2. Configure auto-scaling policies
-3. Set up CloudWatch monitoring and alarms
-4. Implement backup strategies
-5. Create disaster recovery plan
-6. Add custom domain names for services
-7. Implement CI/CD pipeline for automated deployments
+- [DEPLOYMENT_FIX_GUIDE.md](./DEPLOYMENT_FIX_GUIDE.md) - Detailed fixes applied
+- [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) - Original deployment guide
+- [../CLAUDE.md](../CLAUDE.md) - AI assistant context
 
 ## Support
 
 For issues or questions:
-- Review `AWS_DEPLOYMENT_PLAN.md` for architecture details
-- Check `DEPLOYMENT_STATUS.md` for current status
-- See `CLAUDE.md` for AI assistant context
-
----
-*Last updated: 2025-09-02*
-*Status: Fully deployed and operational in us-east-2*
+1. Check the monitoring script output
+2. Review CloudWatch logs
+3. Consult DEPLOYMENT_FIX_GUIDE.md
+4. Check AWS service limits and quotas

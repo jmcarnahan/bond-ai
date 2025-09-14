@@ -307,15 +307,19 @@ class Config:
         if 'OKTA_VALID_EMAILS' in os.environ:
             valid_emails = [email.strip() for email in os.getenv('OKTA_VALID_EMAILS').split(",")]
         
+        # Get authorization server configuration (default to org server for trial accounts)
+        auth_server = os.getenv('OKTA_AUTH_SERVER', '')  # Empty string means use org server
+        
         config = {
             "domain": domain,
             "client_id": client_id,
             "client_secret": client_secret,
             "redirect_uri": redirect_uri,
             "scopes": scopes,
-            "valid_emails": valid_emails
+            "valid_emails": valid_emails,
+            "auth_server": auth_server  # Use org server by default to avoid 'sub' claim issues
         }
-        LOGGER.info(f"Okta OAuth2 config: domain={domain} redirect_uri={redirect_uri} scopes={scopes} valid_emails={len(valid_emails)} emails")
+        LOGGER.info(f"Okta OAuth2 config: domain={domain} auth_server={auth_server if auth_server else 'org'} redirect_uri={redirect_uri} scopes={scopes} valid_emails={len(valid_emails)} emails")
         return config
 
     def get_mcp_config(self):
