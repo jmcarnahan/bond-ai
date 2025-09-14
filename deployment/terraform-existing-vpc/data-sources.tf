@@ -1,0 +1,41 @@
+# Data sources for existing VPC resources
+
+data "aws_vpc" "existing" {
+  id = var.existing_vpc_id
+}
+
+data "aws_subnets" "private" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.existing.id]
+  }
+  
+  # Filter for private subnets (no public IP assignment)
+  filter {
+    name   = "map-public-ip-on-launch"
+    values = ["false"]
+  }
+}
+
+# Get details for each subnet
+data "aws_subnet" "private" {
+  for_each = toset(data.aws_subnets.private.ids)
+  id       = each.value
+}
+
+# Get availability zones from subnets
+locals {
+  availability_zones = distinct([for s in data.aws_subnet.private : s.availability_zone])
+  
+  # Select subnets for RDS (need at least 2 in different AZs)
+  rds_subnet_ids = [
+    for az in slice(local.availability_zones, 0, min(2, length(local.availability_zones))) : 
+    [for s in data.aws_subnet.private : s.id if s.availability_zone == az][0]
+  ]
+  
+  # Select subnets for App Runner VPC connector (can use all private subnets)
+  app_runner_subnet_ids = data.aws_subnets.private.ids
+}
+
+# Note: These data sources are informational only - not used in resource creation
+# They help validate the VPC has required networking components

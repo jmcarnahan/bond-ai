@@ -152,7 +152,7 @@ class BedrockProvider(Provider):
         if hasattr(self.config, 'bedrock_default_model'):
             return self.config.bedrock_default_model
         
-        # Default to Claude 3 Sonnet
+        # Always use cross-region inference models with us. prefix
         return "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
     
     def get_available_models(self) -> List[Dict[str, Any]]:
