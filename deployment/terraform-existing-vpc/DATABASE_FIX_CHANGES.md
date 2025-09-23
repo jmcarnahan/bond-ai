@@ -2,6 +2,31 @@
 
 ## Date: 2025-09-23
 
+## Git Branch Information
+**Branch Name:** `working-state-alphanumeric-passwords`
+**Commit Hash (short):** `7c52557`
+**Commit Hash (full):** `7c525579d44eb15375d4fa371d9c81824c51d34c`
+**Status:** Known good working state after complete destroy and redeploy
+**Parent Branch:** main
+
+### How to Return to This State
+```bash
+# If you need to return to this working state:
+git checkout working-state-alphanumeric-passwords
+
+# Or to cherry-pick just these changes:
+git cherry-pick 7c525579d44eb15375d4fa371d9c81824c51d34c
+
+# To see what changed in this commit:
+git show 7c525579d44eb15375d4fa371d9c81824c51d34c
+
+# To reset current branch to this state (WARNING: destructive):
+git reset --hard 7c525579d44eb15375d4fa371d9c81824c51d34c
+
+# To create a new branch from this state:
+git checkout -b new-branch-name 7c525579d44eb15375d4fa371d9c81824c51d34c
+```
+
 ### Problem
 Database authentication was failing with error:
 ```
@@ -89,6 +114,14 @@ echo "Using alphanumeric database password (no encoding required)"
 #### After:
 ```json
 "METADATA_DB_URL": "postgresql://bondadmin:$DB_PASSWORD@${aws_db_instance.main.address}:5432/bondai",
+```
+
+## Files Changed in This Commit
+```bash
+deployment/terraform-existing-vpc/DATABASE_FIX_CHANGES.md  (new file - this documentation)
+deployment/terraform-existing-vpc/backend.tf               (modified - removed urlencode)
+deployment/terraform-existing-vpc/main.tf                  (modified - alphanumeric passwords)
+deployment/terraform-existing-vpc/post-deployment-updates.tf (modified - removed URL encoding)
 ```
 
 ## Deployment Process
