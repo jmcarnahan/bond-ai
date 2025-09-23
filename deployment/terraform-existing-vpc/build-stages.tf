@@ -88,25 +88,25 @@ resource "null_resource" "build_frontend_image" {
   provisioner "local-exec" {
     command = <<-EOT
       set -e  # Exit on error
-      echo "Building frontend Docker image..."
-      
+      echo "Building frontend locally and packaging in Docker..."
+
       # Verify Docker is running
       if ! docker info > /dev/null 2>&1; then
         echo "Error: Docker daemon is not running"
         exit 1
       fi
-      
+
       # Get backend URL and wait for it to be fully operational
       BACKEND_URL="${aws_apprunner_service.backend.service_url}"
-      
+
       if [ -z "$BACKEND_URL" ]; then
         echo "Error: Backend URL is empty. Backend service may not be deployed."
         exit 1
       fi
-      
+
       echo "Backend URL: https://$BACKEND_URL"
       echo "Verifying backend is operational before building frontend..."
-      
+
       # Wait for backend to be accessible
       for i in {1..30}; do
         if curl -s -o /dev/null -w "%%{http_code}" "https://$BACKEND_URL/health" | grep -q "200\|503"; then
@@ -121,36 +121,89 @@ resource "null_resource" "build_frontend_image" {
           sleep 10
         fi
       done
-      
-      echo "Building frontend with backend URL: https://$BACKEND_URL"
-      
+
+      echo "========================================="
+      echo "Building Flutter web app locally..."
+      echo "========================================="
+
+      # Check if Flutter is installed
+      if ! command -v flutter &> /dev/null; then
+        echo "Error: Flutter is not installed or not in PATH"
+        echo "Please install Flutter: https://flutter.dev/docs/get-started/install"
+        exit 1
+      fi
+
+      # Build Flutter web app locally (outside Docker)
+      cd flutterui
+
+      echo "Enabling Flutter web support..."
+      flutter config --enable-web --no-analytics
+
+      echo "Getting Flutter dependencies..."
+      flutter pub get
+
+      echo "Building Flutter web app with backend URL: https://$BACKEND_URL"
+      flutter build web --release \
+        --no-tree-shake-icons \
+        --dart-define=API_BASE_URL=https://$BACKEND_URL \
+        --dart-define=ENABLE_AGENTS=true
+
+      if [ ! -d "build/web" ]; then
+        echo "Error: Flutter build failed - build/web directory not found"
+        exit 1
+      fi
+
+      echo "✓ Flutter web app built successfully"
+
+      # Go back to project root
+      cd ..
+
+      echo "========================================="
+      echo "Packaging Flutter app in Docker..."
+      echo "========================================="
+
+      # Create temporary directory for Docker build context
+      TEMP_BUILD_DIR=$(mktemp -d)
+      echo "Using temporary build directory: $TEMP_BUILD_DIR"
+
+      # Copy built Flutter web files to temp directory
+      cp -r flutterui/build/web "$TEMP_BUILD_DIR/web"
+
+      # Copy Dockerfile to temp directory
+      cp deployment/Dockerfile.frontend "$TEMP_BUILD_DIR/Dockerfile"
+
       # Login to ECR
       echo "Authenticating with ECR..."
       aws ecr get-login-password --region ${var.aws_region} | \
         docker login --username AWS --password-stdin ${aws_ecr_repository.frontend.repository_url}
-      
-      # Verify Dockerfile exists
-      if [ ! -f "deployment/Dockerfile.frontend" ]; then
-        echo "Error: deployment/Dockerfile.frontend not found"
-        exit 1
-      fi
-      
-      # Build and push frontend with the backend URL
-      echo "Building and pushing frontend image..."
+
+      # Build and push Docker image with pre-built Flutter app
+      echo "Building Docker image with pre-built Flutter app..."
+      cd "$TEMP_BUILD_DIR"
       docker buildx build --platform linux/amd64 \
-        --build-arg API_BASE_URL=https://$BACKEND_URL \
-        --build-arg ENABLE_AGENTS=true \
         -t ${aws_ecr_repository.frontend.repository_url}:latest \
-        -f deployment/Dockerfile.frontend --push .
-      
+        --push .
+
+      # Go back to original directory
+      cd - > /dev/null
+
+      # Clean up temp directory
+      rm -rf "$TEMP_BUILD_DIR"
+      echo "✓ Cleaned up temporary build directory"
+
       # Verify image was pushed
       aws ecr describe-images \
         --repository-name ${aws_ecr_repository.frontend.name} \
         --region ${var.aws_region} \
         --image-ids imageTag=latest > /dev/null 2>&1
-      
+
       if [ $? -eq 0 ]; then
-        echo "✓ Frontend image built and pushed successfully with API_BASE_URL: https://$BACKEND_URL"
+        echo "========================================="
+        echo "✓ Frontend image built and pushed successfully!"
+        echo "  - Flutter built locally (avoiding TLS issues)"
+        echo "  - Packaged in Docker with nginx"
+        echo "  - API_BASE_URL: https://$BACKEND_URL"
+        echo "========================================="
         echo ""
         echo "Frontend image is ready for deployment."
         echo "The frontend App Runner service will be created next."
