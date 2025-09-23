@@ -55,7 +55,7 @@ resource "aws_apprunner_service" "backend" {
           OKTA_CLIENT_ID = var.okta_client_id
           OKTA_CLIENT_SECRET = jsondecode(data.aws_secretsmanager_secret_version.okta_secret.secret_string)["client_secret"]
           # Okta redirect URI - will be dynamically set after deployment
-          OKTA_REDIRECT_URI = ""  # Will be set in post-deployment update
+          OKTA_REDIRECT_URI = "https://PENDING_BACKEND_URL/auth/okta/callback"  # Will be set in post-deployment update
           OKTA_SCOPES = var.okta_scopes
           
           # JWT redirect URI for frontend - using wildcard initially
@@ -98,6 +98,8 @@ resource "aws_apprunner_service" "backend" {
   }
 
   depends_on = [
-    null_resource.build_backend_image
+    null_resource.build_backend_image,
+    aws_db_instance.main,
+    aws_secretsmanager_secret_version.db_credentials
   ]
 }
