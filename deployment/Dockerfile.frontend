@@ -1,52 +1,11 @@
-# Multi-stage build for Flutter web application
+# Dockerfile for pre-built Flutter web application
+# This expects the Flutter web app to be built locally and provided in the build context
 
-# Stage 1: Build the Flutter web app
-FROM debian:12-slim AS builder
-
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    git \
-    unzip \
-    xz-utils \
-    zip \
-    libglu1-mesa \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Flutter
-RUN git clone https://github.com/flutter/flutter.git /flutter -b stable --depth 1
-ENV PATH="/flutter/bin:/flutter/bin/cache/dart-sdk/bin:${PATH}"
-
-# Only configure web support without upgrading (avoids downloading all platform tools)
-RUN flutter config --enable-web --no-analytics
-
-# Set working directory
-WORKDIR /app
-
-# Copy pubspec files first for better caching
-COPY flutterui/pubspec.* ./
-RUN flutter pub get
-
-# Copy the rest of the application
-COPY flutterui/ .
-
-# Build arguments that will be passed from Terraform/Docker build
-ARG API_BASE_URL
-ARG ENABLE_AGENTS=true
-
-# Build the web app with dart-define for compile-time constants
-# --no-tree-shake-icons is needed due to material_symbols_icons package
-RUN flutter build web \
-    --release \
-    --no-tree-shake-icons \
-    --dart-define=API_BASE_URL=${API_BASE_URL} \
-    --dart-define=ENABLE_AGENTS=${ENABLE_AGENTS}
-
-# Stage 2: Serve with nginx
 FROM nginx:alpine
 
-# Copy built app from builder stage
-COPY --from=builder /app/build/web /usr/share/nginx/html
+# Copy pre-built Flutter web app
+# The build context should contain the built web files
+COPY web /usr/share/nginx/html
 
 # Copy nginx configuration if needed (optional, nginx default works fine for SPA)
 RUN echo 'server { \
