@@ -20,15 +20,13 @@ data "aws_region" "current" {}
 # Random password for RDS
 resource "random_password" "db_password" {
   length  = 32
-  special = true
-  override_special = "!#$%&*()-_=+[]{}<>:?"
+  special = false  # Use only alphanumeric for now to avoid encoding issues
 }
 
 # Random JWT secret key
 resource "random_password" "jwt_secret" {
   length  = 64
-  special = true
-  override_special = "!#$%&*()-_=+[]{}<>:?"
+  special = false  # Use only alphanumeric for now to avoid encoding issues
 }
 
 # Get Okta client secret from Secrets Manager
