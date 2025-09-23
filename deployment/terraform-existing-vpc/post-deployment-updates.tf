@@ -5,6 +5,9 @@ resource "null_resource" "update_backend_cors" {
   triggers = {
     frontend_url = aws_apprunner_service.frontend.service_url
     backend_url  = aws_apprunner_service.backend.service_url
+    timestamp    = timestamp()  # Force run on every apply to ensure updates are applied
+    backend_arn  = aws_apprunner_service.backend.arn
+    frontend_arn = aws_apprunner_service.frontend.arn
   }
 
   provisioner "local-exec" {
@@ -24,14 +27,14 @@ resource "null_resource" "update_backend_cors" {
       
       # Wait for both services to be running
       echo "Checking service status..."
-      
+
       for i in {1..30}; do
         BACKEND_STATUS=$(aws apprunner describe-service \
           --service-arn "$BACKEND_ARN" \
           --region ${var.aws_region} \
           --query 'Service.Status' \
           --output text)
-        
+
         if [ "$BACKEND_STATUS" = "RUNNING" ]; then
           echo "✓ Backend service is running"
           break
@@ -44,7 +47,11 @@ resource "null_resource" "update_backend_cors" {
           sleep 10
         fi
       done
-      
+
+      # Database password is now alphanumeric only, no encoding needed
+      DB_PASSWORD='${random_password.db_password.result}'
+      echo "Using alphanumeric database password (no encoding required)"
+
       # Create the update configuration
       # IMPORTANT: We only update the environment variables that need the frontend URL
       # We keep the same image to avoid service recreation
@@ -62,7 +69,7 @@ resource "null_resource" "update_backend_cors" {
         "JWT_SECRET_KEY": "${random_password.jwt_secret.result}",
         "BEDROCK_AGENT_ROLE_ARN": "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/BondAIBedrockAgentRole",
         "BEDROCK_DEFAULT_MODEL": "${var.bedrock_default_model}",
-        "METADATA_DB_URL": "postgresql://bondadmin:${random_password.db_password.result}@${aws_db_instance.main.address}:5432/bondai",
+        "METADATA_DB_URL": "postgresql://bondadmin:$DB_PASSWORD@${aws_db_instance.main.address}:5432/bondai",
         "OAUTH2_ENABLED_PROVIDERS": "${var.oauth2_providers}",
         "OKTA_DOMAIN": "${var.okta_domain}",
         "OKTA_CLIENT_ID": "${var.okta_client_id}",
@@ -87,9 +94,14 @@ EOF
         --region ${var.aws_region} 2>&1)
       
       UPDATE_STATUS=$?
-      
-      if [ $UPDATE_STATUS -eq 0 ]; then
-        echo "✓ Update command executed successfully"
+
+      if [ $UPDATE_STATUS -ne 0 ]; then
+        echo "ERROR: Failed to update App Runner service"
+        echo "Error output: $UPDATE_OUTPUT"
+        exit 1
+      fi
+
+      echo "✓ Update command executed successfully"
         
         # Extract the new service URL from the update response
         NEW_SERVICE_URL=$(echo "$UPDATE_OUTPUT" | jq -r '.Service.ServiceUrl // empty')
@@ -129,6 +141,26 @@ EOF
             else
               echo "✓ Backend URL remains stable at https://$BACKEND_URL"
             fi
+
+            # Force a deployment to ensure new environment variables are loaded
+            echo ""
+            echo "Triggering deployment to apply environment variable changes..."
+            DEPLOYMENT_OUTPUT=$(aws apprunner start-deployment \
+              --service-arn "$BACKEND_ARN" \
+              --region ${var.aws_region} 2>&1)
+
+            DEPLOYMENT_STATUS=$?
+
+            if [ $DEPLOYMENT_STATUS -eq 0 ]; then
+              echo "✓ Deployment triggered successfully"
+              echo "  Environment variables will be reloaded"
+              echo "  Waiting 30 seconds for deployment to propagate..."
+              sleep 30
+            else
+              echo "⚠️ Warning: Could not trigger deployment"
+              echo "  This may be normal if a deployment is already in progress"
+            fi
+
             break
           elif [ "$STATUS" = "OPERATION_IN_PROGRESS" ]; then
             echo "  Update in progress... (attempt $i/60)"
@@ -148,13 +180,7 @@ EOF
         echo "✓ Post-deployment configuration complete"
         echo "  Backend CORS now includes: https://$FRONTEND_URL"
         echo "  JWT redirect URI set to: https://$FRONTEND_URL"
-        
-      else
-        echo "✗ Failed to update backend configuration"
-        echo "Error output: $UPDATE_OUTPUT"
-        exit 1
-      fi
-      
+
       # Clean up
       rm -f /tmp/backend-env-update.json
     EOT
