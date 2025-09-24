@@ -67,3 +67,36 @@ resource "aws_security_group_rule" "app_runner_to_rds" {
   security_group_id        = aws_security_group.app_runner.id
   description              = "Allow App Runner to access RDS"
 }
+
+# Security Group for VPC Interface Endpoints
+resource "aws_security_group" "vpc_endpoints" {
+  name_prefix = "${var.project_name}-${var.environment}-vpc-endpoints-"
+  description = "Security group for VPC interface endpoints"
+  vpc_id      = data.aws_vpc.existing.id
+
+  # Allow HTTPS traffic from App Runner security group
+  ingress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app_runner.id]
+    description     = "HTTPS from App Runner"
+  }
+
+  # Allow all outbound
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow all outbound"
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-vpc-endpoints-sg"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
