@@ -1,7 +1,7 @@
 # Dockerfile for pre-built Flutter web application
 # This expects the Flutter web app to be built locally and provided in the build context
 
-FROM nginx:alpine
+FROM public.ecr.aws/nginx/nginx:alpine
 
 # Copy pre-built Flutter web app
 # The build context should contain the built web files
