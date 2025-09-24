@@ -77,8 +77,8 @@ resource "aws_apprunner_service" "backend" {
   }
 
   instance_configuration {
-    cpu               = "0.25 vCPU"
-    memory            = "0.5 GB"
+    cpu               = "0.5 vCPU"
+    memory            = "1 GB"
     instance_role_arn = aws_iam_role.app_runner_instance.arn
   }
 
