@@ -23,6 +23,26 @@ data "aws_subnet" "private" {
   id       = each.value
 }
 
+# Get route tables
+data "aws_route_tables" "private" {
+  vpc_id = data.aws_vpc.existing.id
+
+  filter {
+    name   = "association.subnet-id"
+    values = data.aws_subnets.private.ids
+  }
+}
+
+# Get the main route table for the VPC (many subnets use this by default)
+data "aws_route_table" "main" {
+  vpc_id = data.aws_vpc.existing.id
+
+  filter {
+    name   = "association.main"
+    values = ["true"]
+  }
+}
+
 # Get availability zones from subnets
 locals {
   availability_zones = distinct([for s in data.aws_subnet.private : s.availability_zone])
@@ -33,8 +53,14 @@ locals {
     [for s in data.aws_subnet.private : s.id if s.availability_zone == az][0]
   ]
   
-  # Select subnets for App Runner VPC connector (can use all private subnets)
-  app_runner_subnet_ids = data.aws_subnets.private.ids
+  # Select subnets for App Runner VPC connector (limit to 3 subnets for better control)
+  app_runner_subnet_ids = slice(data.aws_subnets.private.ids, 0, min(3, length(data.aws_subnets.private.ids)))
+
+  # Select subnets for VPC endpoints (need different AZs for interface endpoints)
+  vpc_endpoint_subnet_ids = [
+    for az in slice(local.availability_zones, 0, min(2, length(local.availability_zones))) :
+    [for s in data.aws_subnet.private : s.id if s.availability_zone == az][0]
+  ]
 }
 
 # Note: These data sources are informational only - not used in resource creation
