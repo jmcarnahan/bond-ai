@@ -1,4 +1,6 @@
 .env
+.env.bkup
+.env.*
 **/.metadata.db
 **/.bondcache.db
 # data # Commented out to allow flutterui/lib/data to be tracked
