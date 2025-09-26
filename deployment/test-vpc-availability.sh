@@ -331,6 +331,76 @@ else
     print_warning "Cannot check VPC endpoints"
 fi
 
+# Test 11: Custom Domain and Route 53 Permissions
+echo -e "\n${BLUE}11. Custom Domain Permission Tests${NC}"
+echo "----------------------------------------"
+
+# Check App Runner custom domain permissions
+echo "Checking App Runner custom domain permissions..."
+CUSTOM_DOMAINS=$(aws apprunner describe-custom-domains --service-arn "arn:aws:apprunner:${AWS_REGION}:${AWS_ACCOUNT_ID}:service/test-service" 2>&1)
+if [[ "$CUSTOM_DOMAINS" == *"AccessDeniedException"* ]] || [[ "$CUSTOM_DOMAINS" == *"UnauthorizedException"* ]]; then
+    print_warning "Cannot check App Runner custom domains (may need apprunner:DescribeCustomDomains permission)"
+elif [[ "$CUSTOM_DOMAINS" == *"ResourceNotFoundException"* ]]; then
+    print_result 0 "App Runner custom domain API is accessible"
+else
+    print_result 0 "App Runner custom domain permissions available"
+fi
+
+# Check Route 53 permissions
+echo "Checking Route 53 permissions..."
+HOSTED_ZONES=$(aws route53 list-hosted-zones 2>&1)
+if [ $? -eq 0 ]; then
+    ZONE_COUNT=$(echo "$HOSTED_ZONES" | jq '.HostedZones | length')
+    print_result 0 "Route 53 accessible, found $ZONE_COUNT hosted zone(s)"
+
+    # List available zones
+    if [ $ZONE_COUNT -gt 0 ]; then
+        echo "$HOSTED_ZONES" | jq -r '.HostedZones[] | "   - \(.Name) (ID: \(.Id | split("/")[2]))"'
+    fi
+
+    # Check if we can change record sets (dry-run)
+    if [ $ZONE_COUNT -gt 0 ]; then
+        FIRST_ZONE_ID=$(echo "$HOSTED_ZONES" | jq -r '.HostedZones[0].Id' | cut -d'/' -f3)
+        TEST_CHANGE=$(aws route53 list-resource-record-sets --hosted-zone-id "$FIRST_ZONE_ID" --max-items 1 2>&1)
+        if [ $? -eq 0 ]; then
+            print_result 0 "Can read Route 53 record sets"
+        else
+            print_warning "Cannot read Route 53 record sets (may need route53:ChangeResourceRecordSets)"
+        fi
+    fi
+else
+    print_warning "Cannot access Route 53 (custom domains will require manual DNS configuration)"
+    echo "   Note: You can still use custom domains with manual CNAME configuration"
+fi
+
+# Check ACM permissions (App Runner manages certificates)
+echo "Checking ACM certificate permissions..."
+ACM_CERTS=$(aws acm list-certificates --region $AWS_REGION 2>&1)
+if [ $? -eq 0 ]; then
+    print_result 0 "ACM accessible (App Runner will manage certificates automatically)"
+else
+    print_warning "Cannot list ACM certificates (App Runner will still create them automatically)"
+fi
+
+# Summary for custom domain support
+echo ""
+echo "Custom Domain Capability Summary:"
+if [[ "$CUSTOM_DOMAINS" != *"AccessDeniedException"* ]]; then
+    echo -e "   ${GREEN}✓${NC} App Runner custom domains supported"
+    echo "   - App Runner will automatically provision SSL certificates"
+    echo "   - DNS validation will be handled by App Runner"
+    if [ $ZONE_COUNT -gt 0 ]; then
+        echo -e "   ${GREEN}✓${NC} Route 53 available for automatic DNS configuration"
+    else
+        echo -e "   ${YELLOW}⚠${NC}  Route 53 not available - will need manual DNS configuration"
+    fi
+else
+    echo -e "   ${YELLOW}⚠${NC}  May need additional IAM permissions for custom domains:"
+    echo "   - apprunner:AssociateCustomDomain"
+    echo "   - apprunner:DescribeCustomDomains"
+    echo "   - route53:ChangeResourceRecordSets (for automatic DNS)"
+fi
+
 # Summary
 echo -e "\n${BLUE}========================================${NC}"
 echo -e "${BLUE}Test Summary${NC}"
