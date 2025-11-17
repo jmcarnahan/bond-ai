@@ -75,3 +75,54 @@ class Users:
                     db_session.commit()
                     LOGGER.info(f"Created new user {user_id} ({email})")
                     return new_user.id, True
+
+    def delete_user_by_email(self, email: str, provider=None) -> bool:
+        """Delete user and all related data by email.
+
+        Args:
+            email: The email of the user to delete
+            provider: The provider instance for proper resource cleanup
+
+        Returns:
+            bool: True if user was deleted successfully, False if user not found
+        """
+        from bondable.bond.providers.metadata import Group, GroupUser
+
+        with self.metadata.get_db_session() as db_session:
+            # First check if user exists
+            user = db_session.query(UserModel).filter_by(email=email).first()
+            if not user:
+                LOGGER.warning(f"User with email {email} not found for deletion")
+                return False
+
+            user_id = user.id
+
+            try:
+                # 1. Use provider cleanup to properly delete all resources (agents, threads, files, vector stores)
+                if provider:
+                    LOGGER.info(f"Using provider cleanup for user {email}")
+                    provider.cleanup(user_id)
+                else:
+                    LOGGER.warning(f"No provider provided for user cleanup - skipping resource cleanup for {email}")
+
+                # 2. Remove user from all groups (group memberships)
+                memberships_deleted = db_session.query(GroupUser).filter_by(user_id=user_id).delete()
+                LOGGER.debug(f"Removed user {email} from {memberships_deleted} groups")
+
+                # 3. Delete groups owned by user (this will also remove all members due to cascade)
+                groups_deleted = db_session.query(Group).filter_by(owner_user_id=user_id).delete()
+                LOGGER.debug(f"Deleted {groups_deleted} groups owned by user {email}")
+
+                # 4. Finally, delete the user record itself
+                db_session.delete(user)
+
+                # Commit all changes
+                db_session.commit()
+
+                LOGGER.info(f"Successfully deleted user {email} (id: {user_id}) and all related data")
+                return True
+
+            except Exception as e:
+                db_session.rollback()
+                LOGGER.error(f"Error deleting user {email}: {e}", exc_info=True)
+                raise
