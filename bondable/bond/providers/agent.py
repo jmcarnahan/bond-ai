@@ -237,19 +237,39 @@ class AgentProvider(ABC):
         
         # Delete the agent resource
         deleted_resource = self.delete_agent_resource(agent_id)
-        
+
         # Delete the agent record from the database
         with self.metadata.get_db_session() as session:
             try:
+                # First, clean up agent-group relationships
+                agent_group_deleted = session.query(AgentGroup).filter(
+                    AgentGroup.agent_id == agent_id
+                ).delete()
+                LOGGER.debug(f"Deleted {agent_group_deleted} agent-group relationships for agent {agent_id}")
+
+                # Clean up Bedrock-specific agent options if they exist
+                try:
+                    # Import here to avoid circular imports and handle cases where Bedrock isn't available
+                    from bondable.bond.providers.bedrock.BedrockMetadata import BedrockAgentOptions
+                    bedrock_options_deleted = session.query(BedrockAgentOptions).filter(
+                        BedrockAgentOptions.agent_id == agent_id
+                    ).delete()
+                    LOGGER.debug(f"Deleted {bedrock_options_deleted} Bedrock agent options for agent {agent_id}")
+                except ImportError:
+                    LOGGER.debug(f"Bedrock metadata not available, skipping Bedrock agent options cleanup for {agent_id}")
+                except Exception as e:
+                    LOGGER.warning(f"Error cleaning up Bedrock agent options for {agent_id}: {e}")
+
+                # Now delete the agent record (safe from FK constraints)
                 deleted_rows_count = session.query(AgentRecord).filter(AgentRecord.agent_id == agent_id).delete()
                 session.commit()
                 if deleted_rows_count > 0:
                     LOGGER.info(f"Deleted {deleted_rows_count} local DB records for agent_id: {agent_id}")
                 else:
                     LOGGER.info(f"No local DB records found for agent_id: {agent_id}")
-                return True 
+                return True
             except Exception as e:
-                LOGGER.error(f"Error deleting file records from DB for agent_id {agent_id}: {e}", exc_info=True)
+                LOGGER.error(f"Error deleting agent records from DB for agent_id {agent_id}: {e}", exc_info=True)
                 raise 
 
     def delete_agents_for_user(self, user_id: str) -> None:
