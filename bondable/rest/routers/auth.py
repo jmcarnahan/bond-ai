@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import RedirectResponse
 import logging
 import uuid
+import os
 
 from bondable.bond.auth import OAuth2ProviderFactory
 from bondable.bond.config import Config
@@ -212,3 +213,44 @@ async def read_users_me(current_user: Annotated[User, Depends(get_current_user)]
     """Get current authenticated user information."""
     LOGGER.info(f"Access granted to /users/me for user: {current_user.user_id} ({current_user.email})")
     return current_user
+
+
+@router.delete("/users/{email}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user_by_email(
+    email: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    bond_provider = Depends(get_bond_provider)
+):
+    """Delete user by email (admin only)."""
+    # Admin authorization check - configurable via environment variable
+    admin_email = os.getenv("ADMIN_EMAIL", "john_carnahan@mcafee.com")
+
+    if current_user.email != admin_email:
+        LOGGER.warning(f"Unauthorized delete attempt by {current_user.email} for user {email}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin users can delete other users"
+        )
+
+    try:
+        LOGGER.info(f"Admin {current_user.email} requested deletion of user: {email}")
+
+        success = bond_provider.users.delete_user_by_email(email, provider=bond_provider)
+
+        if not success:
+            LOGGER.warning(f"User with email {email} not found for deletion")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        LOGGER.info(f"Successfully deleted user: {email} by admin {current_user.email}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        LOGGER.error(f"Error deleting user {email}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not delete user"
+        )
