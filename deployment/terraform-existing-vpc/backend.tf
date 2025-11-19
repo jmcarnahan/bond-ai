@@ -54,15 +54,19 @@ resource "aws_apprunner_service" "backend" {
           OKTA_DOMAIN = var.okta_domain
           OKTA_CLIENT_ID = var.okta_client_id
           OKTA_CLIENT_SECRET = jsondecode(data.aws_secretsmanager_secret_version.okta_secret.secret_string)["client_secret"]
-          # Okta redirect URI - will be dynamically set after deployment
-          OKTA_REDIRECT_URI = "https://PENDING_BACKEND_URL/auth/okta/callback"  # Will be set in post-deployment update
+          # Okta redirect URI - will be set to the actual backend URL after deployment
+          # We can't reference self here, so using a placeholder that you'll need to update in Okta
+          OKTA_REDIRECT_URI = var.okta_redirect_uri != "" ? var.okta_redirect_uri : "https://BACKEND_URL_PLACEHOLDER/auth/okta/callback"
           OKTA_SCOPES = var.okta_scopes
-          
-          # JWT redirect URI for frontend - using wildcard initially
-          JWT_REDIRECT_URI = "*"  # Will be updated post-deployment
-          
-          # CORS configuration - permissive initially, will be tightened post-deployment
-          CORS_ALLOWED_ORIGINS = "*"  # Wildcard CORS for initial deployment
+
+          # JWT redirect URI for frontend - using the stable custom domain
+          # The frontend_fqdn is defined in custom-domain.tf and available before backend deployment
+          JWT_REDIRECT_URI = "https://${local.frontend_fqdn}"
+
+          # CORS configuration - include localhost and custom domain
+          # Note: We can't include the App Runner URL here since frontend doesn't exist yet
+          # The custom domain will be the primary access method
+          CORS_ALLOWED_ORIGINS = "${var.cors_allowed_origins},https://${local.frontend_fqdn}"
         }
       }
     }

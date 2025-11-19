@@ -84,10 +84,15 @@ class OktaOAuth2Provider(OAuth2Provider):
             'Content-Type': 'application/x-www-form-urlencoded',
             'Accept': 'application/json'
         }
-        
+
+        log_token_data = token_data.copy()
+        log_token_data['client_secret'] = log_token_data['client_secret'][:6] + '...' if log_token_data['client_secret'] else None
+        LOGGER.debug(f"Token exchange headers: {headers}")
+        LOGGER.debug(f"Token exchange data: {log_token_data}")
         LOGGER.debug(f"Exchanging code for tokens at: {token_url}")
+
         response = requests.post(token_url, data=token_data, headers=headers)
-        
+
         if response.status_code != 200:
             error_msg = f"Token exchange failed: {response.status_code} - {response.text}"
             LOGGER.error(error_msg)
