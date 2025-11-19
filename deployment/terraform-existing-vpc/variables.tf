@@ -90,3 +90,40 @@ variable "bedrock_default_model" {
   type        = string
   default     = "us.anthropic.claude-sonnet-4-20250514-v1:0"
 }
+
+# Custom Domain Configuration
+variable "domain_name" {
+  description = "Base domain name for custom URLs (e.g., example.com). Leave empty to use default pattern: bondai.{account_id}.aws.internalzone.com"
+  type        = string
+  default     = ""
+}
+
+variable "frontend_subdomain" {
+  description = "Subdomain for frontend application (e.g., 'app' for app.example.com). Only used if domain_name is explicitly set"
+  type        = string
+  default     = "app"
+}
+
+variable "create_hosted_zone" {
+  description = "Whether to create a new Route 53 hosted zone for the domain"
+  type        = bool
+  default     = false
+}
+
+variable "existing_hosted_zone_id" {
+  description = "ID of existing Route 53 hosted zone (optional, will auto-detect if not provided)"
+  type        = string
+  default     = ""
+}
+
+variable "use_private_zone" {
+  description = "Whether to look for a private hosted zone (common in enterprise environments)"
+  type        = bool
+  default     = true
+}
+
+variable "custom_frontend_fqdn" {
+  description = "Fully qualified domain name for frontend. Overrides all other domain settings if provided"
+  type        = string
+  default     = ""
+}
