@@ -12,3 +12,8 @@ class User(BaseModel):
     name: Optional[str] = None
     provider: str
     user_id: str
+    # Okta-specific metadata fields
+    okta_sub: Optional[str] = None
+    given_name: Optional[str] = None
+    family_name: Optional[str] = None
+    locale: Optional[str] = None
