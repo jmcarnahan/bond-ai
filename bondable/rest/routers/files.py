@@ -1,7 +1,9 @@
 from typing import Annotated, List
 from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Query
+from fastapi.responses import StreamingResponse
 import logging
 import openai
+import io
 
 from bondable.bond.providers.provider import Provider
 from bondable.rest.models.auth import User
@@ -136,3 +138,69 @@ async def get_file_details(
     except Exception as e:
         LOGGER.error(f"Error retrieving file details for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not retrieve file details: {str(e)}")
+
+
+@router.get("/download/{file_id:path}")
+async def download_file(
+    file_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    provider: Provider = Depends(get_bond_provider)
+):
+    """Download a file by its ID. Verifies user has access to the file."""
+    try:
+        # Get file details to verify ownership and get metadata
+        file_details_list = provider.files.get_file_details([file_id])
+
+        if not file_details_list:
+            LOGGER.warning(f"File {file_id} not found for download request by user {current_user.user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found"
+            )
+
+        file_details = file_details_list[0]
+
+        # Verify the user owns this file or has access to it
+        if file_details.owner_user_id != current_user.user_id:
+            LOGGER.warning(
+                f"User {current_user.user_id} attempted to download file {file_id} "
+                f"owned by {file_details.owner_user_id}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to access this file"
+            )
+
+        # Get file bytes from S3
+        file_bytes_io = provider.files.get_file_bytes((file_id, None))
+
+        # Get the original filename from file_path
+        filename = file_details.file_path
+
+        LOGGER.info(
+            f"Streaming file {file_id} ({filename}) to user {current_user.user_id} "
+            f"({current_user.email}), size: {file_details.file_size} bytes"
+        )
+
+        # Stream the file with proper headers
+        return StreamingResponse(
+            file_bytes_io,
+            media_type=file_details.mime_type or "application/octet-stream",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(file_details.file_size) if file_details.file_size else None
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        LOGGER.error(
+            f"Error downloading file {file_id} for user {current_user.user_id} "
+            f"({current_user.email}): {e}",
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not download file: {str(e)}"
+        )
