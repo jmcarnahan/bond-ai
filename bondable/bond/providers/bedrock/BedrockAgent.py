@@ -284,22 +284,34 @@ class BedrockAgent(Agent):
         LOGGER.info(f"Created user message {message_id} in thread {thread_id}")
         return message_id
     
-    def stream_response(self, prompt: Optional[str] = None, 
+    def stream_response(self, prompt: Optional[str] = None,
                        thread_id: Optional[str] = None,
                        attachments: Optional[List] = None,
-                       override_role: str = "user") -> Generator[str, None, None]:
+                       override_role: str = "user",
+                       current_user: Optional[Any] = None,
+                       jwt_token: Optional[str] = None) -> Generator[str, None, None]:
         """
         Stream a response from the agent using Bedrock Agents API.
-        
+
         Args:
             prompt: Optional prompt to add to thread
             thread_id: Thread ID (required)
             attachments: Optional attachments
             override_role: Role for the prompt message
-            
+            current_user: User object with authentication context
+            jwt_token: Raw JWT token for passing to MCP servers
+
         Yields:
             Response chunks in Bond message format
         """
+        # SECURITY NOTE: Store auth context for use in MCP tool execution
+        # This is currently SAFE because BedrockAgentProvider.get_agent() creates
+        # a NEW instance for each request (see line 1156).
+        # WARNING: If agent instances are ever cached or shared between requests,
+        # this will become a CRITICAL SECURITY VULNERABILITY (auth leakage between users).
+        # Consider refactoring to use Python's contextvars module for thread-safe storage.
+        self._current_user = current_user
+        self._jwt_token = jwt_token
         if not thread_id:
             raise ValueError("thread_id is required for streaming response")
         
@@ -508,7 +520,13 @@ Please integrate any relevant insights from the documents with your analysis of 
                         mcp_config = config.get_mcp_config()
                         
                         if mcp_config:
-                            result = execute_mcp_tool_sync(mcp_config, tool_name, parameters)
+                            result = execute_mcp_tool_sync(
+                                mcp_config,
+                                tool_name,
+                                parameters,
+                                current_user=self._current_user,
+                                jwt_token=self._jwt_token
+                            )
 
                             LOGGER.info(f"Executed MCP tool {tool_name} with result: \n{json.dumps(result, indent=2)}")
 
@@ -1132,6 +1150,14 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
     
     @override
     def get_agent(self, agent_id: str) -> Agent:
+        """
+        Get an agent by ID.
+
+        SECURITY NOTE: This creates a NEW BedrockAgent instance for each call.
+        This is intentional to ensure agent instances are NOT shared between requests,
+        preventing auth context leakage when using instance variables (see stream_response).
+        DO NOT add caching here without refactoring auth storage to use contextvars.
+        """
         session = self.metadata.get_db_session()
         try:
             agent_record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
@@ -1140,7 +1166,7 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
             bedrock_options = session.query(BedrockAgentOptions).filter_by(agent_id=agent_id).first()
             if not bedrock_options:
                 raise ValueError(f"Bedrock options for agent {agent_id} not found in metadata")
-            return BedrockAgent(
+            return BedrockAgent(  # Creates NEW instance - not cached
                 agent_id=agent_id,
                 name=agent_record.name,
                 introduction=agent_record.introduction or "",
