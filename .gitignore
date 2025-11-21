@@ -24,6 +24,7 @@ creds
 
 # iOS Firebase configuration (deployment-specific)
 flutterui/ios/Runner/GoogleService-Info.plist
+**/GoogleService-Info*.plist
 
 # Logs
 logs/

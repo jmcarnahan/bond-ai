@@ -22,7 +22,7 @@ google-api-python-client = "^2.163.0"
 streamlit-cookies-controller = "^0.0.4"
 openai = "^1.66.3"
 poetry-plugin-export = "^1.9.0"
-fastapi = {extras = ["standard"], version = "^0.115.12"}
+fastapi = {extras = ["standard"], version = "^0.121.3"}
 uvicorn = ">=0.35"
 python-jose = "^3.4.0"
 mcp = {extras = ["cli"], version = "^1.9.1"}
@@ -35,6 +35,7 @@ psycopg2-binary = "^2.9.10"  # Required for PostgreSQL connection
 pyyaml = "^6.0"  # Required for YAML config parsing in main.py
 openpyxl = "^3.1.5"  # Required for XLSM to XLSX conversion
 websockets = "<14"
+starlette = ">=0.49.1,<0.51.0"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
