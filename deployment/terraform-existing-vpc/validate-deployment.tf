@@ -66,7 +66,6 @@ resource "null_resource" "validate_deployment" {
 
   depends_on = [
     aws_apprunner_service.backend,
-    aws_apprunner_service.frontend,
-    null_resource.update_backend_cors
+    aws_apprunner_service.frontend
   ]
 }

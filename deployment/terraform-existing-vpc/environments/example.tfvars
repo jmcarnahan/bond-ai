@@ -34,6 +34,32 @@ jwt_redirect_uri  = ""  # Will be set to frontend URL
 # CORS Configuration (localhost for development)
 cors_allowed_origins = "http://localhost,http://localhost:3000,http://localhost:5000"
 
+# Custom Domain Configuration (Optional but recommended)
+# By default, uses pattern: bondai.{account_id}.aws.internalzone.com
+# This provides a stable URL that persists across App Runner recreations
+#
+# NOTE: This uses a simple CNAME approach instead of App Runner's custom domain feature
+# ⚠️  SSL Certificate Warning: Users will see a certificate warning on first access
+#     because the SSL cert is for *.awsapprunner.com. This is expected and safe for
+#     internal use. Users should accept the warning (browsers will remember).
+
+# Option 1: Use default enterprise pattern (recommended for enterprise environments)
+# Leave these commented out to use bondai.{account_id}.aws.internalzone.com
+# domain_name = ""  # Uses default pattern
+# use_private_zone = true  # For enterprise private zones (default)
+
+# Option 2: Specify your own domain
+# domain_name = "yourdomain.com"
+# frontend_subdomain = "app"  # Results in app.yourdomain.com
+# create_hosted_zone = false  # Set to true if you need Terraform to create the zone
+# use_private_zone = false  # Set to true for private zones
+
+# Option 3: Override with fully qualified domain name
+# custom_frontend_fqdn = "myapp.internal.company.com"
+
+# To avoid SSL warnings in the future, you can add an ALB with proper certificates
+# See CUSTOM_DOMAIN_SETUP.md for upgrade options
+
 # Bedrock Configuration
 bedrock_agent_role_name = "BondAIBedrockAgentRole"
 

@@ -7,6 +7,7 @@ import json
 import logging
 from typing import List, Dict, Any, Optional
 from fastmcp import Client
+from fastmcp.client import StreamableHttpTransport
 import asyncio
 from bondable.bond.config import Config
 
@@ -129,11 +130,11 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
 async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List[str]) -> List[Dict[str, Any]]:
     """
     Get tool definitions from MCP server.
-    
+
     Args:
         mcp_config: MCP configuration dict
         tool_names: List of tool names to get definitions for
-        
+
     Returns:
         List of tool definition dicts with name, description, and parameters
     """
@@ -141,19 +142,24 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
     if not servers:
         LOGGER.warning("No MCP servers configured")
         return []
-    
+
     # For now, use the first server
     server_name = list(servers.keys())[0]
-    server_url = servers[server_name].get('url')
-    
+    server_config = servers[server_name]
+    server_url = server_config.get('url')
+
     if not server_url:
         LOGGER.warning(f"No URL configured for MCP server {server_name}")
         return []
-    
+
     tool_definitions = []
-    
+
     try:
-        async with Client(server_url) as client:
+        # Use headers from config if available (e.g., for Atlassian MCP with API token)
+        headers = server_config.get('headers', {})
+        transport = StreamableHttpTransport(server_url, headers=headers)
+
+        async with Client(transport) as client:
             # Fetch all available tools
             all_tools = await client.list_tools()
             tool_dict = {tool.name: tool for tool in all_tools}
@@ -199,34 +205,58 @@ def _get_mcp_tool_definitions_sync(mcp_config: Dict[str, Any], tool_names: List[
         return asyncio.run(_get_mcp_tool_definitions(mcp_config, tool_names))
 
 
-async def execute_mcp_tool(mcp_config: Dict[str, Any], tool_name: str, parameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+async def execute_mcp_tool(
+    mcp_config: Dict[str, Any],
+    tool_name: str,
+    parameters: Optional[Dict[str, Any]] = None,
+    current_user: Optional[Any] = None,
+    jwt_token: Optional[str] = None
+) -> Dict[str, Any]:
     """
-    Execute an MCP tool call.
-    
+    Execute an MCP tool call with authentication.
+
     Args:
         mcp_config: MCP configuration dict
         tool_name: Name of the tool to execute
         parameters: Parameters for the tool
-        
+        current_user: User object with authentication context
+        jwt_token: Raw JWT token for authentication
+
     Returns:
         Result dictionary with 'success' and 'result' or 'error' fields
     """
     servers = mcp_config.get('mcpServers', {})
     if not servers:
         return {"success": False, "error": "No MCP servers configured"}
-    
+
     # For now, use the first server
     server_name = list(servers.keys())[0]
-    server_url = servers[server_name].get('url')
-    
+    server_config = servers[server_name]
+    server_url = server_config.get('url')
+
     if not server_url:
         return {"success": False, "error": f"No URL configured for MCP server {server_name}"}
-    
+
+    # Prepare parameters (no auth info in parameters - use headers instead)
+    tool_parameters = parameters.copy() if parameters else {}
+
     try:
-        async with Client(server_url) as client:
-            LOGGER.info(f"Executing MCP tool: {tool_name} with parameters: {parameters}")
-            result = await client.call_tool(tool_name, parameters or {})
-            
+        # Start with headers from config (e.g., Atlassian API token)
+        headers = server_config.get('headers', {}).copy()
+
+        # Add JWT Bearer token if available (for user authentication)
+        # Note: This will override any Authorization header from config
+        if jwt_token:
+            headers['Authorization'] = f'Bearer {jwt_token}'
+            user_email = getattr(current_user, 'email', 'unknown') if current_user else 'unknown'
+            LOGGER.info(f"Adding JWT Bearer token to MCP tool call for {tool_name} (user: {user_email})")
+
+        # Use StreamableHttpTransport with headers (standard approach)
+        transport = StreamableHttpTransport(server_url, headers=headers)
+        async with Client(transport) as client:
+            LOGGER.info(f"Executing MCP tool: {tool_name} with parameters: {list(tool_parameters.keys())}")
+            result = await client.call_tool(tool_name, tool_parameters)
+
             # Handle different result types
             if hasattr(result, 'content') and isinstance(result.content, list):
                 # Extract text from content list
@@ -242,22 +272,43 @@ async def execute_mcp_tool(mcp_config: Dict[str, Any], tool_name: str, parameter
             else:
                 # Fallback to string representation
                 return {"success": True, "result": str(result)}
-    
+
     except Exception as e:
         LOGGER.error(f"Error executing MCP tool: {e}")
         return {"success": False, "error": str(e)}
 
 
-def execute_mcp_tool_sync(mcp_config: Dict[str, Any], tool_name: str, parameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Synchronous wrapper for executing MCP tool."""
+def execute_mcp_tool_sync(
+    mcp_config: Dict[str, Any],
+    tool_name: str,
+    parameters: Optional[Dict[str, Any]] = None,
+    current_user: Optional[Any] = None,
+    jwt_token: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Synchronous wrapper for executing MCP tool with authentication.
+
+    Args:
+        mcp_config: MCP configuration dict
+        tool_name: Name of the tool to execute
+        parameters: Parameters for the tool
+        current_user: User object with authentication context
+        jwt_token: Raw JWT token for authentication
+
+    Returns:
+        Result dictionary with 'success' and 'result' or 'error' fields
+    """
     try:
         # Try to get the current event loop
         loop = asyncio.get_running_loop()
         # If we're in an async context, create a task
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(asyncio.run, execute_mcp_tool(mcp_config, tool_name, parameters))
+            future = executor.submit(
+                asyncio.run,
+                execute_mcp_tool(mcp_config, tool_name, parameters, current_user, jwt_token)
+            )
             return future.result()
     except RuntimeError:
         # No event loop running, we can use asyncio.run directly
-        return asyncio.run(execute_mcp_tool(mcp_config, tool_name, parameters))
+        return asyncio.run(execute_mcp_tool(mcp_config, tool_name, parameters, current_user, jwt_token))

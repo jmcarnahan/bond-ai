@@ -6,6 +6,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutterui/data/models/message_model.dart';
 import 'package:flutterui/providers/cached_agent_details_provider.dart';
 import 'package:flutterui/presentation/widgets/agent_icon.dart';
+import 'package:flutterui/presentation/screens/chat/widgets/file_card.dart';
 
 class ChatMessageItem extends ConsumerWidget {
   final Message message;
@@ -109,6 +110,11 @@ class ChatMessageItem extends ConsumerWidget {
       return _buildImageContent(context);
     }
 
+    // Handle file downloads
+    if (message.type == 'file_link' && message.content.isNotEmpty) {
+      return FileCard(fileDataJson: message.content);
+    }
+
     // Show typing indicator for empty assistant messages while streaming
     if (message.role == 'assistant' &&
         isSendingMessage &&
@@ -121,7 +127,7 @@ class ChatMessageItem extends ConsumerWidget {
       return _buildMarkdownContent(context);
     }
 
-    return Text(
+    return SelectableText(
       message.content,
       style: const TextStyle(fontSize: 14),
     );
@@ -178,32 +184,33 @@ class ChatMessageItem extends ConsumerWidget {
     return Builder(
       builder: (context) {
         final defaultStyle = DefaultTextStyle.of(context).style;
-        return MarkdownBody(
-          data: message.content,
-          styleSheet: MarkdownStyleSheet.fromTheme(
-            Theme.of(context),
-          ).copyWith(
-            p: defaultStyle,
-            h1: defaultStyle.copyWith(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-            h2: defaultStyle.copyWith(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-            h3: defaultStyle.copyWith(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-            code: defaultStyle.copyWith(
-              fontFamily: 'monospace',
-              backgroundColor: defaultStyle.color?.withValues(
-                alpha: 0.08,
+        return SelectionArea(
+          child: MarkdownBody(
+            data: message.content,
+            styleSheet: MarkdownStyleSheet.fromTheme(
+              Theme.of(context),
+            ).copyWith(
+              p: defaultStyle,
+              h1: defaultStyle.copyWith(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+              h2: defaultStyle.copyWith(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+              h3: defaultStyle.copyWith(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+              code: defaultStyle.copyWith(
+                fontFamily: 'monospace',
+                backgroundColor: defaultStyle.color?.withValues(
+                  alpha: 0.08,
+                ),
               ),
             ),
           ),
-          selectable: true,
         );
       },
     );

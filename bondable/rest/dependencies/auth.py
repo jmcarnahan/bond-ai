@@ -19,9 +19,15 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Use
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
+
     try:
-        payload = jwt.decode(token, jwt_config.JWT_SECRET_KEY, algorithms=[jwt_config.JWT_ALGORITHM])
+        # Skip audience validation - the 'aud' claim is for the MCP server, not the REST API
+        payload = jwt.decode(
+            token,
+            jwt_config.JWT_SECRET_KEY,
+            algorithms=[jwt_config.JWT_ALGORITHM],
+            options={"verify_aud": False}
+        )
         email = payload.get("sub")
         name = payload.get("name")
         provider = payload.get("provider")
@@ -39,7 +45,17 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Use
             LOGGER.warning("Token payload missing 'provider'.")
             raise credentials_exception
 
-        return User(email=email, name=name, provider=provider, user_id=user_id)
+        # Extract Okta metadata if available
+        return User(
+            email=email,
+            name=name,
+            provider=provider,
+            user_id=user_id,
+            okta_sub=payload.get("okta_sub"),
+            given_name=payload.get("given_name"),
+            family_name=payload.get("family_name"),
+            locale=payload.get("locale")
+        )
 
     except JWTError as e:
         LOGGER.error(f"JWT Error during token decode: {e}", exc_info=True)
@@ -47,3 +63,12 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Use
     except Exception as e:
         LOGGER.error(f"Unexpected error during token validation: {e}", exc_info=True)
         raise credentials_exception
+
+
+async def get_current_user_with_token(token: Annotated[str, Depends(oauth2_scheme)]) -> tuple[User, str]:
+    """
+    Verify JWT token and return both user data and the raw token.
+    This is useful for passing authentication to MCP servers.
+    """
+    user = await get_current_user(token)
+    return user, token

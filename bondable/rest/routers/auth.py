@@ -113,13 +113,31 @@ async def auth_callback_provider(provider: str, request: Request, bond_provider 
             LOGGER.info(f"Updated existing user: {user_info.get('email')} (id: {user_id})")
 
         access_token_expires = timedelta(minutes=jwt_config.ACCESS_TOKEN_EXPIRE_MINUTES)
+
+        # Build JWT payload with user info and Okta metadata
+        jwt_data = {
+            "sub": user_info.get("email"),
+            "name": user_info.get("name"),
+            "provider": provider,
+            "user_id": user_id,
+            # Add standard JWT claims for MCP authentication
+            "iss": "bond-ai",  # Issuer claim
+            "aud": "mcp-server"  # Audience claim
+        }
+
+        # Add Okta-specific metadata if available
+        if provider == "okta":
+            if user_info.get("sub"):  # Okta sub (unique identifier)
+                jwt_data["okta_sub"] = user_info.get("sub")
+            if user_info.get("given_name"):
+                jwt_data["given_name"] = user_info.get("given_name")
+            if user_info.get("family_name"):
+                jwt_data["family_name"] = user_info.get("family_name")
+            if user_info.get("locale"):
+                jwt_data["locale"] = user_info.get("locale")
+
         access_token = create_access_token(
-            data={
-                "sub": user_info.get("email"), 
-                "name": user_info.get("name"),
-                "provider": provider,
-                "user_id": user_id
-            },
+            data=jwt_data,
             expires_delta=access_token_expires
         )
         LOGGER.info(f"Generated JWT for user: {user_info.get('email')} (provider: {provider})")

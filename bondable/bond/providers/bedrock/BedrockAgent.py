@@ -194,17 +194,28 @@ class BedrockAgent(Agent):
         else:
             # Handle non-image files by uploading to S3
             try:
-                # TODO: Implement S3 upload logic here
-                # For now, we'll log that we need to handle this file type
-                LOGGER.warning(f"Non-image file received: {file_name} ({file_type}) - S3 upload not yet implemented")
-                
-                # Yield a file link message
-                message_content = f"File received: {file_name} (upload pending)"
+                # Store file in S3 and get file details
+                file_details = self.bond_provider.files.get_or_create_file_id(
+                    user_id=user_id,
+                    file_tuple=(file_name, file_data)
+                )
+
+                # Create message content with file metadata as JSON
+                message_content = json.dumps({
+                    'file_id': file_details.file_id,
+                    'file_name': file_details.file_path,
+                    'file_size': file_details.file_size,
+                    'mime_type': file_details.mime_type
+                })
                 message_type = 'file_link'
-                
+
+                LOGGER.info(f"Non-image file stored: {file_name} ({file_type}) with file_id: {file_details.file_id}")
+
             except Exception as e:
                 LOGGER.error(f"Error handling file {file_name}: {e}")
-                # Continue without failing the entire response
+                # Fallback message if upload fails
+                message_content = f"Error uploading file: {file_name}"
+                message_type = 'file_link'
         
         message_id = self.bond_provider.threads.add_message(
             thread_id=thread_id,
@@ -273,22 +284,34 @@ class BedrockAgent(Agent):
         LOGGER.info(f"Created user message {message_id} in thread {thread_id}")
         return message_id
     
-    def stream_response(self, prompt: Optional[str] = None, 
+    def stream_response(self, prompt: Optional[str] = None,
                        thread_id: Optional[str] = None,
                        attachments: Optional[List] = None,
-                       override_role: str = "user") -> Generator[str, None, None]:
+                       override_role: str = "user",
+                       current_user: Optional[Any] = None,
+                       jwt_token: Optional[str] = None) -> Generator[str, None, None]:
         """
         Stream a response from the agent using Bedrock Agents API.
-        
+
         Args:
             prompt: Optional prompt to add to thread
             thread_id: Thread ID (required)
             attachments: Optional attachments
             override_role: Role for the prompt message
-            
+            current_user: User object with authentication context
+            jwt_token: Raw JWT token for passing to MCP servers
+
         Yields:
             Response chunks in Bond message format
         """
+        # SECURITY NOTE: Store auth context for use in MCP tool execution
+        # This is currently SAFE because BedrockAgentProvider.get_agent() creates
+        # a NEW instance for each request (see line 1156).
+        # WARNING: If agent instances are ever cached or shared between requests,
+        # this will become a CRITICAL SECURITY VULNERABILITY (auth leakage between users).
+        # Consider refactoring to use Python's contextvars module for thread-safe storage.
+        self._current_user = current_user
+        self._jwt_token = jwt_token
         if not thread_id:
             raise ValueError("thread_id is required for streaming response")
         
@@ -489,8 +512,6 @@ Please integrate any relevant insights from the documents with your analysis of 
                                 except json.JSONDecodeError:
                                     LOGGER.error(f"Failed to parse request body JSON: {body_str}")
                     
-                    LOGGER.info(f"Executing MCP tool: {tool_name} with parameters: {parameters}")
-                    
                     # Execute MCP tool
                     try:
                         # Get MCP config
@@ -499,8 +520,14 @@ Please integrate any relevant insights from the documents with your analysis of 
                         mcp_config = config.get_mcp_config()
                         
                         if mcp_config:
-                            result = execute_mcp_tool_sync(mcp_config, tool_name, parameters)
-                            
+                            result = execute_mcp_tool_sync(
+                                mcp_config,
+                                tool_name,
+                                parameters,
+                                current_user=self._current_user,
+                                jwt_token=self._jwt_token
+                            )
+
                             LOGGER.info(f"Executed MCP tool {tool_name} with result: \n{json.dumps(result, indent=2)}")
 
                             # Format response
@@ -1123,6 +1150,14 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
     
     @override
     def get_agent(self, agent_id: str) -> Agent:
+        """
+        Get an agent by ID.
+
+        SECURITY NOTE: This creates a NEW BedrockAgent instance for each call.
+        This is intentional to ensure agent instances are NOT shared between requests,
+        preventing auth context leakage when using instance variables (see stream_response).
+        DO NOT add caching here without refactoring auth storage to use contextvars.
+        """
         session = self.metadata.get_db_session()
         try:
             agent_record = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
@@ -1131,7 +1166,7 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
             bedrock_options = session.query(BedrockAgentOptions).filter_by(agent_id=agent_id).first()
             if not bedrock_options:
                 raise ValueError(f"Bedrock options for agent {agent_id} not found in metadata")
-            return BedrockAgent(
+            return BedrockAgent(  # Creates NEW instance - not cached
                 agent_id=agent_id,
                 name=agent_record.name,
                 introduction=agent_record.introduction or "",

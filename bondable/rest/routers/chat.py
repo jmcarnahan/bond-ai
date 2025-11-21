@@ -6,7 +6,7 @@ import logging
 from bondable.bond.providers.provider import Provider
 from bondable.rest.models.auth import User
 from bondable.rest.models.chat import ChatRequest
-from bondable.rest.dependencies.auth import get_current_user
+from bondable.rest.dependencies.auth import get_current_user_with_token
 from bondable.rest.dependencies.providers import get_bond_provider
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -16,10 +16,11 @@ LOGGER = logging.getLogger(__name__)
 @router.post("")
 async def chat(
     request_body: ChatRequest,
-    current_user: Annotated[User, Depends(get_current_user)],
+    user_and_token: Annotated[tuple[User, str], Depends(get_current_user_with_token)],
     provider: Provider = Depends(get_bond_provider)
 ):
     """Stream chat responses for a specific thread and agent."""
+    current_user, jwt_token = user_and_token
     
     # Handle thread creation if thread_id is None
     thread_id = request_body.thread_id
@@ -106,7 +107,9 @@ async def chat(
                 thread_id=thread_id,
                 prompt=request_body.prompt,
                 attachments=resolved_attachements,
-                override_role=request_body.override_role
+                override_role=request_body.override_role,
+                current_user=current_user,
+                jwt_token=jwt_token
             ):
                 yield response_chunk
 
