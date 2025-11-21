@@ -211,5 +211,5 @@ async def get_mcp_status(
         return {
             "servers_configured": 0,
             "client_initialized": False,
-            "error": str(e)
+            "error": "Failed to check MCP status"
         }
