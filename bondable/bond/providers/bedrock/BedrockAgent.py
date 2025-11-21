@@ -194,17 +194,28 @@ class BedrockAgent(Agent):
         else:
             # Handle non-image files by uploading to S3
             try:
-                # TODO: Implement S3 upload logic here
-                # For now, we'll log that we need to handle this file type
-                LOGGER.warning(f"Non-image file received: {file_name} ({file_type}) - S3 upload not yet implemented")
-                
-                # Yield a file link message
-                message_content = f"File received: {file_name} (upload pending)"
+                # Store file in S3 and get file details
+                file_details = self.bond_provider.files.get_or_create_file_id(
+                    user_id=user_id,
+                    file_tuple=(file_name, file_data)
+                )
+
+                # Create message content with file metadata as JSON
+                message_content = json.dumps({
+                    'file_id': file_details.file_id,
+                    'file_name': file_details.file_path,
+                    'file_size': file_details.file_size,
+                    'mime_type': file_details.mime_type
+                })
                 message_type = 'file_link'
-                
+
+                LOGGER.info(f"Non-image file stored: {file_name} ({file_type}) with file_id: {file_details.file_id}")
+
             except Exception as e:
                 LOGGER.error(f"Error handling file {file_name}: {e}")
-                # Continue without failing the entire response
+                # Fallback message if upload fails
+                message_content = f"Error uploading file: {file_name}"
+                message_type = 'file_link'
         
         message_id = self.bond_provider.threads.add_message(
             thread_id=thread_id,
@@ -489,8 +500,6 @@ Please integrate any relevant insights from the documents with your analysis of 
                                 except json.JSONDecodeError:
                                     LOGGER.error(f"Failed to parse request body JSON: {body_str}")
                     
-                    LOGGER.info(f"Executing MCP tool: {tool_name} with parameters: {parameters}")
-                    
                     # Execute MCP tool
                     try:
                         # Get MCP config
@@ -500,7 +509,7 @@ Please integrate any relevant insights from the documents with your analysis of 
                         
                         if mcp_config:
                             result = execute_mcp_tool_sync(mcp_config, tool_name, parameters)
-                            
+
                             LOGGER.info(f"Executed MCP tool {tool_name} with result: \n{json.dumps(result, indent=2)}")
 
                             # Format response
