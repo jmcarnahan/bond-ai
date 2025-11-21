@@ -87,6 +87,7 @@ class OktaOAuth2Provider(OAuth2Provider):
 
         log_token_data = token_data.copy()
         log_token_data['client_secret'] = log_token_data['client_secret'][:6] + '...' if log_token_data['client_secret'] else None
+        log_token_data['code'] = log_token_data['code'][:8] + '...' if log_token_data.get('code') else None
         LOGGER.debug(f"Token exchange headers: {headers}")
         LOGGER.debug(f"Token exchange data: {log_token_data}")
         LOGGER.debug(f"Exchanging code for tokens at: {token_url}")
