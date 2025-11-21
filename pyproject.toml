@@ -23,10 +23,10 @@ streamlit-cookies-controller = "^0.0.4"
 openai = "^1.66.3"
 poetry-plugin-export = "^1.9.0"
 fastapi = {extras = ["standard"], version = "^0.115.12"}
-uvicorn = {extras = ["standard"], version = "^0.34.2"}
+uvicorn = ">=0.35"
 python-jose = "^3.4.0"
 mcp = {extras = ["cli"], version = "^1.9.1"}
-fastmcp = "^2.5.1"
+fastmcp = ">=2.11.0"
 magika = "^0.6.2"
 google-cloud-firestore = "^2.21.0"
 boto3 = "^1.38.39"
@@ -34,6 +34,7 @@ requests-aws4auth = "^1.3.1"
 psycopg2-binary = "^2.9.10"  # Required for PostgreSQL connection
 pyyaml = "^6.0"  # Required for YAML config parsing in main.py
 openpyxl = "^3.1.5"  # Required for XLSM to XLSX conversion
+websockets = "<14"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
