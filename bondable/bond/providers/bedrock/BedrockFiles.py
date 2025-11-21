@@ -281,11 +281,15 @@ class BedrockFilesProvider(FilesProvider):
                         file_details_list.extend(details_list)
 
         # in the code below map the mime_type to useCase using CODE_INTERPRETER_MIME_TYPES, if the mime_type is in CODE_INTERPRETER_MIME_TYPES, use 'CODE_INTERPRETER', otherwise use 'CHAT'
+        # TODO: Fix file size threshold - currently always uses S3 for all files.
+        # Should check file size: if file_size <= 10MB use BYTE_CONTENT with mediaType, else use S3.
+        # This would fix unrecognized file extensions by allowing explicit mediaType specification.
+        # See: bondable/bond/providers/bedrock/BedrockFiles.py:363-367 (convert_attachments_to_files also needs fix)
         files = []
         for file_details in file_details_list:
             file_id = file_details.file_id
             mime_type = file_details.mime_type or 'application/octet-stream'
-            
+
             # Determine useCase based on mime_type
             files.append({
                 'name': os.path.basename(file_details.file_path),
@@ -360,6 +364,10 @@ class BedrockFilesProvider(FilesProvider):
                         break
                 
                 # Check file size to determine how to send it
+                # TODO: Fix file size threshold - currently using `if file_size > 0` which always uses S3.
+                # Should be `if file_size > 10 * 1024 * 1024` to use BYTE_CONTENT with mediaType for files ≤10MB.
+                # This would fix unrecognized file extensions by allowing explicit mediaType specification.
+                # See: bondable/bond/providers/bedrock/BedrockFiles.py:283-299 (get_files_invocation also needs fix)
                 if file_size > 0:  # Always use S3 location for attachments
                     files.append({
                         'name': os.path.basename(file_details.file_path),

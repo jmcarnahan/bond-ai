@@ -6,8 +6,56 @@ import logging
 import hashlib
 from magika import Magika
 from dataclasses import dataclass
+import openpyxl
 
 LOGGER = logging.getLogger(__name__)
+
+
+def convert_xlsm_to_xlsx(file_bytes: io.BytesIO, original_filename: str) -> Tuple[io.BytesIO, str, str]:
+    """
+    Convert an XLSM (macro-enabled Excel) file to XLSX format by removing macros.
+
+    Args:
+        file_bytes: BytesIO containing the XLSM file content
+        original_filename: Original filename (e.g., "data.xlsm")
+
+    Returns:
+        Tuple of (converted_bytes, new_mime_type, new_filename)
+
+    Raises:
+        Exception: If the file cannot be read or converted
+    """
+    try:
+        # Reset file pointer to beginning
+        file_bytes.seek(0)
+
+        # Load the XLSM workbook (without keep_vba, macros are stripped)
+        workbook = openpyxl.load_workbook(file_bytes, keep_vba=False)
+
+        # Create a new BytesIO object for the XLSX output
+        output_bytes = io.BytesIO()
+
+        # Save as XLSX (macros will be removed)
+        workbook.save(output_bytes)
+
+        # Reset pointer for reading
+        output_bytes.seek(0)
+
+        # Change file extension from .xlsm to .xlsx (case-insensitive)
+        new_filename = original_filename
+        if original_filename.lower().endswith('.xlsm'):
+            new_filename = original_filename[:-5] + '.xlsx'
+
+        # New MIME type for XLSX
+        new_mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+        LOGGER.info(f"Successfully converted XLSM to XLSX: {original_filename} → {new_filename}")
+
+        return output_bytes, new_mime_type, new_filename
+
+    except Exception as e:
+        LOGGER.error(f"Failed to convert XLSM to XLSX: {original_filename}. Error: {e}")
+        raise
 
 @dataclass
 class FileDetails:
@@ -89,6 +137,27 @@ class FilesProvider(ABC):
         magika = Magika()
         result = magika.identify_bytes(content)
         mime_type = result.output.mime_type
+
+        # Check if file is XLSM by MIME type OR extension and convert to XLSX
+        is_xlsm = (
+            mime_type == "application/vnd.ms-excel.sheet.macroEnabled.12" or
+            file_path.lower().endswith('.xlsm')
+        )
+
+        if is_xlsm:
+            LOGGER.info(f"Detected XLSM file: {file_path}, converting to XLSX for Bedrock compatibility")
+            try:
+                # Convert XLSM to XLSX
+                file_bytes, mime_type, file_path = convert_xlsm_to_xlsx(file_bytes, file_path)
+                # Recalculate content, hash, and size after conversion
+                file_bytes.seek(0)
+                content = file_bytes.read()
+                file_hash = hashlib.sha256(content).hexdigest()
+                file_size = len(content)
+                LOGGER.info(f"Successfully converted to XLSX: {file_path}")
+            except Exception as e:
+                LOGGER.error(f"Failed to convert XLSM to XLSX: {e}")
+                raise
 
         with self.metadata.get_db_session() as session:
             # First check if exact same file (path + hash + user) already exists
