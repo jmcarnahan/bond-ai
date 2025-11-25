@@ -225,7 +225,12 @@ class TestAttachmentConversion:
         assert result == []
 
     def test_convert_xlsm_attachment(self):
-        """Test converting XLSM file attachment - should have XLSX MIME type and .xlsx extension"""
+        """Test that XLSM files converted to XLSX have correct properties.
+
+        XLSM files are converted to XLSX format during upload (see file upload logic).
+        This test verifies that converted files have the correct .xlsx extension,
+        XLSX MIME type, and are properly handled by convert_attachments_to_files().
+        """
         # Mock S3 client
         s3_client = Mock()
 
