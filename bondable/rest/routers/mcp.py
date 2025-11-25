@@ -664,7 +664,7 @@ async def mcp_oauth_callback(
             provider=oauth_config.get('provider', server_name)
         )
 
-        LOGGER.info(f"[MCP Callback] Token stored for user {user_id}, server {server_name}")
+        LOGGER.info(f"[MCP Callback] Token stored successfully for server {server_name}")
 
         # Redirect to frontend with success
         frontend_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
