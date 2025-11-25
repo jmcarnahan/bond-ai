@@ -4,10 +4,71 @@ import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/providers/core_providers.dart';
 import 'package:flutterui/main.dart' show navigationIndexProvider;
 import 'package:flutterui/presentation/screens/profile/profile_screen.dart';
+import 'package:flutterui/presentation/screens/connections/connections_screen.dart';
 import 'package:flutterui/providers/config_provider.dart';
+import 'package:flutterui/providers/connections_provider.dart';
 
 class AppDrawer extends ConsumerWidget {
   const AppDrawer({super.key});
+
+  Widget _buildConnectionsListTile(BuildContext context, WidgetRef ref, ThemeData theme) {
+    final connectionsState = ref.watch(connectionsNotifierProvider);
+    final needsAttention = connectionsState.connectionsNeedingAttention.isNotEmpty ||
+        connectionsState.expired.isNotEmpty;
+
+    return ListTile(
+      leading: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Icon(
+            Icons.link,
+            color: theme.colorScheme.onSurface,
+          ),
+          if (needsAttention)
+            Positioned(
+              right: -4,
+              top: -4,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.error,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+        ],
+      ),
+      title: Text(
+        'Connections',
+        style: TextStyle(
+          color: theme.colorScheme.onSurface,
+          fontSize: 16,
+        ),
+      ),
+      trailing: needsAttention
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.errorContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                'Action needed',
+                style: TextStyle(
+                  color: theme.colorScheme.onErrorContainer,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            )
+          : null,
+      onTap: () {
+        Navigator.pop(context); // Close drawer
+        Navigator.pushNamed(context, ConnectionsScreen.routeName);
+      },
+    );
+  }
 
   void _showLogoutDialog(BuildContext context, WidgetRef ref) {
     showDialog(
@@ -128,26 +189,30 @@ class AppDrawer extends ConsumerWidget {
                     ),
                   ),
                   onTap: () {
+                    // Capture the route BEFORE popping the drawer
+                    final currentRoute = ModalRoute.of(context)?.settings.name;
+                    final isOnSubScreen = currentRoute == ProfileScreen.routeName ||
+                        currentRoute == ConnectionsScreen.routeName;
+
                     Navigator.pop(context); // Close drawer
 
-                    // Check if we're currently on the profile screen
-                    final currentRoute = ModalRoute.of(context)?.settings.name;
-                    if (currentRoute == ProfileScreen.routeName) {
-                      // Navigate back to main shell first
+                    // Find the target index
+                    final agentsIndex = navItems.indexWhere(
+                      (item) => item.label == 'Agents',
+                    );
+
+                    // Set the navigation index BEFORE navigating so the shell picks it up
+                    if (agentsIndex != -1) {
+                      ref.read(navigationIndexProvider.notifier).state = agentsIndex;
+                    }
+
+                    if (isOnSubScreen) {
+                      // Navigate back to main shell
                       Navigator.pushNamedAndRemoveUntil(
                         context,
                         '/',
                         (route) => false,
                       );
-                    }
-
-                    // Set the navigation index
-                    final agentsIndex = navItems.indexWhere(
-                      (item) => item.label == 'Agents',
-                    );
-                    if (agentsIndex != -1) {
-                      ref.read(navigationIndexProvider.notifier).state =
-                          agentsIndex;
                     }
                   },
                 ),
@@ -164,26 +229,30 @@ class AppDrawer extends ConsumerWidget {
                   ),
                 ),
                 onTap: () {
+                  // Capture the route BEFORE popping the drawer
+                  final currentRoute = ModalRoute.of(context)?.settings.name;
+                  final isOnSubScreen = currentRoute == ProfileScreen.routeName ||
+                      currentRoute == ConnectionsScreen.routeName;
+
                   Navigator.pop(context); // Close drawer
 
-                  // Check if we're currently on the profile screen
-                  final currentRoute = ModalRoute.of(context)?.settings.name;
-                  if (currentRoute == ProfileScreen.routeName) {
-                    // Navigate back to main shell first
+                  // Find the target index
+                  final chatIndex = navItems.indexWhere(
+                    (item) => item.label == 'Chat',
+                  );
+
+                  // Set the navigation index BEFORE navigating so the shell picks it up
+                  if (chatIndex != -1) {
+                    ref.read(navigationIndexProvider.notifier).state = chatIndex;
+                  }
+
+                  if (isOnSubScreen) {
+                    // Navigate back to main shell
                     Navigator.pushNamedAndRemoveUntil(
                       context,
                       '/',
                       (route) => false,
                     );
-                  }
-
-                  // Set the navigation index
-                  final chatIndex = navItems.indexWhere(
-                    (item) => item.label == 'Chat',
-                  );
-                  if (chatIndex != -1) {
-                    ref.read(navigationIndexProvider.notifier).state =
-                        chatIndex;
                   }
                 },
               ),
@@ -200,29 +269,34 @@ class AppDrawer extends ConsumerWidget {
                   ),
                 ),
                 onTap: () {
+                  // Capture the route BEFORE popping the drawer
+                  final currentRoute = ModalRoute.of(context)?.settings.name;
+                  final isOnSubScreen = currentRoute == ProfileScreen.routeName ||
+                      currentRoute == ConnectionsScreen.routeName;
+
                   Navigator.pop(context); // Close drawer
 
-                  // Check if we're currently on the profile screen
-                  final currentRoute = ModalRoute.of(context)?.settings.name;
-                  if (currentRoute == ProfileScreen.routeName) {
-                    // Navigate back to main shell first
+                  // Find the target index
+                  final threadsIndex = navItems.indexWhere(
+                    (item) => item.label == 'Threads',
+                  );
+
+                  // Set the navigation index BEFORE navigating so the shell picks it up
+                  if (threadsIndex != -1) {
+                    ref.read(navigationIndexProvider.notifier).state = threadsIndex;
+                  }
+
+                  if (isOnSubScreen) {
+                    // Navigate back to main shell
                     Navigator.pushNamedAndRemoveUntil(
                       context,
                       '/',
                       (route) => false,
                     );
                   }
-
-                  // Set the navigation index
-                  final threadsIndex = navItems.indexWhere(
-                    (item) => item.label == 'Threads',
-                  );
-                  if (threadsIndex != -1) {
-                    ref.read(navigationIndexProvider.notifier).state =
-                        threadsIndex;
-                  }
                 },
               ),
+              _buildConnectionsListTile(context, ref, theme),
               const Divider(indent: 16, endIndent: 16),
               ListTile(
                 leading: Icon(
@@ -238,6 +312,18 @@ class AppDrawer extends ConsumerWidget {
                 ),
                 onTap: () {
                   Navigator.pop(context); // Close drawer
+
+                  // Check if we're currently on Connections screen
+                  final currentRoute = ModalRoute.of(context)?.settings.name;
+                  if (currentRoute == ConnectionsScreen.routeName) {
+                    // Navigate back to main shell first, then to profile
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      '/',
+                      (route) => false,
+                    );
+                  }
+
                   // Check if we're in mobile navigation shell
                   final isMobile =
                       context

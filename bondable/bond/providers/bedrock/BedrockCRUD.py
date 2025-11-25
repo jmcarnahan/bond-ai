@@ -6,7 +6,7 @@ import time
 import logging
 import base64
 import hashlib
-from typing import List, Dict, Optional, Generator, Any
+from typing import List, Dict, Optional, Any
 from botocore.exceptions import ClientError
 from bondable.bond.config import Config
 from bondable.bond.definition import AgentDefinition
@@ -30,17 +30,15 @@ def get_bedrock_agent(bedrock_agent_id: str) -> str:
     return _get_bedrock_agent_client().get_agent(agentId=bedrock_agent_id)
 
 
-def create_bedrock_agent(agent_id: str, agent_def: AgentDefinition) -> tuple[str, str]:
+def create_bedrock_agent(agent_id: str, agent_def: AgentDefinition, owner_user_id: Optional[str] = None) -> tuple[str, str]:
     """
     Create a Bedrock Agent for the Bond agent.
-    
+
     Args:
         agent_id: Bond agent ID (used as Bedrock agent name for uniqueness)
-        name: Display name for the agent
-        instructions: Agent instructions/system prompt
-        model: Model ID to use
-        owner_user_id: User who owns this agent
-        
+        agent_def: Agent definition with configuration
+        owner_user_id: User who owns this agent (needed for OAuth token lookup for MCP)
+
     Returns:
         Tuple of (bedrock_agent_id, bedrock_agent_alias_id)
     """
@@ -84,7 +82,7 @@ def create_bedrock_agent(agent_id: str, agent_def: AgentDefinition) -> tuple[str
         LOGGER.info(f"Successfully created Bedrock Agent: {bedrock_agent_id} for bond agent {agent_id}")
 
         # Step 3: Enable code interpreter (always enabled for all agents)
-        LOGGER.info(f"Enabling code interpreter for Bedrock Agent {bedrock_agent_id}")
+        LOGGER.debug(f"Enabling code interpreter for Bedrock Agent {bedrock_agent_id}")
         try:
             code_interpreter_response = bedrock_agent_client.create_agent_action_group(
                 agentId=bedrock_agent_id,
@@ -93,7 +91,7 @@ def create_bedrock_agent(agent_id: str, agent_def: AgentDefinition) -> tuple[str
                 parentActionGroupSignature='AMAZON.CodeInterpreter',
                 actionGroupState='ENABLED'
             )
-            LOGGER.info(f"Enabled code interpreter: {code_interpreter_response['agentActionGroup']['actionGroupId']} for bond agent {agent_id}")
+            LOGGER.debug(f"Enabled code interpreter: {code_interpreter_response['agentActionGroup']['actionGroupId']} for bond agent {agent_id}")
         except ClientError as e:
             LOGGER.warning(f"Failed to enable code interpreter: {e}")
             # Continue without code interpreter rather than failing
@@ -104,14 +102,14 @@ def create_bedrock_agent(agent_id: str, agent_def: AgentDefinition) -> tuple[str
         
         # Step 5: Create MCP action groups if any MCP tools specified
         if agent_def.mcp_tools:
-            create_mcp_action_groups(bedrock_agent_id, agent_def.mcp_tools, agent_def.mcp_resources or [])
+            create_mcp_action_groups(bedrock_agent_id, agent_def.mcp_tools, agent_def.mcp_resources or [], user_id=owner_user_id)
             bedrock_agent_client.prepare_agent(agentId=bedrock_agent_id)
             _wait_for_resource_status('agent', bedrock_agent_id, ['PREPARED'])
-            LOGGER.info(f"Enabled MCP Tool: {code_interpreter_response['agentActionGroup']['actionGroupId']} for bond agent {agent_id}")
-        
+            LOGGER.debug(f"Enabled MCP tools for bond agent {agent_id}")
+
         # Step 6: Create alias
         alias_name = f"{bedrock_agent_name}_alias_{uuid.uuid4().hex[:8]}"
-        LOGGER.info(f"Creating alias {alias_name} for Bedrock Agent {bedrock_agent_id}")
+        LOGGER.debug(f"Creating alias {alias_name} for Bedrock Agent {bedrock_agent_id}")
         
         alias_response = bedrock_agent_client.create_agent_alias(
             agentId=bedrock_agent_id,
@@ -137,15 +135,16 @@ def create_bedrock_agent(agent_id: str, agent_def: AgentDefinition) -> tuple[str
     
 
   
-def update_bedrock_agent(agent_def: AgentDefinition, bedrock_agent_id: str, bedrock_agent_alias_id: str) -> tuple[str, str]:
+def update_bedrock_agent(agent_def: AgentDefinition, bedrock_agent_id: str, bedrock_agent_alias_id: str, owner_user_id: Optional[str] = None) -> tuple[str, str]:
     """
     Update an existing Bedrock Agent.
-    
+
     Args:
         agent_def: Updated agent definition
         bedrock_agent_id: Existing Bedrock agent ID
         bedrock_agent_alias_id: Existing Bedrock alias ID
-        
+        owner_user_id: User who owns this agent (needed for OAuth token lookup for MCP)
+
     Returns:
         Tuple of (bedrock_agent_id, bedrock_agent_alias_id) - may return new alias ID if recreated
     """
@@ -204,7 +203,7 @@ def update_bedrock_agent(agent_def: AgentDefinition, bedrock_agent_id: str, bedr
             if mcp_action_group_id:
                 # Delete existing MCP action group to replace it
                 try:
-                    LOGGER.info(f"Deleting existing MCP action group {mcp_action_group_id}")
+                    LOGGER.debug(f"Deleting existing MCP action group {mcp_action_group_id}")
                     bedrock_agent_client.delete_agent_action_group(
                         agentId=bedrock_agent_id,
                         agentVersion=AGENT_VERSION,
@@ -215,23 +214,23 @@ def update_bedrock_agent(agent_def: AgentDefinition, bedrock_agent_id: str, bedr
                     LOGGER.warning(f"Failed to delete existing MCP action group: {e}")
 
             # Create new MCP action groups
-            create_mcp_action_groups(bedrock_agent_id, agent_def.mcp_tools, agent_def.mcp_resources or [])
+            create_mcp_action_groups(bedrock_agent_id, agent_def.mcp_tools, agent_def.mcp_resources or [], user_id=owner_user_id)
         else:
             # Remove MCP action group if it exists but no MCP tools specified
             if mcp_action_group_id:
                 # Note: We'll delete the action group after preparing the agent
                 # Store the ID for later deletion
-                LOGGER.info(f"MCP action group {mcp_action_group_id} will be removed after agent preparation")
+                LOGGER.debug(f"MCP action group {mcp_action_group_id} will be removed after agent preparation")
 
         # Step 4: Prepare the agent after updates
-        LOGGER.info(f"Preparing agent {bedrock_agent_id} after updates")
+        LOGGER.debug(f"Preparing agent {bedrock_agent_id} after updates")
         bedrock_agent_client.prepare_agent(agentId=bedrock_agent_id)
         _wait_for_resource_status('agent', bedrock_agent_id, ['PREPARED'])
         
         # Step 4b: Delete MCP action group if marked for deletion
         if not agent_def.mcp_tools and mcp_action_group_id:
             try:
-                LOGGER.info(f"Now deleting MCP action group {mcp_action_group_id}")
+                LOGGER.debug(f"Now deleting MCP action group {mcp_action_group_id}")
                 bedrock_agent_client.delete_agent_action_group(
                     agentId=bedrock_agent_id,
                     agentVersion=AGENT_VERSION,
@@ -254,7 +253,7 @@ def update_bedrock_agent(agent_def: AgentDefinition, bedrock_agent_id: str, bedr
             current_alias = alias_response.get('agentAlias', {})
 
             # Update alias routing if needed (to point to latest version)
-            LOGGER.info(f"Updating alias {bedrock_agent_alias_id} routing configuration")
+            LOGGER.debug(f"Updating alias {bedrock_agent_alias_id} routing configuration")
             update_alias_response = bedrock_agent_client.update_agent_alias(
                 agentId=bedrock_agent_id,
                 agentAliasId=bedrock_agent_alias_id,
@@ -368,7 +367,7 @@ def _wait_for_resource_status(resource_type: str, resource_id: str,
                 current_status = response['agentAlias']['agentAliasStatus']
             
             if current_status in target_statuses:
-                LOGGER.info(f"{resource_type.capitalize()} {resource_id} reached status: {current_status}")
+                LOGGER.debug(f"{resource_type.capitalize()} {resource_id} reached status: {current_status}")
                 return
             
             if current_status in failed_statuses.get(resource_type, []):

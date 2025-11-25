@@ -7,7 +7,7 @@ import '../../widgets/app_drawer.dart';
 
 class ProfileScreen extends ConsumerWidget {
   static const String routeName = '/profile';
-  
+
   const ProfileScreen({super.key});
 
   @override
@@ -16,7 +16,7 @@ class ProfileScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
-    
+
     if (authState is! Authenticated) {
       return Scaffold(
         appBar: const ProfileAppBar(),
@@ -25,14 +25,14 @@ class ProfileScreen extends ConsumerWidget {
         ),
       );
     }
-    
+
     final user = authState.user;
-    
+
     return Scaffold(
       backgroundColor: colorScheme.surface,
       drawer: const AppDrawer(),
       appBar: const ProfileAppBar(),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -69,7 +69,7 @@ class ProfileScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 32),
-            
+
             // User details
             _ProfileInfoCard(
               title: 'Account Information',
@@ -100,9 +100,9 @@ class ProfileScreen extends ConsumerWidget {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // Debug info card (only in debug mode)
             if (const bool.fromEnvironment('dart.vm.product') == false)
               _ProfileInfoCard(
@@ -126,18 +126,18 @@ class ProfileScreen extends ConsumerWidget {
 class _ProfileInfoCard extends StatelessWidget {
   final String title;
   final List<Widget> children;
-  
+
   const _ProfileInfoCard({
     required this.title,
     required this.children,
   });
-  
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
-    
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -174,7 +174,7 @@ class _ProfileInfoRow extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onCopy;
   final bool isMultiline;
-  
+
   const _ProfileInfoRow({
     required this.label,
     required this.value,
@@ -182,13 +182,13 @@ class _ProfileInfoRow extends StatelessWidget {
     this.onCopy,
     this.isMultiline = false,
   });
-  
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(

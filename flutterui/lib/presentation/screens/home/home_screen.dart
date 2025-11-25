@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/core_providers.dart';
 import 'package:flutterui/presentation/widgets/app_drawer.dart';
 import 'package:flutterui/providers/agent_provider.dart';
+import 'package:flutterui/providers/connections_provider.dart';
 import 'package:flutterui/presentation/screens/agents/widgets/agent_card.dart';
+import 'package:flutterui/presentation/widgets/expired_connection_banner.dart';
 import 'package:flutterui/core/theme/app_theme.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 import 'package:flutterui/core/error_handling/error_handler.dart';
@@ -18,6 +20,15 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin {
   @override
+  void initState() {
+    super.initState();
+    // Load connections after login to show banner for connections needing attention
+    Future.microtask(() {
+      ref.read(connectionsNotifierProvider.notifier).loadConnections();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final agentsAsyncValue = ref.watch(agentsProvider);
     final appTheme = ref.watch(appThemeProvider);
@@ -28,11 +39,44 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
     final CustomColors? customColors = currentThemeData.extension<CustomColors>();
     final Color appBarBackgroundColor = customColors?.brandingSurface ?? currentThemeData.appBarTheme.backgroundColor ?? currentThemeData.colorScheme.surface; // Generic fallback
 
+    // Check if any connections need attention for the hamburger menu indicator
+    final connectionsState = ref.watch(connectionsNotifierProvider);
+    final hasConnectionIssues = connectionsState.connectionsNeedingAttention.isNotEmpty ||
+        connectionsState.expired.isNotEmpty;
+
     return FirestoreListener(
       child: Scaffold(
         backgroundColor: colorScheme.surface,
         appBar: AppBar(
         iconTheme: IconThemeData(color: Colors.white),
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.menu, color: Colors.white),
+                if (hasConnectionIssues)
+                  Positioned(
+                    right: -2,
+                    top: -2,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: colorScheme.error,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: appBarBackgroundColor,
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -52,11 +96,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
         elevation: currentThemeData.appBarTheme.elevation ?? 2.0,
       ),
       drawer: const AppDrawer(),
-      body: Padding(
-        padding: const EdgeInsets.only(top: 24.0, left: 24.0, right: 24.0), 
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      body: Column(
+        children: [
+          // Expired connection banner
+          const DismissibleExpiredConnectionBanner(),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 24.0, left: 24.0, right: 24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
             Text(
               'Your AI Agents',
               style: textTheme.displaySmall?.copyWith( 
@@ -227,8 +276,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
                 },
               ),
             ),
-          ],
-        ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
       ),
     );
