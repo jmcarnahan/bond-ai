@@ -103,7 +103,7 @@ def _get_connection_configs() -> List[Dict[str, Any]]:
             from bondable.bond.providers.metadata import ConnectionConfig
 
             db_configs = session.query(ConnectionConfig).filter(
-                ConnectionConfig.enabled == True
+                ConnectionConfig.enabled.is_(True)
             ).all()
 
             for config in db_configs:
@@ -508,20 +508,20 @@ async def oauth_callback(
 
         # Redirect to frontend with success
         return RedirectResponse(
-            url=f"{frontend_url}/settings?connection_success={connection_name}",
+            url=f"{frontend_url}/connections?connection_success={connection_name}",
             status_code=status.HTTP_302_FOUND
         )
 
     except httpx.HTTPStatusError as e:
         LOGGER.error(f"[Connections] Token exchange failed: {e.response.text}")
         return RedirectResponse(
-            url=f"{frontend_url}/settings?connection_error={connection_name}&error=token_exchange_failed",
+            url=f"{frontend_url}/connections?connection_error={connection_name}&error=token_exchange_failed",
             status_code=status.HTTP_302_FOUND
         )
     except Exception as e:
         LOGGER.error(f"[Connections] Unexpected error: {e}")
         return RedirectResponse(
-            url=f"{frontend_url}/settings?connection_error={connection_name}&error=unknown",
+            url=f"{frontend_url}/connections?connection_error={connection_name}&error=unknown",
             status_code=status.HTTP_302_FOUND
         )
 
