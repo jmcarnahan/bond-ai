@@ -348,8 +348,8 @@ class TestOAuth2Server:
                 "Run OAuth flow once via UI: http://localhost:3000/connections"
             )
 
-        print(f"\n  ✅ Atlassian token found:")
-        print(f"    User: {TEST_USER_ID}")
+        # Log token status without exposing sensitive details
+        print(f"\n  ✅ Atlassian token found for test user")
         print(f"    Expires: {token.expires_at}")
         print(f"    Is expired: {token.is_expired()}")
 

@@ -96,7 +96,7 @@ class TestConnectionConfigLoading:
 
         if auth_type == 'oauth2':
             oauth_config = atlassian.get('oauth_config', {})
-            print(f"[DEBUG] oauth_config: {oauth_config}")
+            print(f"[DEBUG] oauth_config keys: {list(oauth_config.keys())}")
 
             # Check OAuth fields
             assert 'authorize_url' in oauth_config, "Missing 'authorize_url' in oauth_config"
@@ -105,8 +105,8 @@ class TestConnectionConfigLoading:
             # These are the problematic ones - check if they exist
             client_id = oauth_config.get('client_id')
             scopes = oauth_config.get('scopes')
-            print(f"[DEBUG] client_id: {client_id}")
-            print(f"[DEBUG] scopes: {scopes}")
+            print(f"[DEBUG] has_client_id: {client_id is not None}")
+            print(f"[DEBUG] has_scopes: {scopes is not None}")
 
             if client_id is None:
                 print("[WARNING] client_id is None - this will cause 'client_id=None' in auth URL!")
@@ -225,11 +225,11 @@ class TestConfigurationDiagnostics:
             if server_config.get('auth_type') == 'oauth2':
                 oauth = server_config.get('oauth_config', {})
                 print(f"  oauth_config:")
-                print(f"    authorize_url: {oauth.get('authorize_url')}")
-                print(f"    token_url: {oauth.get('token_url')}")
-                print(f"    client_id: {oauth.get('client_id')}")
-                print(f"    scopes: {oauth.get('scopes')}")
-                print(f"    redirect_uri: {oauth.get('redirect_uri')}")
+                print(f"    has_authorize_url: {bool(oauth.get('authorize_url'))}")
+                print(f"    has_token_url: {bool(oauth.get('token_url'))}")
+                print(f"    has_client_id: {bool(oauth.get('client_id'))}")
+                print(f"    has_scopes: {bool(oauth.get('scopes'))}")
+                print(f"    has_redirect_uri: {bool(oauth.get('redirect_uri'))}")
 
         print("\n" + "=" * 60)
 
