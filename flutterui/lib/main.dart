@@ -29,6 +29,7 @@ import 'package:flutterui/providers/config_provider.dart';
 import 'package:flutterui/presentation/screens/agents/agents_screen.dart';
 import 'package:flutterui/providers/agent_provider.dart';
 import 'package:flutterui/core/services/deep_link_service.dart';
+import 'package:flutterui/presentation/screens/connections/connections_screen.dart';
 
 // Provider to control the bottom navigation index
 final navigationIndexProvider = StateProvider<int>((ref) {
@@ -197,6 +198,9 @@ class MobileApp extends ConsumerWidget {
           case ProfileScreen.routeName:
             pageWidget = const ProfileScreen();
             break;
+          case ConnectionsScreen.routeName:
+            pageWidget = const ConnectionsScreen();
+            break;
           default:
             if (effectivePath.startsWith('/groups/') &&
                 effectivePath.endsWith('/edit')) {
@@ -323,6 +327,9 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
     final navItems = ref.read(bottomNavItemsProvider);
     final isAgentsEnabled = ref.read(isAgentsEnabledProvider);
 
+    // Check if navigation index was already set (e.g., from drawer navigation)
+    final currentNavIndex = ref.read(navigationIndexProvider);
+
     // Default to chat screen if agents are enabled (index 1), otherwise chat is at index 0
     int initialIndex = 0;
     if (isAgentsEnabled && navItems.length > 1) {
@@ -333,17 +340,27 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
       }
     }
 
-    _pageController = PageController(initialPage: initialIndex);
+    // Use the pre-set navigation index if it's valid, otherwise use default
+    final effectiveIndex = (currentNavIndex >= 0 && currentNavIndex < navItems.length)
+        ? currentNavIndex
+        : initialIndex;
+
+    _pageController = PageController(initialPage: effectiveIndex);
 
     // Initialize deep link service only for mobile platforms
     if (!kIsWeb) {
       _deepLinkService = DeepLinkService();
     }
 
-    // Set the navigation index after the first frame
+    // Set the navigation index after the first frame, but only if not already set
+    // (e.g., from drawer navigation that set the index before navigating here)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        ref.read(navigationIndexProvider.notifier).state = initialIndex;
+        // Only set to default if the current index doesn't match a valid page
+        final currentIndex = ref.read(navigationIndexProvider);
+        if (currentIndex < 0 || currentIndex >= navItems.length) {
+          ref.read(navigationIndexProvider.notifier).state = initialIndex;
+        }
         // Initialize deep links after the first frame
         if (!kIsWeb && _deepLinkService != null) {
           _deepLinkService!.initDeepLinks(context, ref);
