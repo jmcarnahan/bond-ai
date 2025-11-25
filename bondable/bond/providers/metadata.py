@@ -88,6 +88,93 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
 
+# ============================================================================
+# Connection Models - For MCP/External Service OAuth Integration
+# ============================================================================
+
+class ConnectionConfig(Base):
+    """
+    Admin-defined connection configurations for external services.
+
+    These define the available connections (like Atlassian, Google Drive, etc.)
+    that users can authenticate with to access MCP tools.
+    """
+    __tablename__ = "connection_configs"
+
+    id = Column(String, primary_key=True, nullable=False)  # UUID
+    name = Column(String, unique=True, nullable=False, index=True)  # e.g., "atlassian"
+    display_name = Column(String, nullable=False)  # e.g., "Atlassian (Jira & Confluence)"
+    description = Column(String, nullable=True)  # e.g., "Access Jira issues and Confluence docs"
+    url = Column(String, nullable=False)  # MCP endpoint URL
+    transport = Column(String, default="sse")  # sse, streamable-http
+    auth_type = Column(String, nullable=False)  # oauth2, static, bond_jwt
+
+    # OAuth configuration (if auth_type == "oauth2")
+    oauth_client_id = Column(String, nullable=True)
+    oauth_authorize_url = Column(String, nullable=True)
+    oauth_token_url = Column(String, nullable=True)
+    oauth_scopes = Column(String, nullable=True)  # Space-separated scopes
+
+    # UI display
+    icon_url = Column(String, nullable=True)
+
+    # Additional configuration as JSON (cloud_id, etc.)
+    extra_config = Column(JSON, default=dict)
+
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+
+class UserConnectionToken(Base):
+    """
+    User-specific OAuth tokens for external connections.
+
+    Tokens are encrypted at rest using the JWT secret key.
+    Each user can have one token per connection.
+    """
+    __tablename__ = "user_connection_tokens"
+
+    id = Column(String, primary_key=True, nullable=False)  # UUID
+    user_id = Column(String, ForeignKey('users.id'), nullable=False, index=True)
+    connection_name = Column(String, ForeignKey('connection_configs.name'), nullable=False)
+
+    # Encrypted tokens (use token_encryption.py to encrypt/decrypt)
+    access_token_encrypted = Column(String, nullable=False)
+    refresh_token_encrypted = Column(String, nullable=True)
+
+    token_type = Column(String, default="Bearer")
+    expires_at = Column(DateTime, nullable=True)  # Token expiration time
+    scopes = Column(String, nullable=True)  # Granted scopes
+
+    # Provider-specific metadata (cloud_id, user info, etc.)
+    provider_metadata = Column(JSON, default=dict)
+
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    # Ensure one token per user per connection
+    __table_args__ = (
+        UniqueConstraint('user_id', 'connection_name', name='_user_connection_uc'),
+    )
+
+
+class ConnectionOAuthState(Base):
+    """
+    Temporary storage for OAuth state during authorization flow.
+
+    These records should be cleaned up after 10 minutes or after use.
+    Used to verify OAuth callbacks and store PKCE code verifiers.
+    """
+    __tablename__ = "connection_oauth_states"
+
+    state = Column(String, primary_key=True, nullable=False)  # Random state parameter
+    user_id = Column(String, ForeignKey('users.id'), nullable=False)
+    connection_name = Column(String, ForeignKey('connection_configs.name'), nullable=False)
+    code_verifier = Column(String, nullable=True)  # For PKCE
+    redirect_uri = Column(String, nullable=True)  # Where to redirect after OAuth
+    created_at = Column(DateTime, default=datetime.datetime.now)
+
 
 class Metadata(ABC):
 
