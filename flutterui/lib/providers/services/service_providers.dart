@@ -6,6 +6,7 @@ import 'package:flutterui/data/services/thread_service.dart';
 import 'package:flutterui/data/services/chat_service.dart';
 import 'package:flutterui/data/services/mcp_service.dart';
 import 'package:flutterui/data/services/file_service.dart';
+import 'package:flutterui/data/services/connections_service.dart';
 import 'package:flutterui/providers/core_providers.dart' show sharedPreferencesProvider;
 
 final authServiceProvider = Provider<AuthService>((ref) {
@@ -36,4 +37,9 @@ final mcpServiceProvider = Provider<McpService>((ref) {
 final fileServiceProvider = Provider<FileService>((ref) {
   final authService = ref.watch(authServiceProvider);
   return FileService.fromAuthService(authService: authService);
+});
+
+final connectionsServiceProvider = Provider<ConnectionsService>((ref) {
+  final authService = ref.watch(authServiceProvider);
+  return ConnectionsService(authService: authService);
 });
