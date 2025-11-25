@@ -62,7 +62,8 @@ class McpService {
 
   /// Fetch all MCP tools as a flat list (backward compatible)
   ///
-  /// This method now uses the grouped endpoint internally and flattens the result.
+  /// This method calls the flat /mcp/tools endpoint directly.
+  /// For grouped tools by server, use [getToolsGrouped] instead.
   Future<List<McpToolModel>> getTools() async {
     logger.i("[McpService] getTools called.");
     try {

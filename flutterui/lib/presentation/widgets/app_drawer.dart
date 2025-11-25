@@ -189,27 +189,30 @@ class AppDrawer extends ConsumerWidget {
                     ),
                   ),
                   onTap: () {
+                    // Capture the route BEFORE popping the drawer
+                    final currentRoute = ModalRoute.of(context)?.settings.name;
+                    final isOnSubScreen = currentRoute == ProfileScreen.routeName ||
+                        currentRoute == ConnectionsScreen.routeName;
+
                     Navigator.pop(context); // Close drawer
 
-                    // Check if we're currently on a sub-screen
-                    final currentRoute = ModalRoute.of(context)?.settings.name;
-                    if (currentRoute == ProfileScreen.routeName ||
-                        currentRoute == ConnectionsScreen.routeName) {
-                      // Navigate back to main shell first
+                    // Find the target index
+                    final agentsIndex = navItems.indexWhere(
+                      (item) => item.label == 'Agents',
+                    );
+
+                    // Set the navigation index BEFORE navigating so the shell picks it up
+                    if (agentsIndex != -1) {
+                      ref.read(navigationIndexProvider.notifier).state = agentsIndex;
+                    }
+
+                    if (isOnSubScreen) {
+                      // Navigate back to main shell
                       Navigator.pushNamedAndRemoveUntil(
                         context,
                         '/',
                         (route) => false,
                       );
-                    }
-
-                    // Set the navigation index
-                    final agentsIndex = navItems.indexWhere(
-                      (item) => item.label == 'Agents',
-                    );
-                    if (agentsIndex != -1) {
-                      ref.read(navigationIndexProvider.notifier).state =
-                          agentsIndex;
                     }
                   },
                 ),
@@ -226,27 +229,30 @@ class AppDrawer extends ConsumerWidget {
                   ),
                 ),
                 onTap: () {
+                  // Capture the route BEFORE popping the drawer
+                  final currentRoute = ModalRoute.of(context)?.settings.name;
+                  final isOnSubScreen = currentRoute == ProfileScreen.routeName ||
+                      currentRoute == ConnectionsScreen.routeName;
+
                   Navigator.pop(context); // Close drawer
 
-                  // Check if we're currently on a sub-screen
-                  final currentRoute = ModalRoute.of(context)?.settings.name;
-                  if (currentRoute == ProfileScreen.routeName ||
-                      currentRoute == ConnectionsScreen.routeName) {
-                    // Navigate back to main shell first
+                  // Find the target index
+                  final chatIndex = navItems.indexWhere(
+                    (item) => item.label == 'Chat',
+                  );
+
+                  // Set the navigation index BEFORE navigating so the shell picks it up
+                  if (chatIndex != -1) {
+                    ref.read(navigationIndexProvider.notifier).state = chatIndex;
+                  }
+
+                  if (isOnSubScreen) {
+                    // Navigate back to main shell
                     Navigator.pushNamedAndRemoveUntil(
                       context,
                       '/',
                       (route) => false,
                     );
-                  }
-
-                  // Set the navigation index
-                  final chatIndex = navItems.indexWhere(
-                    (item) => item.label == 'Chat',
-                  );
-                  if (chatIndex != -1) {
-                    ref.read(navigationIndexProvider.notifier).state =
-                        chatIndex;
                   }
                 },
               ),
@@ -263,27 +269,30 @@ class AppDrawer extends ConsumerWidget {
                   ),
                 ),
                 onTap: () {
+                  // Capture the route BEFORE popping the drawer
+                  final currentRoute = ModalRoute.of(context)?.settings.name;
+                  final isOnSubScreen = currentRoute == ProfileScreen.routeName ||
+                      currentRoute == ConnectionsScreen.routeName;
+
                   Navigator.pop(context); // Close drawer
 
-                  // Check if we're currently on the profile screen
-                  final currentRoute = ModalRoute.of(context)?.settings.name;
-                  if (currentRoute == ProfileScreen.routeName ||
-                      currentRoute == ConnectionsScreen.routeName) {
-                    // Navigate back to main shell first
+                  // Find the target index
+                  final threadsIndex = navItems.indexWhere(
+                    (item) => item.label == 'Threads',
+                  );
+
+                  // Set the navigation index BEFORE navigating so the shell picks it up
+                  if (threadsIndex != -1) {
+                    ref.read(navigationIndexProvider.notifier).state = threadsIndex;
+                  }
+
+                  if (isOnSubScreen) {
+                    // Navigate back to main shell
                     Navigator.pushNamedAndRemoveUntil(
                       context,
                       '/',
                       (route) => false,
                     );
-                  }
-
-                  // Set the navigation index
-                  final threadsIndex = navItems.indexWhere(
-                    (item) => item.label == 'Threads',
-                  );
-                  if (threadsIndex != -1) {
-                    ref.read(navigationIndexProvider.notifier).state =
-                        threadsIndex;
                   }
                 },
               ),
