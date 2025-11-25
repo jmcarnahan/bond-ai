@@ -96,7 +96,7 @@ class TestConnectionConfigLoading:
 
         if auth_type == 'oauth2':
             oauth_config = atlassian.get('oauth_config', {})
-            print(f"[DEBUG] oauth_config keys: {list(oauth_config.keys())}")
+            print(f"[DEBUG] oauth_config has {len(oauth_config)} keys")
 
             # Check OAuth fields
             assert 'authorize_url' in oauth_config, "Missing 'authorize_url' in oauth_config"
