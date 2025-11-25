@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import routers
-from bondable.rest.routers import auth, agents, threads, chat, files, mcp, groups
+from bondable.rest.routers import auth, agents, threads, chat, files, mcp, groups, connections
 
 # Configure logging from YAML file
 def setup_logging():
@@ -72,6 +72,7 @@ app.include_router(chat.router)
 app.include_router(files.router)
 app.include_router(mcp.router)
 app.include_router(groups.router)
+app.include_router(connections.router)
 
 # Health check endpoint
 @app.get("/health")
