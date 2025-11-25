@@ -66,7 +66,7 @@ class BedrockAgent(Agent):
         self.mcp_resources = bedrock_options.mcp_resources
         self.metadata = bedrock_options.agent_metadata
 
-        LOGGER.info(f"Initialized BedrockAgent {self.agent_id} with model {self.model}")
+        LOGGER.debug(f"Initialized BedrockAgent {self.agent_id} with model {self.model}")
         LOGGER.debug(f"  Bedrock Agent ID: {self.bedrock_agent_id}")
         LOGGER.debug(f"  Bedrock Alias ID: {self.bedrock_agent_alias_id}")
     
@@ -190,7 +190,7 @@ class BedrockAgent(Agent):
             message_content = f"data:{file_type};base64,{image_base64}"
             message_type = 'image_file'
     
-            LOGGER.info(f"Received and yielded image: {file_name} ({file_type})")
+            LOGGER.debug(f"Received and yielded image: {file_name} ({file_type})")
         else:
             # Handle non-image files by uploading to S3
             try:
@@ -209,7 +209,7 @@ class BedrockAgent(Agent):
                 })
                 message_type = 'file_link'
 
-                LOGGER.info(f"Non-image file stored: {file_name} ({file_type}) with file_id: {file_details.file_id}")
+                LOGGER.debug(f"Non-image file stored: {file_name} ({file_type}) with file_id: {file_details.file_id}")
 
             except Exception as e:
                 LOGGER.error(f"Error handling file {file_name}: {e}")
@@ -281,7 +281,7 @@ class BedrockAgent(Agent):
             }
         )
         
-        LOGGER.info(f"Created user message {message_id} in thread {thread_id}")
+        LOGGER.debug(f"Created user message {message_id} in thread {thread_id}")
         return message_id
     
     def stream_response(self, prompt: Optional[str] = None,
@@ -368,11 +368,11 @@ class BedrockAgent(Agent):
                 chat_files, code_files = self._separate_files_by_use_case(all_files)
                 
                 # Log file distribution
-                LOGGER.info(f"File distribution: {len(chat_files)} CHAT files, {len(code_files)} CODE_INTERPRETER files")
-                
+                LOGGER.debug(f"File distribution: {len(chat_files)} CHAT files, {len(code_files)} CODE_INTERPRETER files")
+
                 # Check if we have mixed file types
                 if chat_files and code_files:
-                    LOGGER.info("Processing mixed file types in two phases")
+                    LOGGER.debug("Processing mixed file types in two phases")
                     
                     # Phase 1: Process CHAT files with context-gathering prompt
                     phase1_prompt = f"""I'm providing some documents for context. Please analyze these documents and keep their content in mind for the upcoming question.
@@ -417,9 +417,9 @@ Please integrate any relevant insights from the documents with your analysis of 
                     return  # Exit early for mixed files
             
             # Single file type or no files - process normally
-            LOGGER.info(f"Processing with single file type or no files")
+            LOGGER.debug(f"Processing with single file type or no files")
             if all_files:
-                LOGGER.info(f"Session state contains {len(all_files)} files")
+                LOGGER.debug(f"Session state contains {len(all_files)} files")
                 for i, file in enumerate(all_files):
                     LOGGER.debug(f"  File {i}: {file.get('name')} - {file.get('source', {}).get('sourceType')}")
             
@@ -528,7 +528,7 @@ Please integrate any relevant insights from the documents with your analysis of 
                                 jwt_token=self._jwt_token
                             )
 
-                            LOGGER.info(f"Executed MCP tool {tool_name} with result: \n{json.dumps(result, indent=2)}")
+                            LOGGER.debug(f"Executed MCP tool {tool_name} with result preview: {str(result)[:200]}")
 
                             # Format response
                             response_body = json.dumps({
@@ -743,7 +743,7 @@ Please integrate any relevant insights from the documents with your analysis of 
         updated_session_state = session_state.copy()
         if files:
             updated_session_state['files'] = files
-            LOGGER.info(f"Session state contains {len(files)} files")
+            LOGGER.debug(f"Session state contains {len(files)} files")
             for i, file in enumerate(files):
                 LOGGER.debug(f"  File {i}: {file.get('name')} - useCase: {file.get('useCase')}")
 
@@ -788,7 +788,7 @@ Please integrate any relevant insights from the documents with your analysis of 
         LOGGER.debug(f"Session: {session_id}, Thread: {thread_id}, User: {user_id}")
         
         # Invoke agent
-        LOGGER.info(f"Invoking Bedrock Agent {self.bedrock_agent_id}")
+        LOGGER.debug(f"Invoking Bedrock Agent {self.bedrock_agent_id}")
         try:
             response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**request)
         except Exception as e:
@@ -831,7 +831,7 @@ Please integrate any relevant insights from the documents with your analysis of 
                 # Handle returnControl events for MCP tools
                 elif 'returnControl' in event:
                     return_control = event['returnControl']
-                    LOGGER.info("Received returnControl event for tool execution")
+                    LOGGER.debug("Received returnControl event for tool execution")
                     
                     continuation_generator = self._handle_continuation_response(
                         return_control=return_control,
@@ -874,7 +874,7 @@ Please integrate any relevant insights from the documents with your analysis of 
                     event_trace = event['trace']
                     LOGGER.debug(f" --- Received trace: {list(event_trace.keys())}")
             
-            LOGGER.info(f"Processed {event_count} events from completion stream")
+            LOGGER.debug(f"Processed {event_count} events from completion stream")
         
         # Close bond message
         yield '</_bondmessage>'
@@ -900,7 +900,7 @@ Please integrate any relevant insights from the documents with your analysis of 
                 content=full_content,
                 metadata=metadata
             )
-            LOGGER.info(f"Saved assistant response to thread {thread_id}")
+            LOGGER.debug(f"Saved assistant response to thread {thread_id}")
         
         # Update session state if provided
         if new_session_state:
@@ -1274,7 +1274,8 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                 
                 bedrock_agent_id, bedrock_agent_alias_id = create_bedrock_agent(
                     agent_id=agent_id,
-                    agent_def=agent_def
+                    agent_def=agent_def,
+                    owner_user_id=owner_user_id
                 )
                 bedrock_options = BedrockAgentOptions(
                     agent_id=agent_id,
@@ -1377,7 +1378,8 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                 bedrock_agent_id, bedrock_agent_alias_id = update_bedrock_agent(
                     agent_def=agent_def,
                     bedrock_agent_id=bedrock_agent_id,
-                    bedrock_agent_alias_id=bedrock_agent_alias_id
+                    bedrock_agent_alias_id=bedrock_agent_alias_id,
+                    owner_user_id=owner_user_id
                 )
 
             session.commit()  
