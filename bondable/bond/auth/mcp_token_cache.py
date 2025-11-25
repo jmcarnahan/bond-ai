@@ -276,7 +276,7 @@ class MCPTokenCache:
                 session.add(new_token)
 
             session.commit()
-            LOGGER.debug(f"Token saved to database for user={user_id}, connection={connection_name}")
+            LOGGER.debug(f"Token saved to database for connection={connection_name}")
             return True
 
         except Exception as e:
@@ -381,13 +381,12 @@ class MCPTokenCache:
                 'client_secret': client_secret
             }
 
-            LOGGER.info(f"[REFRESH_TOKEN] Requesting new token from {token_url}")
+            LOGGER.info(f"[REFRESH_TOKEN] Requesting new token")
             response = requests.post(token_url, data=refresh_data, timeout=10)
 
             if response.status_code != 200:
                 LOGGER.error(
-                    f"[REFRESH_TOKEN] Token refresh failed with status {response.status_code}: "
-                    f"{response.text[:200]}"
+                    f"[REFRESH_TOKEN] Token refresh failed with status {response.status_code}"
                 )
                 return None
 
@@ -530,7 +529,7 @@ class MCPTokenCache:
         # Save directly to database
         self._save_to_database(user_id, connection_name, token_data)
 
-        LOGGER.debug(f"Token stored for user={user_id}, connection={connection_name}, expires_at={expires_at}")
+        LOGGER.debug(f"Token stored for connection={connection_name}, expires_at={expires_at}")
         return token_data
 
     def set_token_from_response(

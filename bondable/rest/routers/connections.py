@@ -376,12 +376,12 @@ async def authorize_connection(
     configured_redirect = config.get("oauth_redirect_uri")
     if configured_redirect:
         redirect_uri = configured_redirect
-        LOGGER.info(f"[Connections] Using configured redirect_uri: {redirect_uri}")
+        LOGGER.debug(f"[Connections] Using configured redirect_uri")
     else:
         jwt_config = Config.config().get_jwt_config()
         base_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
         redirect_uri = f"{base_url}/connections/{connection_name}/callback"
-        LOGGER.info(f"[Connections] Using generated redirect_uri: {redirect_uri}")
+        LOGGER.debug(f"[Connections] Using generated redirect_uri")
 
     # Store state in database
     if not _save_oauth_state(state, current_user.user_id, connection_name, code_verifier, redirect_uri):
@@ -504,7 +504,7 @@ async def oauth_callback(
             provider_metadata=config.get("extra_config", {})
         )
 
-        LOGGER.info(f"[Connections] Token stored for user {user_id}, connection {connection_name}")
+        LOGGER.info(f"[Connections] Token stored successfully for connection {connection_name}")
 
         # Redirect to frontend with success
         return RedirectResponse(
