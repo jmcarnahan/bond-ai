@@ -29,6 +29,7 @@ import 'package:flutterui/providers/config_provider.dart';
 import 'package:flutterui/presentation/screens/agents/agents_screen.dart';
 import 'package:flutterui/providers/agent_provider.dart';
 import 'package:flutterui/core/services/deep_link_service.dart';
+import 'package:flutterui/presentation/screens/connections/connections_screen.dart';
 
 // Provider to control the bottom navigation index
 final navigationIndexProvider = StateProvider<int>((ref) {
@@ -196,6 +197,9 @@ class MobileApp extends ConsumerWidget {
             break;
           case ProfileScreen.routeName:
             pageWidget = const ProfileScreen();
+            break;
+          case ConnectionsScreen.routeName:
+            pageWidget = const ConnectionsScreen();
             break;
           default:
             if (effectivePath.startsWith('/groups/') &&

@@ -16,33 +16,79 @@ class McpService {
     : _httpClient = httpClient ?? http.Client(),
       _authService = authService;
 
-  // Fetch all MCP tools
-  Future<List<McpToolModel>> getTools() async {
-    // logger.i("[McpService] getTools called.");
+  /// Fetch MCP tools grouped by server with connection status
+  ///
+  /// Returns a [McpToolsGroupedResponse] containing all servers and their tools,
+  /// including connection status information for each server.
+  Future<McpToolsGroupedResponse> getToolsGrouped() async {
+    logger.i("[McpService] getToolsGrouped called.");
     try {
-      // logger.i("[McpService] Getting authenticated headers...");
       final headers = await _authService.authenticatedHeaders;
-      // logger.i("[McpService] Headers obtained: ${headers.keys.toList()}");
-      
-      final url = '${ApiConstants.baseUrl}/mcp/tools';
-      // logger.i("[McpService] Making request to: $url");
-      
+      final url = '${ApiConstants.baseUrl}/mcp/tools?grouped=true';
+      logger.i("[McpService] Making grouped request to: $url");
+
       final response = await _httpClient.get(
         Uri.parse(url),
         headers: headers,
       );
 
-      // logger.i(
-      //   "[McpService] getTools response status: ${response.statusCode}",
-      // );
-      
+      logger.i("[McpService] getToolsGrouped response status: ${response.statusCode}");
+
       if (response.statusCode == 200) {
-        // logger.i("[McpService] Response body length: ${response.body.length}");
-        // logger.i("[McpService] Response body preview: ${response.body.length > 200 ? '${response.body.substring(0, 200)}...' : response.body}");
-        
+        final Map<String, dynamic> data = json.decode(response.body);
+        final grouped = McpToolsGroupedResponse.fromJson(data);
+
+        logger.i("[McpService] Successfully parsed ${grouped.totalServers} servers with ${grouped.totalTools} tools.");
+
+        // Log connection status for each server
+        for (final server in grouped.servers) {
+          final status = server.connectionStatus;
+          logger.i("[McpService] Server '${server.displayName}': ${server.toolCount} tools, connected=${status.connected}, valid=${status.valid}");
+        }
+
+        return grouped;
+      } else {
+        logger.e(
+          "[McpService] Failed to load grouped MCP tools. Status: ${response.statusCode}, Body: ${response.body}",
+        );
+        throw Exception('Failed to load MCP tools: ${response.statusCode}');
+      }
+    } catch (e, stackTrace) {
+      logger.e("[McpService] Error in getToolsGrouped: ${e.toString()}");
+      logger.e("[McpService] Stack trace: $stackTrace");
+      throw Exception('Failed to fetch MCP tools: ${e.toString()}');
+    }
+  }
+
+  /// Fetch all MCP tools as a flat list (backward compatible)
+  ///
+  /// This method now uses the grouped endpoint internally and flattens the result.
+  Future<List<McpToolModel>> getTools() async {
+    logger.i("[McpService] getTools called.");
+    try {
+      logger.i("[McpService] Getting authenticated headers...");
+      final headers = await _authService.authenticatedHeaders;
+      logger.i("[McpService] Headers obtained: ${headers.keys.toList()}");
+
+      final url = '${ApiConstants.baseUrl}/mcp/tools';
+      logger.i("[McpService] Making request to: $url");
+
+      final response = await _httpClient.get(
+        Uri.parse(url),
+        headers: headers,
+      );
+
+      logger.i(
+        "[McpService] getTools response status: ${response.statusCode}",
+      );
+
+      if (response.statusCode == 200) {
+        logger.i("[McpService] Response body length: ${response.body.length}");
+        logger.i("[McpService] Response body preview: ${response.body.length > 200 ? '${response.body.substring(0, 200)}...' : response.body}");
+
         final List<dynamic> data = json.decode(response.body);
-        // logger.i("[McpService] Decoded JSON array with ${data.length} items");
-        
+        logger.i("[McpService] Decoded JSON array with ${data.length} items");
+
         final List<McpToolModel> tools =
             data
                 .map((item) {
@@ -50,14 +96,14 @@ class McpService {
                   return McpToolModel.fromJson(item as Map<String, dynamic>);
                 })
                 .toList();
-        
+
         logger.i("[McpService] Successfully parsed ${tools.length} MCP tools.");
-        
+
         // Log each tool for debugging
         // for (int i = 0; i < tools.length; i++) {
         //   logger.i("[McpService] Tool ${i + 1}: name='${tools[i].name}', description='${tools[i].description}'");
         // }
-        
+
         return tools;
       } else {
         logger.e(
