@@ -120,10 +120,10 @@ def atlassian_token_exists():
             "Atlassian token is expired. Re-authorize via UI: http://localhost:3000/connections"
         )
 
-    print(f"\n  ✅ Atlassian token found:")
-    print(f"     User: {TEST_USER_ID}")
+    # Log token status without exposing sensitive details
+    print(f"\n  ✅ Atlassian token found for test user")
     print(f"     Expires: {token.expires_at}")
-    print(f"     Scopes: {token.scopes}")
+    print(f"     Has scopes: {bool(token.scopes)}")
 
     return token
 

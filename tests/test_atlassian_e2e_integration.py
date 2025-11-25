@@ -361,7 +361,7 @@ def create_test_auth_token(user_id: str = None, email: str = None) -> str:
         "exp": datetime.now(timezone.utc) + timedelta(hours=1)
     }
 
-    print(f"  Creating JWT token for user_id={user_id}, email={email}")
+    print(f"  Creating JWT token for test user")
     return jwt.encode(token_data, jwt_config.JWT_SECRET_KEY, algorithm=jwt_config.JWT_ALGORITHM)
 
 
@@ -396,7 +396,7 @@ def authenticated_client(api_client, database_token):
 
     Note: Token should already be in database via OAuth flow (Connections UI).
     """
-    print(f"\n  Setting up authenticated client for user: {TEST_USER_ID} ({TEST_USER_EMAIL})")
+    print(f"\n  Setting up authenticated client for test user")
 
     # Create auth token with matching user_id
     token = create_test_auth_token(user_id=TEST_USER_ID, email=TEST_USER_EMAIL)
@@ -409,9 +409,7 @@ def authenticated_client(api_client, database_token):
     verify_token = real_cache.get_token(TEST_USER_ID, TEST_CONNECTION_NAME)
 
     if verify_token:
-        print(f"  ✅ Token available in database:")
-        print(f"      user_id={TEST_USER_ID}")
-        print(f"      connection={TEST_CONNECTION_NAME}")
+        print(f"  ✅ Token available in database for test user")
         print(f"      expires={verify_token.expires_at}")
     else:
         print(f"  ⚠️  Token NOT accessible - ensure OAuth completed via UI")
@@ -631,8 +629,7 @@ class TestAgentWithAtlassianTools:
 
         assert cached_token is not None, "Token should be in database"
         assert cached_token.access_token == database_token.access_token, "Token should match"
-        print(f"  ✅ Token in database for user {TEST_USER_ID}")
-        print(f"     Connection: {TEST_CONNECTION_NAME}")
+        print(f"  ✅ Token in database for test user")
         print(f"     Expires: {cached_token.expires_at}")
 
         # Test that the token can be used for Atlassian connection
