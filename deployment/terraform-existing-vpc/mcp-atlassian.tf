@@ -184,7 +184,10 @@ resource "null_resource" "mirror_mcp_atlassian_image" {
   ]
 
   triggers = {
-    always_run = timestamp()
+    # Re-mirror image when OAuth configuration changes
+    cloud_id    = var.mcp_atlassian_oauth_cloud_id
+    client_id   = var.mcp_atlassian_oauth_client_id
+    secret_name = var.mcp_atlassian_oauth_secret_name
   }
 
   provisioner "local-exec" {

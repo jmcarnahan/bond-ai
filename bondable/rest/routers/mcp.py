@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone, timedelta
 from typing import Annotated, List, Dict, Any, Optional, Union
 from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -17,9 +18,104 @@ from bondable.rest.dependencies.auth import get_current_user
 router = APIRouter(prefix="/mcp", tags=["MCP"])
 LOGGER = logging.getLogger(__name__)
 
-# In-memory store for OAuth state (for PKCE and CSRF protection)
-# In production, consider using Redis or session storage
-_oauth_states: Dict[str, Dict[str, Any]] = {}
+
+# =============================================================================
+# Database Session Helper
+# =============================================================================
+
+def _get_db_session():
+    """Get database session from provider."""
+    config = Config.config()
+    provider = config.get_provider()
+    if provider and hasattr(provider, 'metadata'):
+        return provider.metadata.get_db_session()
+    return None
+
+
+# =============================================================================
+# OAuth State Management (Database-backed)
+# =============================================================================
+
+def _save_mcp_oauth_state(
+    state: str,
+    user_id: str,
+    server_name: str,
+    code_verifier: str,
+    redirect_uri: str = ""
+) -> bool:
+    """Save OAuth state to database for MCP server authentication."""
+    session = _get_db_session()
+    if session is None:
+        LOGGER.error("[MCP] No database session available for OAuth state")
+        return False
+
+    try:
+        from bondable.bond.providers.metadata import ConnectionOAuthState
+
+        # Clean up old states (older than 10 minutes)
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
+        session.query(ConnectionOAuthState).filter(
+            ConnectionOAuthState.created_at < cutoff
+        ).delete()
+
+        # Save new state - use connection_name field to store server_name
+        oauth_state = ConnectionOAuthState(
+            state=state,
+            user_id=user_id,
+            connection_name=server_name,  # Store server_name in connection_name field
+            code_verifier=code_verifier,
+            redirect_uri=redirect_uri
+        )
+        session.add(oauth_state)
+        session.commit()
+        LOGGER.debug(f"[MCP] Saved OAuth state for server {server_name}")
+        return True
+
+    except Exception as e:
+        LOGGER.error(f"[MCP] Error saving OAuth state: {e}")
+        session.rollback()
+        return False
+    finally:
+        session.close()
+
+
+def _get_and_delete_mcp_oauth_state(state: str) -> Optional[Dict[str, Any]]:
+    """Get and delete OAuth state from database."""
+    session = _get_db_session()
+    if session is None:
+        LOGGER.error("[MCP] No database session available for OAuth state retrieval")
+        return None
+
+    try:
+        from bondable.bond.providers.metadata import ConnectionOAuthState
+
+        oauth_state = session.query(ConnectionOAuthState).filter(
+            ConnectionOAuthState.state == state
+        ).first()
+
+        if oauth_state is None:
+            return None
+
+        result = {
+            "user_id": oauth_state.user_id,
+            "server_name": oauth_state.connection_name,  # connection_name stores server_name
+            "code_verifier": oauth_state.code_verifier,
+            "redirect_uri": oauth_state.redirect_uri
+        }
+
+        # Delete the state (one-time use)
+        session.delete(oauth_state)
+        session.commit()
+        LOGGER.debug(f"[MCP] Retrieved and deleted OAuth state for server {result['server_name']}")
+
+        return result
+
+    except Exception as e:
+        LOGGER.error(f"[MCP] Error getting OAuth state: {e}")
+        session.rollback()
+        return None
+    finally:
+        session.close()
 
 
 class MCPToolResponse(BaseModel):
@@ -540,18 +636,24 @@ async def connect_mcp_server(
     # Generate state for CSRF protection
     state = generate_oauth_state()
 
-    # Store state for callback validation
-    _oauth_states[state] = {
-        "user_id": current_user.user_id,
-        "server_name": server_name,
-        "code_verifier": code_verifier
-    }
-
     # Build authorization URL
     # Get redirect URI from config or use default
     jwt_config = Config.config().get_jwt_config()
     base_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
     redirect_uri = oauth_config.get('redirect_uri', f"{base_url}/mcp/servers/{server_name}/callback")
+
+    # Store state in database for callback validation
+    if not _save_mcp_oauth_state(
+        state=state,
+        user_id=current_user.user_id,
+        server_name=server_name,
+        code_verifier=code_verifier,
+        redirect_uri=redirect_uri
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save OAuth state"
+        )
 
     params = {
         "response_type": "code",
@@ -599,17 +701,19 @@ async def mcp_oauth_callback(
 
     LOGGER.info(f"[MCP Callback] Received callback for {server_name}")
 
-    # Validate state
-    if state not in _oauth_states:
+    # Validate and retrieve state from database
+    state_data = _get_and_delete_mcp_oauth_state(state)
+    if state_data is None:
         LOGGER.warning(f"[MCP Callback] Invalid state parameter for {server_name}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid state parameter - possible CSRF attack"
+            detail="Invalid state parameter - possible CSRF attack or expired state"
         )
 
-    state_data = _oauth_states.pop(state)
     user_id = state_data["user_id"]
     code_verifier = state_data["code_verifier"]
+    # Use redirect_uri from state if stored, otherwise regenerate from config
+    stored_redirect_uri = state_data.get("redirect_uri")
 
     # Get server configuration
     server_config = _get_server_config(server_name)
@@ -623,9 +727,13 @@ async def mcp_oauth_callback(
         )
 
     # Build redirect URI (must match what was sent in authorization request)
-    jwt_config = Config.config().get_jwt_config()
-    base_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
-    redirect_uri = oauth_config.get('redirect_uri', f"{base_url}/mcp/servers/{server_name}/callback")
+    # Prefer stored redirect_uri from state, fallback to regenerating from config
+    if stored_redirect_uri:
+        redirect_uri = stored_redirect_uri
+    else:
+        jwt_config = Config.config().get_jwt_config()
+        base_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
+        redirect_uri = oauth_config.get('redirect_uri', f"{base_url}/mcp/servers/{server_name}/callback")
 
     # Exchange code for token
     token_data = {
