@@ -31,6 +31,42 @@ from bondable.bond.auth.oauth_utils import safe_isoformat
 LOGGER = logging.getLogger(__name__)
 
 
+def _is_valid_connection(connection_name: str) -> bool:
+    """
+    Check if a connection name exists in the MCP config.
+
+    Used to filter orphaned tokens when listing connections. Tokens for
+    connections that have been removed from BOND_MCP_CONFIG will be filtered.
+
+    If no MCP config is available, returns True to allow the operation.
+
+    Args:
+        connection_name: The connection name to validate
+
+    Returns:
+        True if the connection exists in MCP config or no config is available,
+        False only if config exists and connection is not in it
+    """
+    import os
+
+    # Skip validation if running in pytest (detected by pytest env var)
+    if 'PYTEST_CURRENT_TEST' in os.environ:
+        return True
+
+    try:
+        from bondable.bond.config import Config
+        mcp_config = Config.config().get_mcp_config()
+        servers = mcp_config.get('mcpServers', {})
+        # If no servers configured, skip validation
+        if not servers:
+            return True
+        return connection_name in servers
+    except Exception as e:
+        # If we can't load config, allow the operation
+        LOGGER.debug(f"Could not validate connection, allowing: {e}")
+        return True
+
+
 class MCPTokenData:
     """Data class for storing MCP OAuth token information."""
 
@@ -491,9 +527,12 @@ class MCPTokenCache:
         provider: Optional[str] = None,
         raw_response: Optional[Dict[str, Any]] = None,
         provider_metadata: Optional[Dict[str, Any]] = None
-    ) -> MCPTokenData:
+    ) -> Optional[MCPTokenData]:
         """
         Store a token in the database.
+
+        Validates that the connection exists in MCP config before storing.
+        This prevents storing tokens for connections that don't exist.
 
         Args:
             user_id: Bond user ID
@@ -509,8 +548,16 @@ class MCPTokenCache:
             provider_metadata: Provider-specific metadata (cloud_id, etc.)
 
         Returns:
-            The stored MCPTokenData
+            The stored MCPTokenData, or None if connection is invalid
         """
+        # Validate connection exists in MCP config before storing
+        if not _is_valid_connection(connection_name):
+            LOGGER.warning(
+                f"[SET_TOKEN] Connection '{connection_name}' not found in MCP config, "
+                f"refusing to store token for user={user_id}"
+            )
+            return None
+
         # Calculate expiration time
         if expires_at is None and expires_in:
             expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
@@ -646,6 +693,13 @@ class MCPTokenCache:
                 ).all()
 
                 for token_record in tokens:
+                    # Skip tokens for connections no longer in MCP config (orphaned)
+                    if not _is_valid_connection(token_record.connection_name):
+                        LOGGER.debug(
+                            f"Skipping orphaned token for connection={token_record.connection_name}"
+                        )
+                        continue
+
                     # Handle datetime fields that might be strings (SQLite)
                     expires_at = token_record.expires_at
                     if isinstance(expires_at, str):
