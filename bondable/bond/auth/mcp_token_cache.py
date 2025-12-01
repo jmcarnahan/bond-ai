@@ -552,10 +552,7 @@ class MCPTokenCache:
         """
         # Validate connection exists in MCP config before storing
         if not _is_valid_connection(connection_name):
-            LOGGER.warning(
-                f"[SET_TOKEN] Connection '{connection_name}' not found in MCP config, "
-                f"refusing to store token for user={user_id}"
-            )
+            LOGGER.warning("[SET_TOKEN] Connection not found in MCP config, refusing to store token")
             return None
 
         # Calculate expiration time
@@ -695,9 +692,7 @@ class MCPTokenCache:
                 for token_record in tokens:
                     # Skip tokens for connections no longer in MCP config (orphaned)
                     if not _is_valid_connection(token_record.connection_name):
-                        LOGGER.debug(
-                            f"Skipping orphaned token for connection={token_record.connection_name}"
-                        )
+                        LOGGER.debug("Skipping orphaned token for removed connection")
                         continue
 
                     # Handle datetime fields that might be strings (SQLite)
