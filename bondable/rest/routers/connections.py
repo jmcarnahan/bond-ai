@@ -90,50 +90,13 @@ def _get_db_session():
 
 def _get_connection_configs() -> List[Dict[str, Any]]:
     """
-    Get all enabled connection configurations.
+    Get all OAuth2 connection configurations from BOND_MCP_CONFIG environment variable.
 
-    First tries database, falls back to JSON config for backward compatibility.
+    Connection configs are now stored exclusively in the BOND_MCP_CONFIG environment
+    variable (JSON format). The ConnectionConfig database table has been removed.
     """
     configs = []
 
-    # Try database first
-    session = _get_db_session()
-    if session:
-        try:
-            from bondable.bond.providers.metadata import ConnectionConfig
-
-            db_configs = session.query(ConnectionConfig).filter(
-                ConnectionConfig.enabled.is_(True)
-            ).all()
-
-            for config in db_configs:
-                configs.append({
-                    "name": config.name,
-                    "display_name": config.display_name,
-                    "description": config.description,
-                    "url": config.url,
-                    "transport": config.transport,
-                    "auth_type": config.auth_type,
-                    "oauth_client_id": config.oauth_client_id,
-                    "oauth_authorize_url": config.oauth_authorize_url,
-                    "oauth_token_url": config.oauth_token_url,
-                    "oauth_scopes": config.oauth_scopes,
-                    "icon_url": config.icon_url,
-                    "extra_config": config.extra_config or {}
-                })
-
-            session.close()
-
-            if configs:
-                LOGGER.debug(f"Loaded {len(configs)} connection configs from database")
-                return configs
-
-        except Exception as e:
-            LOGGER.warning(f"Error loading connection configs from database: {e}")
-            if session:
-                session.close()
-
-    # Fall back to JSON config (for backward compatibility)
     try:
         config = Config.config()
         mcp_config = config.get_mcp_config()
@@ -165,10 +128,10 @@ def _get_connection_configs() -> List[Dict[str, Any]]:
                     "extra_config": extra_config
                 })
 
-        LOGGER.debug(f"Loaded {len(configs)} connection configs from JSON")
+        LOGGER.debug(f"Loaded {len(configs)} OAuth2 connection configs from BOND_MCP_CONFIG")
 
     except Exception as e:
-        LOGGER.error(f"Error loading connection configs from JSON: {e}")
+        LOGGER.error(f"Error loading connection configs: {e}")
 
     return configs
 
