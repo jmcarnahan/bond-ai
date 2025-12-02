@@ -307,7 +307,9 @@ async def authorize_connection(
     Returns:
         Authorization URL to redirect user to
     """
-    LOGGER.info(f"[Connections] User {current_user.email} initiating auth for {connection_name}")
+    LOGGER.info(f"[Connections] ========== AUTHORIZE START ==========")
+    LOGGER.info(f"[Connections] User: {current_user.email} (ID: {current_user.user_id})")
+    LOGGER.info(f"[Connections] Connection: {connection_name}")
 
     config = _get_connection_config(connection_name)
     if config is None:
@@ -347,11 +349,20 @@ async def authorize_connection(
         LOGGER.debug(f"[Connections] Using generated redirect_uri")
 
     # Store state in database
+    LOGGER.info(f"[Connections] Saving OAuth state to database:")
+    LOGGER.info(f"[Connections]   state: {state[:20]}...")
+    LOGGER.info(f"[Connections]   user_id: {current_user.user_id}")
+    LOGGER.info(f"[Connections]   connection_name: {connection_name}")
+    LOGGER.info(f"[Connections]   code_verifier: {code_verifier[:20]}...")
+    LOGGER.info(f"[Connections]   redirect_uri: {redirect_uri}")
+
     if not _save_oauth_state(state, current_user.user_id, connection_name, code_verifier, redirect_uri):
+        LOGGER.error(f"[Connections] Failed to save OAuth state!")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save OAuth state"
         )
+    LOGGER.info(f"[Connections] OAuth state saved successfully")
 
     # Build authorization URL
     params = {
@@ -370,7 +381,12 @@ async def authorize_connection(
 
     authorization_url = f"{authorize_url}?{urlencode(params)}"
 
-    LOGGER.info(f"[Connections] Generated authorization URL for {connection_name}")
+    LOGGER.info(f"[Connections] Authorization URL params:")
+    LOGGER.info(f"[Connections]   authorize_url: {authorize_url}")
+    LOGGER.info(f"[Connections]   client_id: {config.get('oauth_client_id', '')}")
+    LOGGER.info(f"[Connections]   redirect_uri: {redirect_uri}")
+    LOGGER.info(f"[Connections]   scopes: {scopes}")
+    LOGGER.info(f"[Connections] ========== AUTHORIZE END ==========")
 
     return AuthorizeResponse(
         authorization_url=authorization_url,
@@ -391,14 +407,16 @@ async def oauth_callback(
     Exchanges authorization code for access token and stores encrypted in database.
     Redirects to frontend with success/error status.
     """
-    LOGGER.info(f"[Connections] Received callback for {connection_name}")
-
-    # Initialize token cache with database
+    LOGGER.info(f"[Connections] ========== CALLBACK START ==========")
+    LOGGER.info(f"[Connections] Connection: {connection_name}")
+    LOGGER.info(f"[Connections] Received code: {code[:30]}..." if len(code) > 30 else f"[Connections] Received code: {code}")
+    LOGGER.info(f"[Connections] Received state (raw from callback): {state}")
 
     # Validate and retrieve state
+    LOGGER.info(f"[Connections] Looking up OAuth state in database...")
     state_data = _get_and_delete_oauth_state(state)
     if state_data is None:
-        LOGGER.warning(f"[Connections] Invalid state parameter for {connection_name}")
+        LOGGER.warning(f"[Connections] Invalid state parameter for {connection_name} - state not found in database!")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid state parameter - possible CSRF attack or expired state"
@@ -408,9 +426,16 @@ async def oauth_callback(
     code_verifier = state_data["code_verifier"]
     redirect_uri = state_data["redirect_uri"]
 
+    LOGGER.info(f"[Connections] State data retrieved successfully:")
+    LOGGER.info(f"[Connections]   user_id: {user_id}")
+    LOGGER.info(f"[Connections]   connection_name from state: {state_data.get('connection_name', 'N/A')}")
+    LOGGER.info(f"[Connections]   code_verifier: {code_verifier[:20]}..." if code_verifier else "[Connections]   code_verifier: None")
+    LOGGER.info(f"[Connections]   redirect_uri: {redirect_uri}")
+
     # Get connection configuration
     config = _get_connection_config(connection_name)
     if config is None:
+        LOGGER.error(f"[Connections] Connection config not found for: {connection_name}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Connection '{connection_name}' not found"
@@ -418,10 +443,13 @@ async def oauth_callback(
 
     token_url = config.get("oauth_token_url")
     if not token_url:
+        LOGGER.error(f"[Connections] No token URL configured for: {connection_name}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"No token URL configured for '{connection_name}'"
         )
+
+    LOGGER.info(f"[Connections] Token URL: {token_url}")
 
     # Exchange code for token
     token_data = {
@@ -441,21 +469,36 @@ async def oauth_callback(
     client_secret = config.get("extra_config", {}).get("client_secret")
     if client_secret:
         token_data["client_secret"] = client_secret
+        LOGGER.info(f"[Connections] Using client_secret from extra_config (redacted)")
+
+    LOGGER.info(f"[Connections] Token exchange request:")
+    LOGGER.info(f"[Connections]   token_url: {token_url}")
+    LOGGER.info(f"[Connections]   grant_type: authorization_code")
+    LOGGER.info(f"[Connections]   client_id: {client_id}")
+    LOGGER.info(f"[Connections]   redirect_uri: {redirect_uri}")
+    LOGGER.info(f"[Connections]   code_verifier present: {bool(code_verifier)}")
 
     jwt_config = Config.config().get_jwt_config()
     frontend_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
 
     try:
+        LOGGER.info(f"[Connections] Sending token exchange request to {token_url}...")
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 token_url,
                 data=token_data,
                 headers={"Content-Type": "application/x-www-form-urlencoded"}
             )
+            LOGGER.info(f"[Connections] Token exchange response status: {response.status_code}")
             response.raise_for_status()
             token_response = response.json()
 
-        LOGGER.info(f"[Connections] Successfully obtained token for {connection_name}")
+        LOGGER.info(f"[Connections] Token response received:")
+        LOGGER.info(f"[Connections]   token_type: {token_response.get('token_type', 'N/A')}")
+        LOGGER.info(f"[Connections]   expires_in: {token_response.get('expires_in', 'N/A')}")
+        LOGGER.info(f"[Connections]   scope: {token_response.get('scope', 'N/A')}")
+        LOGGER.info(f"[Connections]   access_token present: {bool(token_response.get('access_token'))}")
+        LOGGER.info(f"[Connections]   refresh_token present: {bool(token_response.get('refresh_token'))}")
 
         # Store token in cache (which persists to database)
         token_cache = get_mcp_token_cache()
@@ -468,6 +511,8 @@ async def oauth_callback(
         )
 
         LOGGER.info(f"[Connections] Token stored successfully for connection {connection_name}")
+        LOGGER.info(f"[Connections] Redirecting to: {frontend_url}/connections?connection_success={connection_name}")
+        LOGGER.info(f"[Connections] ========== CALLBACK SUCCESS ==========")
 
         # Redirect to frontend with success
         return RedirectResponse(
@@ -476,13 +521,17 @@ async def oauth_callback(
         )
 
     except httpx.HTTPStatusError as e:
-        LOGGER.error(f"[Connections] Token exchange failed: {e.response.text}")
+        LOGGER.error(f"[Connections] Token exchange failed!")
+        LOGGER.error(f"[Connections]   Status code: {e.response.status_code}")
+        LOGGER.error(f"[Connections]   Response: {e.response.text}")
+        LOGGER.info(f"[Connections] ========== CALLBACK FAILED ==========")
         return RedirectResponse(
             url=f"{frontend_url}/connections?connection_error={connection_name}&error=token_exchange_failed",
             status_code=status.HTTP_302_FOUND
         )
     except Exception as e:
-        LOGGER.error(f"[Connections] Unexpected error: {e}")
+        LOGGER.error(f"[Connections] Unexpected error: {type(e).__name__}: {e}")
+        LOGGER.info(f"[Connections] ========== CALLBACK FAILED ==========")
         return RedirectResponse(
             url=f"{frontend_url}/connections?connection_error={connection_name}&error=unknown",
             status_code=status.HTTP_302_FOUND
