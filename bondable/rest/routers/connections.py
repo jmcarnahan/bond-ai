@@ -308,7 +308,6 @@ async def authorize_connection(
         Authorization URL to redirect user to
     """
     LOGGER.debug(f"[Connections] ========== AUTHORIZE START ==========")
-    # LOGGER.debug(f"[Connections] User: {current_user.email} (ID: {current_user.user_id})")
     LOGGER.debug(f"[Connections] Connection: {connection_name}")
 
     config = _get_connection_config(connection_name)
@@ -350,8 +349,6 @@ async def authorize_connection(
 
     # Store state in database
     LOGGER.debug(f"[Connections] Saving OAuth state to database:")
-    LOGGER.debug(f"[Connections]   state: {state[:20]}...")
-    # LOGGER.debug(f"[Connections]   user_id: {current_user.user_id}")
     LOGGER.debug(f"[Connections]   connection_name: {connection_name}")
     LOGGER.debug(f"[Connections]   code_verifier: {code_verifier[:20]}...")
     LOGGER.debug(f"[Connections]   redirect_uri: {redirect_uri}")
