@@ -90,50 +90,13 @@ def _get_db_session():
 
 def _get_connection_configs() -> List[Dict[str, Any]]:
     """
-    Get all enabled connection configurations.
+    Get all OAuth2 connection configurations from BOND_MCP_CONFIG environment variable.
 
-    First tries database, falls back to JSON config for backward compatibility.
+    Connection configs are now stored exclusively in the BOND_MCP_CONFIG environment
+    variable (JSON format). The ConnectionConfig database table has been removed.
     """
     configs = []
 
-    # Try database first
-    session = _get_db_session()
-    if session:
-        try:
-            from bondable.bond.providers.metadata import ConnectionConfig
-
-            db_configs = session.query(ConnectionConfig).filter(
-                ConnectionConfig.enabled.is_(True)
-            ).all()
-
-            for config in db_configs:
-                configs.append({
-                    "name": config.name,
-                    "display_name": config.display_name,
-                    "description": config.description,
-                    "url": config.url,
-                    "transport": config.transport,
-                    "auth_type": config.auth_type,
-                    "oauth_client_id": config.oauth_client_id,
-                    "oauth_authorize_url": config.oauth_authorize_url,
-                    "oauth_token_url": config.oauth_token_url,
-                    "oauth_scopes": config.oauth_scopes,
-                    "icon_url": config.icon_url,
-                    "extra_config": config.extra_config or {}
-                })
-
-            session.close()
-
-            if configs:
-                LOGGER.debug(f"Loaded {len(configs)} connection configs from database")
-                return configs
-
-        except Exception as e:
-            LOGGER.warning(f"Error loading connection configs from database: {e}")
-            if session:
-                session.close()
-
-    # Fall back to JSON config (for backward compatibility)
     try:
         config = Config.config()
         mcp_config = config.get_mcp_config()
@@ -165,10 +128,10 @@ def _get_connection_configs() -> List[Dict[str, Any]]:
                     "extra_config": extra_config
                 })
 
-        LOGGER.debug(f"Loaded {len(configs)} connection configs from JSON")
+        LOGGER.debug(f"Loaded {len(configs)} OAuth2 connection configs from BOND_MCP_CONFIG")
 
     except Exception as e:
-        LOGGER.error(f"Error loading connection configs from JSON: {e}")
+        LOGGER.error(f"Error loading connection configs: {e}")
 
     return configs
 
@@ -344,7 +307,8 @@ async def authorize_connection(
     Returns:
         Authorization URL to redirect user to
     """
-    LOGGER.info(f"[Connections] User {current_user.email} initiating auth for {connection_name}")
+    LOGGER.debug(f"[Connections] ========== AUTHORIZE START ==========")
+    LOGGER.debug(f"[Connections] Connection: {connection_name}")
 
     config = _get_connection_config(connection_name)
     if config is None:
@@ -384,11 +348,14 @@ async def authorize_connection(
         LOGGER.debug(f"[Connections] Using generated redirect_uri")
 
     # Store state in database
+    LOGGER.info(f"[Connections] Saving OAuth state to database: connection_name: {connection_name}")
     if not _save_oauth_state(state, current_user.user_id, connection_name, code_verifier, redirect_uri):
+        LOGGER.error(f"[Connections] Failed to save OAuth state!")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save OAuth state"
         )
+    LOGGER.info(f"[Connections] OAuth state saved successfully")
 
     # Build authorization URL
     params = {
@@ -406,8 +373,6 @@ async def authorize_connection(
         params["scope"] = scopes
 
     authorization_url = f"{authorize_url}?{urlencode(params)}"
-
-    LOGGER.info(f"[Connections] Generated authorization URL for {connection_name}")
 
     return AuthorizeResponse(
         authorization_url=authorization_url,
@@ -428,14 +393,13 @@ async def oauth_callback(
     Exchanges authorization code for access token and stores encrypted in database.
     Redirects to frontend with success/error status.
     """
-    LOGGER.info(f"[Connections] Received callback for {connection_name}")
-
-    # Initialize token cache with database
+    LOGGER.info(f"[Connections] Callback for Connection: {connection_name}")
 
     # Validate and retrieve state
+    LOGGER.debug(f"[Connections] Looking up OAuth state in database...")
     state_data = _get_and_delete_oauth_state(state)
     if state_data is None:
-        LOGGER.warning(f"[Connections] Invalid state parameter for {connection_name}")
+        LOGGER.warning(f"[Connections] Invalid state parameter for {connection_name} - state not found in database!")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid state parameter - possible CSRF attack or expired state"
@@ -445,9 +409,12 @@ async def oauth_callback(
     code_verifier = state_data["code_verifier"]
     redirect_uri = state_data["redirect_uri"]
 
+    LOGGER.info(f"[Connections] State data retrieved successfully: connection_name: {connection_name}")
+
     # Get connection configuration
     config = _get_connection_config(connection_name)
     if config is None:
+        LOGGER.error(f"[Connections] Connection config not found for: {connection_name}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Connection '{connection_name}' not found"
@@ -455,6 +422,7 @@ async def oauth_callback(
 
     token_url = config.get("oauth_token_url")
     if not token_url:
+        LOGGER.error(f"[Connections] No token URL configured for: {connection_name}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"No token URL configured for '{connection_name}'"
@@ -478,6 +446,7 @@ async def oauth_callback(
     client_secret = config.get("extra_config", {}).get("client_secret")
     if client_secret:
         token_data["client_secret"] = client_secret
+        LOGGER.info(f"[Connections] Using client_secret from extra_config (redacted)")
 
     jwt_config = Config.config().get_jwt_config()
     frontend_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
@@ -489,10 +458,9 @@ async def oauth_callback(
                 data=token_data,
                 headers={"Content-Type": "application/x-www-form-urlencoded"}
             )
+            LOGGER.info(f"[Connections] Token exchange response status: {response.status_code}")
             response.raise_for_status()
             token_response = response.json()
-
-        LOGGER.info(f"[Connections] Successfully obtained token for {connection_name}")
 
         # Store token in cache (which persists to database)
         token_cache = get_mcp_token_cache()
@@ -513,13 +481,17 @@ async def oauth_callback(
         )
 
     except httpx.HTTPStatusError as e:
-        LOGGER.error(f"[Connections] Token exchange failed: {e.response.text}")
+        LOGGER.error(f"[Connections] Token exchange failed!")
+        LOGGER.error(f"[Connections]   Status code: {e.response.status_code}")
+        LOGGER.error(f"[Connections]   Response: {e.response.text}")
+        LOGGER.error(f"[Connections] ========== CALLBACK FAILED ==========")
         return RedirectResponse(
             url=f"{frontend_url}/connections?connection_error={connection_name}&error=token_exchange_failed",
             status_code=status.HTTP_302_FOUND
         )
     except Exception as e:
-        LOGGER.error(f"[Connections] Unexpected error: {e}")
+        LOGGER.error(f"[Connections] Unexpected error: {type(e).__name__}: {e}")
+        LOGGER.error(f"[Connections] ========== CALLBACK FAILED ==========")
         return RedirectResponse(
             url=f"{frontend_url}/connections?connection_error={connection_name}&error=unknown",
             status_code=status.HTTP_302_FOUND

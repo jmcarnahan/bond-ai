@@ -1,121 +1,18 @@
 import logging
-from datetime import datetime, timezone, timedelta
 from typing import Annotated, List, Dict, Any, Optional, Union
-from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, AnyUrl
 from fastmcp import Client
 
 from bondable.bond.mcp_client import MCPClient
 from bondable.bond.config import Config
 from bondable.bond.auth.mcp_token_cache import get_mcp_token_cache
-from bondable.bond.auth.oauth_utils import generate_pkce_pair, generate_oauth_state
 from bondable.bond.providers.bedrock.BedrockMCP import _get_auth_headers_for_server as get_mcp_auth_headers, AuthorizationRequiredError, TokenExpiredError
 from bondable.rest.models.auth import User
 from bondable.rest.dependencies.auth import get_current_user
 
 router = APIRouter(prefix="/mcp", tags=["MCP"])
 LOGGER = logging.getLogger(__name__)
-
-
-# =============================================================================
-# Database Session Helper
-# =============================================================================
-
-def _get_db_session():
-    """Get database session from provider."""
-    config = Config.config()
-    provider = config.get_provider()
-    if provider and hasattr(provider, 'metadata'):
-        return provider.metadata.get_db_session()
-    return None
-
-
-# =============================================================================
-# OAuth State Management (Database-backed)
-# =============================================================================
-
-def _save_mcp_oauth_state(
-    state: str,
-    user_id: str,
-    server_name: str,
-    code_verifier: str,
-    redirect_uri: str = ""
-) -> bool:
-    """Save OAuth state to database for MCP server authentication."""
-    session = _get_db_session()
-    if session is None:
-        LOGGER.error("[MCP] No database session available for OAuth state")
-        return False
-
-    try:
-        from bondable.bond.providers.metadata import ConnectionOAuthState
-
-        # Clean up old states (older than 10 minutes)
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
-        session.query(ConnectionOAuthState).filter(
-            ConnectionOAuthState.created_at < cutoff
-        ).delete()
-
-        # Save new state - use connection_name field to store server_name
-        oauth_state = ConnectionOAuthState(
-            state=state,
-            user_id=user_id,
-            connection_name=server_name,  # Store server_name in connection_name field
-            code_verifier=code_verifier,
-            redirect_uri=redirect_uri
-        )
-        session.add(oauth_state)
-        session.commit()
-        LOGGER.debug(f"[MCP] Saved OAuth state for server {server_name}")
-        return True
-
-    except Exception as e:
-        LOGGER.error(f"[MCP] Error saving OAuth state: {e}")
-        session.rollback()
-        return False
-    finally:
-        session.close()
-
-
-def _get_and_delete_mcp_oauth_state(state: str) -> Optional[Dict[str, Any]]:
-    """Get and delete OAuth state from database."""
-    session = _get_db_session()
-    if session is None:
-        LOGGER.error("[MCP] No database session available for OAuth state retrieval")
-        return None
-
-    try:
-        from bondable.bond.providers.metadata import ConnectionOAuthState
-
-        oauth_state = session.query(ConnectionOAuthState).filter(
-            ConnectionOAuthState.state == state
-        ).first()
-
-        if oauth_state is None:
-            return None
-
-        result = {
-            "user_id": oauth_state.user_id,
-            "server_name": oauth_state.connection_name,  # connection_name stores server_name
-            "code_verifier": oauth_state.code_verifier,
-            "redirect_uri": oauth_state.redirect_uri
-        }
-
-        # Delete the state (one-time use)
-        session.delete(oauth_state)
-        session.commit()
-        LOGGER.debug(f"[MCP] Retrieved and deleted OAuth state for server {result['server_name']}")
-
-        return result
-
-    except Exception as e:
-        LOGGER.error(f"[MCP] Error getting OAuth state: {e}")
-        session.rollback()
-        return None
-    finally:
-        session.close()
 
 
 class MCPToolResponse(BaseModel):
@@ -180,7 +77,7 @@ async def list_mcp_tools(
         List of available MCP tools with their schemas, or grouped response if grouped=True
     """
     from fastmcp.client.transports import SSETransport
-    from fastmcp.client import StreamableHttpTransport
+    from fastmcp.client import StreamableHttpTransport  # Use fastmcp's wrapper which works with fastmcp.Client
 
     LOGGER.info(f"[MCP Tools] Request received from user: {current_user.user_id} ({current_user.email}), grouped={grouped}")
 
@@ -241,10 +138,12 @@ async def list_mcp_tools(
                     # Create transport based on type
                     if transport_type in ('sse', 'streamable-http'):
                         # Add User-Agent header - some servers (like Atlassian MCP) require it
+                        # Note: Don't set accept/content-type - let StreamableHttpTransport set them
                         headers_with_ua = {
                             'User-Agent': 'Bond-AI-MCP-Client/1.0',
                             **auth_headers
                         }
+
                         LOGGER.info(f"[MCP Tools] Creating {transport_type} transport for '{server_name}' at {server_url}")
 
                         # Use correct transport class based on type
@@ -443,6 +342,9 @@ async def list_mcp_resources(
                 auth_headers = get_mcp_auth_headers(server_name, server_config, current_user)
                 server_with_auth = server_config.copy()
                 existing_headers = server_with_auth.get('headers', {})
+
+                # Note: Don't add Accept/Content-Type headers - MCP SDK sets these by default
+
                 server_with_auth['headers'] = {**existing_headers, **auth_headers}
                 authenticated_servers[server_name] = server_with_auth
             except (AuthorizationRequiredError, TokenExpiredError):
@@ -555,330 +457,20 @@ async def get_mcp_status(
 
 
 # =============================================================================
-# OAuth2 Endpoints for External MCP Servers
+# MCP Connections Endpoint (OAuth handled by /connections/ router)
 # =============================================================================
-
-class MCPServerConnectionStatus(BaseModel):
-    """Response model for MCP server connection status."""
-    server_name: str
-    connected: bool
-    auth_type: str
-    provider: Optional[str] = None
-    scopes: Optional[str] = None
-    expires_at: Optional[str] = None
-    requires_authorization: bool = False
-    authorization_url: Optional[str] = None
-
+# NOTE: OAuth2 authentication for MCP servers is handled by the /connections/
+# router in connections.py. The duplicate OAuth endpoints that were here have
+# been removed to avoid confusion. Use:
+#   - GET /connections/{name}/authorize - to initiate OAuth
+#   - GET /connections/{name}/callback - OAuth callback
+#   - GET /connections/{name}/status - check connection status
+#   - DELETE /connections/{name} - disconnect
+# =============================================================================
 
 class MCPConnectionsResponse(BaseModel):
     """Response model for all user MCP connections."""
     connections: Dict[str, Dict[str, Any]]
-
-
-def _get_server_config(server_name: str) -> Dict[str, Any]:
-    """Get MCP server configuration by name."""
-    config = Config.config()
-    mcp_config = config.get_mcp_config()
-    servers = mcp_config.get('mcpServers', {})
-
-    if server_name not in servers:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"MCP server '{server_name}' not found in configuration"
-        )
-
-    return servers[server_name]
-
-
-# PKCE generation moved to bondable.bond.auth.oauth_utils.generate_pkce_pair
-
-
-@router.get("/servers/{server_name}/connect")
-async def connect_mcp_server(
-    server_name: str,
-    current_user: Annotated[User, Depends(get_current_user)]
-) -> Dict[str, Any]:
-    """
-    Initiate OAuth2 connection to an external MCP server.
-
-    Returns an authorization URL that the client should open in a browser.
-    After authorization, the callback endpoint will store the token.
-
-    Args:
-        server_name: Name of the MCP server to connect to
-
-    Returns:
-        Dictionary with authorization_url to redirect user to
-    """
-    LOGGER.info(f"[MCP Connect] User {current_user.email} initiating connection to {server_name}")
-
-    server_config = _get_server_config(server_name)
-    auth_type = server_config.get('auth_type', 'bond_jwt')
-
-    if auth_type != 'oauth2':
-        return {
-            "message": f"Server '{server_name}' uses {auth_type} authentication, no OAuth required",
-            "connected": True
-        }
-
-    oauth_config = server_config.get('oauth_config', {})
-    authorize_url = oauth_config.get('authorize_url')
-
-    if not authorize_url:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"No authorize_url configured for MCP server '{server_name}'"
-        )
-
-    # Generate PKCE pair
-    code_verifier, code_challenge = generate_pkce_pair()
-
-    # Generate state for CSRF protection
-    state = generate_oauth_state()
-
-    # Build authorization URL
-    # Get redirect URI from config or use default
-    jwt_config = Config.config().get_jwt_config()
-    base_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
-    redirect_uri = oauth_config.get('redirect_uri', f"{base_url}/mcp/servers/{server_name}/callback")
-
-    # Store state in database for callback validation
-    if not _save_mcp_oauth_state(
-        state=state,
-        user_id=current_user.user_id,
-        server_name=server_name,
-        code_verifier=code_verifier,
-        redirect_uri=redirect_uri
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to save OAuth state"
-        )
-
-    params = {
-        "response_type": "code",
-        "client_id": oauth_config.get('client_id', ''),
-        "redirect_uri": redirect_uri,
-        "state": state,
-        "code_challenge": code_challenge,
-        "code_challenge_method": "S256"
-    }
-
-    # Add scopes if specified
-    scopes = oauth_config.get('scopes')
-    if scopes:
-        params["scope"] = scopes
-
-    authorization_url = f"{authorize_url}?{urlencode(params)}"
-
-    LOGGER.info(f"[MCP Connect] Generated authorization URL for {server_name}")
-
-    return {
-        "authorization_url": authorization_url,
-        "server_name": server_name,
-        "message": "Open authorization_url in browser to authorize"
-    }
-
-
-@router.get("/servers/{server_name}/callback")
-async def mcp_oauth_callback(
-    server_name: str,
-    code: str = Query(..., description="Authorization code from OAuth provider"),
-    state: str = Query(..., description="State parameter for CSRF validation")
-) -> RedirectResponse:
-    """
-    Handle OAuth2 callback from external MCP server.
-
-    Exchanges authorization code for access token and stores in cache.
-    Redirects to frontend with success/error status.
-
-    Args:
-        server_name: Name of the MCP server
-        code: Authorization code from OAuth provider
-        state: State parameter for CSRF validation
-    """
-    import httpx
-
-    LOGGER.info(f"[MCP Callback] Received callback for {server_name}")
-
-    # Validate and retrieve state from database
-    state_data = _get_and_delete_mcp_oauth_state(state)
-    if state_data is None:
-        LOGGER.warning(f"[MCP Callback] Invalid state parameter for {server_name}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid state parameter - possible CSRF attack or expired state"
-        )
-
-    user_id = state_data["user_id"]
-    code_verifier = state_data["code_verifier"]
-    # Use redirect_uri from state if stored, otherwise regenerate from config
-    stored_redirect_uri = state_data.get("redirect_uri")
-
-    # Get server configuration
-    server_config = _get_server_config(server_name)
-    oauth_config = server_config.get('oauth_config', {})
-    token_url = oauth_config.get('token_url')
-
-    if not token_url:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"No token_url configured for MCP server '{server_name}'"
-        )
-
-    # Build redirect URI (must match what was sent in authorization request)
-    # Prefer stored redirect_uri from state, fallback to regenerating from config
-    if stored_redirect_uri:
-        redirect_uri = stored_redirect_uri
-    else:
-        jwt_config = Config.config().get_jwt_config()
-        base_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
-        redirect_uri = oauth_config.get('redirect_uri', f"{base_url}/mcp/servers/{server_name}/callback")
-
-    # Exchange code for token
-    token_data = {
-        "grant_type": "authorization_code",
-        "code": code,
-        "redirect_uri": redirect_uri,
-        "code_verifier": code_verifier
-    }
-
-    # Add client credentials if configured
-    client_id = oauth_config.get('client_id')
-    client_secret = oauth_config.get('client_secret')
-    if client_id:
-        token_data["client_id"] = client_id
-    if client_secret:
-        token_data["client_secret"] = client_secret
-
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                token_url,
-                data=token_data,
-                headers={"Content-Type": "application/x-www-form-urlencoded"}
-            )
-            response.raise_for_status()
-            token_response = response.json()
-
-        LOGGER.info(f"[MCP Callback] Successfully obtained token for {server_name}")
-
-        # Store token in cache
-        token_cache = get_mcp_token_cache()
-        token_cache.set_token_from_response(
-            user_id=user_id,
-            server_name=server_name,
-            token_response=token_response,
-            provider=oauth_config.get('provider', server_name)
-        )
-
-        LOGGER.info(f"[MCP Callback] Token stored successfully for server {server_name}")
-
-        # Redirect to frontend with success
-        frontend_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
-        return RedirectResponse(
-            url=f"{frontend_url}?mcp_connected={server_name}",
-            status_code=status.HTTP_302_FOUND
-        )
-
-    except httpx.HTTPStatusError as e:
-        LOGGER.error(f"[MCP Callback] Token exchange failed: {e.response.text}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to exchange code for token: {e.response.text}"
-        )
-    except Exception as e:
-        LOGGER.error(f"[MCP Callback] Unexpected error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to complete OAuth flow: {str(e)}"
-        )
-
-
-@router.get("/servers/{server_name}/status", response_model=MCPServerConnectionStatus)
-async def get_mcp_server_connection_status(
-    server_name: str,
-    current_user: Annotated[User, Depends(get_current_user)]
-) -> MCPServerConnectionStatus:
-    """
-    Get the connection status for a specific MCP server.
-
-    Args:
-        server_name: Name of the MCP server
-
-    Returns:
-        Connection status including whether authorization is required
-    """
-    LOGGER.debug(f"[MCP Server Status] Checking {server_name} for user {current_user.email}")
-
-    server_config = _get_server_config(server_name)
-    auth_type = server_config.get('auth_type', 'bond_jwt')
-
-    if auth_type != 'oauth2':
-        # Non-OAuth servers are always "connected"
-        return MCPServerConnectionStatus(
-            server_name=server_name,
-            connected=True,
-            auth_type=auth_type,
-            requires_authorization=False
-        )
-
-    # Check if user has a token in cache
-    token_cache = get_mcp_token_cache()
-    token_data = token_cache.get_token(current_user.user_id, server_name)
-
-    if token_data is None:
-        return MCPServerConnectionStatus(
-            server_name=server_name,
-            connected=False,
-            auth_type=auth_type,
-            requires_authorization=True,
-            authorization_url=f"/mcp/servers/{server_name}/connect"
-        )
-
-    return MCPServerConnectionStatus(
-        server_name=server_name,
-        connected=True,
-        auth_type=auth_type,
-        provider=token_data.provider,
-        scopes=token_data.scopes,
-        expires_at=token_data.get_expires_at_iso(),
-        requires_authorization=False
-    )
-
-
-@router.delete("/servers/{server_name}/disconnect")
-async def disconnect_mcp_server(
-    server_name: str,
-    current_user: Annotated[User, Depends(get_current_user)]
-) -> Dict[str, Any]:
-    """
-    Disconnect from an external MCP server by clearing the stored token.
-
-    Args:
-        server_name: Name of the MCP server to disconnect from
-
-    Returns:
-        Confirmation of disconnection
-    """
-    LOGGER.info(f"[MCP Disconnect] User {current_user.email} disconnecting from {server_name}")
-
-    token_cache = get_mcp_token_cache()
-    removed = token_cache.clear_token(current_user.user_id, server_name)
-
-    if removed:
-        LOGGER.info(f"[MCP Disconnect] Successfully disconnected from {server_name}")
-        return {
-            "message": f"Successfully disconnected from '{server_name}'",
-            "server_name": server_name,
-            "disconnected": True
-        }
-    else:
-        return {
-            "message": f"No connection found for '{server_name}'",
-            "server_name": server_name,
-            "disconnected": False
-        }
 
 
 @router.get("/connections", response_model=MCPConnectionsResponse)

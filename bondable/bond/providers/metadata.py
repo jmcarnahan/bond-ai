@@ -91,40 +91,11 @@ class User(Base):
 # ============================================================================
 # Connection Models - For MCP/External Service OAuth Integration
 # ============================================================================
-
-class ConnectionConfig(Base):
-    """
-    Admin-defined connection configurations for external services.
-
-    These define the available connections (like Atlassian, Google Drive, etc.)
-    that users can authenticate with to access MCP tools.
-    """
-    __tablename__ = "connection_configs"
-
-    id = Column(String, primary_key=True, nullable=False)  # UUID
-    name = Column(String, unique=True, nullable=False, index=True)  # e.g., "atlassian"
-    display_name = Column(String, nullable=False)  # e.g., "Atlassian (Jira & Confluence)"
-    description = Column(String, nullable=True)  # e.g., "Access Jira issues and Confluence docs"
-    url = Column(String, nullable=False)  # MCP endpoint URL
-    transport = Column(String, default="sse")  # sse, streamable-http
-    auth_type = Column(String, nullable=False)  # oauth2, static, bond_jwt
-
-    # OAuth configuration (if auth_type == "oauth2")
-    oauth_client_id = Column(String, nullable=True)
-    oauth_authorize_url = Column(String, nullable=True)
-    oauth_token_url = Column(String, nullable=True)
-    oauth_scopes = Column(String, nullable=True)  # Space-separated scopes
-
-    # UI display
-    icon_url = Column(String, nullable=True)
-
-    # Additional configuration as JSON (cloud_id, etc.)
-    extra_config = Column(JSON, default=dict)
-
-    enabled = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.datetime.now)
-    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
-
+# Note: Connection configurations are now stored in BOND_MCP_CONFIG environment
+# variable (JSON format). The ConnectionConfig table has been removed to avoid
+# redundancy. UserConnectionToken and ConnectionOAuthState store user-specific
+# data with connection_name validated against the environment config on use.
+# ============================================================================
 
 class UserConnectionToken(Base):
     """
@@ -137,7 +108,7 @@ class UserConnectionToken(Base):
 
     id = Column(String, primary_key=True, nullable=False)  # UUID
     user_id = Column(String, ForeignKey('users.id'), nullable=False, index=True)
-    connection_name = Column(String, ForeignKey('connection_configs.name'), nullable=False)
+    connection_name = Column(String, nullable=False, index=True)  # Validated against BOND_MCP_CONFIG on use
 
     # Encrypted tokens (use token_encryption.py to encrypt/decrypt)
     access_token_encrypted = Column(String, nullable=False)
@@ -170,7 +141,7 @@ class ConnectionOAuthState(Base):
 
     state = Column(String, primary_key=True, nullable=False)  # Random state parameter
     user_id = Column(String, ForeignKey('users.id'), nullable=False)
-    connection_name = Column(String, ForeignKey('connection_configs.name'), nullable=False)
+    connection_name = Column(String, nullable=False, index=True)  # Validated against BOND_MCP_CONFIG on use
     code_verifier = Column(String, nullable=True)  # For PKCE
     redirect_uri = Column(String, nullable=True)  # Where to redirect after OAuth
     created_at = Column(DateTime, default=datetime.datetime.now)
