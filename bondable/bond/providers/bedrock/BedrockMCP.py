@@ -15,7 +15,7 @@ import json
 import logging
 from typing import List, Dict, Any, Optional
 from fastmcp import Client
-from fastmcp.client import StreamableHttpTransport
+from fastmcp.client import StreamableHttpTransport  # Use fastmcp's transport wrapper
 from fastmcp.client.transports import SSETransport
 import asyncio
 from bondable.bond.config import Config
@@ -124,6 +124,20 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
                 }
         
         # Create action group
+        openapi_spec = {
+            "openapi": "3.0.0",
+            "info": {
+                "title": "MCP Tools API",
+                "version": "1.0.0",
+                "description": "MCP tools for external integrations"
+            },
+            "paths": paths
+        }
+
+        # Log the OpenAPI spec for debugging
+        LOGGER.info(f"[MCP Action Groups] Creating action group with {len(paths)} tools: {list(paths.keys())}")
+        LOGGER.debug(f"[MCP Action Groups] OpenAPI spec: {json.dumps(openapi_spec, indent=2)}")
+
         action_group_spec = {
             "actionGroupName": "MCPTools",
             "description": "MCP (Model Context Protocol) tools for external integrations",
@@ -131,18 +145,10 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
                 "customControl": "RETURN_CONTROL"  # Return control to client for execution
             },
             "apiSchema": {
-                "payload": json.dumps({
-                    "openapi": "3.0.0",
-                    "info": {
-                        "title": "MCP Tools API",
-                        "version": "1.0.0",
-                        "description": "MCP tools for external integrations"
-                    },
-                    "paths": paths
-                })
+                "payload": json.dumps(openapi_spec)
             }
         }
-        
+
         LOGGER.info(f"Creating MCP action group with {len(paths)} tools")
         action_response = bedrock_agent_client.create_agent_action_group(
             agentId=bedrock_agent_id,
@@ -214,6 +220,10 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
 
             # Use appropriate transport based on config
             transport_type = server_config.get('transport', 'streamable-http')
+
+            # Note: Don't override Accept/Content-Type headers for streamable-http
+            # The MCP SDK sets these by default with lowercase keys
+
             if transport_type == 'sse':
                 transport = SSETransport(server_url, headers=headers)
             else:
@@ -346,6 +356,17 @@ def _get_auth_headers_for_server(
 
         # Use "Bearer" (capitalized) as per RFC 6750 - some servers (like Atlassian) require this
         headers['Authorization'] = f'Bearer {token_data.access_token}'
+
+        # TODO: Make cloud_id header configurable via oauth_config.cloud_id_header_name
+        # to support different MCP servers that may use different header names
+        # For now, hardcode X-Atlassian-Cloud-Id for Atlassian MCP compatibility
+        cloud_id = server_config.get('cloud_id')
+        if cloud_id:
+            headers['X-Atlassian-Cloud-Id'] = cloud_id
+            LOGGER.debug(f"[MCP Auth] Added X-Atlassian-Cloud-Id header: {cloud_id}")
+        else:
+            LOGGER.warning(f"[MCP Auth] No cloud_id found in config for OAuth2 server '{server_name}'. Some MCP servers (like Atlassian) may require this.")
+
         LOGGER.debug(f"Using OAuth2 token for MCP server {server_name} (user: {user_email})")
 
     elif auth_type == AUTH_TYPE_BOND_JWT:
@@ -418,6 +439,10 @@ async def execute_mcp_tool(
 
             # Use appropriate transport based on config
             transport_type = server_config.get('transport', 'streamable-http')
+
+            # Note: Don't override Accept/Content-Type headers for streamable-http
+            # The MCP SDK sets these by default with lowercase keys
+
             if transport_type == 'sse':
                 transport = SSETransport(server_url, headers=headers)
             else:
@@ -474,7 +499,8 @@ async def execute_mcp_tool(
                 "expired_at": safe_isoformat(e.expired_at)
             }
         except Exception as e:
-            LOGGER.warning(f"[MCP Execute] Error on server '{server_name}': {e}")
+            # Log full exception details including traceback for debugging
+            LOGGER.exception(f"[MCP Execute] Error on server '{server_name}' when executing tool '{tool_name}' with parameters {list(parameters.keys()) if parameters else []}: {e}")
             continue  # Try next server
 
     # Tool not found on any server
