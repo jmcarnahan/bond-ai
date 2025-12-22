@@ -409,7 +409,7 @@ async def oauth_callback(
     code_verifier = state_data["code_verifier"]
     redirect_uri = state_data["redirect_uri"]
 
-    LOGGER.info(f"[Connections] State data retrieved successfully: connection_name from state: {state_data.get('connection_name', 'N/A')}")
+    LOGGER.info(f"[Connections] State data retrieved successfully: connection_name: {connection_name}")
 
     # Get connection configuration
     config = _get_connection_config(connection_name)
@@ -452,7 +452,6 @@ async def oauth_callback(
     frontend_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
 
     try:
-        LOGGER.info(f"[Connections] Sending token exchange request to {token_url}...")
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 token_url,
