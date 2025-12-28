@@ -1206,14 +1206,14 @@ devel = ["colorama", "json-spec", "jsonschema", "pylint", "pytest", "pytest-benc
 
 [[package]]
 name = "fastmcp"
-version = "2.13.1"
+version = "2.13.2"
 description = "The fast, Pythonic way to build MCP servers and clients."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "fastmcp-2.13.1-py3-none-any.whl", hash = "sha256:7a78b19785c4ec04a758d920c312769a497e3f6ab4c80feed504df1ed7de9f3c"},
-    {file = "fastmcp-2.13.1.tar.gz", hash = "sha256:b9c664c51f1ff47c698225e7304267ae29a51913f681bd49e442b8682f9a5f90"},
+    {file = "fastmcp-2.13.2-py3-none-any.whl", hash = "sha256:300c59eb970c235bb9d0575883322922e4f2e2468a3d45e90cbfd6b23b7be245"},
+    {file = "fastmcp-2.13.2.tar.gz", hash = "sha256:2a206401a6579fea621974162674beba85b467ad72c70c1a3752a31951dff7f0"},
 ]
 
 [package.dependencies]
@@ -1225,7 +1225,7 @@ jsonschema-path = ">=0.3.4"
 mcp = ">=1.19.0,<1.21.1 || >1.21.1,<2.0.0"
 openapi-pydantic = ">=0.5.1"
 platformdirs = ">=4.0.0"
-py-key-value-aio = {version = ">=0.2.8,<0.3.0", extras = ["disk", "keyring", "memory"]}
+py-key-value-aio = {version = ">=0.2.8,<0.4.0", extras = ["disk", "memory"]}
 pydantic = {version = ">=2.11.7", extras = ["email"]}
 pyperclip = ">=1.9.0"
 python-dotenv = ">=1.1.0"
@@ -2423,14 +2423,14 @@ traitlets = "*"
 
 [[package]]
 name = "mcp"
-version = "1.22.0"
+version = "1.23.1"
 description = "Model Context Protocol SDK"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "mcp-1.22.0-py3-none-any.whl", hash = "sha256:bed758e24df1ed6846989c909ba4e3df339a27b4f30f1b8b627862a4bade4e98"},
-    {file = "mcp-1.22.0.tar.gz", hash = "sha256:769b9ac90ed42134375b19e777a2858ca300f95f2e800982b3e2be62dfc0ba01"},
+    {file = "mcp-1.23.1-py3-none-any.whl", hash = "sha256:3ce897fcc20a41bd50b4c58d3aa88085f11f505dcc0eaed48930012d34c731d8"},
+    {file = "mcp-1.23.1.tar.gz", hash = "sha256:7403e053e8e2283b1e6ae631423cb54736933fea70b32422152e6064556cd298"},
 ]
 
 [package.dependencies]
@@ -3359,7 +3359,6 @@ files = [
 beartype = ">=0.22.2"
 cachetools = {version = ">=6.0.0", optional = true, markers = "extra == \"memory\""}
 diskcache = {version = ">=5.6.0", optional = true, markers = "extra == \"disk\""}
-keyring = {version = ">=25.6.0", optional = true, markers = "extra == \"keyring\""}
 pathvalidate = {version = ">=3.3.1", optional = true, markers = "extra == \"disk\""}
 py-key-value-shared = "0.2.8"
 
@@ -5815,4 +5814,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "a1d581ddde5aa95960aae30503d17cde4c95251dbd2b34fa80c0160fb547468b"
+content-hash = "62ff7580a1e7992cc6bb4249d865a864ac6fa6c28ddbbc611c41d4cf7d5d2103"

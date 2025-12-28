@@ -443,8 +443,19 @@ Please integrate any relevant insights from the documents with your analysis of 
             error_code = e.response['Error']['Code']
             error_message = str(e)
             LOGGER.exception(f"Bedrock Agent API error: {error_code} - {error_message} - {e}")
-            yield from self._yield_error_message(thread_id, error_message, error_code)
-            
+
+            # Provide helpful message for common issues
+            if error_code == 'internalServerException':
+                user_message = (
+                    "I encountered an error processing your request. This can happen when:\n"
+                    "- The question references tools or integrations that aren't configured\n"
+                    "- There's an issue with the tool definitions\n\n"
+                    "Please try rephrasing your question or ask about something else."
+                )
+                yield from self._yield_error_message(thread_id, user_message, error_code)
+            else:
+                yield from self._yield_error_message(thread_id, error_message, error_code)
+
         except Exception as e:
             LOGGER.exception(f"Unexpected error in stream_response: {e}")
             yield from self._yield_error_message(thread_id, str(e))
@@ -528,36 +539,40 @@ Please integrate any relevant insights from the documents with your analysis of 
                                 jwt_token=self._jwt_token
                             )
 
-                            LOGGER.debug(f"Executed MCP tool {tool_name} with result preview: {str(result)[:200]}")
+                            # Log result status
+                            success = result.get('success', False)
+                            status_code = 200 if success else 500
+                            result_preview = str(result.get('result', result.get('error', 'Unknown')))[:200]
+                            LOGGER.info(f"MCP tool {tool_name} completed - success: {success}, status: {status_code}, result preview: {result_preview}")
 
                             # Format response
                             response_body = json.dumps({
                                 "result": result.get('result', result.get('error', 'Unknown error'))
                             })
-                            
+
                             tool_response = {
                                 "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
                                 "apiPath": api_path,
                                 "httpMethod": action_input.get('httpMethod', 'POST'),
-                                "httpStatusCode": 200 if result.get('success') else 500,
+                                "httpStatusCode": status_code,
                                 "responseBody": {
                                     "application/json": {
                                         "body": response_body
                                     }
                                 }
                             }
-                            
+
                             # Wrap in apiResult if it was an apiInvocationInput
                             if 'apiInvocationInput' in inv_input:
                                 tool_response = {"apiResult": tool_response}
-                            
-                            LOGGER.debug(f"Executed MCP tool {tool_name} with response: \n{json.dumps(tool_response, indent=2)}")
+
+                            LOGGER.debug(f"Returning tool response to Bedrock: \n{json.dumps(tool_response, indent=2)}")
 
                             results.append(tool_response)
                         else:
                             LOGGER.error("No MCP config available")
                     except Exception as e:
-                        LOGGER.error(f"Error executing MCP tool {tool_name}: {e}")
+                        LOGGER.exception(f"Error executing MCP tool {tool_name} with parameters {list(parameters.keys()) if parameters else []}: {e}")
                         # Return error response
                         error_response = {
                             "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
@@ -799,82 +814,108 @@ Please integrate any relevant insights from the documents with your analysis of 
         event_stream = response.get('completion')
         if event_stream:
             event_count = 0
-            for event in event_stream:
-                event_count += 1
-                
-                # Handle text chunks
-                if 'chunk' in event:
-                    text = self._handle_chunk_event(event['chunk'])
-                    if text:
-                        yield text
-                        full_content += text
-                
-                # Handle files event
-                elif 'files' in event:
-                    files_event = event['files']
-                    if 'files' in files_event:
-                        for file_info in files_event['files']:
-                            new_response_id = yield from self._handle_file_event_streaming(
-                                file_info=file_info,
-                                thread_id=thread_id,
-                                user_id=user_id,
-                                current_response_id=response_id,
-                                full_content=full_content,
-                                attachments=attachments if not phase_metadata else None,
-                                seen_file_hashes=seen_file_hashes
-                            )
-                            
-                            if new_response_id != response_id:
-                                response_id = new_response_id
-                                full_content = ''
-                
-                # Handle returnControl events for MCP tools
-                elif 'returnControl' in event:
-                    return_control = event['returnControl']
-                    LOGGER.debug("Received returnControl event for tool execution")
-                    
-                    continuation_generator = self._handle_continuation_response(
-                        return_control=return_control,
-                        session_id=session_id,
-                        thread_id=thread_id,
-                        seen_file_hashes=seen_file_hashes,
-                        attachments=attachments if not phase_metadata else None
-                    )
-                    
-                    for cont_item in continuation_generator:
-                        if isinstance(cont_item, str):
-                            yield cont_item
-                            full_content += cont_item
-                        elif isinstance(cont_item, dict) and 'files_event' in cont_item:
-                            files_event = cont_item['files_event']['files']
-                            if 'files' in files_event:
-                                for file_info in files_event['files']:
-                                    new_response_id = yield from self._handle_file_event_streaming(
-                                        file_info=file_info,
-                                        thread_id=thread_id,
-                                        user_id=user_id,
-                                        current_response_id=response_id,
-                                        full_content=full_content,
-                                        attachments=attachments if not phase_metadata else None,
-                                        seen_file_hashes=seen_file_hashes
-                                    )
-                                    if new_response_id != response_id:
-                                        response_id = new_response_id
-                                        full_content = ''
-                        elif isinstance(cont_item, dict):
-                            if cont_item.get('session_state'):
-                                new_session_state = cont_item['session_state']
-                
-                # Handle session state updates
-                elif 'sessionState' in event:
-                    new_session_state = event['sessionState']
-                    LOGGER.debug("Received session state update")
-                
-                elif 'trace' in event:
-                    event_trace = event['trace']
-                    LOGGER.debug(f" --- Received trace: {list(event_trace.keys())}")
-            
-            LOGGER.debug(f"Processed {event_count} events from completion stream")
+            last_event_type = None
+            try:
+                for event in event_stream:
+                    event_count += 1
+
+                    # Log event type for debugging
+                    event_type = list(event.keys())[0] if event else 'unknown'
+                    last_event_type = event_type
+                    LOGGER.info(f"Processing event #{event_count}, type: {event_type}")
+
+                    # Handle text chunks
+                    if 'chunk' in event:
+                        text = self._handle_chunk_event(event['chunk'])
+                        if text:
+                            yield text
+                            full_content += text
+
+                    # Handle files event
+                    elif 'files' in event:
+                        files_event = event['files']
+                        if 'files' in files_event:
+                            for file_info in files_event['files']:
+                                new_response_id = yield from self._handle_file_event_streaming(
+                                    file_info=file_info,
+                                    thread_id=thread_id,
+                                    user_id=user_id,
+                                    current_response_id=response_id,
+                                    full_content=full_content,
+                                    attachments=attachments if not phase_metadata else None,
+                                    seen_file_hashes=seen_file_hashes
+                                )
+
+                                if new_response_id != response_id:
+                                    response_id = new_response_id
+                                    full_content = ''
+
+                    # Handle returnControl events for MCP tools
+                    elif 'returnControl' in event:
+                        return_control = event['returnControl']
+                        LOGGER.info("Received returnControl event for tool execution")
+
+                        continuation_generator = self._handle_continuation_response(
+                            return_control=return_control,
+                            session_id=session_id,
+                            thread_id=thread_id,
+                            seen_file_hashes=seen_file_hashes,
+                            attachments=attachments if not phase_metadata else None
+                        )
+
+                        for cont_item in continuation_generator:
+                            if isinstance(cont_item, str):
+                                yield cont_item
+                                full_content += cont_item
+                            elif isinstance(cont_item, dict) and 'files_event' in cont_item:
+                                files_event = cont_item['files_event']['files']
+                                if 'files' in files_event:
+                                    for file_info in files_event['files']:
+                                        new_response_id = yield from self._handle_file_event_streaming(
+                                            file_info=file_info,
+                                            thread_id=thread_id,
+                                            user_id=user_id,
+                                            current_response_id=response_id,
+                                            full_content=full_content,
+                                            attachments=attachments if not phase_metadata else None,
+                                            seen_file_hashes=seen_file_hashes
+                                        )
+                                        if new_response_id != response_id:
+                                            response_id = new_response_id
+                                            full_content = ''
+                            elif isinstance(cont_item, dict):
+                                if cont_item.get('session_state'):
+                                    new_session_state = cont_item['session_state']
+
+                    # Handle session state updates
+                    elif 'sessionState' in event:
+                        new_session_state = event['sessionState']
+                        LOGGER.debug("Received session state update")
+
+                    elif 'trace' in event:
+                        event_trace = event['trace']
+                        trace_keys = list(event_trace.keys())
+                        LOGGER.debug(f" --- Received trace: {trace_keys}")
+
+                        # Log more details about orchestrationTrace which contains tool invocation plans
+                        if 'orchestrationTrace' in event_trace:
+                            orch_trace = event_trace['orchestrationTrace']
+                            if 'invocationInput' in orch_trace:
+                                inv_input = orch_trace['invocationInput']
+                                # Log what action the agent is planning
+                                if 'actionGroupInvocationInput' in inv_input:
+                                    action_input = inv_input['actionGroupInvocationInput']
+                                    api_path = action_input.get('apiPath', 'unknown')
+                                    LOGGER.info(f"Agent planning to invoke: {api_path}")
+                                elif 'apiInvocationInput' in inv_input:
+                                    api_input = inv_input['apiInvocationInput']
+                                    api_path = api_input.get('apiPath', 'unknown')
+                                    LOGGER.info(f"Agent planning to invoke API: {api_path}")
+            except Exception as e:
+                LOGGER.exception(f"Error processing event #{event_count}, type: {last_event_type}")
+                raise
+
+            LOGGER.info(f"Processed {event_count} events from completion stream")
         
         # Close bond message
         yield '</_bondmessage>'

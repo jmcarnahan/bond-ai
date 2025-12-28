@@ -77,7 +77,7 @@ async def list_mcp_tools(
         List of available MCP tools with their schemas, or grouped response if grouped=True
     """
     from fastmcp.client.transports import SSETransport
-    from fastmcp.client import StreamableHttpTransport
+    from fastmcp.client import StreamableHttpTransport  # Use fastmcp's wrapper which works with fastmcp.Client
 
     LOGGER.info(f"[MCP Tools] Request received from user: {current_user.user_id} ({current_user.email}), grouped={grouped}")
 
@@ -138,10 +138,12 @@ async def list_mcp_tools(
                     # Create transport based on type
                     if transport_type in ('sse', 'streamable-http'):
                         # Add User-Agent header - some servers (like Atlassian MCP) require it
+                        # Note: Don't set accept/content-type - let StreamableHttpTransport set them
                         headers_with_ua = {
                             'User-Agent': 'Bond-AI-MCP-Client/1.0',
                             **auth_headers
                         }
+
                         LOGGER.info(f"[MCP Tools] Creating {transport_type} transport for '{server_name}' at {server_url}")
 
                         # Use correct transport class based on type
@@ -340,6 +342,9 @@ async def list_mcp_resources(
                 auth_headers = get_mcp_auth_headers(server_name, server_config, current_user)
                 server_with_auth = server_config.copy()
                 existing_headers = server_with_auth.get('headers', {})
+
+                # Note: Don't add Accept/Content-Type headers - MCP SDK sets these by default
+
                 server_with_auth['headers'] = {**existing_headers, **auth_headers}
                 authenticated_servers[server_name] = server_with_auth
             except (AuthorizationRequiredError, TokenExpiredError):
