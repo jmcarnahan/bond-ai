@@ -28,15 +28,21 @@ def _process_tool_resources(request_data, provider: Provider, user_id: str) -> d
         return tool_resources_payload
     
     # Handle code interpreter files
-    if (request_data.tool_resources.code_interpreter and 
-        request_data.tool_resources.code_interpreter.file_ids):
+    # Note: We check for `is not None` to distinguish between:
+    # - file_ids=None (not provided, preserve existing)
+    # - file_ids=[] (explicitly empty, clear all files)
+    if (request_data.tool_resources.code_interpreter and
+        request_data.tool_resources.code_interpreter.file_ids is not None):
         tool_resources_payload["code_interpreter"] = {
             "file_ids": request_data.tool_resources.code_interpreter.file_ids
         }
     
     # Handle file search files
-    if (request_data.tool_resources.file_search and 
-        request_data.tool_resources.file_search.file_ids):
+    # Note: We check for `is not None` to distinguish between:
+    # - file_ids=None (not provided, preserve existing)
+    # - file_ids=[] (explicitly empty, clear all files)
+    if (request_data.tool_resources.file_search and
+        request_data.tool_resources.file_search.file_ids is not None):
         tool_resources_payload["file_search"] = {
             "file_ids": request_data.tool_resources.file_search.file_ids
         }
@@ -143,7 +149,7 @@ async def create_agent(
     LOGGER.info(f"Create agent request for user {current_user.user_id} ({current_user.email}) - MCP tools: {request_data.mcp_tools}, MCP resources: {request_data.mcp_resources}")
     try:
         tool_resources_payload = _process_tool_resources(request_data, provider, current_user.user_id)
-        LOGGER.info(f"CREATE_AGENT: tool_resources_payload after processing: {tool_resources_payload}")
+        LOGGER.debug(f"CREATE_AGENT: tool_resources_payload after processing: {tool_resources_payload}")
         
         # Log complete request data for debugging
         LOGGER.debug("=== AGENT CREATE REQUEST DEBUG ===")
@@ -172,9 +178,13 @@ async def create_agent(
             id=None,
             user_id=current_user.user_id,
             mcp_tools=request_data.mcp_tools or [],
-            mcp_resources=request_data.mcp_resources or []
+            mcp_resources=request_data.mcp_resources or [],
+            file_storage=request_data.file_storage or 'direct'
         )
-        
+
+        # Log critical values for KB upload debugging
+        LOGGER.debug(f"CREATE_AGENT: AgentDefinition file_storage='{agent_def.file_storage}', tool_resources={agent_def.tool_resources}")
+
         # Log the created agent definition
         LOGGER.debug("=== AGENT DEFINITION CREATED ===")
         LOGGER.debug(f"AgentDefinition object:")
@@ -234,17 +244,13 @@ async def update_agent(
     LOGGER.info(f"Update request - introduction: '{request_data.introduction[:50] if request_data.introduction else 'None'}'...")
     LOGGER.info(f"Update request - reminder: '{request_data.reminder[:50] if request_data.reminder else 'None'}'...")
     
-    # Log the incoming tool_resources
-    if request_data.tool_resources:
-        LOGGER.info(f"UPDATE REQUEST tool_resources: {request_data.tool_resources}")
-        if hasattr(request_data.tool_resources, 'file_search') and request_data.tool_resources.file_search:
-            LOGGER.info(f"  file_search: {request_data.tool_resources.file_search}")
-            if hasattr(request_data.tool_resources.file_search, 'vector_store_ids'):
-                LOGGER.info(f"  vector_store_ids: {request_data.tool_resources.file_search.vector_store_ids}")
-    
+    # Log tool_resources for debugging
+    LOGGER.debug(f"Update agent {agent_id} - tool_resources: {request_data.tool_resources}")
+
     try:
         tool_resources_payload = _process_tool_resources(request_data, provider, current_user.user_id)
-        
+        LOGGER.debug(f"Processed tool_resources_payload: {tool_resources_payload}")
+
         # Log complete request data for debugging
         LOGGER.debug("=== AGENT UPDATE REQUEST DEBUG ===")
         LOGGER.debug(f"Agent ID: {agent_id}")
@@ -260,6 +266,14 @@ async def update_agent(
         LOGGER.debug(f"  - metadata: {request_data.metadata}")
         LOGGER.debug("=================================")
         
+        # Get existing agent to preserve file_storage if not provided
+        existing_file_storage = 'direct'
+        if request_data.file_storage is None:
+            existing_agent = provider.agents.get_agent(agent_id=agent_id)
+            if existing_agent:
+                existing_def = existing_agent.get_agent_definition()
+                existing_file_storage = getattr(existing_def, 'file_storage', 'direct')
+
         agent_def = AgentDefinition(
             id=agent_id,
             name=request_data.name,
@@ -273,7 +287,8 @@ async def update_agent(
             model=request_data.model or provider.get_default_model(),
             user_id=current_user.user_id,
             mcp_tools=request_data.mcp_tools or [],
-            mcp_resources=request_data.mcp_resources or []
+            mcp_resources=request_data.mcp_resources or [],
+            file_storage=request_data.file_storage if request_data.file_storage else existing_file_storage
         )
         
         # Log the created agent definition
@@ -360,7 +375,8 @@ async def get_agent_details(
             tool_resources=response_tool_resources if (response_tool_resources.code_interpreter or response_tool_resources.file_search) else None,
             metadata=agent_def.metadata,
             mcp_tools=agent_def.mcp_tools if agent_def.mcp_tools else None,
-            mcp_resources=agent_def.mcp_resources if agent_def.mcp_resources else None
+            mcp_resources=agent_def.mcp_resources if agent_def.mcp_resources else None,
+            file_storage=getattr(agent_def, 'file_storage', 'direct')
         )
         
     except HTTPException:
