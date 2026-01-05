@@ -36,6 +36,7 @@ class AgentCreateRequest(BaseModel):
     mcp_tools: Optional[List[str]] = None
     mcp_resources: Optional[List[str]] = None
     group_ids: Optional[List[str]] = Field(default_factory=list)
+    file_storage: Optional[str] = 'direct'  # 'direct' | 'knowledge_base'
 
 
 class AgentUpdateRequest(BaseModel):
@@ -50,6 +51,7 @@ class AgentUpdateRequest(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     mcp_tools: Optional[List[str]] = None
     mcp_resources: Optional[List[str]] = None
+    file_storage: Optional[str] = None  # 'direct' | 'knowledge_base'
 
 
 class AgentResponse(BaseModel):
@@ -70,6 +72,7 @@ class AgentDetailResponse(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     mcp_tools: Optional[List[str]] = None
     mcp_resources: Optional[List[str]] = None
+    file_storage: Optional[str] = 'direct'  # 'direct' | 'knowledge_base'
 
 
 class ModelInfo(BaseModel):
