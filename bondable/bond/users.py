@@ -49,19 +49,31 @@ class Users:
                 return existing_user.id, False
             else:
                 # Check if there's an existing user with this email but different ID
-                # This handles migration from email-based to user_id-based identification
+                # This handles users logging in with a different OAuth provider (e.g., Cognito vs Okta)
+                # We link by email - same email = same user, keep existing user ID
                 email_user = db_session.query(UserModel).filter_by(email=email).first()
                 if email_user:
-                    # Update the existing user's ID to the OAuth provider's user_id
-                    LOGGER.info(f"Migrating user {email} from ID {email_user.id} to OAuth ID {user_id}")
-                    email_user.id = user_id
-                    email_user.updated_at = datetime.now()
-                    
-                    # Also update name if it's different
+                    # User exists with same email but different provider ID
+                    # Keep the existing user ID to preserve foreign key relationships
+                    LOGGER.info(f"User {email} logged in via {sign_in_method} (existing ID: {email_user.id}, new provider ID: {user_id})")
+
+                    needs_update = False
+                    # Update name if it's different
                     if name and email_user.name != name:
                         email_user.name = name
-                    
-                    db_session.commit()
+                        needs_update = True
+
+                    # Optionally update sign_in_method to reflect the latest provider used
+                    # (keeping the original sign_in_method is also valid - depends on requirements)
+                    if sign_in_method and email_user.sign_in_method != sign_in_method:
+                        LOGGER.info(f"Updating sign_in_method for {email} from {email_user.sign_in_method} to {sign_in_method}")
+                        email_user.sign_in_method = sign_in_method
+                        needs_update = True
+
+                    if needs_update:
+                        email_user.updated_at = datetime.now()
+                        db_session.commit()
+
                     return email_user.id, False
                 else:
                     # Create new user with OAuth provider's user_id

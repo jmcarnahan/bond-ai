@@ -65,6 +65,7 @@ class BedrockAgent(Agent):
         self.mcp_tools = bedrock_options.mcp_tools
         self.mcp_resources = bedrock_options.mcp_resources
         self.metadata = bedrock_options.agent_metadata
+        self.file_storage = getattr(bedrock_options, 'file_storage', 'direct')  # 'direct' | 'knowledge_base'
 
         LOGGER.debug(f"Initialized BedrockAgent {self.agent_id} with model {self.model}")
         LOGGER.debug(f"  Bedrock Agent ID: {self.bedrock_agent_id}")
@@ -96,6 +97,7 @@ class BedrockAgent(Agent):
             user_id=self.owner_user_id,
             mcp_tools=self.mcp_tools,
             mcp_resources=self.mcp_resources,
+            file_storage=self.file_storage,
         )
         return agent_def
     
@@ -343,10 +345,32 @@ class BedrockAgent(Agent):
                     raise ValueError("No user message to respond to")
                 prompt = last_msg.clob.get_content() if hasattr(last_msg, 'clob') else str(last_msg)
 
+            # Query Knowledge Base if in knowledge_base mode
+            if self.file_storage == 'knowledge_base':
+                kb_results = self.bond_provider.vectorstores.query_knowledge_base(
+                    query=prompt,
+                    agent_id=self.agent_id,
+                    max_results=10
+                )
+                if kb_results:
+                    LOGGER.info(f"KB query returned {len(kb_results)} results for agent {self.agent_id}")
+                    kb_context = "\n\n--- Relevant Context from Knowledge Base ---\n"
+                    for i, result in enumerate(kb_results, 1):
+                        content = result.get('content', '')
+                        if content:
+                            # Truncate very long content
+                            if len(content) > 2000:
+                                content = content[:2000] + "..."
+                            kb_context += f"\n[Document {i}]\n{content}\n"
+                    kb_context += "\n--- End of Knowledge Base Context ---\n\n"
+                    prompt = f"{kb_context}User Question: {prompt}"
+                    LOGGER.debug(f"Augmented prompt with KB context ({len(kb_context)} chars)")
+
             # Augment this with any files from the tool_resources for this agent
-            # only do this for the first message
+            # only do this for the first message AND only for 'direct' mode
+            # For 'knowledge_base' mode, files are queried via RAG above (not passed directly)
             all_files = []
-            if self.bond_provider.threads.get_response_message_count(thread_id=thread_id) == 0:
+            if self.file_storage != 'knowledge_base' and self.bond_provider.threads.get_response_message_count(thread_id=thread_id) == 0:
                 session_files = self.bond_provider.files.get_files_invocation(self.tool_resources)
                 if session_files:
                     all_files.extend(session_files)
@@ -1188,7 +1212,118 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                 "icon_name": "smart_toy",
                 "color": "#757575"  # Default grey
             })
-    
+
+    def _upload_files_to_knowledge_base(self, agent_id: str, file_ids: list) -> None:
+        """
+        Upload files to Knowledge Base for an agent with file_storage='knowledge_base'.
+
+        This handles incremental updates:
+        - New files are uploaded to KB S3 prefix and ingestion is triggered
+        - Removed files are deleted from KB (S3 and database)
+        - Existing files are skipped (no re-upload)
+
+        Args:
+            agent_id: The agent ID
+            file_ids: List of file IDs from tool_resources.file_search.file_ids
+        """
+        LOGGER.debug(f"[KB Upload] Starting KB sync for agent {agent_id} with {len(file_ids)} requested files")
+        LOGGER.debug(f"[KB Upload] Requested file IDs: {file_ids}")
+
+        provider: BedrockProvider = Config.config().get_provider()
+
+        if not provider.vectorstores.is_kb_enabled():
+            LOGGER.warning(f"[KB Upload] Knowledge Base not enabled - files will not be uploaded to KB for agent {agent_id}")
+            return
+
+        LOGGER.debug(f"[KB Upload] KB is enabled, KB ID: {provider.vectorstores.knowledge_base_id}")
+
+        # Get existing KB files for this agent to determine what's new/removed
+        existing_kb_file_ids = provider.vectorstores.get_agent_kb_file_ids(agent_id)
+        requested_file_ids = set(file_ids)
+
+        # Calculate files to add and remove
+        files_to_add = requested_file_ids - existing_kb_file_ids
+        files_to_remove = existing_kb_file_ids - requested_file_ids
+        files_unchanged = existing_kb_file_ids & requested_file_ids
+
+        LOGGER.debug(f"[KB Upload] Existing in KB: {len(existing_kb_file_ids)}, Requested: {len(requested_file_ids)}")
+        LOGGER.debug(f"[KB Upload] To add: {len(files_to_add)}, To remove: {len(files_to_remove)}, Unchanged: {len(files_unchanged)}")
+
+        # Remove files that are no longer in the agent's file list
+        removed_count = 0
+        for file_id in files_to_remove:
+            LOGGER.debug(f"[KB Upload] Removing file {file_id} from KB")
+            success = provider.vectorstores.remove_file_from_knowledge_base(file_id, agent_id)
+            if success:
+                removed_count += 1
+                LOGGER.debug(f"[KB Upload] SUCCESS - Removed file {file_id} from KB")
+            else:
+                LOGGER.warning(f"[KB Upload] FAILED - Could not remove file {file_id} from KB")
+
+        if removed_count > 0:
+            LOGGER.info(f"[KB Upload] Removed {removed_count} files from KB for agent {agent_id}")
+
+        # Upload only new files
+        uploaded_count = 0
+        for file_id in files_to_add:
+            LOGGER.debug(f"[KB Upload] Processing new file {file_id}")
+            try:
+                # Get file details
+                LOGGER.debug(f"[KB Upload] Getting file details for {file_id}")
+                file_details_list = provider.files.get_file_details([file_id])
+                if not file_details_list:
+                    LOGGER.warning(f"[KB Upload] File {file_id} not found in metadata - skipping KB upload")
+                    continue
+
+                file_details = file_details_list[0]
+                LOGGER.debug(f"[KB Upload] File details: path={file_details.file_path}, mime={file_details.mime_type}, size={file_details.file_size}")
+
+                # Get file bytes from regular storage
+                LOGGER.debug(f"[KB Upload] Retrieving file bytes from storage")
+                file_bytes_io = provider.files.get_file_bytes((file_id, None))
+                if not file_bytes_io:
+                    LOGGER.warning(f"[KB Upload] Could not get bytes for file {file_id} - skipping KB upload")
+                    continue
+
+                file_bytes = file_bytes_io.read()
+                file_name = file_details.file_path or f"file_{file_id}"
+                mime_type = file_details.mime_type or "application/octet-stream"
+                LOGGER.debug(f"[KB Upload] Retrieved {len(file_bytes)} bytes for file {file_name}")
+
+                # Upload to KB prefix
+                LOGGER.debug(f"[KB Upload] Uploading to KB S3 prefix...")
+                s3_key = provider.vectorstores.upload_file_to_knowledge_base(
+                    file_id=file_id,
+                    agent_id=agent_id,
+                    file_bytes=file_bytes,
+                    file_name=file_name,
+                    mime_type=mime_type
+                )
+
+                if s3_key:
+                    uploaded_count += 1
+                    LOGGER.debug(f"[KB Upload] SUCCESS - Uploaded file {file_id} to KB: {s3_key}")
+                else:
+                    LOGGER.warning(f"[KB Upload] FAILED - upload_file_to_knowledge_base returned None for {file_id}")
+
+            except Exception as e:
+                LOGGER.error(f"[KB Upload] ERROR uploading file {file_id} to KB: {e}", exc_info=True)
+
+        LOGGER.debug(f"[KB Upload] Upload phase complete: {uploaded_count}/{len(files_to_add)} new files uploaded")
+
+        # Trigger ingestion if files were added OR removed
+        # Incremental sync handles both: new S3 files get indexed, deleted S3 files get removed from KB
+        if uploaded_count > 0 or removed_count > 0:
+            LOGGER.debug(f"[KB Ingestion] Triggering ingestion job for agent {agent_id} (added: {uploaded_count}, removed: {removed_count})")
+            result = provider.vectorstores.trigger_ingestion_job(agent_id=agent_id)
+            if result:
+                job_id = result.get('job_id')
+                LOGGER.info(f"[KB Ingestion] SUCCESS - Started ingestion job {job_id} for agent {agent_id} ({uploaded_count} added, {removed_count} removed)")
+            else:
+                LOGGER.warning(f"[KB Ingestion] FAILED - Could not start ingestion job for agent {agent_id}")
+        else:
+            LOGGER.debug(f"[KB Upload] No changes to KB files, skipping ingestion trigger")
+
     @override
     def get_agent(self, agent_id: str) -> Agent:
         """
@@ -1283,11 +1418,13 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
         """
 
         # Log the incoming agent definition
-        LOGGER.info(f"[BedrockAgent] Received AgentDefinition:")
-        LOGGER.info(f"  - name: {agent_def.name}")
-        LOGGER.info(f"  - mcp_tools: {agent_def.mcp_tools}")
-        LOGGER.info(f"  - mcp_resources: {agent_def.mcp_resources}")
-        LOGGER.info(f"  - has mcp_tools attr: {hasattr(agent_def, 'mcp_tools')}")
+        LOGGER.debug(f"[BedrockAgent] Received AgentDefinition:")
+        LOGGER.debug(f"  - name: {agent_def.name}")
+        LOGGER.debug(f"  - mcp_tools: {agent_def.mcp_tools}")
+        LOGGER.debug(f"  - mcp_resources: {agent_def.mcp_resources}")
+        LOGGER.debug(f"  - file_storage: {getattr(agent_def, 'file_storage', 'NOT SET')}")
+        LOGGER.debug(f"  - tool_resources: {agent_def.tool_resources}")
+        LOGGER.debug(f"  - has mcp_tools attr: {hasattr(agent_def, 'mcp_tools')}")
         
         # create or update the actual bedrock agent
         agent_id = agent_def.id
@@ -1328,6 +1465,7 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                     mcp_tools=agent_def.mcp_tools or [],
                     mcp_resources=agent_def.mcp_resources or [],
                     agent_metadata=agent_def.metadata or {},
+                    file_storage=getattr(agent_def, 'file_storage', 'direct'),
                 )
                 # Select the Material icon if not provided
                 LOGGER.debug(f"Creating new agent '{agent_def.name}' - selecting material icon")
@@ -1354,7 +1492,8 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                     bedrock_options.tool_resources = agent_def.tool_resources or {}
                     bedrock_options.mcp_tools = agent_def.mcp_tools or []
                     bedrock_options.mcp_resources = agent_def.mcp_resources or []
-                    
+                    bedrock_options.file_storage = getattr(agent_def, 'file_storage', bedrock_options.file_storage or 'direct')
+
                     # Preserve existing icon_svg when updating metadata
                     existing_icon_svg = bedrock_options.agent_metadata.get('icon_svg') if bedrock_options.agent_metadata else None
                     bedrock_options.agent_metadata = agent_def.metadata or {}
@@ -1423,8 +1562,27 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                     owner_user_id=owner_user_id
                 )
 
-            session.commit()  
-            
+            session.commit()
+
+            # Refresh bedrock_options to prevent DetachedInstanceError when accessing its attributes later
+            session.refresh(bedrock_options)
+
+            # If file_storage is 'knowledge_base' and files are attached, upload to KB
+            file_storage_mode = getattr(agent_def, 'file_storage', 'direct')
+            LOGGER.debug(f"[KB Check] Agent {agent_id}: file_storage_mode='{file_storage_mode}'")
+            LOGGER.debug(f"[KB Check] Agent {agent_id}: tool_resources={agent_def.tool_resources}")
+            if file_storage_mode == 'knowledge_base':
+                file_search_resources = (agent_def.tool_resources or {}).get('file_search', {})
+                file_ids = file_search_resources.get('file_ids', [])
+                LOGGER.debug(f"[KB Check] Agent {agent_id}: file_search_resources={file_search_resources}, file_ids={file_ids}")
+                if file_ids:
+                    LOGGER.debug(f"Agent {agent_id} has file_storage='knowledge_base' with {len(file_ids)} files - uploading to KB")
+                    self._upload_files_to_knowledge_base(agent_id, file_ids)
+                else:
+                    LOGGER.debug(f"[KB Check] Agent {agent_id}: file_storage='knowledge_base' but no file_ids in tool_resources")
+            else:
+                LOGGER.debug(f"[KB Check] Agent {agent_id}: file_storage='{file_storage_mode}' (not 'knowledge_base'), skipping KB upload")
+
             bedrock_agent = BedrockAgent(
                 agent_id=agent_id,
                 name=agent_def.name,
@@ -1433,7 +1591,7 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                 owner_user_id=owner_user_id,
                 bedrock_options=bedrock_options
             )
-            LOGGER.info(f"Stored agent record for {agent_id} with Bedrock IDs: {bedrock_agent_id}, {bedrock_agent_alias_id}")    
+            LOGGER.info(f"Stored agent record for {agent_id} with Bedrock IDs: {bedrock_agent_id}, {bedrock_agent_alias_id}")
             return bedrock_agent            
         except Exception as e:
             session.rollback()
