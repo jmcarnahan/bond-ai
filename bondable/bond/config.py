@@ -193,7 +193,14 @@ class Config:
                 if provider_name == "okta":
                     return okta_config
                 configs["okta"] = okta_config
-        
+
+        if "cognito" in enabled_providers:
+            if provider_name == "cognito" or provider_name is None:
+                cognito_config = self._get_cognito_oauth2_config()
+                if provider_name == "cognito":
+                    return cognito_config
+                configs["cognito"] = cognito_config
+
         if provider_name:
             if provider_name not in configs:
                 raise ValueError(f"OAuth2 provider '{provider_name}' is not enabled or configured")
@@ -240,7 +247,16 @@ class Config:
                 providers.append('okta')
             else:
                 LOGGER.warning("Okta OAuth2 enabled but not fully configured")
-        
+
+        # Check Cognito
+        cognito_enabled = os.getenv('OAUTH2_ENABLE_COGNITO', 'false').lower() in ['true', '1', 'yes', 'on']
+        if cognito_enabled:
+            # Only enable if credentials are configured
+            if os.getenv('COGNITO_DOMAIN') and os.getenv('COGNITO_CLIENT_ID'):
+                providers.append('cognito')
+            else:
+                LOGGER.warning("Cognito OAuth2 enabled but not fully configured")
+
         # Default to at least Google if nothing is configured
         if not providers:
             LOGGER.warning("No OAuth2 providers enabled, defaulting to Google")
@@ -320,6 +336,45 @@ class Config:
             "auth_server": auth_server  # Use org server by default to avoid 'sub' claim issues
         }
         LOGGER.info(f"Okta OAuth2 config: domain={domain} auth_server={auth_server if auth_server else 'org'} redirect_uri={redirect_uri} scopes={scopes} valid_emails={len(valid_emails)} emails")
+        return config
+
+    def _get_cognito_oauth2_config(self) -> dict:
+        """Get AWS Cognito OAuth2 configuration."""
+        domain = os.getenv('COGNITO_DOMAIN', '')
+        client_id = os.getenv('COGNITO_CLIENT_ID', '')
+        region = os.getenv('COGNITO_REGION', 'us-east-1')
+
+        # Client secret is optional for public clients (SPAs)
+        client_secret = os.getenv('COGNITO_CLIENT_SECRET', '')
+        if not client_secret:
+            # Try to get from Secrets Manager
+            secret_name = os.getenv('COGNITO_SECRET_NAME', '')
+            if secret_name:
+                LOGGER.info("Getting Cognito client secret from Secrets Manager")
+                try:
+                    secret_json = self.get_secret_value(secret_name, '{}')
+                    secret_data = json.loads(secret_json)
+                    client_secret = secret_data.get('client_secret', '')
+                except Exception as e:
+                    LOGGER.error(f"Failed to get Cognito client secret from Secrets Manager: {e}")
+
+        redirect_uri = os.getenv('COGNITO_REDIRECT_URI', 'http://localhost:8000/auth/cognito/callback')
+        scopes_str = os.getenv('COGNITO_SCOPES', 'openid, email, phone')
+        scopes = [scope.strip() for scope in scopes_str.split(",")]
+        valid_emails = []
+        if 'COGNITO_VALID_EMAILS' in os.environ:
+            valid_emails = [email.strip() for email in os.getenv('COGNITO_VALID_EMAILS').split(",")]
+
+        config = {
+            "domain": domain,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+            "scopes": scopes,
+            "valid_emails": valid_emails,
+            "region": region
+        }
+        LOGGER.info(f"Cognito OAuth2 config: domain={domain} region={region} redirect_uri={redirect_uri} scopes={scopes} valid_emails={len(valid_emails)} emails")
         return config
 
     def get_mcp_config(self):

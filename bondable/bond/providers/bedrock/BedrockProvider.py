@@ -68,9 +68,14 @@ class BedrockProvider(Provider):
         from .BedrockFiles import BedrockFilesProvider
         self.files = BedrockFilesProvider(s3_client=self.s3_client, provider=self, metadata=self.metadata)
         
-        # Initialize vector stores (stub for now)
+        # Initialize vector stores with KB support
         from .BedrockVectorStores import BedrockVectorStoresProvider
-        self.vectorstores = BedrockVectorStoresProvider(self.metadata)
+        self.vectorstores = BedrockVectorStoresProvider(
+            metadata_provider=self.metadata,
+            s3_client=self.s3_client,
+            bedrock_agent_client=self.bedrock_agent_client,
+            bedrock_agent_runtime_client=self.bedrock_agent_runtime_client
+        )
         self.vectorstores.files_provider = self.files  # Set files provider reference
         
         # Groups and users are handled by base metadata
