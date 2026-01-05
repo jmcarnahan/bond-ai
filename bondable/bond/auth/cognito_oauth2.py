@@ -156,7 +156,7 @@ class CognitoOAuth2Provider(OAuth2Provider):
                 'cognito_username': user_info.get('cognito:username') or user_info.get('username'),
             }
 
-            LOGGER.info(f"Cognito authentication successful: {normalized_user_info.get('email')}")
+            LOGGER.info("Cognito authentication successful")
 
             # Validate user authorization
             if not self.validate_user(normalized_user_info):
@@ -191,6 +191,6 @@ class CognitoOAuth2Provider(OAuth2Provider):
 
         is_valid = user_email.lower() in [e.lower() for e in valid_emails]
         if not is_valid:
-            LOGGER.error(f"Email {user_email} not in valid emails list")
+            LOGGER.error("User email not in valid emails list")
 
         return is_valid

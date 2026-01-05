@@ -350,7 +350,7 @@ class Config:
             # Try to get from Secrets Manager
             secret_name = os.getenv('COGNITO_SECRET_NAME', '')
             if secret_name:
-                LOGGER.info(f"Getting Cognito client secret from Secrets Manager: {secret_name}")
+                LOGGER.info("Getting Cognito client secret from Secrets Manager")
                 try:
                     secret_json = self.get_secret_value(secret_name, '{}')
                     secret_data = json.loads(secret_json)
