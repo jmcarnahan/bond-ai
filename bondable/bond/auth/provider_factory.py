@@ -27,9 +27,14 @@ class OAuth2ProviderFactory:
             def okta_provider():
                 from .okta_oauth2 import OktaOAuth2Provider
                 return OktaOAuth2Provider
-            
+
+            def cognito_provider():
+                from .cognito_oauth2 import CognitoOAuth2Provider
+                return CognitoOAuth2Provider
+
             cls._providers["google"] = google_provider
             cls._providers["okta"] = okta_provider
+            cls._providers["cognito"] = cognito_provider
     
     @classmethod
     def register_provider(cls, provider_name: str, provider_class: Union[Type[OAuth2Provider], Callable[[], Type[OAuth2Provider]]]):
