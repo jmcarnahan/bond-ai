@@ -7,7 +7,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class Groups:
-    
+
     def __init__(self, metadata: Metadata):
         self.metadata = metadata
 
@@ -35,15 +35,15 @@ class Groups:
         group = db_session.query(GroupModel).filter(GroupModel.id == group_id).first()
         if not group:
             return False
-        
+
         if group.owner_user_id == user_id:
             return True
-            
+
         is_member = db_session.query(GroupUserModel).filter(
             GroupUserModel.group_id == group_id,
             GroupUserModel.user_id == user_id
         ).first() is not None
-        
+
         return is_member
 
     def _can_user_modify_group(self, db_session, group_id: str, user_id: str) -> bool:
@@ -63,14 +63,14 @@ class Groups:
                     owner_user_id=owner_user_id
                 )
                 db_session.add(new_group)
-                
+
                 # Add the owner as a group member
                 group_user = GroupUserModel(
                     group_id=group_id,
                     user_id=owner_user_id
                 )
                 db_session.add(group_user)
-                
+
                 db_session.commit()
                 LOGGER.info(f"Created group '{name}' with ID '{group_id}' for user '{owner_user_id}'")
                 return group_id
@@ -89,7 +89,7 @@ class Groups:
                 (GroupModel.owner_user_id == user_id) |
                 (GroupUserModel.user_id == user_id)
             ).distinct().all()
-            
+
             return [self._get_group_dict(group) for group in groups]
 
     def get_group(self, group_id: str, user_id: str) -> Optional[Dict]:
@@ -97,7 +97,7 @@ class Groups:
         with self.metadata.get_db_session() as db_session:
             if not self._can_user_access_group(db_session, group_id, user_id):
                 return None
-                
+
             group = db_session.query(GroupModel).filter(GroupModel.id == group_id).first()
             return self._get_group_dict(group) if group else None
 
@@ -106,11 +106,11 @@ class Groups:
         with self.metadata.get_db_session() as db_session:
             if not self._can_user_access_group(db_session, group_id, user_id):
                 return None
-                
+
             members = db_session.query(UserModel).join(
                 GroupUserModel, UserModel.id == GroupUserModel.user_id
             ).filter(GroupUserModel.group_id == group_id).all()
-            
+
             return [self._get_user_dict(member) for member in members]
 
     def update_group(self, group_id: str, user_id: str, name: Optional[str] = None, description: Optional[str] = None) -> bool:
@@ -119,13 +119,13 @@ class Groups:
             try:
                 if not self._can_user_modify_group(db_session, group_id, user_id):
                     return False
-                
+
                 group = db_session.query(GroupModel).filter(GroupModel.id == group_id).first()
                 if name is not None:
                     group.name = name
                 if description is not None:
                     group.description = description
-                
+
                 db_session.commit()
                 LOGGER.info(f"Updated group '{group_id}' by user '{user_id}'")
                 return True
@@ -140,15 +140,15 @@ class Groups:
             try:
                 if not self._can_user_modify_group(db_session, group_id, user_id):
                     return False
-                
+
                 group = db_session.query(GroupModel).filter(GroupModel.id == group_id).first()
-                
+
                 # Delete all group memberships and agent associations
                 db_session.query(GroupUserModel).filter(GroupUserModel.group_id == group_id).delete()
                 db_session.query(AgentGroupModel).filter(AgentGroupModel.group_id == group_id).delete()
                 db_session.delete(group)
                 db_session.commit()
-                
+
                 LOGGER.info(f"Deleted group '{group_id}' by user '{user_id}'")
                 return True
             except Exception as e:
@@ -162,37 +162,37 @@ class Groups:
             try:
                 if not self._can_user_modify_group(db_session, group_id, user_id):
                     return False
-                
+
                 if action == "add":
                     # Check if user exists and not already a member
                     user_exists = db_session.query(UserModel).filter(UserModel.id == member_user_id).first()
                     if not user_exists:
                         return False
-                    
+
                     existing = db_session.query(GroupUserModel).filter(
                         GroupUserModel.group_id == group_id,
                         GroupUserModel.user_id == member_user_id
                     ).first()
-                    
+
                     if existing:
                         return False  # Already a member
-                    
+
                     group_user = GroupUserModel(group_id=group_id, user_id=member_user_id)
                     db_session.add(group_user)
-                    
+
                 elif action == "remove":
                     group_user = db_session.query(GroupUserModel).filter(
                         GroupUserModel.group_id == group_id,
                         GroupUserModel.user_id == member_user_id
                     ).first()
-                    
+
                     if not group_user:
                         return False
-                    
+
                     db_session.delete(group_user)
                 else:
                     return False
-                
+
                 db_session.commit()
                 LOGGER.info(f"{action.capitalize()}ed user '{member_user_id}' {'to' if action == 'add' else 'from'} group '{group_id}' by user '{user_id}'")
                 return True
@@ -211,7 +211,7 @@ class Groups:
                 (GroupModel.owner_user_id == user_id) |
                 (GroupUserModel.user_id == user_id)
             ).distinct()
-            
+
             # Exclude groups already associated with the agent
             if agent_id:
                 associated_group_ids = db_session.query(AgentGroupModel.group_id).filter(
@@ -220,9 +220,9 @@ class Groups:
                 user_groups_query = user_groups_query.filter(
                     ~GroupModel.id.in_(associated_group_ids)
                 )
-            
+
             available_groups = user_groups_query.all()
-            
+
             return [
                 {
                     "id": group.id,
@@ -248,14 +248,14 @@ class Groups:
                     AgentGroupModel.agent_id == agent_id,
                     AgentGroupModel.group_id == group_id
                 ).first()
-                
+
                 if existing:
                     return True
-                
+
                 agent_group = AgentGroupModel(agent_id=agent_id, group_id=group_id)
                 db_session.add(agent_group)
                 db_session.commit()
-                
+
                 LOGGER.info(f"Associated agent '{agent_id}' with group '{group_id}'")
                 return True
             except Exception as e:
