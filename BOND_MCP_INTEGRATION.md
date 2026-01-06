@@ -245,7 +245,7 @@ Complete step-by-step guide for integrating Atlassian (Jira & Confluence).
      https://api.atlassian.com/oauth/token/accessible-resources
 
    # Response contains cloud ID:
-   # [{"id": "ec8ace41-7cde-4e66-aaf1-6fca83a00c53", ...}]
+   # [{"id": "<your-atlassian-cloud-id>", ...}]
    ```
 
 ### 2. Deploy mcp-atlassian Docker Container
