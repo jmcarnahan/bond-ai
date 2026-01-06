@@ -505,10 +505,10 @@ class TestTokenCacheIntegration:
 
         # Simulate OAuth token response
         oauth_response = {
-            "access_token": "ya29.a0AbVbY6PhKJ8Z3Qw...",
+            "access_token": "test_access_token_for_unit_tests",
             "token_type": "Bearer",
             "expires_in": 3600,  # 1 hour
-            "refresh_token": "1//0eYr1Ke...",
+            "refresh_token": "test_refresh_token_for_unit_tests",
             "scope": "read:me read:jira-work"
         }
 
