@@ -12,6 +12,7 @@ paths = [
     '''scripts/.archive/''',
     '''poetry.lock''',
     '''terraform/.terraform/''',
+    '''Podfile.lock''',
 ]
 
 # Additional rules for this project
