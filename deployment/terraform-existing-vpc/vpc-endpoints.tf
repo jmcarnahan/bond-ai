@@ -1,16 +1,17 @@
 # VPC Endpoints for AWS services
 
 # VPC Endpoint for S3 (Gateway type - FREE, no security groups needed)
-resource "aws_vpc_endpoint" "s3" {
-  vpc_id            = data.aws_vpc.existing.id
-  service_name      = "com.amazonaws.${var.aws_region}.s3"
-  vpc_endpoint_type = "Gateway"
-  route_table_ids   = concat(data.aws_route_tables.private.ids, [data.aws_route_table.main.id])
-
-  tags = {
-    Name = "${var.project_name}-${var.environment}-s3-endpoint"
-  }
-}
+# Already exists in VPC - commenting out to avoid conflict
+# resource "aws_vpc_endpoint" "s3" {
+#   vpc_id            = data.aws_vpc.existing.id
+#   service_name      = "com.amazonaws.${var.aws_region}.s3"
+#   vpc_endpoint_type = "Gateway"
+#   route_table_ids   = concat(data.aws_route_tables.private.ids, [data.aws_route_table.main.id])
+#
+#   tags = {
+#     Name = "${var.project_name}-${var.environment}-s3-endpoint"
+#   }
+# }
 
 # # VPC Endpoint for Secrets Manager (Interface type)
 # resource "aws_vpc_endpoint" "secretsmanager" {
