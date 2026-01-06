@@ -43,10 +43,10 @@ if __name__ == "__main__":
 
     # # Register signal handlers for SIGINT (Ctrl+C) and SIGTERM (system termination)
     # signal.signal(signal.SIGINT, graceful_shutdown)  # Ctrl+C
-    # signal.signal(signal.SIGTERM, graceful_shutdown) 
+    # signal.signal(signal.SIGTERM, graceful_shutdown)
 
     try:
-        streamlit_args = sys.argv[1:]  
+        streamlit_args = sys.argv[1:]
         with importlib.resources.path('bondable.app', 'index.py') as app_path:
             LOGGER.info(f"Starting Bond AI {str(app_path)} with parameters: {streamlit_args}")
             cli.main_run.main([str(app_path)] + streamlit_args)
@@ -54,6 +54,3 @@ if __name__ == "__main__":
         LOGGER.error("Received error when running streamlit")
     # finally:
     #     broker.stop()
-
-
-
