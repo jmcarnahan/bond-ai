@@ -206,9 +206,9 @@ resource "null_resource" "mirror_mcp_atlassian_image" {
       aws ecr get-login-password --region ${var.aws_region} | \
         docker login --username AWS --password-stdin ${aws_ecr_repository.mcp_atlassian[0].repository_url}
 
-      # Pull from ghcr.io
-      echo "Pulling image from ghcr.io/sooperset/mcp-atlassian:latest..."
-      docker pull ghcr.io/sooperset/mcp-atlassian:latest
+      # Pull from ghcr.io (force amd64 platform for AWS App Runner)
+      echo "Pulling image from ghcr.io/sooperset/mcp-atlassian:latest (linux/amd64)..."
+      docker pull --platform linux/amd64 ghcr.io/sooperset/mcp-atlassian:latest
 
       # Tag for ECR
       echo "Tagging image for ECR..."
@@ -299,13 +299,13 @@ resource "aws_iam_role_policy" "mcp_atlassian_instance" {
 
 resource "aws_apprunner_auto_scaling_configuration_version" "mcp_atlassian" {
   count                           = local.mcp_atlassian_can_deploy ? 1 : 0
-  auto_scaling_configuration_name = "${var.project_name}-${var.environment}-mcp-atlassian-autoscaling"
+  auto_scaling_configuration_name = "${var.project_name}-${var.environment}-mcp-atl-as"
 
   min_size = 1
   max_size = 2
 
   tags = {
-    Name = "${var.project_name}-${var.environment}-mcp-atlassian-autoscaling"
+    Name = "${var.project_name}-${var.environment}-mcp-atl-as"
   }
 }
 
@@ -328,6 +328,7 @@ resource "aws_apprunner_service" "mcp_atlassian" {
 
       image_configuration {
         port = "8000"
+        start_command = "--transport streamable-http --port 8000"
 
         runtime_environment_variables = {
           # Atlassian API URLs - computed from cloud_id
@@ -343,6 +344,10 @@ resource "aws_apprunner_service" "mcp_atlassian" {
           ATLASSIAN_OAUTH_SCOPE        = var.mcp_atlassian_oauth_scopes
           ATLASSIAN_OAUTH_CLOUD_ID     = var.mcp_atlassian_oauth_cloud_id
 
+          # SSL Certificate Verification - enabled for production
+          JIRA_SSL_VERIFY       = "true"
+          CONFLUENCE_SSL_VERIFY = "true"
+
           # Logging
           MCP_LOGGING_LEVEL = var.mcp_atlassian_logging_level
         }
@@ -355,7 +360,7 @@ resource "aws_apprunner_service" "mcp_atlassian" {
   # Network configuration - Private with VPC egress
   network_configuration {
     ingress_configuration {
-      is_publicly_accessible = false
+      is_publicly_accessible = true
     }
 
     egress_configuration {

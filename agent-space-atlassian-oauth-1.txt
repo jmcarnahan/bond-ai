@@ -1,0 +1,43 @@
+Atlassian OAuth App Setup for Agent Space
+
+  Step 1: Create OAuth 2.0 App
+
+  1. Go to: https://developer.atlassian.com/console/myapps/
+  2. Click Create → OAuth 2.0 integration
+  3. Name: Agent Space Integration
+
+  Step 2: Configure Permissions
+
+  Under Permissions, add:
+
+  Jira API:
+  - read:jira-user
+  - read:jira-work
+  - write:jira-work
+
+  Confluence API:
+  - read:confluence-space.summary
+  - write:confluence-content
+
+  Step 3: Configure Authorization
+
+  Under Authorization:
+  1. Click Add
+  2. Set Callback URL: {BACKEND_URL}/connections/atlassian/callback
+    - (I will provide the exact URL once the backend is deployed)
+
+  Step 4: Get Cloud ID
+
+  The Cloud ID identifies your Atlassian site. Find it by:
+  1. Go to: https://mcafee.atlassian.net/_edge/tenant_info
+  2. The cloudId value in the JSON response is what we need
+
+  What to Provide Back
+
+  Please send me:
+
+  1. Client ID - Found under Settings in the OAuth app
+  2. Client Secret - Found under Settings in the OAuth app
+  3. Cloud ID - From Step 4 above
+
+  Note: The client secret is sensitive
