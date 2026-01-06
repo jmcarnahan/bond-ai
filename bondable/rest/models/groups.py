@@ -22,7 +22,7 @@ class Group(GroupBase):
     owner_user_id: str
     created_at: datetime
     updated_at: datetime
-    
+
     class Config:
         from_attributes = True
 
@@ -31,7 +31,7 @@ class GroupMember(BaseModel):
     user_id: str
     email: str
     name: Optional[str] = None
-    
-    
+
+
 class GroupWithMembers(Group):
     members: List[GroupMember] = []
