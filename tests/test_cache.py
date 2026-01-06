@@ -1,4 +1,4 @@
-import logging 
+import logging
 LOGGER = logging.getLogger(__name__)
 
 from bondable.bond.cache import configure_cache, bond_cache_clear, bond_cache, CacheType
