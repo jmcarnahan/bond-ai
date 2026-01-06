@@ -34,11 +34,11 @@ class _CreateGroupDialogState extends ConsumerState<CreateGroupDialog> {
     try {
       await ref.read(groupNotifierProvider.notifier).createGroup(
         name: _nameController.text.trim(),
-        description: _descriptionController.text.trim().isEmpty 
-            ? null 
+        description: _descriptionController.text.trim().isEmpty
+            ? null
             : _descriptionController.text.trim(),
       );
-      
+
       if (mounted) {
         Navigator.of(context).pop();
         SuccessBanner.show(context, 'Group created successfully');
@@ -100,7 +100,7 @@ class _CreateGroupDialogState extends ConsumerState<CreateGroupDialog> {
         ),
         ElevatedButton(
           onPressed: _isCreating ? null : _createGroup,
-          child: _isCreating 
+          child: _isCreating
               ? const SizedBox(
                   width: 20,
                   height: 20,
