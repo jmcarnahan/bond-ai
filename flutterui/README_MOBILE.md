@@ -20,7 +20,7 @@ This is a simplified mobile-optimized version of the Bond AI Flutter app that pr
    ```bash
    cp .env.example .env
    ```
-   
+
    Edit `.env` and set:
    - `API_BASE_URL`: Your Bond AI API server URL
    - `MOBILE_AGENT_ID`: The agent ID to use (e.g., `asst_BZ6WaTaNc0THp8eCSDx6leHD`)
