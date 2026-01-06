@@ -27,7 +27,7 @@ class FileService {
       httpClient: httpClient,
       authService: authService,
     );
-    
+
     return FileService(httpClient: authenticatedHttpClient);
   }
 
@@ -39,7 +39,7 @@ class FileService {
         'POST',
         Uri.parse(ApiConstants.baseUrl + ApiConstants.filesEndpoint),
       );
-      
+
       request.files.add(
         http.MultipartFile.fromBytes(
           'file',
@@ -136,7 +136,7 @@ class FileService {
         final List<FileInfoModel> files = data
             .map((item) => FileInfoModel.fromJson(item as Map<String, dynamic>))
             .toList();
-        
+
         logger.i("[FileService] Retrieved ${files.length} files");
         return files;
       } else {
