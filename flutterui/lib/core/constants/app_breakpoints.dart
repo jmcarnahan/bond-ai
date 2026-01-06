@@ -47,7 +47,7 @@ class AppBreakpoints {
     T? ultraWide,
   }) {
     final width = MediaQuery.of(context).size.width;
-    
+
     if (width >= AppBreakpoints.ultraWide && ultraWide != null) {
       return ultraWide;
     }

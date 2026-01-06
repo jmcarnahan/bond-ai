@@ -84,7 +84,7 @@ Most Bedrock tests require:
 
 #### MCP Server (Optional for most tests)
 - **Port**: 5555
-- **Required for**: 
+- **Required for**:
   - `test_bedrock_mcp_functionality.py` (can skip with `SKIP_MCP_TESTS=true`)
   - `test_bedrock_stream_response_integration.py` (partially)
 - **Skip if unavailable**: `SKIP_MCP_TESTS=true pytest tests/ -v`

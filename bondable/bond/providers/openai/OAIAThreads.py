@@ -27,14 +27,14 @@ class OAIAThreadsProvider(ThreadsProvider):
     @override
     def delete_thread_resource(self, thread_id: str) -> bool:
         """
-        Deletes a thread by its id. 
+        Deletes a thread by its id.
         Don't throw an exception if it does not exist, just return False.
         """
         try:
             self.openai_client.beta.threads.delete(thread_id)
             LOGGER.info(f"Successfully deleted thread {thread_id} from openai")
             return True
-        except openai.NotFoundError: 
+        except openai.NotFoundError:
             LOGGER.warning(f"File {thread_id} not found on provider")
             return False
         except Exception as e:
@@ -44,7 +44,7 @@ class OAIAThreadsProvider(ThreadsProvider):
     @override
     def create_thread_resource(self) -> str:
         """
-        Creates a new thread. 
+        Creates a new thread.
         Returns the thread_id of the created thread.
         """
         try:
@@ -54,7 +54,7 @@ class OAIAThreadsProvider(ThreadsProvider):
         except Exception as e:
             LOGGER.error(f"Error creating thread from provider: {e}", exc_info=True)
             raise e
-        
+
     @override
     def has_messages(self, thread_id, last_message_id=None) -> bool:
         response = self.openai_client.beta.threads.messages.list(thread_id, limit=1, after=last_message_id)

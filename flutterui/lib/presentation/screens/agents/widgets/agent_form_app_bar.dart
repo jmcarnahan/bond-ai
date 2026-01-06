@@ -26,8 +26,8 @@ class AgentFormAppBar extends ConsumerWidget implements PreferredSizeWidget {
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
     final customColors = theme.extension<CustomColors>();
-    final appBarBackgroundColor = customColors?.brandingSurface ?? 
-        theme.appBarTheme.backgroundColor ?? 
+    final appBarBackgroundColor = customColors?.brandingSurface ??
+        theme.appBarTheme.backgroundColor ??
         theme.colorScheme.surface;
     final appTheme = ref.watch(appThemeProvider);
 

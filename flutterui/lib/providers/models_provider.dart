@@ -19,16 +19,16 @@ final availableModelsProvider = FutureProvider<List<ModelInfo>>((ref) async {
 /// Provider to get the default model
 final defaultModelProvider = Provider<String?>((ref) {
   final modelsAsync = ref.watch(availableModelsProvider);
-  
+
   return modelsAsync.when(
     data: (models) {
       logger.i('[ModelsProvider] Available models count: ${models.length}');
-      
+
       // Log all models and their default status
       for (var model in models) {
         logger.d('[ModelsProvider] Model: ${model.name}, isDefault: ${model.isDefault}');
       }
-      
+
       // Find the default model
       try {
         final defaultModel = models.firstWhere((model) => model.isDefault);
@@ -59,7 +59,7 @@ final defaultModelProvider = Provider<String?>((ref) {
 /// Provider to get model by name
 final modelByNameProvider = Provider.family<ModelInfo?, String>((ref, modelName) {
   final modelsAsync = ref.watch(availableModelsProvider);
-  
+
   return modelsAsync.maybeWhen(
     data: (models) {
       try {

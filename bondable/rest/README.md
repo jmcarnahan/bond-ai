@@ -298,7 +298,7 @@ Sends a prompt to an agent within a specific thread and streams the response.
         "agent_id": "<ASSISTANT_ID>",
         "prompt": "Hello agent, can you tell me a joke?"
     }' \
-    --no-buffer 
+    --no-buffer
     ```
     (Note: `--no-buffer` or similar flag might be needed with `curl` to see streaming output immediately.)
 -   **Response**: `200 OK` with `text/event-stream` content. The data will be streamed.

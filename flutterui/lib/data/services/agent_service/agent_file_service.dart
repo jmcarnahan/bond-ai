@@ -23,7 +23,7 @@ class AgentFileService {
         'POST',
         Uri.parse(ApiConstants.baseUrl + ApiConstants.filesEndpoint),
       );
-      
+
       request.files.add(
         http.MultipartFile.fromBytes(
           'file',
@@ -117,7 +117,7 @@ class AgentFileService {
         final List<FileInfoModel> files = data
             .map((item) => FileInfoModel.fromJson(item as Map<String, dynamic>))
             .toList();
-        
+
         logger.i("[AgentFileService] Retrieved ${files.length} files");
         return files;
       } else {
@@ -152,4 +152,3 @@ class AgentFileService {
     }
   }
 }
-

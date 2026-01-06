@@ -15,7 +15,7 @@ class AppSidebar extends ConsumerWidget {
     final theme = Theme.of(context);
     final appTheme = ref.watch(appThemeProvider);
     final customColors = theme.extension<CustomColors>();
-    
+
     final currentPrimaryColor = theme.primaryColor;
     final currentOnPrimaryColor = theme.colorScheme.onPrimary;
     final currentSurfaceColor = theme.colorScheme.surface;

@@ -25,10 +25,10 @@ logger = logging.getLogger(__name__)
 def delete_agent(agent_id: str) -> bool:
     """
     Delete an agent by its ID.
-    
+
     Args:
         agent_id: The ID of the agent to delete
-        
+
     Returns:
         bool: True if deletion was successful, False otherwise
     """
@@ -41,24 +41,24 @@ def delete_agent(agent_id: str) -> bool:
         elif agent_id.startswith('asst_'):
             os.environ['BOND_PROVIDER_CLASS'] = 'bondable.bond.providers.openai.OAIAProvider.OAIAProvider'
             logger.info("Detected OpenAI agent ID, using OpenAI provider")
-        
+
         # Initialize configuration and provider
         config = Config.config()
         provider = config.get_provider()
-        
+
         logger.info(f"Attempting to delete agent with ID: {agent_id}")
-        
+
         # Delete the agent directly without checking existence first
         # This avoids issues with reconstructing AgentDefinition for agents with missing resources
         result = provider.agents.delete_agent(agent_id)
-        
+
         if result:
             logger.info(f"Successfully deleted agent with ID: {agent_id}")
         else:
             logger.warning(f"Agent with ID '{agent_id}' may not exist or was already deleted")
-            
+
         return result
-        
+
     except Exception as e:
         logger.error(f"Error deleting agent: {e}", exc_info=True)
         return False
@@ -71,12 +71,12 @@ def main():
         required=True,
         help="The ID of the agent to delete"
     )
-    
+
     args = parser.parse_args()
-    
+
     # Delete the agent
     success = delete_agent(args.agent_id)
-    
+
     if not success:
         sys.exit(1)
 

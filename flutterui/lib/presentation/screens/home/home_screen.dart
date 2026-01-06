@@ -32,7 +32,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
   Widget build(BuildContext context) {
     final agentsAsyncValue = ref.watch(agentsProvider);
     final appTheme = ref.watch(appThemeProvider);
-    
+
     final ThemeData currentThemeData = Theme.of(context);
     final TextTheme textTheme = currentThemeData.textTheme;
     final ColorScheme colorScheme = currentThemeData.colorScheme;
@@ -108,9 +108,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
                 children: [
             Text(
               'Your AI Agents',
-              style: textTheme.displaySmall?.copyWith( 
+              style: textTheme.displaySmall?.copyWith(
                 color: colorScheme.onSurface,
-                fontWeight: FontWeight.w600, 
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 8),
@@ -120,12 +120,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 16), 
+            const SizedBox(height: 16),
             Divider(
               color: colorScheme.outlineVariant.withValues(alpha: 0.5),
               height: 1,
             ),
-            const SizedBox(height: 24), 
+            const SizedBox(height: 24),
             Expanded(
               child: agentsAsyncValue.when(
                 data: (agents) {
@@ -146,13 +146,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              Icons.person_search_outlined, 
-                              size: 64, 
+                              Icons.person_search_outlined,
+                              size: 64,
                               color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                             ),
                             const SizedBox(height: 24),
                             Text(
-                              'No Agents Yet', 
+                              'No Agents Yet',
                               style: textTheme.headlineSmall?.copyWith(
                                 color: colorScheme.onSurface,
                                 fontWeight: FontWeight.w600,
@@ -162,9 +162,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
                             Text(
                               'Tap the menu and select "Create Agent" to build your first AI assistant.',
                               textAlign: TextAlign.center,
-                              style: textTheme.bodyMedium?.copyWith( 
+                              style: textTheme.bodyMedium?.copyWith(
                                 color: colorScheme.onSurfaceVariant,
-                                height: 1.5, 
+                                height: 1.5,
                               ),
                             ),
                           ],
@@ -204,7 +204,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
                     },
                   );
                 },
-                loading: () => Center( 
+                loading: () => Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -219,12 +219,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
                     ],
                   ),
                 ),
-                error: (err, stack) { 
+                error: (err, stack) {
                   // Use automatic error detection and handling
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     handleAutoError(err, ref, serviceErrorMessage: 'Failed to load agents');
                   });
-                  
+
                   // Check if this is an authentication error to show appropriate UI
                   final appError = err is Exception ? AppError.fromException(err) : null;
                   if (appError?.type == ErrorType.authentication) {
@@ -233,7 +233,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with ErrorHandlingMixin
                       child: CircularProgressIndicator(),
                     );
                   }
-                  
+
                   // Show a fallback UI with retry button for other errors
                   return Center(
                     child: Padding(

@@ -10,7 +10,7 @@ import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 
 class EditGroupScreen extends ConsumerStatefulWidget {
   static const String routeName = '/groups/:id/edit';
-  
+
   final Group group;
 
   const EditGroupScreen({
@@ -41,7 +41,7 @@ class _EditGroupScreenState extends ConsumerState<EditGroupScreen> with ErrorHan
     try {
       bool hasFormChanges = _formKey.currentState?.hasChanges ?? false;
       bool hasMemberChanges = _membersKey.currentState?.hasChanges ?? false;
-      
+
       if (hasFormChanges) {
         await _formKey.currentState?.saveChanges();
       }

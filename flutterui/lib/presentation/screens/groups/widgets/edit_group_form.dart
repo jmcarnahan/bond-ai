@@ -28,11 +28,11 @@ class EditGroupFormState extends ConsumerState<EditGroupForm> {
     super.initState();
     _nameController = TextEditingController(text: widget.group.name);
     _descriptionController = TextEditingController(text: widget.group.description ?? '');
-    
+
     _nameController.addListener(_onTextChanged);
     _descriptionController.addListener(_onTextChanged);
   }
-  
+
   void _onTextChanged() {
     widget.onChanged?.call();
   }
@@ -56,8 +56,8 @@ class EditGroupFormState extends ConsumerState<EditGroupForm> {
       await ref.read(groupNotifierProvider.notifier).updateGroup(
         widget.group.id,
         name: _nameController.text.trim(),
-        description: _descriptionController.text.trim().isEmpty 
-            ? null 
+        description: _descriptionController.text.trim().isEmpty
+            ? null
             : _descriptionController.text.trim(),
       );
     } catch (error) {

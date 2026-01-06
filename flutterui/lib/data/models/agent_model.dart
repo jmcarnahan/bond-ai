@@ -218,10 +218,10 @@ class AgentDetailModel {
               )
               : null,
       metadata: json['metadata'] as Map<String, dynamic>?,
-      mcpTools: json['mcp_tools'] != null 
+      mcpTools: json['mcp_tools'] != null
           ? List<String>.from(json['mcp_tools'] as List<dynamic>)
           : null,
-      mcpResources: json['mcp_resources'] != null 
+      mcpResources: json['mcp_resources'] != null
           ? List<String>.from(json['mcp_resources'] as List<dynamic>)
           : null,
       files: json['files'] as List<dynamic>? ?? [],

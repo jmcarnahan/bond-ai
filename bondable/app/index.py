@@ -1,7 +1,7 @@
 import logging
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-    level=logging.INFO, 
+    level=logging.INFO,
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def display_page(page): 
+def display_page(page):
     def dynamic_function():
         return page.display()
     dynamic_function.__name__ = page.get_id()
@@ -55,7 +55,7 @@ def create_home_page(name="", pages=[]):
             LOGGER.debug(f"Home card: {page.get_name()} {page.get_id()}")
 
         # reset the page thread to the current thread everytime we show the home page
-        # user_id = st.session_state['user_id']   
+        # user_id = st.session_state['user_id']
         # thread_id = Threads.threads(user_id=user_id).get_current_thread_id(session=st.session_state)
         # st.session_state['page_thread'] = thread_id
 
@@ -134,5 +134,3 @@ if __name__ == "__main__":
         login_main(auth)
     else:
         main("", "Guest")
-
-
