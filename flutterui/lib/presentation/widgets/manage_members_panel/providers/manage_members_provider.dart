@@ -56,7 +56,7 @@ class ManageMembersNotifier extends StateNotifier<ManageMembersState> {
   void addPendingMember(GroupMember user) {
     final newRemovals = Set<String>.from(state.pendingRemovals);
     newRemovals.remove(user.userId);
-    
+
     final newAdditions = Set<String>.from(state.pendingAdditions);
     if (!state.originalMemberIds.contains(user.userId)) {
       newAdditions.add(user.userId);
@@ -71,7 +71,7 @@ class ManageMembersNotifier extends StateNotifier<ManageMembersState> {
   void removePendingMember(GroupMember user) {
     final newAdditions = Set<String>.from(state.pendingAdditions);
     newAdditions.remove(user.userId);
-    
+
     final newRemovals = Set<String>.from(state.pendingRemovals);
     newRemovals.add(user.userId);
 
@@ -100,11 +100,11 @@ class ManageMembersNotifier extends StateNotifier<ManageMembersState> {
 
     try {
       final groupService = ref.read(groupServiceProvider);
-      
+
       for (final userId in state.pendingAdditions) {
         await groupService.addGroupMember(groupId, userId);
       }
-      
+
       for (final userId in state.pendingRemovals) {
         await groupService.removeGroupMember(groupId, userId);
       }
