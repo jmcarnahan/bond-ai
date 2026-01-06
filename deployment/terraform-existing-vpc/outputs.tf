@@ -56,15 +56,26 @@ output "frontend_app_runner_service_url" {
   description = "Frontend App Runner service URL (auto-generated)"
 }
 
-output "frontend_url" {
-  value = local.use_custom_domain ? "https://${local.frontend_fqdn}" : "https://${aws_apprunner_service.frontend.service_url}"
-  description = "Frontend application URL (stable with custom domain)"
-}
-
 output "jwt_secret" {
   value       = random_password.jwt_secret.result
   sensitive   = true
   description = "JWT secret key for authentication"
+}
+
+# Outputs for reuse by other projects (e.g., sbel)
+output "private_subnet_ids" {
+  value       = data.aws_subnets.private.ids
+  description = "Private subnet IDs in the VPC"
+}
+
+output "app_runner_ecr_access_role_arn" {
+  value       = aws_iam_role.app_runner_ecr_access.arn
+  description = "ARN of the IAM role for App Runner ECR access"
+}
+
+output "app_runner_security_group_id" {
+  value       = aws_security_group.app_runner.id
+  description = "Security group ID for App Runner VPC connector"
 }
 
 
@@ -74,10 +85,8 @@ output "deployment_instructions" {
     Deployment Complete!
 
     Backend URL: https://${aws_apprunner_service.backend.service_url}
-    Frontend URL: ${local.use_custom_domain ? "https://${local.frontend_fqdn}" : "https://${aws_apprunner_service.frontend.service_url}"}
+    Frontend URL: https://${aws_apprunner_service.frontend.service_url}
 
-    Custom Domain: ${local.use_custom_domain ? local.frontend_fqdn : "Not configured - using auto-generated URL"}
-    ${local.use_custom_domain ? "\n    ⚠️  SSL CERTIFICATE WARNING:\n    When accessing the frontend via custom domain, you'll see a certificate warning\n    because the SSL cert is for *.awsapprunner.com, not ${local.frontend_fqdn}.\n    This is expected. Accept the warning once and your browser will remember.\n" : ""}
     Next Steps:
     1. Update Okta application with callback URL:
        https://${aws_apprunner_service.backend.service_url}/auth/okta/callback
@@ -86,8 +95,7 @@ output "deployment_instructions" {
        curl https://${aws_apprunner_service.backend.service_url}/health
 
     3. Access the application:
-       ${local.use_custom_domain ? "https://${local.frontend_fqdn}" : "https://${aws_apprunner_service.frontend.service_url}"}
-       ${local.use_custom_domain ? "(Accept the SSL certificate warning on first access)" : ""}
+       https://${aws_apprunner_service.frontend.service_url}
   EOT
   description = "Post-deployment instructions"
 }
