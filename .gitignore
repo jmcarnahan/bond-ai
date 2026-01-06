@@ -63,3 +63,4 @@ deployment/**/environments/*.tfvars
 !deployment/**/environments/example.tfvars
 
 patches/
+scripts/setup_cognito.py
