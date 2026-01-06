@@ -155,7 +155,7 @@ resource "aws_rds_cluster" "aurora_kb" {
   cluster_identifier = "${var.project_name}-${var.environment}-aurora-kb"
   engine             = "aurora-postgresql"
   engine_mode        = "provisioned"
-  engine_version     = "15.12"  # Match RDS instance version
+  engine_version     = "15.12"
   database_name      = local.aurora_kb_database
   master_username    = "postgres"
   master_password    = random_password.aurora_kb_password[0].result
