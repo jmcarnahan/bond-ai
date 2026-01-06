@@ -57,7 +57,7 @@ async def create_group(
             description=group_data.description,
             owner_user_id=current_user.user_id
         )
-        
+
         # Get the created group to return
         group = bond_provider.groups.get_group(group_id, current_user.user_id)
         return Group(**group)
@@ -83,14 +83,14 @@ async def get_group(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Group not found"
             )
-        
+
         members = bond_provider.groups.get_group_members(group_id, current_user.user_id)
         if members is None:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access to this group is forbidden"
             )
-        
+
         member_data = [GroupMember(**member) for member in members]
         return GroupWithMembers(**group, members=member_data)
     except HTTPException:
@@ -118,7 +118,7 @@ async def update_group(
             name=group_data.name,
             description=group_data.description
         )
-        
+
         if not success:
             # Check if group exists first
             group = bond_provider.groups.get_group(group_id, current_user.user_id)
@@ -132,7 +132,7 @@ async def update_group(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Only group owner can update group"
                 )
-        
+
         # Get updated group to return
         updated_group = bond_provider.groups.get_group(group_id, current_user.user_id)
         return Group(**updated_group)
@@ -155,7 +155,7 @@ async def delete_group(
     """Delete group (owner only)."""
     try:
         success = bond_provider.groups.delete_group(group_id, current_user.user_id)
-        
+
         if not success:
             # Check if group exists first
             group = bond_provider.groups.get_group(group_id, current_user.user_id)
@@ -194,7 +194,7 @@ async def add_group_member(
             member_user_id=user_id,
             action="add"
         )
-        
+
         if not success:
             # Check what failed - group exists? user exists? already member? permission?
             group = bond_provider.groups.get_group(group_id, current_user.user_id)
@@ -203,14 +203,14 @@ async def add_group_member(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Group not found"
                 )
-            
+
             # Check if user is owner
             if group["owner_user_id"] != current_user.user_id:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Only group owner can add members"
                 )
-            
+
             # Could be user not found or already a member
             all_users = bond_provider.groups.get_all_users()
             user_exists = any(u["user_id"] == user_id for u in all_users)
@@ -249,7 +249,7 @@ async def remove_group_member(
             member_user_id=user_id,
             action="remove"
         )
-        
+
         if not success:
             # Check what failed
             group = bond_provider.groups.get_group(group_id, current_user.user_id)
@@ -258,7 +258,7 @@ async def remove_group_member(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Group not found"
                 )
-            
+
             # Check if user is owner
             if group["owner_user_id"] != current_user.user_id:
                 raise HTTPException(

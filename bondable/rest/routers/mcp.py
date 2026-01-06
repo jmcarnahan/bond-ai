@@ -396,16 +396,16 @@ async def get_mcp_status(
 ) -> Dict[str, Any]:
     """
     Get the status of the MCP client and configured servers.
-    
+
     Returns:
         MCP client status information
     """
     LOGGER.debug(f"[MCP Status] Request received from user: {current_user.user_id} ({current_user.email})")
-    
+
     try:
         mcp_client = MCPClient.client()
         LOGGER.debug(f"[MCP Status] MCP client instance created: {mcp_client is not None}")
-        
+
         # Check if client has configuration
         if not hasattr(mcp_client, 'config') or mcp_client.config is None:
             LOGGER.warning("[MCP Status] MCP client has no config attribute")
@@ -414,7 +414,7 @@ async def get_mcp_status(
                 "client_initialized": False,
                 "error": "MCP client config not found"
             }
-        
+
         if not hasattr(mcp_client, 'mcp_config') or mcp_client.mcp_config is None:
             LOGGER.warning("[MCP Status] MCP client has no mcp_config attribute")
             return {
@@ -422,31 +422,31 @@ async def get_mcp_status(
                 "client_initialized": False,
                 "error": "MCP configuration not loaded"
             }
-        
+
         # Get the MCP configuration
         mcp_config = mcp_client.mcp_config
         servers = mcp_config.get("mcpServers", {})
         server_count = len(servers)
-        
+
         LOGGER.debug(f"[MCP Status] Found {server_count} configured servers")
-        
+
         # Log server details
         for server_name, server_config in servers.items():
             LOGGER.debug(f"[MCP Status] Server '{server_name}': {server_config}")
-        
+
         # Check initialization status
         is_initialized = mcp_client._initialized
         LOGGER.debug(f"[MCP Status] Client initialized: {is_initialized}")
-        
+
         status = {
             "servers_configured": server_count,
             "client_initialized": is_initialized,
             "server_details": list(servers.keys()) if servers else []
         }
-        
+
         LOGGER.info(f"[MCP Status] Status response: {status}")
         return status
-        
+
     except Exception as e:
         LOGGER.error(f"[MCP Status] Error checking status for user {current_user.user_id} ({current_user.email}): {type(e).__name__}: {e}", exc_info=True)
         return {
