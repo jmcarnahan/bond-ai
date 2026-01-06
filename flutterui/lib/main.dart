@@ -60,7 +60,7 @@ void main() async {
     dotenv.testLoad(fileInput: '');
     logger.i('No .env file found, initialized with empty configuration');
   }
-  
+
   // Set API base URL from .env or compile-time constants
   if (ApiConstants.baseUrl.isEmpty) {
     final apiBaseUrl = dotenv.env['API_BASE_URL'] ?? 'http://localhost:8000';
@@ -473,7 +473,7 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
               Builder(
                 builder: (context) {
                   final defaultAgentAsync = ref.watch(defaultAgentProvider);
-                  
+
                   return defaultAgentAsync.when(
                     data: (defaultAgent) {
                       final agentId = notificationState.agentId ?? defaultAgent.id;
