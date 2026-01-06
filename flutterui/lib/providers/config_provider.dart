@@ -9,7 +9,7 @@ final isAgentsEnabledProvider = Provider<bool>((ref) {
   if (compileTimeAgents.isNotEmpty) {
     return compileTimeAgents.toLowerCase() == 'true';
   }
-  
+
   // Check .env file (for local development)
   final enableAgents = dotenv.env['ENABLE_AGENTS']?.toLowerCase();
   return enableAgents == 'true' || enableAgents == null; // Default to true if not specified

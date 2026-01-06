@@ -404,7 +404,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
 
   Future<bool> saveAgent({String? agentId}) async {
     state = state.copyWith(isLoading: true, clearErrorMessage: true);
-    
+
     logger.i('[CreateAgentFormNotifier] Starting saveAgent for: ${state.name}');
 
     if (state.name.isEmpty) {
@@ -451,11 +451,11 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
 
     // Get the default model from the provider
     String? defaultModel = _getDefaultModel();
-    
+
     // If model is null, models might not be loaded yet, wait and retry
     if (defaultModel == null) {
       logger.w('[CreateAgentFormNotifier] Model is null, waiting for models to load...');
-      
+
       // Wait up to 3 seconds for models to load
       for (int i = 0; i < 6; i++) {
         await Future.delayed(const Duration(milliseconds: 500));
@@ -465,7 +465,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
           break;
         }
       }
-      
+
       // If still null after waiting, fail the save
       if (defaultModel == null) {
         state = state.copyWith(
@@ -476,9 +476,9 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
         return false;
       }
     }
-    
+
     logger.i('[CreateAgentFormNotifier] Using model for agent creation: $defaultModel');
-    
+
     final agentData = AgentDetailModel(
       id: agentId ?? '',
       name: state.name,
@@ -551,7 +551,7 @@ final createAgentFormProvider =
     StateNotifierProvider<CreateAgentFormNotifier, CreateAgentFormState>((ref) {
       final agentService = ref.watch(agentServiceProvider);
       final fileService = ref.watch(fileServiceProvider);
-      
+
       // Create a function that captures the ref context
       String? getDefaultModel() {
         final model = ref.read(defaultModelProvider);
@@ -561,7 +561,7 @@ final createAgentFormProvider =
         }
         return model;
       }
-      
+
       return CreateAgentFormNotifier(
         agentService: agentService,
         fileService: fileService,

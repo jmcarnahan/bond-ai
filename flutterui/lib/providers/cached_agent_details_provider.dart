@@ -28,10 +28,10 @@ class CachedAgentDetailsNotifier extends StateNotifier<Map<String, AgentDetailMo
     try {
       final agentService = ref.read(agentServiceProvider);
       final agentDetail = await agentService.getAgentDetails(agentId);
-      
+
       // Update cache
       state = {...state, agentId: agentDetail};
-      
+
       return agentDetail;
     } catch (e) {
       // Return null if error fetching agent details
