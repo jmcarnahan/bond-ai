@@ -1,4 +1,4 @@
-import logging 
+import logging
 LOGGER = logging.getLogger(__name__)
 
 from bondable.bond.broker import Broker, BondMessage
@@ -22,7 +22,7 @@ class MessageListener:
       self.messages.append(message)
       if message.is_done:
         break
-    
+
   def start(self):
     import threading
     self.thread = threading.Thread(target=self.run)
@@ -46,11 +46,11 @@ class TestBroker:
   def test_sync_message_1(self):
     broker = Broker.broker()
     assert broker is not None
-    
+
     thread_id = 'test_thread'
     conn = broker.connect(thread_id=thread_id, subscriber_id='test_subscriber')
     assert conn is not None
-  
+
     message = BondMessage(thread_id=thread_id, message_id='test_message', type='test_type', role='test_role')
     broker.publish(thread_id, message=message.to_start_xml())
     broker.publish(thread_id, 'hello world')
@@ -72,11 +72,11 @@ class TestBroker:
   def test_sync_message_2(self):
     broker = Broker.broker()
     assert broker is not None
-    
+
     thread_id = 'test_thread'
     conn = broker.connect(thread_id=thread_id, subscriber_id='test_subscriber')
     assert conn is not None
-  
+
     message = BondMessage(thread_id=thread_id, message_id='test_message', type='test_type', role='test_role')
     broker.publish(thread_id, message=message.to_start_xml())
     broker.publish(thread_id, 'hello world')
@@ -94,13 +94,13 @@ class TestBroker:
     message = conn.wait_for_message()
     assert message is not None
     assert message.clob.get_content() == 'goodbye jumbo'
-    
+
     broker.stop()
 
   def test_sync_message_3(self):
     broker = Broker.broker()
     assert broker is not None
-    
+
     thread_id = 'test_thread'
     conn_1 = broker.connect(thread_id=thread_id, subscriber_id='test_subscriber_1')
     assert conn_1 is not None
@@ -139,7 +139,7 @@ class TestBroker:
   def test_async_message_1(self):
     broker = Broker.broker()
     assert broker is not None
-    
+
     thread_id = 'test_thread'
     conn = broker.connect(thread_id=thread_id, subscriber_id='test_subscriber')
     assert conn is not None
@@ -163,7 +163,7 @@ class TestBroker:
   def test_async_message_2(self):
     broker = Broker.broker()
     assert broker is not None
-    
+
     thread_id = 'test_thread'
     conn = broker.connect(thread_id=thread_id, subscriber_id='test_subscriber')
     assert conn is not None
@@ -187,15 +187,15 @@ class TestBroker:
     assert len(listener.messages) == 2
     message = listener.messages[0]
     assert message is not None
-    assert message.clob.get_content() == 'hello world'  
+    assert message.clob.get_content() == 'hello world'
     message = listener.messages[1]
     assert message is not None
-    assert message.clob.get_content() == 'goodbye jumbo'  
+    assert message.clob.get_content() == 'goodbye jumbo'
 
   def test_async_message_2(self):
     broker = Broker.broker()
     assert broker is not None
-    
+
     thread_id = 'test_thread'
 
     conn_1 = broker.connect(thread_id=thread_id, subscriber_id='test_subscriber_1')
@@ -225,16 +225,16 @@ class TestBroker:
     assert len(listener_1.messages) == 2
     message = listener_1.messages[0]
     assert message is not None
-    assert message.clob.get_content() == 'hello world'  
+    assert message.clob.get_content() == 'hello world'
     message = listener_1.messages[1]
     assert message is not None
-    assert message.clob.get_content() == 'goodbye jumbo'  
+    assert message.clob.get_content() == 'goodbye jumbo'
 
 
     assert len(listener_2.messages) == 2
     message = listener_2.messages[0]
     assert message is not None
-    assert message.clob.get_content() == 'hello world'  
+    assert message.clob.get_content() == 'hello world'
     message = listener_2.messages[1]
     assert message is not None
-    assert message.clob.get_content() == 'goodbye jumbo'  
+    assert message.clob.get_content() == 'goodbye jumbo'
