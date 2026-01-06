@@ -32,14 +32,14 @@ class OAIAVectorStoresProvider(VectorStoresProvider):
     @override
     def delete_vector_store_resource(self, vector_store_id: str) -> bool:
         """
-        Deletes a vector store by its ID. 
+        Deletes a vector store by its ID.
         Don't throw an exception if it does not exist, just return False.
         """
         try:
             self.openai_client.vector_stores.delete(vector_store_id)
             LOGGER.info(f"Deleting vector store with vector_store_id: {vector_store_id}")
             return True
-        except openai.NotFoundError: 
+        except openai.NotFoundError:
             LOGGER.warning(f"Vector store with vector_store_id: {vector_store_id} not found. Considered 'deleted' for provider part.")
             return False
         except Exception as e:
@@ -49,7 +49,7 @@ class OAIAVectorStoresProvider(VectorStoresProvider):
     @override
     def create_vector_store_resource(self, name: str) -> str:
         """
-        Creates a new vector store with the given name. 
+        Creates a new vector store with the given name.
         Returns the vector_store_id of the created vector store.
         """
         try:
@@ -62,7 +62,7 @@ class OAIAVectorStoresProvider(VectorStoresProvider):
     @override
     def get_vector_store_file_ids(self, vector_store_id: str) -> List[str]:
         """
-        Retrieves the file IDs associated with a vector store. 
+        Retrieves the file IDs associated with a vector store.
         Returns a list of file IDs.
         """
         vector_store_files = self.openai_client.vector_stores.files.list(
@@ -75,7 +75,7 @@ class OAIAVectorStoresProvider(VectorStoresProvider):
     @override
     def add_vector_store_file(self, vector_store_id: str, file_id: str) -> bool:
         """
-        Adds a file to a vector store. 
+        Adds a file to a vector store.
         Returns True if the file was successfully added, False otherwise.
         """
         # need to check if the file exists in the vector store first
@@ -101,7 +101,7 @@ class OAIAVectorStoresProvider(VectorStoresProvider):
     @override
     def remove_vector_store_file(self, vector_store_id: str, file_id: str) -> bool:
         """
-        Removes a file from a vector store. 
+        Removes a file from a vector store.
         Returns True if the file was successfully removed, False otherwise.
         """
         try:
