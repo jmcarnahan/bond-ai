@@ -31,11 +31,11 @@ class _AgentsScreenState extends ConsumerState<AgentsScreen> with ErrorHandlingM
   @override
   Widget build(BuildContext context) {
     final agentsAsyncValue = ref.watch(agentsProvider);
-    
+
     final ThemeData currentThemeData = Theme.of(context);
     final TextTheme textTheme = currentThemeData.textTheme;
     final ColorScheme colorScheme = currentThemeData.colorScheme;
-    
+
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: PreferredSize(
@@ -124,7 +124,7 @@ class _AgentsScreenState extends ConsumerState<AgentsScreen> with ErrorHandlingM
               ),
             );
           }
-          
+
           return GridView.builder(
             padding: const EdgeInsets.all(16.0),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -162,7 +162,7 @@ class _AgentsScreenState extends ConsumerState<AgentsScreen> with ErrorHandlingM
           WidgetsBinding.instance.addPostFrameCallback((_) {
             handleAutoError(err, ref, serviceErrorMessage: 'Failed to load agents');
           });
-          
+
           // Check if this is an authentication error
           final appError = err is Exception ? AppError.fromException(err) : null;
           if (appError?.type == ErrorType.authentication) {
@@ -170,7 +170,7 @@ class _AgentsScreenState extends ConsumerState<AgentsScreen> with ErrorHandlingM
               child: CircularProgressIndicator(),
             );
           }
-          
+
           // Show a fallback UI with retry button
           return Center(
             child: Padding(

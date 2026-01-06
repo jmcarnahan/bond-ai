@@ -26,9 +26,9 @@ class AgentService {
       httpClient: httpClient,
       authService: authService,
     );
-    
+
     final crudService = AgentCrudService(httpClient: agentHttpClient);
-    
+
     return AgentService._(
       crudService: crudService,
       httpClient: agentHttpClient,
@@ -37,13 +37,13 @@ class AgentService {
 
   Future<List<AgentListItemModel>> getAgents() => _crudService.getAgents();
 
-  Future<AgentDetailModel> getAgentDetails(String agentId) => 
+  Future<AgentDetailModel> getAgentDetails(String agentId) =>
       _crudService.getAgentDetails(agentId);
 
-  Future<AgentResponseModel> createAgent(AgentDetailModel agentData) => 
+  Future<AgentResponseModel> createAgent(AgentDetailModel agentData) =>
       _crudService.createAgent(agentData);
 
-  Future<AgentResponseModel> updateAgent(String agentId, AgentDetailModel agentData) => 
+  Future<AgentResponseModel> updateAgent(String agentId, AgentDetailModel agentData) =>
       _crudService.updateAgent(agentId, agentData);
 
   Future<void> deleteAgent(String agentId) => _crudService.deleteAgent(agentId);
@@ -54,7 +54,7 @@ class AgentService {
   Future<List<ModelInfo>> getAvailableModels() =>
     _crudService.getAvailableModels();
 
-  Future<AgentResponseModel> getDefaultAgent() => 
+  Future<AgentResponseModel> getDefaultAgent() =>
       _crudService.getDefaultAgent();
 
   void dispose() {

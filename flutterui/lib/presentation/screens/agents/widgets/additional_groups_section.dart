@@ -47,13 +47,13 @@ class _AdditionalGroupsSectionState extends ConsumerState<AdditionalGroupsSectio
 
       final agentService = ref.read(agentServiceProvider);
       final allGroups = await agentService.getAvailableGroups();
-      
+
       // Filter out default groups (groups that end with "Default Group")
       final filteredGroups = allGroups.where((group) {
         // Filter out any group that follows the default group naming pattern
         return !group.name.endsWith('Default Group');
       }).toList();
-      
+
       setState(() {
         _availableGroups = filteredGroups;
         _isLoading = false;
@@ -80,7 +80,7 @@ class _AdditionalGroupsSectionState extends ConsumerState<AdditionalGroupsSectio
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return BondAIContainer(
       icon: Icons.groups,
       title: 'Share with Additional Groups',
