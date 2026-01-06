@@ -37,6 +37,7 @@ class AgentFormData {
   final bool enableFileSearch;
   final List<UploadedFileInfo> codeInterpreterFiles;
   final List<UploadedFileInfo> fileSearchFiles;
+  final String fileStorage; // 'direct' or 'knowledge_base'
 
   const AgentFormData({
     this.name = '',
@@ -46,6 +47,7 @@ class AgentFormData {
     this.enableFileSearch = false,
     this.codeInterpreterFiles = const [],
     this.fileSearchFiles = const [],
+    this.fileStorage = 'direct',
   });
 
   AgentFormData copyWith({
@@ -56,6 +58,7 @@ class AgentFormData {
     bool? enableFileSearch,
     List<UploadedFileInfo>? codeInterpreterFiles,
     List<UploadedFileInfo>? fileSearchFiles,
+    String? fileStorage,
   }) {
     return AgentFormData(
       name: name ?? this.name,
@@ -65,6 +68,7 @@ class AgentFormData {
       enableFileSearch: enableFileSearch ?? this.enableFileSearch,
       codeInterpreterFiles: codeInterpreterFiles ?? this.codeInterpreterFiles,
       fileSearchFiles: fileSearchFiles ?? this.fileSearchFiles,
+      fileStorage: fileStorage ?? this.fileStorage,
     );
   }
 
@@ -80,7 +84,8 @@ class AgentFormData {
         other.enableCodeInterpreter == enableCodeInterpreter &&
         other.enableFileSearch == enableFileSearch &&
         _listEquals(other.codeInterpreterFiles, codeInterpreterFiles) &&
-        _listEquals(other.fileSearchFiles, fileSearchFiles);
+        _listEquals(other.fileSearchFiles, fileSearchFiles) &&
+        other.fileStorage == fileStorage;
   }
 
   @override
@@ -93,6 +98,7 @@ class AgentFormData {
       enableFileSearch,
       Object.hashAll(codeInterpreterFiles),
       Object.hashAll(fileSearchFiles),
+      fileStorage,
     );
   }
 

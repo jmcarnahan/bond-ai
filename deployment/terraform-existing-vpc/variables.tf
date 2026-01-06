@@ -91,6 +91,43 @@ variable "jwt_redirect_uri" {
   default     = ""
 }
 
+# AWS Cognito Configuration
+variable "cognito_domain" {
+  description = "AWS Cognito user pool domain (e.g., https://your-domain.auth.us-west-2.amazoncognito.com)"
+  type        = string
+  default     = ""
+}
+
+variable "cognito_client_id" {
+  description = "AWS Cognito app client ID"
+  type        = string
+  default     = ""
+}
+
+variable "cognito_secret_name" {
+  description = "AWS Secrets Manager secret name for Cognito client secret (optional for public clients)"
+  type        = string
+  default     = ""
+}
+
+variable "cognito_redirect_uri" {
+  description = "Cognito OAuth redirect URI"
+  type        = string
+  default     = ""
+}
+
+variable "cognito_scopes" {
+  description = "Cognito OAuth scopes"
+  type        = string
+  default     = "openid,email,phone"
+}
+
+variable "cognito_region" {
+  description = "AWS region where Cognito user pool is located"
+  type        = string
+  default     = "us-west-2"
+}
+
 variable "cors_allowed_origins" {
   description = "Comma-separated list of allowed CORS origins"
   type        = string
@@ -109,39 +146,8 @@ variable "bedrock_default_model" {
   default     = "us.anthropic.claude-sonnet-4-20250514-v1:0"
 }
 
-# Custom Domain Configuration
-variable "domain_name" {
-  description = "Base domain name for custom URLs (e.g., example.com). Leave empty to use default pattern: bondai.{account_id}.aws.internalzone.com"
-  type        = string
-  default     = ""
-}
-
-variable "frontend_subdomain" {
-  description = "Subdomain for frontend application (e.g., 'app' for app.example.com). Only used if domain_name is explicitly set"
-  type        = string
-  default     = "app"
-}
-
-variable "create_hosted_zone" {
-  description = "Whether to create a new Route 53 hosted zone for the domain"
-  type        = bool
-  default     = false
-}
-
-variable "existing_hosted_zone_id" {
-  description = "ID of existing Route 53 hosted zone (optional, will auto-detect if not provided)"
-  type        = string
-  default     = ""
-}
-
-variable "use_private_zone" {
-  description = "Whether to look for a private hosted zone (common in enterprise environments)"
-  type        = bool
-  default     = true
-}
-
-variable "custom_frontend_fqdn" {
-  description = "Fully qualified domain name for frontend. Overrides all other domain settings if provided"
+variable "bond_mcp_config" {
+  description = "JSON configuration for MCP servers"
   type        = string
   default     = ""
 }

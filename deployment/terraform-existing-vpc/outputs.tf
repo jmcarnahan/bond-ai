@@ -62,21 +62,37 @@ output "jwt_secret" {
   description = "JWT secret key for authentication"
 }
 
+# Outputs for reuse by other projects (e.g., sbel)
+output "private_subnet_ids" {
+  value       = data.aws_subnets.private.ids
+  description = "Private subnet IDs in the VPC"
+}
+
+output "app_runner_ecr_access_role_arn" {
+  value       = aws_iam_role.app_runner_ecr_access.arn
+  description = "ARN of the IAM role for App Runner ECR access"
+}
+
+output "app_runner_security_group_id" {
+  value       = aws_security_group.app_runner.id
+  description = "Security group ID for App Runner VPC connector"
+}
+
 output "deployment_instructions" {
   value = <<-EOT
-    
+
     Deployment Complete!
-    
+
     Backend URL: https://${aws_apprunner_service.backend.service_url}
     Frontend URL: https://${aws_apprunner_service.frontend.service_url}
-    
+
     Next Steps:
     1. Update Okta application with callback URL:
        https://${aws_apprunner_service.backend.service_url}/auth/okta/callback
-    
+
     2. Test the deployment:
        curl https://${aws_apprunner_service.backend.service_url}/health
-    
+
     3. Access the application:
        https://${aws_apprunner_service.frontend.service_url}
   EOT

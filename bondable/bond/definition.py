@@ -21,14 +21,16 @@ class AgentDefinition:
     user_id: str = None
     mcp_tools: List[str] = []  # List of MCP tool identifiers
     mcp_resources: List[str] = []  # List of MCP resource identifiers
-    temperature: float = 0.0  
+    temperature: float = 0.0
     top_p: float = 0.5
+    file_storage: str = 'direct'  # 'direct' | 'knowledge_base'
 
     def __init__(self, user_id: str, name: str, description: str, instructions: str, model: str,
                  tools: List = [], tool_resources: Dict = {}, metadata: Dict = {},
                  id: Optional[str] = None, introduction: str = "", reminder: str = "",
-                 mcp_tools: List[str] = [], mcp_resources: List[str] = [], 
-                 temperature: float = 0.0, top_p: float = 0.5): 
+                 mcp_tools: List[str] = [], mcp_resources: List[str] = [],
+                 temperature: float = 0.0, top_p: float = 0.5,
+                 file_storage: str = 'direct'):
         self.id = id
         self.name = name
         self.description = description
@@ -44,6 +46,7 @@ class AgentDefinition:
         self.provider = self.config.get_provider()
         self.temperature = temperature
         self.top_p = top_p
+        self.file_storage = file_storage
 
         if user_id is None:
             raise ValueError("User ID must be provided for agent definition.")
@@ -105,9 +108,19 @@ class AgentDefinition:
                 self.provider.vectorstores.update_vector_store_file_ids(vector_store_id=default_vector_store_id, file_ids=file_ids)
 
         # Always ensure file_search has the default vector store
+        # Preserve file_ids for knowledge_base mode (they're needed for KB upload)
+        preserved_file_ids = None
+        if "file_search" in self.tool_resources and self.tool_resources["file_search"]:
+            preserved_file_ids = self.tool_resources["file_search"].get("file_ids")
+
         self.tool_resources["file_search"] = {
             "vector_store_ids": list(set(vector_store_ids))
         }
+
+        # Restore file_ids if they existed (needed for knowledge_base upload)
+        if preserved_file_ids:
+            self.tool_resources["file_search"]["file_ids"] = preserved_file_ids
+            LOGGER.debug(f"Agent[{self.name}] Preserved file_ids for potential KB upload: {preserved_file_ids}")
 
         LOGGER.debug(f"Agent[{self.name}] Tool Resources: {json.dumps(self.tool_resources, sort_keys=True, indent=4)}")
 
@@ -123,7 +136,7 @@ class AgentDefinition:
 
     def __dict__(self):
         return {
-            "id": self.id, # Added id
+            "id": self.id,
             "name": self.name,
             "description": self.description,
             "instructions": self.instructions,
@@ -137,6 +150,7 @@ class AgentDefinition:
             "mcp_resources": self.mcp_resources,
             "temperature": self.temperature,
             "top_p": self.top_p,
+            "file_storage": self.file_storage,
         }
     
     def __str__(self):
@@ -146,11 +160,11 @@ class AgentDefinition:
         # The hash should represent the configuration, not the ID.
         # So, self.id is intentionally excluded from the hash.
         return hash(
-            (self.name, self.description, self.instructions, self.introduction, self.reminder, self.model, 
-                json.dumps(self.metadata, sort_keys=True), 
+            (self.name, self.description, self.instructions, self.introduction, self.reminder, self.model,
+                json.dumps(self.metadata, sort_keys=True),
                 json.dumps(self.tools, sort_keys=True),
                 json.dumps(self.tool_resources, sort_keys=True),
                 json.dumps(self.mcp_tools, sort_keys=True),
                 json.dumps(self.mcp_resources, sort_keys=True),
-                self.temperature, self.top_p)
+                self.temperature, self.top_p, self.file_storage)
         )
