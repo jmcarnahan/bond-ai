@@ -10,45 +10,45 @@ resource "null_resource" "build_backend_image" {
     aws_ecr_repository.backend,
     aws_ecr_repository_policy.backend
   ]
-  
+
   triggers = {
     always_run = timestamp() # Force rebuild on each apply
   }
-  
+
   provisioner "local-exec" {
     command = <<-EOT
       set -e  # Exit on error
       echo "Building backend Docker image..."
-      
+
       # Verify Docker is running
       if ! docker info > /dev/null 2>&1; then
         echo "Error: Docker daemon is not running"
         exit 1
       fi
-      
+
       # Login to ECR
       echo "Authenticating with ECR..."
       aws ecr get-login-password --region ${var.aws_region} | \
         docker login --username AWS --password-stdin ${aws_ecr_repository.backend.repository_url}
-      
+
       # Verify Dockerfile exists
       if [ ! -f "deployment/Dockerfile.backend" ]; then
         echo "Error: deployment/Dockerfile.backend not found"
         exit 1
       fi
-      
+
       # Build and push backend
       echo "Building and pushing backend image..."
       docker buildx build --platform linux/amd64 \
         -t ${aws_ecr_repository.backend.repository_url}:latest \
         -f deployment/Dockerfile.backend --push .
-      
+
       # Verify image was pushed
       aws ecr describe-images \
         --repository-name ${aws_ecr_repository.backend.name} \
         --region ${var.aws_region} \
         --image-ids imageTag=latest > /dev/null 2>&1
-      
+
       if [ $? -eq 0 ]; then
         echo "✓ Backend image built and pushed successfully"
       else
@@ -56,17 +56,17 @@ resource "null_resource" "build_backend_image" {
         exit 1
       fi
     EOT
-    
+
     working_dir = "${path.module}/../.."
   }
-  
+
   provisioner "local-exec" {
     when    = destroy
     command = "echo 'Backend Docker image will remain in ECR for potential reuse'"
   }
 }
 
-# Stage 2: Build frontend Docker image 
+# Stage 2: Build frontend Docker image
 # This needs to happen after backend is deployed to get the URL
 resource "null_resource" "build_frontend_image" {
   depends_on = [
@@ -74,17 +74,17 @@ resource "null_resource" "build_frontend_image" {
     aws_ecr_repository_policy.frontend,
     aws_apprunner_service.backend  # Frontend needs backend URL
   ]
-  
+
   triggers = {
     always_run  = timestamp() # Force rebuild on each apply
     backend_url = aws_apprunner_service.backend.service_url
   }
-  
+
   # Add lifecycle to ensure this completes before proceeding
   lifecycle {
     create_before_destroy = false
   }
-  
+
   provisioner "local-exec" {
     command = <<-EOT
       set -e  # Exit on error
@@ -212,10 +212,10 @@ resource "null_resource" "build_frontend_image" {
         exit 1
       fi
     EOT
-    
+
     working_dir = "${path.module}/../.."
   }
-  
+
   provisioner "local-exec" {
     when    = destroy
     command = "echo 'Frontend Docker image will remain in ECR for potential reuse'"

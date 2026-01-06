@@ -103,7 +103,7 @@ make validate-phase1
 make deploy-phase2
 make validate-phase2
 
-# Phase 3: Frontend  
+# Phase 3: Frontend
 make deploy-phase3
 make validate-phase3
 
@@ -273,7 +273,7 @@ make destroy
 
 Monthly costs (us-east-2):
 - RDS PostgreSQL (db.t3.micro): ~$15-16
-- Backend App Runner (0.25 vCPU): ~$15-20  
+- Backend App Runner (0.25 vCPU): ~$15-20
 - Frontend App Runner (0.25 vCPU): ~$15-20
 - NAT Gateway: ~$45
 - S3 & ECR: <$2

@@ -92,7 +92,7 @@ class AgentFormController with ErrorHandlingMixin {
   }
 
   bool get isFormValid {
-    return nameController.text.isNotEmpty && 
+    return nameController.text.isNotEmpty &&
            instructionsController.text.isNotEmpty;
   }
 
@@ -101,12 +101,12 @@ class AgentFormController with ErrorHandlingMixin {
   Future<void> _saveMemberChanges() async {
     final agentName = nameController.text;
     if (agentName.isEmpty) return;
-    
+
     try {
       final defaultGroupName = '$agentName Default Group';
       final groups = await ref.read(groupsProvider.future);
       final defaultGroup = groups.where((g) => g.name == defaultGroupName).firstOrNull;
-      
+
       if (defaultGroup != null) {
         final memberNotifier = ref.read(manageMembersProvider(defaultGroup.id).notifier);
         await memberNotifier.saveChanges();
@@ -142,18 +142,18 @@ class AgentFormController with ErrorHandlingMixin {
 
   Future<void> _handleSuccessfulSave(BuildContext context) async {
     _notifier.setLoading(true);
-    
+
     try {
       // Refresh the agents list
       ref.invalidate(agentsProvider);
-      
+
       if (!isEditing) {
         ref.invalidate(groupsProvider);
         ref.invalidate(groupNotifierProvider);
       } else {
         ref.invalidate(groupsProvider);
         ref.invalidate(groupNotifierProvider);
-        
+
         final allGroups = ref.read(groupsProvider);
         allGroups.whenData((groups) {
           for (final group in groups) {
@@ -161,7 +161,7 @@ class AgentFormController with ErrorHandlingMixin {
           }
         });
       }
-      
+
       if (context.mounted) {
         _showSuccessMessage(context);
         Navigator.of(context).pop();
@@ -201,11 +201,11 @@ class AgentFormController with ErrorHandlingMixin {
 
     try {
       final bool success = await _notifier.deleteAgent(agentId!);
-      
+
       if (success && context.mounted) {
         await _handleSuccessfulDelete(context);
       }
-      
+
       return success;
     } catch (e) {
       logger.e('Error deleting agent: $e');
@@ -226,7 +226,7 @@ class AgentFormController with ErrorHandlingMixin {
       ref.invalidate(agentsProvider);
       ref.invalidate(groupsProvider);
       ref.invalidate(groupNotifierProvider);
-      
+
       if (context.mounted) {
         _showDeleteSuccessMessage(context);
         // Navigate to home screen after successful deletion

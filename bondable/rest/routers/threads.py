@@ -47,7 +47,7 @@ async def create_thread(
             user_id=current_user.user_id,
             name=request_body.name
         )
-        
+
         LOGGER.info(f"User {current_user.user_id} ({current_user.email}) created new thread with ID: {created_thread_orm.thread_id} and name: {created_thread_orm.name}")
         return ThreadRef(
             id=created_thread_orm.thread_id,
@@ -93,7 +93,7 @@ async def get_messages(
     """Get messages for a specific thread."""
     try:
         messages_dict: Dict[str, Any] = provider.threads.get_messages(thread_id=thread_id, limit=limit)
-        
+
         message_refs = []
         for msg_obj in messages_dict.values():
             # Skip system messages - they should not be returned to the client
@@ -101,15 +101,15 @@ async def get_messages(
             if msg_role == 'system':
                 LOGGER.debug(f"Filtering out system message: {getattr(msg_obj, 'message_id', 'unknown')}")
                 continue
-                
+
             actual_content = ""
             if hasattr(msg_obj, 'clob') and msg_obj.clob:
                 actual_content = msg_obj.clob.get_content()
-            
+
             # Handle image messages properly
             message_type = getattr(msg_obj, 'type', 'text')
             image_data = None
-            
+
             if message_type == 'image_file' and actual_content:
                 # Extract base64 data from data URL
                 if actual_content.startswith('data:image/png;base64,'):
@@ -124,7 +124,7 @@ async def get_messages(
                     if comma_index != -1 and comma_index < len(actual_content) - 1:
                         image_data = actual_content[comma_index + 1:]
                         actual_content = '[Image]'
-            
+
             # Extract agent_id - BondMessage objects have agent_id attribute directly
             metadata = getattr(msg_obj, 'metadata', {})
             agent_id = metadata['agent_id'] if 'agent_id' in metadata else None
@@ -139,7 +139,7 @@ async def get_messages(
                 metadata=metadata
             ))
         return message_refs
-        
+
     except Exception as e:
         LOGGER.error(f"Error fetching messages for thread {thread_id}: {e}", exc_info=True)
         if "not found" in str(e).lower():

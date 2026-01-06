@@ -119,17 +119,17 @@ class McpService {
     }
   }
 
-  // Fetch all MCP resources  
+  // Fetch all MCP resources
   Future<List<McpResourceModel>> getResources() async {
     // logger.i("[McpService] getResources called.");
     try {
       // logger.i("[McpService] Getting authenticated headers...");
       final headers = await _authService.authenticatedHeaders;
       // logger.i("[McpService] Headers obtained: ${headers.keys.toList()}");
-      
+
       final url = '${ApiConstants.baseUrl}/mcp/resources';
       // logger.i("[McpService] Making request to: $url");
-      
+
       final response = await _httpClient.get(
         Uri.parse(url),
         headers: headers,
@@ -138,14 +138,14 @@ class McpService {
       // logger.i(
       //   "[McpService] getResources response status: ${response.statusCode}",
       // );
-      
+
       if (response.statusCode == 200) {
         // logger.i("[McpService] Response body length: ${response.body.length}");
         // logger.i("[McpService] Response body preview: ${response.body.length > 200 ? '${response.body.substring(0, 200)}...' : response.body}");
-        
+
         final List<dynamic> data = json.decode(response.body);
         // logger.i("[McpService] Decoded JSON array with ${data.length} items");
-        
+
         final List<McpResourceModel> resources =
             data
                 .map((item) {
@@ -153,14 +153,14 @@ class McpService {
                   return McpResourceModel.fromJson(item as Map<String, dynamic>);
                 })
                 .toList();
-        
+
         logger.i("[McpService] Successfully parsed ${resources.length} MCP resources.");
-        
+
         // Log each resource for debugging
         // for (int i = 0; i < resources.length; i++) {
         //   logger.i("[McpService] Resource ${i + 1}: uri='${resources[i].uri}', name='${resources[i].name}', mime_type='${resources[i].mimeType}'");
         // }
-        
+
         return resources;
       } else {
         logger.e(

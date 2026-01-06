@@ -12,7 +12,7 @@ class MessageNotificationBanner extends ConsumerStatefulWidget {
   final String? subject;
   final int duration;
   final VoidCallback onDismiss;
-  
+
   const MessageNotificationBanner({
     super.key,
     required this.threadName,
@@ -27,7 +27,7 @@ class MessageNotificationBanner extends ConsumerStatefulWidget {
   ConsumerState<MessageNotificationBanner> createState() => _MessageNotificationBannerState();
 }
 
-class _MessageNotificationBannerState extends ConsumerState<MessageNotificationBanner> 
+class _MessageNotificationBannerState extends ConsumerState<MessageNotificationBanner>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<Offset> _slideAnimation;
@@ -40,7 +40,7 @@ class _MessageNotificationBannerState extends ConsumerState<MessageNotificationB
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
-    
+
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, -1),
       end: Offset.zero,
@@ -48,7 +48,7 @@ class _MessageNotificationBannerState extends ConsumerState<MessageNotificationB
       parent: _animationController,
       curve: Curves.easeOut,
     ));
-    
+
     _fadeAnimation = Tween<double>(
       begin: 0,
       end: 1,
@@ -56,9 +56,9 @@ class _MessageNotificationBannerState extends ConsumerState<MessageNotificationB
       parent: _animationController,
       curve: Curves.easeIn,
     ));
-    
+
     _animationController.forward();
-    
+
     // Auto dismiss after specified duration
     Future.delayed(Duration(seconds: widget.duration), () {
       if (mounted) {
@@ -83,25 +83,25 @@ class _MessageNotificationBannerState extends ConsumerState<MessageNotificationB
     logger.d('[MessageNotificationBanner] Agent ID: ${widget.agentId}');
     logger.d('[MessageNotificationBanner] Thread Name: ${widget.threadName}');
     logger.d('[MessageNotificationBanner] Message Content: ${widget.messageContent}');
-    
+
     // Find the correct index for the chat screen
     final navItems = ref.read(bottomNavItemsProvider);
     final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
-    
+
     logger.d('[MessageNotificationBanner] Chat screen is at index: $chatIndex');
-    
+
     // Navigate to chat tab first
     ref.read(navigationIndexProvider.notifier).state = chatIndex != -1 ? chatIndex : 1;
-    
+
     // Pass the system message to the chat screen by storing it in a provider
     ref.read(pendingSystemMessageProvider.notifier).state = PendingSystemMessage(
       message: widget.messageContent,
       agentId: widget.agentId,
       threadName: widget.threadName,
     );
-    
+
     logger.d('[MessageNotificationBanner] PendingSystemMessage set with agentId: ${widget.agentId}');
-    
+
     // Dismiss the banner
     _dismiss();
   }
@@ -109,7 +109,7 @@ class _MessageNotificationBannerState extends ConsumerState<MessageNotificationB
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Positioned(
       top: MediaQuery.of(context).padding.top + 8,
       left: 16,

@@ -23,7 +23,7 @@ GoogleAuth = _LazyGoogleAuth()
 
 __all__ = [
     'OAuth2Provider',
-    'OAuth2UserInfo', 
+    'OAuth2UserInfo',
     'OAuth2ProviderFactory',
     'GoogleAuth'  # Legacy
 ]

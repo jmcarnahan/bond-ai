@@ -17,7 +17,7 @@ Enable or disable specific providers using these environment variables:
 # Enable/disable Google OAuth2 (default: true)
 OAUTH2_ENABLE_GOOGLE=true
 
-# Enable/disable Okta OAuth2 (default: true)  
+# Enable/disable Okta OAuth2 (default: true)
 OAUTH2_ENABLE_OKTA=true
 ```
 

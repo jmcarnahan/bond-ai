@@ -30,7 +30,7 @@ import os
 LOGGER = logging.getLogger(__name__)
 
 
-class EventHandler(AssistantEventHandler):  
+class EventHandler(AssistantEventHandler):
 
     def __init__(self, message_queue: Queue, openai_client: OpenAI, functions, thread_id):
         super().__init__()
@@ -52,7 +52,7 @@ class EventHandler(AssistantEventHandler):
         self.current_msg = message
 
 
-    @override 
+    @override
     def on_message_delta(self, delta: MessageDelta, snapshot: Message) -> None:
         LOGGER.debug(f"on_message_delta: {delta}")
         for part in delta.content:
@@ -61,7 +61,7 @@ class EventHandler(AssistantEventHandler):
                 if self.message_state > 0:
                     self.message_queue.put('</_bondmessage>')
                     self.message_state = 0
-                
+
                 if part.image_file.file_id not in self.files:
                     self.message_queue.put(f"<_bondmessage id=\"{part_id}\" role=\"{self.current_msg.role}\" type=\"error\" thread_id=\"{self.thread_id}\" is_done=\"false\">")
                     self.message_queue.put("No image found.")
@@ -70,7 +70,7 @@ class EventHandler(AssistantEventHandler):
                     self.message_queue.put(f"<_bondmessage id=\"{part_id}\" role=\"{self.current_msg.role}\" type=\"image_file\" thread_id=\"{self.thread_id}\" file=\"{part.image_file.file_id}\" is_done=\"false\">")
                     self.message_queue.put(f"{self.files[part.image_file.file_id]}")
                     self.message_queue.put("</_bondmessage>")
-    
+
             elif part.type == 'text':
                 if self.message_state == 0:
                     self.message_queue.put(f"<_bondmessage id=\"{part_id}\" role=\"{self.current_msg.role}\" type=\"text\" thread_id=\"{self.thread_id}\" is_done=\"false\">")
@@ -80,7 +80,7 @@ class EventHandler(AssistantEventHandler):
                 LOGGER.warning(f"Delta message of unhandled type: {delta}")
 
 
-    @override 
+    @override
     def on_message_done(self, message: Message) -> None:
         if self.message_state > 0:
             self.message_queue.put('</_bondmessage>')
@@ -100,7 +100,7 @@ class EventHandler(AssistantEventHandler):
         LOGGER.error(f"Received assistant exception: {exception}")
         self.message_queue.put(f"<_bondmessage id=\"-1\" role=\"system\" type=\"text\" thread_id=\"{self.thread_id}\" is_done=\"false\" is_error=\"true\">")
         self.message_queue.put(f"An error occurred: " + str(exception))
-        self.message_queue.put("</_bondmessage>")       
+        self.message_queue.put("</_bondmessage>")
 
     @override
     def on_image_file_done(self, image_file: ImageFile) -> None:
@@ -114,32 +114,32 @@ class EventHandler(AssistantEventHandler):
         """Handle MCP tool or resource calls using synchronous methods."""
         try:
             mcp_client = MCPClient.client()
-            
+
             if function_name.startswith("mcp_resource_"):
                 # Handle MCP resource read
                 encoded_uri = function_name[13:]  # Remove "mcp_resource_" prefix
-                
+
                 # Decode the base64 encoded URI
                 try:
                     padded = encoded_uri + '=' * (4 - len(encoded_uri) % 4)
                     resource_uri = base64.urlsafe_b64decode(padded).decode()
                     LOGGER.debug(f"Reading MCP resource with URI: {resource_uri}")
-                    
+
                     # Read the resource using the decoded URI
                     return mcp_client.read_resource_sync(resource_uri)
                 except Exception as e:
                     LOGGER.error(f"Failed to decode resource URI: {e}")
                     return f"Error: Failed to decode resource URI: {str(e)}"
-                
+
             elif function_name.startswith("mcp_"):
                 # Handle MCP tool call
                 tool_name = function_name[4:]  # Remove "mcp_" prefix
                 LOGGER.info(f"Calling MCP tool: {tool_name} with arguments: {arguments}")
-                
+
                 return mcp_client.call_tool_sync(tool_name, arguments)
             else:
                 return f"Error: Unknown MCP function type: {function_name}"
-                
+
         except Exception as e:
             LOGGER.error(f"Error in MCP call: {e}", exc_info=True)
             return f"Error calling MCP: {str(e)}"
@@ -165,7 +165,7 @@ class EventHandler(AssistantEventHandler):
                     if tool_call.type == "function":
                         function_name = tool_call.function.name
                         arguments = json.loads(tool_call.function.arguments) if hasattr(tool_call.function, 'arguments') else {}
-                        
+
                         try:
                             # Determine handler and execute
                             if function_name.startswith("mcp_"):
@@ -177,7 +177,7 @@ class EventHandler(AssistantEventHandler):
                                     raise AttributeError(f"Function {function_name} not found")
                                 LOGGER.debug(f"Calling function {function_name}")
                                 result = function_to_call(**arguments)
-                            
+
                             tool_call_outputs.append({
                                 "tool_call_id": tool_call.id,
                                 "output": result
@@ -190,9 +190,9 @@ class EventHandler(AssistantEventHandler):
                             })
                     else:
                         LOGGER.error(f"Unhandled tool call type: {tool_call.type}")
-                        
+
                 if tool_call_outputs:
-                    try: 
+                    try:
                         with self.openai_client.beta.threads.runs.submit_tool_outputs_stream(
                             thread_id=self.current_run.thread_id,
                             run_id=self.current_run.id,
@@ -204,7 +204,7 @@ class EventHandler(AssistantEventHandler):
                                 thread_id=self.thread_id
                             )
                         ) as stream:
-                            stream.until_done() 
+                            stream.until_done()
                     except Exception as e:
                         LOGGER.error(f"Failed to submit tool outputs {tool_call_outputs}: {e}")
             case _:
@@ -230,7 +230,7 @@ class OAIAAgent(Agent):
     @override
     def get_agent_id(self) -> str:
         return self.assistant_id
-    
+
     @override
     def get_agent_definition(self) -> AgentDefinition:
         return self.agent_def
@@ -248,7 +248,7 @@ class OAIAAgent(Agent):
         Returns the description of the agent.
         """
         return self.description
-    
+
     @override
     def get_metadata_value(self, key, default_value=None):
         if key in self.agent_metadata:
@@ -310,11 +310,11 @@ class OAIAAgent(Agent):
                     message = message_queue.get()
                     if message is not None:
                         yield message
-                    else: 
-                        streaming = False       
+                    else:
+                        streaming = False
                 except EOFError:
-                    streaming = False 
-            message_queue.task_done()   
+                    streaming = False
+            message_queue.task_done()
             stream_thread.join()
             stream.close()
 
@@ -322,7 +322,7 @@ class OAIAAgent(Agent):
             code_file_ids = self.functions.consume_code_file_ids()
             if code_file_ids:
                 for file_id in code_file_ids:
-                    # attachments = [  
+                    # attachments = [
                     #     {"file_id": file_id, "tools": [{"type": "code_interpreter"}]}
                     # ]
                     # message = self.create_user_message(self, "data file from last run", thread_id, attachments=attachments)
@@ -330,14 +330,14 @@ class OAIAAgent(Agent):
                         thread_id=thread_id,
                         role="user",
                         content=f"__FILE__{file_id}",
-                        attachments=[  
+                        attachments=[
                             {"file_id": file_id, "tools": [{"type": "code_interpreter"}]}
                         ],
                         metadata={"override_role": "system"}
                     )
                 LOGGER.info(f"Added code files to thread: {code_file_ids} from functions")
             return
-        
+
 
 
 
@@ -366,20 +366,20 @@ class OAIAAgentProvider(AgentProvider):
             self.openai_client.beta.assistants.delete(agent_id)
             LOGGER.info(f"Successfully deleted agent {agent_id} from provider.")
             return True
-        except NotFoundError: 
+        except NotFoundError:
             LOGGER.warning(f"Agent {agent_id} not found on provider. Considered 'deleted' for provider part.")
             return False
         except Exception as e:
             LOGGER.error(f"Error deleting agent {agent_id} from provider: {e}", exc_info=True)
             raise e
-        
+
 
     def get_definition(self, assistant: Assistant) -> AgentDefinition:
         """Create an AgentDefinition from an OpenAI Assistant."""
         # Extract MCP tools/resources by examining tool names
         mcp_tools = []
         mcp_resources = []
-        
+
         for tool in assistant.tools:
             if hasattr(tool, 'function') and hasattr(tool.function, 'name'):
                 function_name = tool.function.name
@@ -399,10 +399,10 @@ class OAIAAgentProvider(AgentProvider):
                     # Extract tool name by removing prefix
                     tool_name = function_name[4:]  # Remove "mcp_"
                     mcp_tools.append(tool_name)
-        
+
         LOGGER.debug(f"Detected {len(mcp_tools)} MCP tools from assistant: {mcp_tools}")
         LOGGER.debug(f"Detected {len(mcp_resources)} MCP resources from assistant: {mcp_resources}")
-        
+
         if assistant.metadata is None or 'user_id' not in assistant.metadata or not assistant.metadata['user_id']:
             raise ValueError("Assistant metadata must contain a 'user_id' field.")
 
@@ -440,32 +440,32 @@ class OAIAAgentProvider(AgentProvider):
         if not mcp_tool_names:
             LOGGER.debug("No MCP tools to convert")
             return []
-            
+
         LOGGER.debug(f"Starting MCP tool conversion for tools: {mcp_tool_names}")
         try:
             mcp_client = MCPClient.client()
             available_tools = mcp_client.list_tools_sync()
             LOGGER.debug(f"Retrieved {len(available_tools)} available MCP tools from server")
-            
+
             # Map available tools by name
             tool_map = {getattr(tool, "name", ""): tool for tool in available_tools}
             LOGGER.debug(f"Available MCP tool names: {list(tool_map.keys())}")
-            
+
             # Convert requested tools
             openai_tools = []
             for tool_name in mcp_tool_names:
                 if tool_name not in tool_map:
                     LOGGER.warning(f"MCP tool '{tool_name}' not found")
                     continue
-                    
+
                 mcp_tool = tool_map[tool_name]
                 params = getattr(mcp_tool, "inputSchema", {})
-                
+
                 # Ensure params have required structure
                 params.setdefault("type", "object")
                 params.setdefault("properties", {})
                 params.setdefault("required", [])
-                
+
                 openai_tools.append({
                     "type": "function",
                     "function": {
@@ -476,51 +476,51 @@ class OAIAAgentProvider(AgentProvider):
                     }
                 })
                 LOGGER.info(f"Converted MCP tool '{tool_name}' to OpenAI format")
-                
+
             LOGGER.info(f"Successfully converted {len(openai_tools)} MCP tools to OpenAI format")
             return openai_tools
-            
+
         except Exception as e:
             LOGGER.error(f"Error fetching/converting MCP tools: {e}", exc_info=True)
             return []  # Continue without MCP tools
-    
+
     def _fetch_and_convert_mcp_resources(self, mcp_resource_names: List[str]) -> List[Dict]:
         """Fetch MCP resources and convert them to OpenAI function calling format."""
         if not mcp_resource_names:
             LOGGER.debug("No MCP resources to convert")
             return []
-            
+
         LOGGER.debug(f"Starting MCP resource conversion for resources: {mcp_resource_names}")
         try:
             mcp_client = MCPClient.client()
             available_resources = mcp_client.list_resources_sync()
             LOGGER.debug(f"Retrieved {len(available_resources)} available MCP resources from server")
-            
+
             # Map available resources by both name and URI for flexible lookup
             resource_map_by_name = {getattr(r, "name", ""): r for r in available_resources}
             resource_map_by_uri = {str(getattr(r, "uri", "")): r for r in available_resources}  # Convert URI to string
-            
+
             # Convert requested resources
             openai_tools = []
             for resource_identifier in mcp_resource_names:
                 # Try to find resource by name first, then by URI (with string conversion)
                 mcp_resource = resource_map_by_name.get(resource_identifier) or resource_map_by_uri.get(str(resource_identifier))
-                
+
                 if not mcp_resource:
                     LOGGER.warning(f"MCP resource '{resource_identifier}' not found (searched by name and URI)")
                     continue
-                    
+
                 resource_uri = str(getattr(mcp_resource, "uri", resource_identifier))
                 resource_name = getattr(mcp_resource, "name", resource_uri)
                 # Base64 encode the URI to create a valid function name
                 encoded_uri = base64.urlsafe_b64encode(resource_uri.encode()).decode().rstrip('=')
-                
+
                 # Get resource description and include name for clarity
                 resource_desc = getattr(mcp_resource, 'description', '')
                 full_description = f"Read resource [{resource_name}]"
                 if resource_desc:
                     full_description += f": {resource_desc}"
-                
+
                 openai_tools.append({
                     "type": "function",
                     "function": {
@@ -535,10 +535,10 @@ class OAIAAgentProvider(AgentProvider):
                     }
                 })
                 LOGGER.info(f"Converted MCP resource '{resource_uri}' to OpenAI format with encoded name 'mcp_resource_{encoded_uri}'")
-                
+
             LOGGER.info(f"Successfully converted {len(openai_tools)} MCP resources to OpenAI format")
             return openai_tools
-            
+
         except Exception as e:
             LOGGER.error(f"Error fetching/converting MCP resources: {e}", exc_info=True)
             return []  # Continue without MCP resources
@@ -570,13 +570,13 @@ class OAIAAgentProvider(AgentProvider):
             else:
                 # Keep non-function tools (like code_interpreter, file_search)
                 filtered_tools.append(tool)
-        
+
         agent_def.tools = filtered_tools
-        
+
         # Log initial tool state after filtering
         LOGGER.debug(f"Initial tools count (after filtering MCP): {len(agent_def.tools)}")
         LOGGER.debug(f"Initial tools: {[t.get('function', {}).get('name', 'unknown') if isinstance(t, dict) else str(t) for t in agent_def.tools]}")
-        
+
         # Process MCP tools if specified
         if agent_def.mcp_tools:
             LOGGER.debug(f"Processing {len(agent_def.mcp_tools)} MCP tools: {agent_def.mcp_tools}")
@@ -591,7 +591,7 @@ class OAIAAgentProvider(AgentProvider):
                 # Continue without MCP tools rather than failing the entire operation
         else:
             LOGGER.debug("No MCP tools specified in agent definition")
-        
+
         # Process MCP resources if specified
         if agent_def.mcp_resources:
             LOGGER.debug(f"Processing {len(agent_def.mcp_resources)} MCP resources: {agent_def.mcp_resources}")
@@ -606,7 +606,7 @@ class OAIAAgentProvider(AgentProvider):
                 # Continue without MCP resources rather than failing the entire operation
         else:
             LOGGER.debug("No MCP resources specified in agent definition")
-        
+
         # Log final tool state
         LOGGER.info(f"Final tools count before assistant create/update: {len(agent_def.tools)}")
         LOGGER.debug(f"Final tool names: {[t.get('function', {}).get('name', 'unknown') if isinstance(t, dict) else str(t) for t in agent_def.tools]}")
@@ -628,7 +628,7 @@ class OAIAAgentProvider(AgentProvider):
                 LOGGER.debug(f"New definition hash: {agent_def.get_hash()}")
                 LOGGER.debug(f"Current tools count: {len(current_definition_from_openai.tools)}")
                 LOGGER.debug(f"New tools count: {len(agent_def.tools)}")
-                
+
                 if current_definition_from_openai.get_hash() != agent_def.get_hash():
                     LOGGER.debug(f"Definition changed for agent ID {agent_def.id}. Updating OpenAI assistant.")
                     LOGGER.debug(f"Updating assistant with {len(agent_def.tools)} tools")
@@ -641,7 +641,7 @@ class OAIAAgentProvider(AgentProvider):
                         model=agent_def.model,
                         tools=agent_def.tools,
                         tool_resources=agent_def.tool_resources,
-                        metadata=agent_def.metadata, 
+                        metadata=agent_def.metadata,
                         temperature=agent_def.temperature,
                         top_p=agent_def.top_p
                     )
@@ -667,10 +667,10 @@ class OAIAAgentProvider(AgentProvider):
                 name=agent_def.name,
                 description=agent_def.description,
                 instructions=agent_def.instructions,
-                model=agent_def.model, 
+                model=agent_def.model,
                 tools=agent_def.tools,
                 tool_resources=agent_def.tool_resources,
-                metadata=agent_def.metadata, 
+                metadata=agent_def.metadata,
                 temperature=agent_def.temperature,
                 top_p=agent_def.top_p
             )
@@ -688,7 +688,7 @@ class OAIAAgentProvider(AgentProvider):
         # TODO: need to add the agent to the context of the user - need to fix this
         #self.context["agents"][final_agent_instance.get_name()] = final_agent_instance # Ensure context is updated
         return final_agent_instance
-    
+
 
     @override
     def get_agent(self, agent_id) -> Agent:
@@ -697,23 +697,23 @@ class OAIAAgentProvider(AgentProvider):
         if assistant is None:
             raise Exception(f"Assistant not found: {agent_id}")
         return OAIAAgent(assistant=assistant, agent_def=agent_def, openai_client=self.openai_client)
-    
+
     @override
     def get_available_models(self) -> List[Dict[str, any]]:
         """
         Get a list of available models that can be used by agents.
-        
+
         Returns:
             List[Dict[str, any]]: A list of dictionaries containing model information.
         """
         models = []
-        
+
         # Read models from environment variables
         # Format: OPENAI_MODELS=model1:description1,model2:description2
         # Default model: OPENAI_DEFAULT_MODEL=model1
         models_config = os.getenv('OPENAI_MODELS', 'gpt-4o:Most capable GPT-4 Omni model for complex tasks')
         default_model = os.getenv('OPENAI_DEFAULT_MODEL', 'gpt-4o').strip()
-        
+
         # Parse the models configuration
         for model_entry in models_config.split(','):
             model_entry = model_entry.strip()
@@ -731,15 +731,15 @@ class OAIAAgentProvider(AgentProvider):
                     'description': f'{model_entry} model',
                     'is_default': model_entry == default_model
                 })
-        
+
         # Ensure at least one model is marked as default
         if models and not any(m['is_default'] for m in models):
             LOGGER.warning(f"Default model '{default_model}' not found in available models, marking first model as default")
             models[0]['is_default'] = True
-        
+
         return models
-    
-    
+
+
     # @override
     # def get_agent_resource(self, agent_id: str) -> dict:
     #     """

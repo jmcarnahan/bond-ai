@@ -62,7 +62,7 @@ cd deployment
 # This creates:
 # - VPC with CIDR 10.0.0.0/16
 # - 2 public subnets
-# - 2 private subnets  
+# - 2 private subnets
 # - Internet Gateway
 # - NAT Gateway
 # - Route tables
@@ -345,7 +345,7 @@ rm -f terraform.tfstate terraform.tfstate.backup
 
 ### What Gets Destroyed
 - App Runner services (backend & frontend)
-- RDS database  
+- RDS database
 - S3 uploads bucket
 - IAM roles and policies
 - Security groups

@@ -20,12 +20,12 @@ from typing import Type, TypeVar
 T = TypeVar("T")
 
 class Config:
-    
+
     provider = None
     secrets = None
     project_id = None
 
-    def __init__(self): 
+    def __init__(self):
         atexit.register(self.__del__)
         LOGGER.info("Created Config instance")
 
@@ -40,13 +40,13 @@ class Config:
             self.secrets = None
 
     # config should init with a service account
-    # this should either be a base64 string or a file 
+    # this should either be a base64 string or a file
     # both coming in via a env var
     def get_secrets_client(self):
         """Initialize GCP credentials and secrets client on first use."""
         if self.secrets is not None:
             return self.secrets
-        
+
         try:
             if 'GCLOUD_SA_CREDS_STRING' in os.environ:
                 sa_creds_base64 = os.getenv("GCLOUD_SA_CREDS_STRING") # this is a bas64 string
@@ -68,7 +68,7 @@ class Config:
                 LOGGER.info(f"Using GCLOUD default credentials for project_id: {self.project_id}")
 
             return self.secrets
-            
+
         except Exception as e:
             LOGGER.error(f"Error loading GCP credentials: {e}")
             raise e
@@ -84,10 +84,10 @@ class Config:
             module = importlib.import_module(module_path)
             cls = getattr(module, class_name)
             LOGGER.info(f"Loaded provider class: {cls}")
-            
+
             if not issubclass(cls, expected_type):
                 raise TypeError(f"Class {path} is not a subclass of {expected_type.__name__}")
-            
+
             return cls
         except (ImportError, AttributeError, TypeError) as e:
             LOGGER.error(f"Failed to load or validate class {path}: {e}")
@@ -122,7 +122,7 @@ class Config:
     @bond_cache
     def config(cls):
         return Config()
-    
+
     def get_provider(self):
         """
         Have to lazy init the provider here to avoid circular imports.
@@ -163,22 +163,22 @@ class Config:
         Legacy method for Google auth info. Use get_oauth2_config() for new implementations.
         """
         return self.get_oauth2_config("google")
-    
+
     def get_oauth2_config(self, provider_name: str = None) -> dict:
         """
         Get OAuth2 configuration for the specified provider or all providers.
-        
+
         Args:
             provider_name: Specific provider to get config for, or None for all
-            
+
         Returns:
             Dictionary with OAuth2 configuration
         """
         # Get enabled providers from environment
         enabled_providers = self._get_enabled_oauth2_providers()
-        
+
         configs = {}
-        
+
         # Only include enabled providers
         if "google" in enabled_providers:
             if provider_name == "google" or provider_name is None:
@@ -186,7 +186,7 @@ class Config:
                 if provider_name == "google":
                     return google_config
                 configs["google"] = google_config
-        
+
         if "okta" in enabled_providers:
             if provider_name == "okta" or provider_name is None:
                 okta_config = self._get_okta_oauth2_config()
@@ -205,18 +205,18 @@ class Config:
             if provider_name not in configs:
                 raise ValueError(f"OAuth2 provider '{provider_name}' is not enabled or configured")
             return configs[provider_name]
-        
+
         return configs
-    
+
     def _get_enabled_oauth2_providers(self) -> list:
         """
         Get list of enabled OAuth2 providers from environment variables.
-        
+
         Environment variables:
         - OAUTH2_ENABLED_PROVIDERS: Comma-separated list of providers (e.g., "google,okta")
         - OAUTH2_ENABLE_GOOGLE: Enable Google OAuth2 (true/false)
         - OAUTH2_ENABLE_OKTA: Enable Okta OAuth2 (true/false)
-        
+
         Returns:
             List of enabled provider names
         """
@@ -226,10 +226,10 @@ class Config:
             providers = [p.strip().lower() for p in enabled_providers_str.split(',') if p.strip()]
             LOGGER.info(f"OAuth2 providers from OAUTH2_ENABLED_PROVIDERS: {providers}")
             return providers
-        
+
         # Otherwise check individual provider flags
         providers = []
-        
+
         # Check Google
         google_enabled = os.getenv('OAUTH2_ENABLE_GOOGLE', 'true').lower() in ['true', '1', 'yes', 'on']
         if google_enabled:
@@ -238,7 +238,7 @@ class Config:
                 providers.append('google')
             else:
                 LOGGER.warning("Google OAuth2 enabled but no credentials configured")
-        
+
         # Check Okta
         okta_enabled = os.getenv('OAUTH2_ENABLE_OKTA', 'true').lower() in ['true', '1', 'yes', 'on']
         if okta_enabled:
@@ -261,10 +261,10 @@ class Config:
         if not providers:
             LOGGER.warning("No OAuth2 providers enabled, defaulting to Google")
             providers = ['google']
-        
+
         LOGGER.info(f"Enabled OAuth2 providers: {providers}")
         return providers
-    
+
     def _get_google_oauth2_config(self) -> dict:
         """Get Google OAuth2 configuration."""
         # First check if credentials are provided directly via environment variable
@@ -275,7 +275,7 @@ class Config:
             # Fall back to Secret Manager
             auth_creds_str = self.get_secret_value(os.getenv('GOOGLE_AUTH_CREDS_SECRET_ID', 'google_auth_creds'), "{}")
             LOGGER.info("Using Google OAuth2 credentials from Secret Manager")
-        
+
         auth_creds = json.loads(auth_creds_str)
         redirect_uri = os.getenv('GOOGLE_AUTH_REDIRECT_URI', 'http://localhost:8000/auth/google/callback')
         scopes_str = os.getenv('GOOGLE_AUTH_SCOPES', 'openid, https://www.googleapis.com/auth/userinfo.email, https://www.googleapis.com/auth/userinfo.profile')
@@ -283,7 +283,7 @@ class Config:
         valid_emails = []
         if 'GOOGLE_AUTH_VALID_EMAILS' in os.environ:
             valid_emails = [email.strip() for email in os.getenv('GOOGLE_AUTH_VALID_EMAILS').split(",")]
-        
+
         config = {
             "auth_creds": auth_creds,
             "redirect_uri": redirect_uri,
@@ -292,12 +292,12 @@ class Config:
         }
         LOGGER.info(f"Google OAuth2 config: redirect_uri={redirect_uri} scopes={scopes} valid_emails={len(valid_emails)} emails")
         return config
-    
+
     def _get_okta_oauth2_config(self) -> dict:
         """Get Okta OAuth2 configuration."""
         domain = os.getenv('OKTA_DOMAIN', '')
         client_id = os.getenv('OKTA_CLIENT_ID', '')
-        
+
         # Check if client secret is in environment variable or needs to be fetched from Secrets Manager
         client_secret = os.getenv('OKTA_CLIENT_SECRET', '')
         if not client_secret:
@@ -315,17 +315,17 @@ class Config:
                     LOGGER.error(f"Failed to get Okta client secret from Secrets Manager: {e}")
             else:
                 LOGGER.warning("No OKTA_CLIENT_SECRET or OKTA_SECRET_NAME configured")
-        
+
         redirect_uri = os.getenv('OKTA_REDIRECT_URI', 'http://localhost:8000/auth/okta/callback')
         scopes_str = os.getenv('OKTA_SCOPES', 'openid, profile, email')
         scopes = [scope.strip() for scope in scopes_str.split(",")]
         valid_emails = []
         if 'OKTA_VALID_EMAILS' in os.environ:
             valid_emails = [email.strip() for email in os.getenv('OKTA_VALID_EMAILS').split(",")]
-        
+
         # Get authorization server configuration (default to org server for trial accounts)
         auth_server = os.getenv('OKTA_AUTH_SERVER', '')  # Empty string means use org server
-        
+
         config = {
             "domain": domain,
             "client_id": client_id,
@@ -380,7 +380,7 @@ class Config:
     def get_mcp_config(self):
         """
         Get MCP configuration in fastmcp format from environment variables.
-        
+
         Example:
         BOND_MCP_CONFIG='{
             "mcpServers": {
@@ -395,7 +395,7 @@ class Config:
                 }
             }
         }'
-        
+
         Returns:
             Dict in fastmcp config format
         """
@@ -417,15 +417,3 @@ class Config:
         except json.JSONDecodeError as e:
             LOGGER.error(f"Error parsing BOND_MCP_CONFIG: {e}")
             return {"mcpServers": {}}
-
-
-
-        
-
-
-
-
-
-
-
-
