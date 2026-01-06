@@ -7,7 +7,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class BondMessageClob:
-    
+
     def __init__(self, content=None):
         if content is not None:
             self.queue = None
@@ -16,7 +16,7 @@ class BondMessageClob:
             self.queue = queue.Queue()
             self.content = ""
 
-    def generate(self):        
+    def generate(self):
         while True:
             try:
                 if self.queue is None:
@@ -37,7 +37,7 @@ class BondMessageClob:
     def close(self):
         if self.is_closed():
             return
-        
+
         self.queue.put(None)
         while not self.queue.empty():
             chunk = self.queue.get()
@@ -85,7 +85,7 @@ class BondMessage:
 
     def to_start_xml(self):
         return f'<_bondmessage id="{self.message_id}" thread_id="{self.thread_id}" agent_id="{self.agent_name}" type="{self.type}" role="{self.role}" is_error="{self.is_error}" is_done="{self.is_done}">'
-    
+
     def to_end_xml(self):
         return '</_bondmessage>'
 
@@ -109,14 +109,14 @@ class BrokerConnection:
     def parse_bondmessage_start_tag(self, message:str):
         pattern = r'^<\s*_bondmessage(?:\s+([\w:-]+)="([^"]*)")*\s*/?>$'
         if not re.match(pattern, message.strip()):
-            return None  
+            return None
         attributes = dict(re.findall(r'([\w:-]+)="([^"]*)"', message))
         return attributes
-    
+
     def is_bondmessage_end_tag(self, message:str):
         pattern = r'^</\s*_bondmessage\s*>$'
         return bool(re.match(pattern, message.strip()))
-    
+
     def publish(self, message:str):
         if self.is_bondmessage_start_tag(message):
             LOGGER.debug(f"Received start message: {message[0:200]}")
@@ -142,7 +142,7 @@ class BrokerConnection:
         else:
             LOGGER.debug(f"Received body message")
             self.current_msg.clob.put(message)
-            
+
     def stop(self):
         self.msg_queue.put(None)
 
@@ -195,16 +195,9 @@ class Broker:
         if subscriber_id not in self.topics[thread_id]:
             self.topics[thread_id][subscriber_id] = BrokerConnection(broker=self, thread_id=thread_id, subscriber_id=subscriber_id)
         return self.topics[thread_id][subscriber_id]
-    
+
     def disconnect(self, thread_id, subscriber_id):
         if thread_id in self.topics and subscriber_id in self.topics[thread_id]:
             del self.topics[thread_id][subscriber_id]
         else:
             LOGGER.warning(f"Thread {thread_id} not found - no subscribers")
-
-        
-
-    
-
-
-

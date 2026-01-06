@@ -18,15 +18,15 @@ PYTHON_TO_JSON_SCHEMA = {
 def get_json_schema_type(annotation: Any) -> str:
     if annotation is inspect.Parameter.empty:
         return "string"  # should be any but json schema doesn't have any
-    origin = get_origin(annotation)  
+    origin = get_origin(annotation)
     if origin is list:
         return "array"
     elif origin is dict:
         return "object"
-    return PYTHON_TO_JSON_SCHEMA.get(annotation, "any") 
+    return PYTHON_TO_JSON_SCHEMA.get(annotation, "any")
 
-def get_tool_info(func: Callable, 
-                  description: Optional[str] = None, 
+def get_tool_info(func: Callable,
+                  description: Optional[str] = None,
                   arg_descriptions: Optional[Dict[str, str]] = None) -> str:
 
     signature = inspect.signature(func)
@@ -55,17 +55,17 @@ def get_tool_info(func: Callable,
             }
         }
     }
-    
+
     for name, param in signature.parameters.items():
         if name == "self":
             continue
         schema["function"]["parameters"]["properties"][name] = {
             "type": get_json_schema_type(param.annotation),
-            "description": arg_descriptions.get(name, "") if arg_descriptions else ""  
+            "description": arg_descriptions.get(name, "") if arg_descriptions else ""
         }
         if param.default is param.empty:
             schema["function"]["parameters"]["required"].append(name)
-        
+
     # return {'name': func.__name__, 'schema':schema, 'source_code': source_code, 'signature': signature, 'docstring': docstring if docstring else ""}
     return {'name': func.__name__, 'schema':schema, 'source_code': source_code, 'docstring': docstring if docstring else ""}
 
