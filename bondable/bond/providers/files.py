@@ -65,7 +65,7 @@ class FileDetails:
     mime_type: str
     owner_user_id: str
     file_size: Optional[int] = None  # Size in bytes, optional
-    
+
     @classmethod
     def from_file_record(cls, file_record: FileRecord) -> 'FileDetails':
         """Create FileDetails from a FileRecord object while in session context."""
@@ -128,11 +128,11 @@ class FilesProvider(ABC):
         """
         file_path  = file_tuple[0]
         file_bytes = self.get_file_bytes(file_tuple)
-        file_bytes.seek(0)  
+        file_bytes.seek(0)
         content = file_bytes.read()
         file_hash  = hashlib.sha256(content).hexdigest()
         file_size = len(content)
-        
+
         # Detect mime type using Magika
         magika = Magika()
         result = magika.identify_bytes(content)
@@ -162,11 +162,11 @@ class FilesProvider(ABC):
         with self.metadata.get_db_session() as session:
             # First check if exact same file (path + hash + user) already exists
             exact_match = session.query(FileRecord).filter_by(
-                file_path=file_path, 
-                file_hash=file_hash, 
+                file_path=file_path,
+                file_hash=file_hash,
                 owner_user_id=user_id
             ).first()
-            
+
             if exact_match:
                 LOGGER.info(f"Exact file match found for {file_path}. Reusing existing record with file_id: {exact_match.file_id}")
                 # Update mime_type if it was not set before
@@ -174,36 +174,36 @@ class FilesProvider(ABC):
                     exact_match.mime_type = mime_type
                     session.commit()
                 return FileDetails.from_file_record(exact_match)
-            
+
             # Check if same content (hash) exists for this user with different path
             content_match = session.query(FileRecord).filter_by(
-                file_hash=file_hash, 
+                file_hash=file_hash,
                 owner_user_id=user_id
             ).first()
-            
+
             if content_match:
                 # Same content exists with different path - reuse file_id but create new record
                 LOGGER.info(f"Content hash for '{file_path}' matches existing record '{content_match.file_path}' (file_id: {content_match.file_id}). Creating new path record with existing file_id.")
                 new_record = FileRecord(
-                    file_path=file_path, 
-                    file_hash=file_hash, 
+                    file_path=file_path,
+                    file_hash=file_hash,
                     file_id=content_match.file_id,  # Reuse existing file_id
-                    mime_type=mime_type, 
+                    mime_type=mime_type,
                     file_size=file_size,
                     owner_user_id=user_id
                 )
                 session.add(new_record)
                 session.commit()
                 return FileDetails.from_file_record(new_record)
-            
+
             # No existing content found - create new file
-            file_bytes.seek(0) 
+            file_bytes.seek(0)
             file_id = self.create_file_resource(file_path, file_bytes)
             file_record = FileRecord(
-                file_path=file_path, 
-                file_hash=file_hash, 
-                file_id=file_id, 
-                mime_type=mime_type, 
+                file_path=file_path,
+                file_hash=file_hash,
+                file_id=file_id,
+                mime_type=mime_type,
                 file_size=file_size,
                 owner_user_id=user_id
             )
@@ -227,13 +227,13 @@ class FilesProvider(ABC):
                     LOGGER.info(f"Deleted {deleted_rows_count} local DB records for file_id: {file_id}")
                 else:
                     LOGGER.info(f"No local DB records found for file_id: {file_id}")
-                return True 
+                return True
             except Exception as e:
                 LOGGER.error(f"Error deleting file records from DB for file_id {file_id}: {e}", exc_info=True)
-                raise 
+                raise
 
     def delete_files_for_user(self, user_id: str) -> None:
-        with self.metadata.get_db_session() as session:    
+        with self.metadata.get_db_session() as session:
             for file_record in session.query(FileRecord).filter(FileRecord.owner_user_id == user_id).all():
                 if file_record.file_id is None:
                     continue
@@ -241,7 +241,7 @@ class FilesProvider(ABC):
                     deleted = self.delete_file(file_record.file_id)
                     LOGGER.info(f"Deleted file with file_id: {file_record.file_id} - Success: {deleted}")
                 except Exception as e:
-                    LOGGER.error(f"Error deleting file with file_id: {file_record.file_id}. Error: {e}")    
+                    LOGGER.error(f"Error deleting file with file_id: {file_record.file_id}. Error: {e}")
 
 
     def get_file_details(self, file_ids: List[str]) -> List[FileDetails]:
@@ -252,7 +252,7 @@ class FilesProvider(ABC):
             for file_record in file_records:
                 file_details.append(FileDetails.from_file_record(file_record))
             return file_details
-        
+
     # def get_file_paths(self, file_ids: List[str]) -> List[Dict[str, str]]:
     #     """ Get the file path from the file ID. """
     #     with self.metadata.get_db_session() as session:

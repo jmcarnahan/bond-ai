@@ -15,7 +15,7 @@ class Agent(ABC):
     def __init__(self):
         """
         Initializes the Agent with a broker instance.
-        
+
         Args:
             broker: The broker instance used for message publishing.
         """
@@ -56,11 +56,11 @@ class Agent(ABC):
     def get_metadata_value(self, key, default_value=None):
         """
         Retrieves a metadata value by its key.
-        
+
         Args:
             key (str): The key of the metadata value to retrieve.
             default_value: The default value to return if the key does not exist.
-        
+
         Returns:
             The value associated with the given key, or the default value if the key does not exist.
         """
@@ -70,7 +70,7 @@ class Agent(ABC):
     def get_metadata(self) -> Dict[str, str]:
         """
         Returns the metadata associated with the agent.
-        
+
         Returns:
             Dict[str, str]: A dictionary containing metadata key-value pairs.
         """
@@ -81,13 +81,13 @@ class Agent(ABC):
         """
         Creates a user message for the agent based on the provided prompt and thread ID.
         This method should be implemented by subclasses.
-        
+
         Args:
             prompt (str): The prompt to send to the agent.
             thread_id (str): The ID of the thread to which the message belongs.
             attachments (Optional[List[str]]): List of file IDs to attach to the message.
             override_role (str): Role to override the default role for the message.
-        
+
         Returns:
             str: The ID of the created message.
         """
@@ -115,7 +115,7 @@ class Agent(ABC):
         self.broker.publish(thread_id=thread_id, message=prompt)
         self.broker.publish(thread_id=thread_id, message="</_bondmessage>")
         return msg_id
-    
+
     def broadcast_response(self, prompt=None, thread_id=None, attachments=None) -> bool:
         try:
             for content in self.stream_response(prompt=prompt, thread_id=thread_id, attachments=attachments):
@@ -125,7 +125,7 @@ class Agent(ABC):
         except Exception as e:
             LOGGER.exception(f"Error handling response: {str(e)}")
             return False
-       
+
 
 class AgentProvider(ABC):
     """
@@ -154,11 +154,11 @@ class AgentProvider(ABC):
     def create_or_update_agent_resource(self, agent_def: AgentDefinition, owner_user_id: str) -> Agent:
         """
         Creates or updates an agent resource based on the provided agent definition.
-        
+
         Args:
             user_id (str): The ID of the user creating or updating the agent.
             agent_def (AgentDefinition): The definition of the agent to be created or updated.
-        
+
         Returns:
             Agent: The created or updated agent object.
         """
@@ -168,20 +168,20 @@ class AgentProvider(ABC):
     def get_agent(self, agent_id) -> Agent:
         """
         Retrieve a specific agent by its ID.
-        
+
         Args:
             agent_id (str): The ID of the agent to retrieve.
-        
+
         Returns:
             Agent: The agent object associated with the given ID.
         """
         pass
-    
+
     @abstractmethod
     def get_available_models(self) -> List[Dict[str, any]]:
         """
         Get a list of available models that can be used by agents.
-        
+
         Returns:
             List[Dict[str, any]]: A list of dictionaries containing model information.
                 Each dictionary should have the following keys:
@@ -190,11 +190,11 @@ class AgentProvider(ABC):
                 - 'is_default' (bool): Whether this is the default model
         """
         pass
-    
+
     def get_default_model(self) -> str:
         """
         Get the default model from available models.
-        
+
         Returns:
             str: The name/identifier of the default model
         """
@@ -208,7 +208,7 @@ class AgentProvider(ABC):
 
         raise RuntimeError("No models were found. Cannot get default model.")
 
-        
+
     def delete_agent(self, agent_id: str) -> bool:
         """
         Deletes an agent and its associated resources (like default vector store).
@@ -238,7 +238,7 @@ class AgentProvider(ABC):
                     LOGGER.info(f"Deleted default vector store {vector_store_id} for agent {agent_id}")
             except Exception as e:
                 LOGGER.error(f"Error deleting vector store {vector_store_id}: {e}")
-        
+
         # Delete the agent resource
         deleted_resource = self.delete_agent_resource(agent_id)
 
@@ -274,7 +274,7 @@ class AgentProvider(ABC):
                 return True
             except Exception as e:
                 LOGGER.error(f"Error deleting agent records from DB for agent_id {agent_id}: {e}", exc_info=True)
-                raise 
+                raise
 
     def delete_agents_for_user(self, user_id: str) -> None:
         # query all agents owned by the user
@@ -297,20 +297,20 @@ class AgentProvider(ABC):
             if agent_record:
                 # if it exists, update the name, introduction, reminder and owner_user_id if necessary
                 LOGGER.info(f"Agent record already exists for agent_id: {agent.get_agent_id()}")
-                
+
                 # Define fields to check and update
                 fields_to_check = ['name', 'introduction', 'reminder', 'tool_resources', 'model']
                 needs_update = False
-                
+
                 # Check each field for changes
                 for field in fields_to_check:
                     old_value = getattr(agent_record, field, None)
                     new_value = getattr(agent_def, field, None)
-                    
+
                     if old_value != new_value:
                         needs_update = True
                         break
-                
+
                 if needs_update:
                     LOGGER.info(f"Updating agent record for agent_id: {agent.get_agent_id()}")
                     # Update all tracked fields
@@ -324,14 +324,14 @@ class AgentProvider(ABC):
                 # if it does not exist, create a new record
                 LOGGER.info(f"Creating new agent record for agent_id: {agent.get_agent_id()}")
                 agent_record = AgentRecord(
-                    name=agent.get_name(), 
-                    agent_id=agent.get_agent_id(), 
+                    name=agent.get_name(),
+                    agent_id=agent.get_agent_id(),
                     owner_user_id=user_id,
                     introduction=agent_def.introduction,
-                    reminder=agent_def.reminder, 
+                    reminder=agent_def.reminder,
                 )
                 session.add(agent_record)
-                session.commit()  
+                session.commit()
 
             # at this point we should have a valid agent record in the database with an agent_id
             # Update the default vector store for the agent (for both new and existing agents)
@@ -355,13 +355,13 @@ class AgentProvider(ABC):
                                     # Linked to a different agent - this is an error
                                     LOGGER.error(f"Vector store {vector_store_record.name} is already linked to a different agent: {vector_store_record.default_for_agent_id}")
                                     continue
-                            
+
                             # Link the vector store to this agent
                             vector_store_record.default_for_agent_id = agent.get_agent_id()
                             session.commit()
                             LOGGER.info(f"Updated vector store {vector_store_record.name} to be default for agent {agent.get_name()}")
 
-        return agent     
+        return agent
 
 
     def get_agent_record(self, agent_id: str) -> Optional[AgentRecord]:
@@ -372,11 +372,11 @@ class AgentProvider(ABC):
     def get_agent_records(self, user_id: str) -> List[Dict[str, str]]:
         with self.metadata.get_db_session() as session:
             agent_records = []
-            
+
             # First, check for the default agent (Home)
             default_agent = session.query(AgentRecord).filter(AgentRecord.is_default == True).first()
             default_agent_id = None
-            
+
             if default_agent:
                 default_agent_id = default_agent.agent_id
                 # Check if user owns the default agent
@@ -386,18 +386,18 @@ class AgentProvider(ABC):
                     "agent_id": default_agent.agent_id,
                     "owned": is_owned
                 })
-            
+
             # Get the agent records that are owned by the user (excluding default if already added)
             query = session.query(AgentRecord).filter(AgentRecord.owner_user_id == user_id)
             if default_agent_id:
                 query = query.filter(AgentRecord.agent_id != default_agent_id)
             results: List[AgentRecord] = query.all()
-            
+
             owned_records = [
                 {"name": record.name, "agent_id": record.agent_id, "owned": True} for record in results
             ]
             agent_records.extend(owned_records)
-            
+
             # Get owned agent IDs to avoid duplicates (including default if owned)
             owned_agent_ids = {record.agent_id for record in results}
             if default_agent and default_agent.owner_user_id == user_id:
@@ -415,18 +415,18 @@ class AgentProvider(ABC):
                 )
                 .all()
             )
-            
+
             # Filter out default agent from shared results if it exists
             if default_agent_id:
                 shared_results = [agent for agent in shared_results if agent.agent_id != default_agent_id]
-            
+
             shared_agent_records = [
                 {"name": agent.name, "agent_id": agent.agent_id, "owned": False} for agent in shared_results
             ]
             agent_records.extend(shared_agent_records)
-            
+
             return agent_records
-        
+
     def list_agents(self, user_id) -> List[Agent]:
         agent_records = self.get_agent_records(user_id=user_id)
         agents = []
@@ -458,19 +458,19 @@ class AgentProvider(ABC):
                 .outerjoin(AgentGroup, AgentRecord.agent_id == AgentGroup.agent_id)
                 .outerjoin(GroupUser, AgentGroup.group_id == GroupUser.group_id)
                 .filter(
-                    (AgentRecord.owner_user_id == user_id) | 
+                    (AgentRecord.owner_user_id == user_id) |
                     (GroupUser.user_id == user_id),
                     AgentRecord.agent_id == agent_id
                 )
                 .exists()
             )
             return session.query(access_query).scalar()
-    
+
     def get_default_agent(self) -> Optional[Agent]:
         """
         Retrieves the default agent from the database.
         If no default agent exists, creates one automatically.
-        
+
         Returns:
             Agent: The default agent object, or None if creation fails.
         """
@@ -479,20 +479,20 @@ class AgentProvider(ABC):
             default_agent_record = session.query(AgentRecord).filter(
                 AgentRecord.is_default == True
             ).first()
-            
+
             if default_agent_record:
                 try:
                     return self.get_agent(default_agent_record.agent_id)
                 except Exception as e:
                     LOGGER.error(f"Error retrieving default agent with id {default_agent_record.agent_id}: {e}")
                     # Continue to create a new default if retrieval fails
-            
+
             # No default agent exists, create one
             LOGGER.info("No default agent found, creating one...")
-            
+
             # Get or create the system user
             system_user = self.metadata.get_or_create_system_user()
-            
+
             # Create default agent definition with unique ID
             # default_agent_id = f"default_agent_{uuid.uuid4()}"
             default_agent_def = AgentDefinition(
@@ -509,19 +509,19 @@ class AgentProvider(ABC):
                 temperature=0.7,
                 top_p=0.9
             )
-            
+
             try:
                 # Use the existing create_or_update_agent method
                 agent = self.create_or_update_agent(
                     agent_def=default_agent_def,
                     user_id=system_user.id
                 )
-                
+
                 # Mark it as default in the database
                 agent_record = session.query(AgentRecord).filter(
                     AgentRecord.agent_id == agent.get_agent_id()
                 ).first()
-                
+
                 if agent_record:
                     agent_record.is_default = True
                     session.commit()
@@ -530,8 +530,7 @@ class AgentProvider(ABC):
                 else:
                     LOGGER.error("Failed to find default agent record in database after creation")
                     return None
-                    
+
             except Exception as e:
                 LOGGER.error(f"Error creating default agent: {e}", exc_info=True)
                 return None
-
