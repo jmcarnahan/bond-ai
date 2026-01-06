@@ -34,7 +34,7 @@ class BondAIContainer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Card(
       elevation: 0,
       margin: margin ?? EdgeInsets.only(top: AppSpacing.xxl),
@@ -119,7 +119,7 @@ class BondAIContainerSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Padding(
       padding: padding ?? EdgeInsets.zero,
       child: Column(
