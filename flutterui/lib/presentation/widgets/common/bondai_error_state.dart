@@ -22,7 +22,7 @@ class BondAIErrorState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Container(
       padding: padding ?? AppSpacing.allXl,
       decoration: BoxDecoration(
