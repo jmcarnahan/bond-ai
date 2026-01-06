@@ -1,0 +1,34 @@
+# Gitleaks configuration
+# https://github.com/gitleaks/gitleaks
+
+[extend]
+useDefault = true
+
+# Paths to ignore
+[allowlist]
+paths = [
+    '''.venv/''',
+    '''.archive/''',
+    '''scripts/.archive/''',
+    '''poetry.lock''',
+    '''terraform/.terraform/''',
+]
+
+# Additional rules for this project
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API Key"
+regex = '''sk-ant-[a-zA-Z0-9\-_]{80,}'''
+tags = ["api", "anthropic"]
+
+[[rules]]
+id = "jwt-secret-inline"
+description = "Inline JWT Secret"
+regex = '''(?i)(jwt[_-]?secret|JWT_SECRET)['":\s=]+[a-zA-Z0-9+/=]{32,}'''
+tags = ["jwt", "secret"]
+
+[[rules]]
+id = "aws-secret-key"
+description = "AWS Secret Access Key"
+regex = '''(?i)aws[_-]?secret[_-]?access[_-]?key['":\s=]+[A-Za-z0-9/+=]{40}'''
+tags = ["aws", "secret"]
