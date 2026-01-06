@@ -24,14 +24,14 @@ class AuthService {
   Future<void> launchLoginUrl({String provider = 'google'}) async {
     // For mobile, we need to specify a redirect URI that uses our custom scheme
     String loginUrl = '${ApiConstants.baseUrl}/login/$provider';
-    
+
     if (!kIsWeb) {
       // For mobile, append redirect_uri parameter to use our custom URL scheme
       final redirectUri = Uri.encodeComponent('bondai://auth-callback');
       loginUrl = '$loginUrl?redirect_uri=$redirectUri&platform=mobile';
       logger.i('[AuthService] Mobile login URL: $loginUrl');
     }
-    
+
     final Uri loginUri = Uri.parse(loginUrl);
     if (await canLaunchUrl(loginUri)) {
       if (kIsWeb) {
@@ -63,7 +63,7 @@ class AuthService {
   Future<void> storeToken(String accessToken) async {
     logger.i("[AuthService] Storing token (length: ${accessToken.length})");
     await _sharedPreferences.setString(_tokenStorageKey, accessToken);
-    
+
     // Verify storage
     final stored = _sharedPreferences.getString(_tokenStorageKey);
     logger.i("[AuthService] Token stored successfully: ${stored != null && stored.length == accessToken.length}");
@@ -79,7 +79,7 @@ class AuthService {
     final hadToken = await retrieveToken();
     await _sharedPreferences.remove(_tokenStorageKey);
     final tokenAfterClear = await retrieveToken();
-    
+
     // Log for debugging
     if (kIsWeb) {
       logger.i('[AuthService] Logout - Had token: ${hadToken != null}');
@@ -89,11 +89,11 @@ class AuthService {
 
   Future<void> performFullLogout() async {
     await clearToken();
-    
+
     // Clear all browser storage on web without page reload
     if (kIsWeb) {
       logger.i('[AuthService] Performing logout - clearing all storage');
-      
+
       try {
         // Clear all SharedPreferences data
         await _sharedPreferences.clear();
@@ -102,7 +102,7 @@ class AuthService {
         logger.e('[AuthService] Error during logout: $e');
       }
     }
-    
+
     // The auth state will automatically update when token is cleared
     // No need to reload the page - the UI will react to the state change
   }
@@ -140,12 +140,12 @@ class AuthService {
 
   Future<Map<String, String>> get authenticatedHeaders async {
     final token = await retrieveToken();
-    
+
     if (token == null) {
       logger.e("[AuthService] No token found for authenticatedHeaders.");
       throw Exception('Not authenticated for this request.');
     }
-    
+
     return {
       'Authorization': 'Bearer $token',
       'Content-Type': 'application/json',
