@@ -61,3 +61,5 @@ terraform.rc
 
 deployment/**/environments/*.tfvars
 !deployment/**/environments/example.tfvars
+
+patches/
