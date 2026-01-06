@@ -17,8 +17,8 @@ class AgentFormNotifier extends StateNotifier<AgentFormState>
   final String? Function() _getDefaultModel;
 
   AgentFormNotifier(
-    this._agentService, 
-    this._fileService, 
+    this._agentService,
+    this._fileService,
     this._getDefaultModel,
   ) : super(const AgentFormState());
 
@@ -212,11 +212,11 @@ class AgentFormNotifier extends StateNotifier<AgentFormState>
     try {
       // Check if we can get the default model before building agent data
       String? defaultModel = _getDefaultModel();
-      
+
       // If model is null, models might not be loaded yet, wait and retry
       if (defaultModel == null) {
         logger.w('[AgentFormNotifier] Model is null, waiting for models to load...');
-        
+
         // Wait up to 3 seconds for models to load
         for (int i = 0; i < 6; i++) {
           await Future.delayed(const Duration(milliseconds: 500));
@@ -226,7 +226,7 @@ class AgentFormNotifier extends StateNotifier<AgentFormState>
             break;
           }
         }
-        
+
         // If still null after waiting, fail the save
         if (defaultModel == null) {
           state = state.copyWith(
@@ -239,7 +239,7 @@ class AgentFormNotifier extends StateNotifier<AgentFormState>
           return false;
         }
       }
-      
+
       final agentData = _buildAgentData();
 
       if (state.isEditing) {
@@ -313,7 +313,7 @@ class AgentFormNotifier extends StateNotifier<AgentFormState>
     // Get the default model from the provider
     // Note: The model null check is done in saveAgent() before calling this method
     final defaultModel = _getDefaultModel()!;
-    
+
     return AgentDetailModel(
       id: state.editingAgentId ?? '',
       name: state.data.name,
@@ -333,12 +333,12 @@ final agentFormProvider =
     StateNotifierProvider<AgentFormNotifier, AgentFormState>((ref) {
       final agentService = ref.watch(agentServiceProvider);
       final fileService = ref.watch(fileServiceProvider);
-      
+
       // Create a function that captures the ref context
       String? getDefaultModel() {
         return ref.read(defaultModelProvider);
       }
-      
+
       return AgentFormNotifier(agentService, fileService, getDefaultModel);
     });
 
