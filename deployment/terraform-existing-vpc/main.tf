@@ -2,7 +2,7 @@
 
 provider "aws" {
   region = var.aws_region
-  
+
   default_tags {
     tags = {
       Environment = var.environment
@@ -68,7 +68,7 @@ resource "aws_s3_bucket" "uploads" {
 # S3 Bucket Versioning
 resource "aws_s3_bucket_versioning" "uploads" {
   bucket = aws_s3_bucket.uploads.id
-  
+
   versioning_configuration {
     status = var.environment == "prod" ? "Enabled" : "Suspended"
   }
@@ -111,13 +111,13 @@ resource "aws_s3_bucket_cors_configuration" "uploads" {
 # ECR Repositories
 resource "aws_ecr_repository" "backend" {
   name = "${var.project_name}-${var.environment}-backend"
-  
+
   image_tag_mutability = "MUTABLE"
-  
+
   image_scanning_configuration {
     scan_on_push = true
   }
-  
+
   tags = {
     Name = "${var.project_name}-${var.environment}-backend-ecr"
   }
@@ -125,13 +125,13 @@ resource "aws_ecr_repository" "backend" {
 
 resource "aws_ecr_repository" "frontend" {
   name = "${var.project_name}-${var.environment}-frontend"
-  
+
   image_tag_mutability = "MUTABLE"
-  
+
   image_scanning_configuration {
     scan_on_push = true
   }
-  
+
   tags = {
     Name = "${var.project_name}-${var.environment}-frontend-ecr"
   }
@@ -140,7 +140,7 @@ resource "aws_ecr_repository" "frontend" {
 # ECR Lifecycle Policies
 resource "aws_ecr_lifecycle_policy" "backend" {
   repository = aws_ecr_repository.backend.name
-  
+
   policy = jsonencode({
     rules = [
       {
@@ -161,7 +161,7 @@ resource "aws_ecr_lifecycle_policy" "backend" {
 
 resource "aws_ecr_lifecycle_policy" "frontend" {
   repository = aws_ecr_repository.frontend.name
-  
+
   policy = jsonencode({
     rules = [
       {

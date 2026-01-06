@@ -9,26 +9,26 @@ LOGGER = logging.getLogger(__name__)
 
 class Users:
     """Handles user-related operations in the bondable layer."""
-    
+
     def __init__(self, metadata: Metadata):
         self.metadata = metadata
-    
+
     def get_or_create_user(self, user_id: str, email: str, name: str, sign_in_method: str) -> Tuple[str, bool]:
         """Get existing user or create new user in database using OAuth provider's user_id.
-        
+
         Args:
             user_id: OAuth provider's user ID (sub field)
             email: User's email address
             name: User's display name
             sign_in_method: OAuth provider name (e.g., 'google', 'okta')
-            
+
         Returns:
             Tuple of (user_id, is_new_user)
         """
         with self.metadata.get_db_session() as db_session:
             # First try to find by user_id
             existing_user = db_session.query(UserModel).filter_by(id=user_id).first()
-            
+
             if existing_user:
                 # Check if any updates are needed
                 needs_update = False
@@ -38,14 +38,14 @@ class Users:
                 if name and existing_user.name != name:
                     existing_user.name = name
                     needs_update = True
-                
+
                 if needs_update:
                     existing_user.updated_at = datetime.now()
                     db_session.commit()
                     LOGGER.debug(f"Updated existing user {user_id} ({email})")
                 else:
                     LOGGER.debug(f"No changes needed for user {user_id} ({email})")
-                
+
                 return existing_user.id, False
             else:
                 # Check if there's an existing user with this email but different ID

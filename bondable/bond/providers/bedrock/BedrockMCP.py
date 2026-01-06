@@ -76,14 +76,14 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
             return
 
         LOGGER.debug(f"[MCP Action Groups] Got {len(mcp_tool_definitions)} tool definitions")
-        
+
         # Build OpenAPI paths for MCP tools
         paths = {}
         for tool in mcp_tool_definitions:
             # Prefix with _bond_mcp_tool_
             tool_path = f"/_bond_mcp_tool_{tool['name']}"
             operation_id = f"_bond_mcp_tool_{tool['name']}"
-            
+
             paths[tool_path] = {
                 "post": {
                     "operationId": operation_id,
@@ -109,7 +109,7 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
                     }
                 }
             }
-            
+
             # Add parameters if any
             if tool.get('parameters'):
                 paths[tool_path]["post"]["requestBody"] = {
@@ -122,7 +122,7 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
                         }
                     }
                 }
-        
+
         # Create action group
         openapi_spec = {
             "openapi": "3.0.0",
@@ -155,9 +155,9 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
             agentVersion="DRAFT",
             **action_group_spec
         )
-        
+
         LOGGER.info(f"Created MCP action group: {action_response['agentActionGroup']['actionGroupId']}")
-        
+
     except Exception as e:
         LOGGER.error(f"Error creating MCP action groups: {e}")
         # Continue without MCP tools rather than failing agent creation

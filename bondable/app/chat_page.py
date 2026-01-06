@@ -31,7 +31,7 @@ class ChatPage(Page):
 
     def get_description(self):
         return self.agent.description
-    
+
     # def catchup(self):
     #     for message_id, message in st.session_state['displayed_messages'].items():
     #         self.display_message(message)
@@ -68,7 +68,7 @@ class ChatPage(Page):
             else:
                 chat_msg.write(content)
             st.session_state['displayed_messages'][message.message_id] = message
- 
+
         else:
             LOGGER.error(f"Unknown message type {message.type}")
 
@@ -114,7 +114,7 @@ class ChatPage(Page):
                 message = self.agent.create_user_message(initial_prompt, thread_id, override_role='system')
                 self.run_thread(thread_id, conn)
                 LOGGER.info(f"Clear thread -> Sent initial prompt: {initial_prompt}")
-            st.session_state['clear_thread'] = False        
+            st.session_state['clear_thread'] = False
 
         thread_id = st.session_state.get('thread', None)
         LOGGER.debug(f"Retrieved thread from session: {thread_id}")
@@ -135,13 +135,3 @@ class ChatPage(Page):
             message = self.agent.create_user_message(prompt, thread_id)
             self.run_thread(thread_id, conn)
             st.rerun()
-            
-
-
-
-
-
-        
-                    
-
-

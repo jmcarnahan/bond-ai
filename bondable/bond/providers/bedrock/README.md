@@ -51,7 +51,7 @@ export AWS_REGION=us-east-1
 export AWS_ACCESS_KEY_ID=your_access_key
 export AWS_SECRET_ACCESS_KEY=your_secret_key
 
-# Bedrock Configuration  
+# Bedrock Configuration
 export BEDROCK_DEFAULT_MODEL=anthropic.claude-3-haiku-20240307-v1:0
 export BEDROCK_S3_BUCKET=your-bucket-name  # For file storage
 
@@ -80,7 +80,7 @@ Your AWS credentials need the following permissions:
       "Resource": "*"
     },
     {
-      "Effect": "Allow", 
+      "Effect": "Allow",
       "Action": [
         "s3:PutObject",
         "s3:GetObject",

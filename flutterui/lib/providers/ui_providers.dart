@@ -32,7 +32,7 @@ class RouteObserverForBanner extends NavigatorObserver {
       } else {
         routeName = '/';
       }
-        
+
       if (routeName == '/home') {
         shouldShowBanner = true;
       } else if (routeName == '/') {
@@ -41,7 +41,7 @@ class RouteObserverForBanner extends NavigatorObserver {
           shouldShowBanner = true;
         }
       }
-      
+
       if (_ref.read(showThreadBannerProvider) != shouldShowBanner) {
         _ref.read(showThreadBannerProvider.notifier).state = shouldShowBanner;
       }

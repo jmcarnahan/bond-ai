@@ -61,3 +61,14 @@ terraform.rc
 
 deployment/**/environments/*.tfvars
 !deployment/**/environments/example.tfvars
+
+patches/
+scripts/setup_cognito.py
+scripts/test_direct_oauth_flow.py
+tests/test_atlassian_mcp_oauth.py
+tests/test_cognito_oauth.py
+CLAUDE.md
+kb-changes.md
+scripts/test_permissions.sh
+scripts/test-apprunner-connectivity.sh
+scripts/test-vpc-availability.sh

@@ -3,7 +3,7 @@
 
 provider "aws" {
   region = var.aws_region
-  
+
   default_tags {
     tags = {
       Environment = var.environment
@@ -40,11 +40,11 @@ resource "aws_internet_gateway" "main" {
 # Elastic IP for NAT Gateway
 resource "aws_eip" "nat" {
   domain = "vpc"
-  
+
   tags = {
     Name = "${var.project_name}-${var.environment}-nat-eip"
   }
-  
+
   depends_on = [aws_internet_gateway.main]
 }
 
@@ -52,23 +52,23 @@ resource "aws_eip" "nat" {
 resource "aws_nat_gateway" "main" {
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public[0].id
-  
+
   tags = {
     Name = "${var.project_name}-${var.environment}-nat"
   }
-  
+
   depends_on = [aws_internet_gateway.main]
 }
 
 # Route table for private subnets (database subnets will use NAT)
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
-  
+
   route {
     cidr_block     = "0.0.0.0/0"
     nat_gateway_id = aws_nat_gateway.main.id
   }
-  
+
   tags = {
     Name = "${var.project_name}-${var.environment}-private-rt"
   }
@@ -77,7 +77,7 @@ resource "aws_route_table" "private" {
 # Associate database subnets with private route table
 resource "aws_route_table_association" "database" {
   count = length(aws_subnet.database)
-  
+
   subnet_id      = aws_subnet.database[count.index].id
   route_table_id = aws_route_table.private.id
 }
@@ -217,38 +217,38 @@ resource "aws_db_instance" "main" {
   # Engine
   engine         = "postgres"
   engine_version = "15.7"
-  
+
   # Instance
   instance_class = var.db_instance_class
-  
+
   # Storage
   allocated_storage     = var.db_allocated_storage
   storage_type          = "gp3"
   storage_encrypted     = true
-  
+
   # Database
   db_name  = "bondai"
   username = "bondadmin"
   password = random_password.db_password.result
   port     = 5432
-  
+
   # Network
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
   publicly_accessible    = false
-  
+
   # Backup (simplified)
   backup_retention_period = var.environment == "prod" ? 7 : 1
   backup_window          = "03:00-04:00"
   maintenance_window     = "sun:04:00-sun:05:00"
-  
+
   # Final snapshot
   skip_final_snapshot       = var.environment != "prod"
   final_snapshot_identifier = var.environment == "prod" ? "${var.project_name}-${var.environment}-final-${formatdate("YYYYMMDD-hhmm", timestamp())}" : null
-  
+
   # Deletion protection for prod only
   deletion_protection = var.environment == "prod"
-  
+
   tags = {
     Name = "${var.project_name}-${var.environment}-db"
   }
@@ -266,7 +266,7 @@ resource "aws_s3_bucket" "uploads" {
 # S3 Bucket Versioning
 resource "aws_s3_bucket_versioning" "uploads" {
   bucket = aws_s3_bucket.uploads.id
-  
+
   versioning_configuration {
     status = var.environment == "prod" ? "Enabled" : "Suspended"
   }
@@ -309,13 +309,13 @@ resource "aws_s3_bucket_cors_configuration" "uploads" {
 # ECR Repository for Docker images
 resource "aws_ecr_repository" "backend" {
   name = "${var.project_name}-${var.environment}-backend"
-  
+
   image_tag_mutability = "MUTABLE"
-  
+
   image_scanning_configuration {
     scan_on_push = true
   }
-  
+
   tags = {
     Name = "${var.project_name}-${var.environment}-backend-ecr"
   }
@@ -324,7 +324,7 @@ resource "aws_ecr_repository" "backend" {
 # ECR Lifecycle Policy to keep only recent images
 resource "aws_ecr_lifecycle_policy" "backend" {
   repository = aws_ecr_repository.backend.name
-  
+
   policy = jsonencode({
     rules = [
       {
@@ -411,10 +411,10 @@ resource "aws_vpc_endpoint" "s3" {
   vpc_id            = aws_vpc.main.id
   service_name      = "com.amazonaws.${var.aws_region}.s3"
   vpc_endpoint_type = "Gateway"
-  
+
   # Associate with private route table
   route_table_ids = [aws_route_table.private.id]
-  
+
   tags = {
     Name = "${var.project_name}-${var.environment}-s3-endpoint"
   }
@@ -425,14 +425,14 @@ resource "aws_vpc_endpoint" "bedrock_runtime" {
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.${var.aws_region}.bedrock-runtime"
   vpc_endpoint_type   = "Interface"
-  
+
   # Place in database subnets (private subnets)
   subnet_ids          = aws_subnet.database[*].id
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  
+
   # Enable private DNS
   private_dns_enabled = true
-  
+
   tags = {
     Name = "${var.project_name}-${var.environment}-bedrock-runtime-endpoint"
   }
@@ -443,14 +443,14 @@ resource "aws_vpc_endpoint" "bedrock" {
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.${var.aws_region}.bedrock"
   vpc_endpoint_type   = "Interface"
-  
+
   # Place in database subnets (private subnets)
   subnet_ids          = aws_subnet.database[*].id
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  
+
   # Enable private DNS
   private_dns_enabled = true
-  
+
   tags = {
     Name = "${var.project_name}-${var.environment}-bedrock-endpoint"
   }
@@ -843,14 +843,14 @@ resource "aws_apprunner_service" "backend" {
     authentication_configuration {
       access_role_arn = aws_iam_role.app_runner_ecr_access.arn
     }
-    
+
     image_repository {
       image_identifier      = "${aws_ecr_repository.backend.repository_url}:latest"
       image_repository_type = "ECR"
-      
+
       image_configuration {
         port = "8000"
-        
+
         runtime_environment_variables = {
           AWS_REGION = var.aws_region
           BOND_PROVIDER_CLASS = "bondable.bond.providers.bedrock.BedrockProvider.BedrockProvider"
@@ -862,7 +862,7 @@ resource "aws_apprunner_service" "backend" {
           BEDROCK_AGENT_ROLE_ARN = "arn:aws:iam::119684128788:role/BondAIBedrockAgentRole"
           # Using PostgreSQL with VPC connector
           METADATA_DB_URL = "postgresql://bondadmin:${random_password.db_password.result}@${aws_db_instance.main.address}:5432/bondai"
-          
+
           # Okta OAuth Configuration
           OAUTH2_ENABLED_PROVIDERS = var.oauth2_providers
           OKTA_DOMAIN = var.okta_domain
@@ -871,10 +871,10 @@ resource "aws_apprunner_service" "backend" {
           # Use variable for redirect URI - set per environment or leave empty for dynamic Host header
           OKTA_REDIRECT_URI = var.okta_redirect_uri
           OKTA_SCOPES = var.okta_scopes
-          
+
           # JWT redirect URI for frontend - where to redirect after successful auth
           JWT_REDIRECT_URI = var.jwt_redirect_uri
-          
+
           # CORS configuration
           CORS_ALLOWED_ORIGINS = var.cors_allowed_origins
         }
@@ -918,10 +918,10 @@ resource "aws_apprunner_service" "backend" {
 
 resource "aws_apprunner_auto_scaling_configuration_version" "backend" {
   auto_scaling_configuration_name = "${var.project_name}-${var.environment}-backend-autoscaling"
-  
+
   min_size = 1
   max_size = var.environment == "prod" ? 10 : 2
-  
+
   tags = {
     Name = "${var.project_name}-${var.environment}-backend-autoscaling"
   }
@@ -979,12 +979,12 @@ output "app_runner_service_url" {
 
 output "quick_test" {
   value = <<-EOT
-    
+
     Database deployed! Test with:
-    
+
     1. Get credentials:
        aws secretsmanager get-secret-value --secret-id ${aws_secretsmanager_secret.db_credentials.name} --query SecretString --output text | jq .
-    
+
     2. Test connection:
        python ../scripts/test_database_deployment.py --env ${var.environment}
   EOT

@@ -20,12 +20,12 @@ class AuthenticatedHttpClient {
   Future<Map<String, String>> get _authenticatedHeaders async {
     try {
       final headers = await _authService.authenticatedHeaders;
-      
+
       if (headers['Authorization'] == null) {
         logger.e("[AuthenticatedHttpClient] No Authorization header found!");
         throw Exception('Authentication token not found');
       }
-      
+
       return headers;
     } catch (e) {
       logger.e("[AuthenticatedHttpClient] Error getting authenticated headers: $e");
@@ -36,12 +36,12 @@ class AuthenticatedHttpClient {
   Future<http.Response> get(String url) async {
     try {
       final headers = await _authenticatedHeaders;
-      
+
       final response = await _httpClient.get(
         Uri.parse(url),
         headers: headers,
       );
-      
+
       _checkAuthenticationError(response);
       return response;
     } catch (e) {
@@ -53,13 +53,13 @@ class AuthenticatedHttpClient {
   Future<http.Response> post(String url, Map<String, dynamic> data) async {
     try {
       final headers = await _authenticatedHeaders;
-      
+
       final response = await _httpClient.post(
         Uri.parse(url),
         headers: headers,
         body: json.encode(data),
       );
-      
+
       _checkAuthenticationError(response);
       return response;
     } catch (e) {
@@ -71,13 +71,13 @@ class AuthenticatedHttpClient {
   Future<http.Response> put(String url, Map<String, dynamic> data) async {
     try {
       final headers = await _authenticatedHeaders;
-      
+
       final response = await _httpClient.put(
         Uri.parse(url),
         headers: headers,
         body: json.encode(data),
       );
-      
+
       _checkAuthenticationError(response);
       return response;
     } catch (e) {
@@ -89,12 +89,12 @@ class AuthenticatedHttpClient {
   Future<http.Response> delete(String url) async {
     try {
       final headers = await _authenticatedHeaders;
-      
+
       final response = await _httpClient.delete(
         Uri.parse(url),
         headers: headers,
       );
-      
+
       _checkAuthenticationError(response);
       return response;
     } catch (e) {
@@ -110,12 +110,12 @@ class AuthenticatedHttpClient {
       if (token == null) {
         throw Exception('Authentication token not found for multipart request');
       }
-      
+
       request.headers['Authorization'] = token;
-      
+
       final streamedResponse = await _httpClient.send(request);
       final response = await http.Response.fromStream(streamedResponse);
-      
+
       _checkAuthenticationError(response);
       return response;
     } catch (e) {
@@ -127,7 +127,7 @@ class AuthenticatedHttpClient {
   void dispose() {
     _httpClient.close();
   }
-  
+
   void _checkAuthenticationError(http.Response response) {
     if (response.statusCode == 401) {
       throw Exception('401 Unauthorized: Authentication token expired or invalid');

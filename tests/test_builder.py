@@ -1,4 +1,4 @@
-import logging 
+import logging
 LOGGER = logging.getLogger(__name__)
 
 from bondable.bond.builder import AgentBuilder, AgentDefinition
@@ -45,7 +45,7 @@ class TestBuilder:
       builder.cleanup()
       os.remove(data_file.name)
       os.remove(html_file.name)
-    
+
   def test_get_agent_1(self, setup):
     builder, config, data_file, html_file = setup
     assert len(builder.get_context()['agents']) == 0
@@ -96,7 +96,7 @@ class TestBuilder:
         description="An agent that will load data about people and answer questions",
         instructions="""
         Answer questions about user data in the attached CSV file. The first row contains the
-        names of the columns. 
+        names of the columns.
         """,
         tools=[{"type": "code_interpreter"}],
         tool_resources={
@@ -121,7 +121,7 @@ class TestBuilder:
         name="File Agent",
         description="An agent that will load data about people and answer questions",
         instructions="""
-        Answer questions like a pirate 
+        Answer questions like a pirate
         """,
         tools=[{"type": "code_interpreter"}],
         tool_resources={
@@ -196,7 +196,7 @@ class TestBuilder:
         name="HTML File Agent",
         description="An agent that uses file search to help people answer questions",
         instructions="""
-        Use file search to help people answer questions 
+        Use file search to help people answer questions
         """,
         tools=[{"type": "file_search"}],
         tool_resources={
@@ -229,7 +229,7 @@ class TestBuilder:
         name="HTML File Agent",
         description="An agent that uses file search to help people answer questions",
         instructions="""
-        Use file search to help people answer questions 
+        Use file search to help people answer questions
         """,
         tools=[{"type": "file_search"}],
         tool_resources={

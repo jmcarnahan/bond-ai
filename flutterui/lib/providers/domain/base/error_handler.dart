@@ -41,8 +41,8 @@ class AppError {
 mixin ErrorHandlerMixin<T> on StateNotifier<T> {
   void handleError(dynamic error, StackTrace? stackTrace) {
     final appError = _convertToAppError(error, stackTrace);
-    logger.e('[$runtimeType] Error: ${appError.message}', 
-        error: appError.originalError, 
+    logger.e('[$runtimeType] Error: ${appError.message}',
+        error: appError.originalError,
         stackTrace: appError.stackTrace);
     handleAppError(appError);
   }
@@ -53,7 +53,7 @@ mixin ErrorHandlerMixin<T> on StateNotifier<T> {
     if (error is AppError) {
       return error;
     }
-    
+
     if (error is Exception) {
       return AppError(
         message: error.toString().replaceFirst('Exception: ', ''),
@@ -75,7 +75,7 @@ extension ErrorUtils on Object {
     if (this is AppError) {
       return this as AppError;
     }
-    
+
     if (this is Exception) {
       return AppError(
         message: toString().replaceFirst('Exception: ', ''),

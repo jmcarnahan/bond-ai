@@ -25,10 +25,10 @@ def add_message(content, user_id=None, thread_name=None, agent_id=None, subject=
     # Initialize Firestore client
     print(f"Connecting to Firestore project: {PROJECT_ID}, database: {DATABASE_ID}")
     db = firestore.Client(project=PROJECT_ID, database=DATABASE_ID)
-    
+
     # Use provided user_id or default
     user_id = user_id or DEFAULT_USER_ID
-    
+
     # Create message document
     doc_data = {
         'userId': user_id,
@@ -40,19 +40,19 @@ def add_message(content, user_id=None, thread_name=None, agent_id=None, subject=
             'source': 'command_line'
         }
     }
-    
+
     # Add agent ID to metadata if provided
     if agent_id:
         doc_data['metadata']['agentId'] = agent_id
-    
+
     # Add subject to metadata if provided
     if subject:
         doc_data['metadata']['subject'] = subject
-    
+
     # Add duration to metadata if provided
     if duration is not None:
         doc_data['metadata']['duration'] = duration
-    
+
     print(f"\n📤 Adding message to Firestore...")
     print(f"  User ID: {user_id}")
     print(f"  Content: {content}")
@@ -65,7 +65,7 @@ def add_message(content, user_id=None, thread_name=None, agent_id=None, subject=
         print(f"  Banner Duration: {duration} seconds")
     else:
         print(f"  Banner Duration: 60 seconds (default)")
-    
+
     try:
         doc_ref = db.collection(COLLECTION_NAME).add(doc_data)
         print(f"\n✅ Message added successfully!")
@@ -83,13 +83,13 @@ def main():
     parser.add_argument('--agent-id', '-a', help='Agent ID to use (default: uses mobile agent from Flutter)')
     parser.add_argument('--subject', '-s', help='Subject line for the notification banner')
     parser.add_argument('--duration', '-d', type=int, help='Banner display duration in seconds (default: 60)')
-    
+
     args = parser.parse_args()
-    
+
     if not args.message:
         print("❌ Error: Message content is required")
         sys.exit(1)
-    
+
     # Add the message
     doc_id = add_message(
         content=args.message,
@@ -99,7 +99,7 @@ def main():
         subject=args.subject,
         duration=args.duration
     )
-    
+
     if doc_id:
         print(f"\n🎉 Message added to Firestore collection '{COLLECTION_NAME}'")
         print("The Flutter app should detect and process this message automatically.")
