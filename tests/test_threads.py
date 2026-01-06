@@ -22,12 +22,12 @@ class TestThreadOperations:
         # Ensure a clean test database file if it exists from a previous run
         if os.path.exists('.metadata-test.db'):
             os.remove('.metadata-test.db')
-            
+
         os.environ['METADATA_DB_URL'] = TEST_DB_URL
-        
+
         # Initialize core components. These will use the TEST_DB_URL.
-        self.config = Config.config() 
-        self.metadata = Metadata.metadata() 
+        self.config = Config.config()
+        self.metadata = Metadata.metadata()
         self.threads = Threads.threads(user_id=TEST_USER_ID)
 
     def teardown_method(self):
@@ -40,7 +40,7 @@ class TestThreadOperations:
                     threads_by_test_users = session.query(OrmThread.thread_id).distinct().all()
                     for row in threads_by_test_users:
                         unique_thread_ids_to_delete.add(row.thread_id)
-                
+
                 for thread_id_to_delete in unique_thread_ids_to_delete:
                     try:
                         self.metadata.delete_thread(thread_id_to_delete)
@@ -48,8 +48,8 @@ class TestThreadOperations:
                     except Exception as e:
                         # Log error but continue to ensure other cleanup happens
                         LOGGER.error(f"Teardown: Error during metadata.delete_thread for {thread_id_to_delete}: {type(e).__name__} - {str(e)}")
-                
-                self.metadata.close() 
+
+                self.metadata.close()
         except Exception as e:
             LOGGER.error(f"Error during overall teardown: {type(e).__name__} - {str(e)}")
         finally:
@@ -57,7 +57,7 @@ class TestThreadOperations:
                 os.remove('.metadata-test.db')
             if 'METADATA_DB_URL' in os.environ:
                 del os.environ['METADATA_DB_URL']
-            
+
             self.config = None
             self.threads = None
             self.metadata = None
@@ -69,7 +69,7 @@ class TestThreadOperations:
         assert created_thread_orm is not None
         assert created_thread_orm.thread_id is not None
         assert created_thread_orm.user_id == TEST_USER_ID
-        assert created_thread_orm.name == "New Thread" 
+        assert created_thread_orm.name == "New Thread"
 
         # Test creating a thread with a specific name
         custom_name = "My Custom Thread"
@@ -89,10 +89,10 @@ class TestThreadOperations:
         thread_name = "Test Thread for Get Current"
         created_thread_orm = self.threads.create_thread(name=thread_name)
         assert created_thread_orm.thread_id is not None
-        
+
         threads_list = self.threads.get_current_threads(count=10)
         assert len(threads_list) >= 1
-        
+
         # Verify the created thread is in the list (it should be the first due to ordering)
         found_thread = next((t for t in threads_list if t['thread_id'] == created_thread_orm.thread_id), None)
         assert found_thread is not None
@@ -104,14 +104,14 @@ class TestThreadOperations:
         with self.metadata.get_db_session() as s:
             s.query(OrmThread).delete()
             s.commit()
-        
+
         session_s1 = MySession()
         created_id_s1 = self.threads.get_current_thread_id(session=session_s1)
         assert created_id_s1 is not None
         assert 'thread' in session_s1
         assert session_s1['thread'] == created_id_s1
         # Verify this thread was indeed created for TEST_USER_ID
-        assert self.metadata.get_thread(created_id_s1) is not None 
+        assert self.metadata.get_thread(created_id_s1) is not None
 
         # Scenario 2: One thread exists, empty session. Should find and use existing.
         # (created_id_s1 is the existing one)
@@ -124,7 +124,7 @@ class TestThreadOperations:
         pre_existing_thread_id_in_session = "session_thread_123"
         session_s3 = MySession()
         session_s3['thread'] = pre_existing_thread_id_in_session
-        
+
         retrieved_id_s3 = self.threads.get_current_thread_id(session=session_s3)
         assert retrieved_id_s3 == pre_existing_thread_id_in_session
 
@@ -143,7 +143,7 @@ class TestThreadOperations:
         updated_thread_info = next((t for t in threads_list if t['thread_id'] == created_thread_orm.thread_id), None)
         assert updated_thread_info is not None
         assert updated_thread_info['name'] == updated_name
-        
+
         # Verify directly from DB via metadata.get_thread (which returns a dict)
         thread_details_dict = self.metadata.get_thread(created_thread_orm.thread_id)
         assert thread_details_dict is not None
@@ -155,7 +155,7 @@ class TestThreadOperations:
     def test_grant_thread_functionality(self):
         user1_id = 'test_user_1'
         user2_id = 'test_user_2'
-        
+
         user1_threads_service = Threads.threads(user_id=user1_id)
 
         # 1. User1 creates a thread
@@ -175,8 +175,8 @@ class TestThreadOperations:
         # 2. User1 grants User2 access to this thread with a specific name for User2
         name_for_user2_access = "Shared Thread (User2's View)"
         granted_to_u2_orm = user1_threads_service.grant_thread(
-            thread_id=created_thread_orm_u1.thread_id, 
-            user_id=user2_id, 
+            thread_id=created_thread_orm_u1.thread_id,
+            user_id=user2_id,
             name=name_for_user2_access
         )
         assert granted_to_u2_orm.thread_id == created_thread_orm_u1.thread_id
@@ -198,12 +198,12 @@ class TestThreadOperations:
         # 3. Test fail_if_missing=True: Granting a non-existent thread should fail
         with pytest.raises(Exception, match="not found in metadata"):
             self.metadata.grant_thread(
-                thread_id="non_existent_thread_id_for_fail_test", 
-                user_id=user1_id, 
-                name="This Should Fail", 
+                thread_id="non_existent_thread_id_for_fail_test",
+                user_id=user1_id,
+                name="This Should Fail",
                 fail_if_missing=True
             )
-        
+
         # 4. Test granting again to user2, but updating the name for user2's access
         updated_name_for_user2 = "User2 Access - Updated Name"
         regranted_to_u2_orm = user1_threads_service.grant_thread(
@@ -222,7 +222,7 @@ class TestThreadOperations:
         thread_name_for_get = "Thread for Get Test"
         created_thread_orm = self.threads.create_thread(name=thread_name_for_get)
         assert created_thread_orm.thread_id is not None
-        
+
         thread_dict = self.threads.get_thread(created_thread_orm.thread_id)
         assert thread_dict is not None
         assert thread_dict['thread_id'] == created_thread_orm.thread_id
