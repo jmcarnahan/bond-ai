@@ -16,7 +16,7 @@ dotenv.load_dotenv()
 
 
 class GoogleAuth:
-    
+
     def __init__(self):
         config = Config.config()
         self.auth_info = config.get_auth_info()
@@ -33,7 +33,7 @@ class GoogleAuth:
             scopes=self.auth_info['scopes'],
             redirect_uri=self.auth_info['redirect_uri']
         )
-    
+
     def get_auth_url(self):
         authorization_url, state = self._get_flow().authorization_url(
             # Recommended, enable offline access so that you can refresh an access token without
@@ -58,7 +58,7 @@ class GoogleAuth:
         request = requests.Request()
         user_info = id_token.verify_oauth2_token(creds.id_token, request, clock_skew_in_seconds=10)
         return user_info
-    
+
     def create_cookie(self, user_info):
       return base64.b64encode(json.dumps(user_info).encode("utf-8")).decode("utf-8")
 
@@ -72,7 +72,7 @@ class GoogleAuth:
             return None
 
     def get_user_info_from_code(self, auth_code):
-        try:       
+        try:
             LOGGER.info(f"Authenticating with auth code: {auth_code}")
             creds = self._fetch_google_token(auth_code)
             user_info = self._get_google_user_info(creds)
@@ -86,9 +86,3 @@ class GoogleAuth:
         except Exception as e:
             LOGGER.error(f"Error authenticating with code {auth_code}: {e}")
             raise e
-
-
-
-
-
-
