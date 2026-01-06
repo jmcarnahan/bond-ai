@@ -58,37 +58,29 @@ resource "aws_apprunner_service" "backend" {
           OKTA_REDIRECT_URI = var.okta_redirect_uri != "" ? var.okta_redirect_uri : "https://PENDING_BACKEND_URL/auth/okta/callback"
           OKTA_SCOPES = var.okta_scopes
 
+          # AWS Cognito OAuth Configuration (only if configured)
+          # Note: Add "cognito" to oauth2_providers variable to enable
+          COGNITO_DOMAIN       = var.cognito_domain
+          COGNITO_CLIENT_ID    = var.cognito_client_id
+          COGNITO_SECRET_NAME  = var.cognito_secret_name
+          COGNITO_REDIRECT_URI = var.cognito_redirect_uri != "" ? var.cognito_redirect_uri : (var.cognito_domain != "" ? "https://BACKEND_URL_PLACEHOLDER/auth/cognito/callback" : "")
+          COGNITO_SCOPES       = var.cognito_scopes
+          COGNITO_REGION       = var.cognito_region
+
           # JWT redirect URI for frontend - uses variable to avoid circular dependency
           JWT_REDIRECT_URI = var.jwt_redirect_uri != "" ? var.jwt_redirect_uri : "*"
 
           # CORS configuration - uses variable to allow post-deployment tightening
           CORS_ALLOWED_ORIGINS = var.cors_allowed_origins
 
-          # MCP Server Configuration
-          # Note: URLs come from variables set after first deployment to avoid circular dependency
-          # IMPORTANT: MCP URL must have trailing slash to avoid redirect issues
-          BOND_MCP_CONFIG = var.mcp_atlassian_service_url != "" && var.mcp_atlassian_oauth_secret_name != "" ? jsonencode({
-            mcpServers = {
-              atlassian = {
-                url          = "${var.mcp_atlassian_service_url}/mcp/"
-                transport    = "streamable-http"
-                auth_type    = "oauth2"
-                display_name = "Atlassian"
-                description  = "Connect to Atlassian Jira and Confluence"
-                oauth_config = {
-                  provider      = "atlassian"
-                  client_id     = var.mcp_atlassian_oauth_client_id
-                  client_secret = jsondecode(data.aws_secretsmanager_secret_version.mcp_atlassian_oauth[0].secret_string)["client_secret"]
-                  authorize_url = "https://auth.atlassian.com/authorize"
-                  token_url     = "https://auth.atlassian.com/oauth/token"
-                  scopes        = var.mcp_atlassian_oauth_scopes
-                  redirect_uri  = "${var.backend_service_url}/connections/atlassian/callback"
-                }
-                site_url = "https://api.atlassian.com"
-                cloud_id = var.mcp_atlassian_oauth_cloud_id
-              }
-            }
-          }) : "{}"
+          # Knowledge Base configuration (only set when KB is enabled)
+          BEDROCK_KNOWLEDGE_BASE_ID    = try(aws_bedrockagent_knowledge_base.main[0].id, "")
+          BEDROCK_KB_DATA_SOURCE_ID    = try(aws_bedrockagent_data_source.s3[0].data_source_id, "")
+          BEDROCK_KB_S3_PREFIX         = var.enable_knowledge_base ? "knowledge-base/" : ""
+
+          # MCP configuration (generic JSON variable approach)
+          # See patches/MCP_CONFIG_MIGRATION.md for migration from inline config
+          BOND_MCP_CONFIG = var.bond_mcp_config
         }
       }
     }
