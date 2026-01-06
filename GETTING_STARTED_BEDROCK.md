@@ -196,20 +196,20 @@ cd ..
    ```bash
    # Provider Selection
    BOND_PROVIDER_CLASS="bondable.bond.providers.bedrock.BedrockProvider.BedrockProvider"
-   
+
    # AWS Configuration
    AWS_ACCESS_KEY_ID="your_access_key_from_step_3"
    AWS_SECRET_ACCESS_KEY="your_secret_key_from_step_3"
    AWS_REGION="us-east-1"  # or your preferred region
-   
+
    # Bedrock Configuration
    BEDROCK_DEFAULT_MODEL="us.anthropic.claude-3-5-sonnet-20241022-v2:0"
    BEDROCK_S3_BUCKET="bond-bedrock-files-YOUR_ACCOUNT_ID"
    BEDROCK_AGENT_ROLE_ARN="arn:aws:iam::YOUR_ACCOUNT_ID:role/BondAIBedrockAgentRole"
-   
+
    # Authentication (generate a secure key)
    JWT_SECRET_KEY="$(openssl rand -hex 32)"
-   
+
    # Configure other settings as needed...
    ```
 
