@@ -102,7 +102,7 @@ class BondAIFileUploader extends StatelessWidget {
   Widget _buildFilesTable(BuildContext context, ThemeData theme) {
     const double maxTableHeight = 400.0;
     const double headerHeight = 56.0;
-    
+
     return Container(
       decoration: BoxDecoration(
         border: Border.all(
@@ -123,7 +123,7 @@ class BondAIFileUploader extends StatelessWidget {
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    children: files.map((file) => 
+                    children: files.map((file) =>
                       Container(
                         key: ValueKey('file_row_${file.fileId}'),
                         child: _buildFileRow(context, theme, file),
@@ -136,7 +136,7 @@ class BondAIFileUploader extends StatelessWidget {
           else
             Column(
               mainAxisSize: MainAxisSize.min,
-              children: files.map((file) => 
+              children: files.map((file) =>
                 Container(
                   key: ValueKey('file_row_${file.fileId}'),
                   child: _buildFileRow(context, theme, file),
@@ -153,10 +153,10 @@ class BondAIFileUploader extends StatelessWidget {
       fontWeight: FontWeight.bold,
       color: theme.colorScheme.onSurfaceVariant,
     );
-    
+
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: AppSpacing.xl, 
+        horizontal: AppSpacing.xl,
         vertical: AppSpacing.lg,
       ),
       decoration: BoxDecoration(
@@ -193,7 +193,7 @@ class BondAIFileUploader extends StatelessWidget {
   Widget _buildFileRow(BuildContext context, ThemeData theme, FileInfo file) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: AppSpacing.xl, 
+        horizontal: AppSpacing.xl,
         vertical: AppSpacing.lg,
       ),
       decoration: BoxDecoration(
@@ -289,7 +289,7 @@ class BondAIFileUploader extends StatelessWidget {
           value: file.selectedTool ?? availableTools.first,
           isDense: true,
           style: theme.textTheme.bodyMedium,
-          onChanged: enabled 
+          onChanged: enabled
               ? (value) {
                   if (value != null) {
                     onToolChanged!(file.fileId, value);
@@ -316,7 +316,7 @@ class BondAIFileUploader extends StatelessWidget {
 
   IconData _getFileIcon(String fileName) {
     final extension = fileName.split('.').last.toLowerCase();
-    
+
     switch (extension) {
       case 'pdf':
         return Icons.picture_as_pdf;
@@ -382,7 +382,7 @@ class BondAIFileUploader extends StatelessWidget {
     if (mimeType.startsWith('image/')) return 'Image';
     if (mimeType.startsWith('video/')) return 'Video';
     if (mimeType.startsWith('audio/')) return 'Audio';
-    
+
     final parts = mimeType.split('/');
     if (parts.length > 1) {
       return parts[1].toUpperCase();
@@ -423,10 +423,10 @@ class BondAIUploadButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return ElevatedButton.icon(
       onPressed: (enabled && !isUploading) ? onPressed : null,
-      icon: isUploading 
+      icon: isUploading
           ? SizedBox(
               width: 16,
               height: 16,
@@ -437,13 +437,13 @@ class BondAIUploadButton extends StatelessWidget {
             )
           : Icon(icon ?? Icons.add, size: 18),
       label: Text(
-        isUploading 
-            ? 'Uploading...' 
+        isUploading
+            ? 'Uploading...'
             : label ?? 'Add File',
       ),
       style: ElevatedButton.styleFrom(
         padding: EdgeInsets.symmetric(
-          horizontal: AppSpacing.xl, 
+          horizontal: AppSpacing.xl,
           vertical: AppSpacing.lg,
         ),
         shape: RoundedRectangleBorder(
