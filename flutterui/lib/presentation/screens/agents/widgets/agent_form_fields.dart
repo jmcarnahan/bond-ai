@@ -94,4 +94,3 @@ class AgentFormFields extends StatelessWidget {
     );
   }
 }
-
