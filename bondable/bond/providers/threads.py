@@ -47,10 +47,10 @@ class ThreadsProvider(ABC):
             # First create the thread resource (OpenAI thread)
             thread_id = self.create_thread_resource()
             LOGGER.info(f"Successfully created thread resource with ID: {thread_id}")
-            
+
             # Then save to database
             thread_record = self.grant_thread(thread_id=thread_id, user_id=user_id, name=name, fail_if_missing=False)
-            
+
             # Verify the thread was saved to database
             with self.metadata.get_db_session() as session:
                 verify_thread = session.query(Thread).filter_by(thread_id=thread_id, user_id=user_id).first()
@@ -59,9 +59,9 @@ class ThreadsProvider(ABC):
                     raise Exception(f"Failed to save thread {thread_id} to database")
                 else:
                     LOGGER.info(f"Verified thread {thread_id} exists in database for user {user_id}")
-            
+
             return thread_record
-            
+
         except Exception as e:
             LOGGER.error(f"Error in create_thread for user {user_id}: {e}", exc_info=True)
             # If thread was created in provider but DB save failed, try to clean up
@@ -72,15 +72,15 @@ class ThreadsProvider(ABC):
                 except Exception as cleanup_error:
                     LOGGER.error(f"Failed to cleanup orphaned thread {thread_id}: {cleanup_error}")
             raise e
-    
+
     def update_thread_name(self, thread_id: str, user_id: str, thread_name: str) -> None:
         session = self.metadata.get_db_session()
         try:
             thread = session.query(Thread).filter_by(thread_id=thread_id, user_id=user_id).first()
             if thread:
-                thread.name = thread_name  
+                thread.name = thread_name
                 session.commit()
-                LOGGER.info(f"Successfully updated thread {thread_id} name to '{thread_name}' for user {user_id}")  
+                LOGGER.info(f"Successfully updated thread {thread_id} name to '{thread_name}' for user {user_id}")
             else:
                 LOGGER.error(f"Thread {thread_id} not found for user {user_id}. Cannot update name.")
         except Exception as e:
@@ -112,7 +112,7 @@ class ThreadsProvider(ABC):
 
 
     def get_current_threads(self, user_id: str, count: int = 20) -> list:
-        with self.metadata.get_db_session() as session:  
+        with self.metadata.get_db_session() as session:
             results = (session.query(Thread.thread_id, Thread.name, Thread.created_at, Thread.updated_at)
                         .filter_by(user_id=user_id)
                         .order_by(Thread.updated_at.desc(), Thread.created_at.desc())
@@ -168,15 +168,15 @@ class ThreadsProvider(ABC):
         """
         Deletes a thread by its id. Delete the resource if no users are left associated with it.
         """
-        with self.metadata.get_db_session() as session:    
+        with self.metadata.get_db_session() as session:
             thread_count = session.query(Thread).filter_by(thread_id=thread_id).count()
             # always delete the resource first because the provider may need more information about the thread
             if thread_count > 0:
-                deleted_resource = self.delete_thread_resource(thread_id) 
+                deleted_resource = self.delete_thread_resource(thread_id)
 
             deleted_count = session.query(Thread).filter_by(thread_id=thread_id, user_id=user_id).delete()
             current_count = session.query(Thread).filter_by(thread_id=thread_id).count()
-            session.commit()  
+            session.commit()
 
             if deleted_count > 0:
                 LOGGER.info(f"Deleted {deleted_count} DB records for thread_id: {thread_id} and user_id: {user_id} - remaining users: {current_count}")
@@ -185,10 +185,10 @@ class ThreadsProvider(ABC):
                 # This might happen if called multiple times for the same thread_id in teardown
                 LOGGER.error(f"No DB records found to delete for thread_id: {thread_id} and user_id: {user_id} (possibly already deleted).")
                 return False
-        
+
 
     def delete_threads_for_user(self, user_id: str) -> None:
-         with self.metadata.get_db_session() as session:   
+         with self.metadata.get_db_session() as session:
             for thread_id_tuple in session.query(Thread.thread_id).filter(Thread.user_id == user_id).all():
                 thread_id = thread_id_tuple[0]
                 try:

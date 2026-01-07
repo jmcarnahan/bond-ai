@@ -18,7 +18,7 @@ class ImageMessageWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     try {
       final Uint8List imageBytes = base64Decode(base64ImageData);
-      
+
       return Container(
         constraints: BoxConstraints(
           maxWidth: maxWidth ?? 300,

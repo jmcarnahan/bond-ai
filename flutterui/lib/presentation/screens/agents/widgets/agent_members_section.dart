@@ -22,19 +22,19 @@ class _AgentMembersSectionState extends ConsumerState<AgentMembersSection> {
   Group? _cachedDefaultGroup;
   String? _lastAgentName;
   List<Group>? _cachedGroups;
-  
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadGroups();
     });
-    
+
     ref.listenManual(groupsProvider, (previous, next) {
       _loadGroups();
     });
   }
-  
+
   Future<void> _loadGroups() async {
     try {
       final groups = await ref.read(groupsProvider.future);
@@ -53,7 +53,7 @@ class _AgentMembersSectionState extends ConsumerState<AgentMembersSection> {
   }
 
   @override
-  Widget build(BuildContext context) {    
+  Widget build(BuildContext context) {
     return BondAIContainer(
       icon: Icons.people,
       title: 'Share with Users',
@@ -78,13 +78,13 @@ class _AgentMembersSectionState extends ConsumerState<AgentMembersSection> {
                 final groups = _cachedGroups!;
                   final agentName = widget.agentName!;
                   final defaultGroupName = '$agentName Default Group';
-                  
+
                   try {
                     final defaultGroup = groups.firstWhere(
                       (group) => group.name == defaultGroupName,
                     );
 
-                    if (_lastAgentName != agentName || 
+                    if (_lastAgentName != agentName ||
                         _cachedDefaultGroup?.id != defaultGroup.id ||
                         _cachedDefaultGroup?.updatedAt != defaultGroup.updatedAt) {
                       _cachedDefaultGroup = defaultGroup;

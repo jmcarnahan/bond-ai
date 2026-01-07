@@ -25,7 +25,7 @@ class _AuthCallbackScreenState extends ConsumerState<AuthCallbackScreen> {
     // Made async
     logger.i("[AuthCallbackScreen] _handleAuthCallback triggered.");
     logger.i("[AuthCallbackScreen] Current route: ${ModalRoute.of(context)?.settings.name}");
-    
+
     if (kIsWeb) {
       // Use kIsWeb for a more robust check
       logger.i("[AuthCallbackScreen] Running on web.");

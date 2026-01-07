@@ -63,10 +63,10 @@ class ToolFileUploadSection extends ConsumerWidget {
 
   Widget _buildUploadButton(BuildContext context, CreateAgentFormState formState, CreateAgentFormNotifier formNotifier) {
     final isUploading = formState.isUploadingFile;
-    
+
     return ElevatedButton.icon(
       onPressed: isUploading ? null : () => formNotifier.uploadFile(),
-      icon: isUploading 
+      icon: isUploading
           ? SizedBox(
               width: 16,
               height: 16,
@@ -85,7 +85,7 @@ class ToolFileUploadSection extends ConsumerWidget {
 
   Widget _buildEmptyState(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Container(
       padding: const EdgeInsets.all(24.0),
       decoration: BoxDecoration(
@@ -137,7 +137,7 @@ class ToolFileUploadSection extends ConsumerWidget {
 
   Widget _buildFileItem(BuildContext context, UploadedFileInfo file, CreateAgentFormNotifier formNotifier) {
     final theme = Theme.of(context);
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8.0),
       padding: const EdgeInsets.all(12.0),
@@ -194,7 +194,7 @@ class ToolFileUploadSection extends ConsumerWidget {
 
   IconData _getFileIcon(String fileName) {
     final extension = fileName.split('.').last.toLowerCase();
-    
+
     switch (extension) {
       case 'pdf':
         return Icons.picture_as_pdf;
@@ -238,7 +238,7 @@ class ToolFileUploadSection extends ConsumerWidget {
   String _formatDate(DateTime date) {
     final now = DateTime.now();
     final diff = now.difference(date);
-    
+
     if (diff.inMinutes < 1) return 'just now';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';

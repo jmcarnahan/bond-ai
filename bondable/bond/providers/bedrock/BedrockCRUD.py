@@ -18,7 +18,7 @@ DEFAULT_TEMPERATURE = 0.0
 # Ensure instructions meet minimum length requirement (40 chars for Bedrock)
 MIN_INSTRUCTION_LENGTH = 40
 DEFAULT_INSTRUCTION = "You are a helpful AI assistant. Be helpful, accurate, and concise in your responses."
-AGENT_VERSION = 'DRAFT'  
+AGENT_VERSION = 'DRAFT'
 
 
 def _get_bedrock_agent_client() -> Any:
@@ -49,23 +49,23 @@ def create_bedrock_agent(agent_id: str, agent_def: AgentDefinition, owner_user_i
     agent_role_arn = os.getenv('BEDROCK_AGENT_ROLE_ARN')
     if not agent_role_arn:
         raise ValueError("BEDROCK_AGENT_ROLE_ARN environment variable must be set")
-    
+
     instructions = DEFAULT_INSTRUCTION
     if agent_def.instructions:
         instructions = agent_def.instructions.ljust(MIN_INSTRUCTION_LENGTH)
-    
+
     if agent_def.description is None or agent_def.description.strip() == "":
         agent_def.description = agent_def.name
-    
+
     try:
         # Step 1: Create the agent
         LOGGER.debug(f"Creating Bedrock Agent with for bond agent {agent_id} with ARN {agent_role_arn}")
-        
+
         # Use agent_id as the Bedrock agent name for guaranteed uniqueness
         # Bedrock agent names must match pattern: ([0-9a-zA-Z][_-]?){1,100}
         # Since agent_id is a UUID with format "bedrock_agent_<uuid>", we need to clean it
         bedrock_agent_name = agent_id.replace('-', '_')
-                    
+
         create_response = bedrock_agent_client.create_agent(
             agentName=bedrock_agent_name,
             agentResourceRoleArn=agent_role_arn,
@@ -74,7 +74,7 @@ def create_bedrock_agent(agent_id: str, agent_def: AgentDefinition, owner_user_i
             description=agent_def.description,
             idleSessionTTLInSeconds=3600,  # 1 hour timeout
         )
-        
+
         bedrock_agent_id = create_response['agent']['agentId']
 
         # Step 2: Wait for agent to be created
@@ -95,11 +95,11 @@ def create_bedrock_agent(agent_id: str, agent_def: AgentDefinition, owner_user_i
         except ClientError as e:
             LOGGER.warning(f"Failed to enable code interpreter: {e}")
             # Continue without code interpreter rather than failing
-        
+
         # Step 4: Prepare the agent with code interpreter enabled
         bedrock_agent_client.prepare_agent(agentId=bedrock_agent_id)
         _wait_for_resource_status('agent', bedrock_agent_id, ['PREPARED'])
-        
+
         # Step 5: Create MCP action groups if any MCP tools specified
         if agent_def.mcp_tools:
             create_mcp_action_groups(bedrock_agent_id, agent_def.mcp_tools, agent_def.mcp_resources or [], user_id=owner_user_id)
@@ -110,31 +110,31 @@ def create_bedrock_agent(agent_id: str, agent_def: AgentDefinition, owner_user_i
         # Step 6: Create alias
         alias_name = f"{bedrock_agent_name}_alias_{uuid.uuid4().hex[:8]}"
         LOGGER.debug(f"Creating alias {alias_name} for Bedrock Agent {bedrock_agent_id}")
-        
+
         alias_response = bedrock_agent_client.create_agent_alias(
             agentId=bedrock_agent_id,
             agentAliasName=alias_name,
             description=f"Alias for Bond agent {agent_id}"
         )
-        
+
         bedrock_agent_alias_id = alias_response['agentAlias']['agentAliasId']
         _wait_for_resource_status('alias', bedrock_agent_alias_id, ['PREPARED'], agent_id=bedrock_agent_id)
-        
+
         LOGGER.info(f"Successfully created Bedrock Agent {bedrock_agent_id} with alias {bedrock_agent_alias_id}")
         return bedrock_agent_id, bedrock_agent_alias_id
-        
+
     except ClientError as e:
         error_code = e.response['Error']['Code']
         error_message = e.response['Error']['Message']
-        LOGGER.error(f"Failed to create Bedrock Agent: {error_code} - {error_message}")            
+        LOGGER.error(f"Failed to create Bedrock Agent: {error_code} - {error_message}")
         raise ValueError(f"Failed to create Bedrock Agent: {error_message}")
-    
+
     except Exception as e:
         LOGGER.error(f"Unexpected error creating Bedrock Agent: {e}")
         raise
-    
 
-  
+
+
 def update_bedrock_agent(agent_def: AgentDefinition, bedrock_agent_id: str, bedrock_agent_alias_id: str, owner_user_id: Optional[str] = None) -> tuple[str, str]:
     """
     Update an existing Bedrock Agent.
@@ -167,7 +167,7 @@ def update_bedrock_agent(agent_def: AgentDefinition, bedrock_agent_id: str, bedr
         # Step 1: Update the agent configuration
         update_response = bedrock_agent_client.update_agent(
             agentId=bedrock_agent_id,
-            agentName=bedrock_agent_name,  
+            agentName=bedrock_agent_name,
             agentResourceRoleArn=agent_role_arn,
             instruction=instructions,
             foundationModel=agent_def.model,
@@ -226,7 +226,7 @@ def update_bedrock_agent(agent_def: AgentDefinition, bedrock_agent_id: str, bedr
         LOGGER.debug(f"Preparing agent {bedrock_agent_id} after updates")
         bedrock_agent_client.prepare_agent(agentId=bedrock_agent_id)
         _wait_for_resource_status('agent', bedrock_agent_id, ['PREPARED'])
-        
+
         # Step 4b: Delete MCP action group if marked for deletion
         if not agent_def.mcp_tools and mcp_action_group_id:
             try:
@@ -313,7 +313,7 @@ def delete_bedrock_agent(bedrock_agent_id: str, bedrock_agent_alias_id: str):
                 except ClientError as e:
                     if e.response['Error']['Code'] != 'ResourceNotFoundException':
                         LOGGER.warning(f"Error deleting alias {bedrock_agent_alias_id}: {e}")
-            
+
             # Delete the agent
             LOGGER.info(f"Deleting Bedrock Agent {bedrock_agent_id}")
             bedrock_agent_client.delete_agent(
@@ -321,7 +321,7 @@ def delete_bedrock_agent(bedrock_agent_id: str, bedrock_agent_alias_id: str):
                 skipResourceInUseCheck=True  # Force delete even if in use
             )
             LOGGER.info(f"Successfully deleted Bedrock Agent {bedrock_agent_id}")
-            
+
         except ClientError as e:
             if e.response['Error']['Code'] == 'ResourceNotFoundException':
                 LOGGER.info(f"Bedrock Agent {bedrock_agent_id} already deleted")
@@ -331,12 +331,12 @@ def delete_bedrock_agent(bedrock_agent_id: str, bedrock_agent_alias_id: str):
 
 
 
-def _wait_for_resource_status(resource_type: str, resource_id: str, 
-                              target_statuses: List[str], max_attempts: int = 30, 
+def _wait_for_resource_status(resource_type: str, resource_id: str,
+                              target_statuses: List[str], max_attempts: int = 30,
                               delay: int = 2, agent_id: Optional[str] = None):
     """
     Generic method to wait for a resource to reach target status.
-    
+
     Args:
         resource_type: 'agent' or 'alias'
         resource_id: The resource ID to check
@@ -348,12 +348,12 @@ def _wait_for_resource_status(resource_type: str, resource_id: str,
 
 
     bedrock_agent_client = _get_bedrock_agent_client()
-    
+
     failed_statuses = {
         'agent': ['CREATE_FAILED', 'PREPARE_FAILED'],
         'alias': ['FAILED']
     }
-    
+
     for attempt in range(max_attempts):
         try:
             if resource_type == 'agent':
@@ -365,22 +365,22 @@ def _wait_for_resource_status(resource_type: str, resource_id: str,
                     agentAliasId=resource_id
                 )
                 current_status = response['agentAlias']['agentAliasStatus']
-            
+
             if current_status in target_statuses:
                 LOGGER.debug(f"{resource_type.capitalize()} {resource_id} reached status: {current_status}")
                 return
-            
+
             if current_status in failed_statuses.get(resource_type, []):
                 raise ValueError(f"{resource_type.capitalize()} {resource_id} failed with status: {current_status}")
-            
+
             LOGGER.debug(f"{resource_type.capitalize()} {resource_id} status: {current_status}, waiting...")
             time.sleep(delay)
-            
+
         except ClientError as e:
             if e.response['Error']['Code'] == 'ResourceNotFoundException':
                 LOGGER.debug(f"{resource_type.capitalize()} {resource_id} not found yet, waiting...")
                 time.sleep(delay)
             else:
                 raise
-    
+
     raise TimeoutError(f"{resource_type.capitalize()} {resource_id} did not reach status {target_statuses} after {max_attempts} attempts")

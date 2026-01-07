@@ -41,7 +41,7 @@ class BondAIResourceUnavailable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Container(
       padding: padding ?? AppSpacing.allHuge,
       decoration: BoxDecoration(
@@ -94,7 +94,7 @@ class BondAIResourceUnavailable extends StatelessWidget {
 
   Widget _buildRetryButton(BuildContext context, ThemeData theme) {
     if (onRetry == null) return const SizedBox.shrink();
-    
+
     return TextButton.icon(
       onPressed: onRetry,
       icon: Icon(Icons.refresh, size: AppSizes.iconSm),
@@ -205,4 +205,3 @@ class BondAIResourceUnavailable extends StatelessWidget {
     }
   }
 }
-

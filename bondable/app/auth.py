@@ -11,7 +11,7 @@ from bondable.bond.auth import GoogleAuth
 
 
 class StreamlitAuth:
-    
+
     def __init__(self):
         self.auth = GoogleAuth.auth()
         self._cookies = None
@@ -21,7 +21,7 @@ class StreamlitAuth:
     @st.cache_resource
     def auth(cls):
         return StreamlitAuth()
-    
+
     def get_cookies(self):
         if not self._cookies:
             self._cookies = CookieController()
@@ -42,7 +42,7 @@ class StreamlitAuth:
         return self.auth.get_auth_url()
 
     def bond_login(self):
-        
+
         LOGGER.debug("Checking login status")
         if "user" not in st.session_state:
             st.session_state["user"] = None
@@ -74,21 +74,5 @@ class StreamlitAuth:
                 LOGGER.error(f"Error logging in: {e}")
                 del st.query_params["code"]
                 st.query_params.clear()
-        
+
         return False
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

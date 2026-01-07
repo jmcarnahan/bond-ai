@@ -12,7 +12,7 @@ import 'package:flutterui/core/error_handling/error_handler.dart';
 
 class GroupsScreen extends ConsumerStatefulWidget {
   static const String routeName = '/groups';
-  
+
   const GroupsScreen({super.key});
 
   @override
@@ -31,7 +31,7 @@ class _GroupsScreenState extends ConsumerState<GroupsScreen> with ErrorHandlingM
   Widget build(BuildContext context) {
     final groupsAsync = ref.watch(groupNotifierProvider);
     final authState = ref.watch(authNotifierProvider);
-    
+
     User? currentUser;
     if (authState is Authenticated) {
       currentUser = authState.user;
@@ -56,7 +56,7 @@ class _GroupsScreenState extends ConsumerState<GroupsScreen> with ErrorHandlingM
           WidgetsBinding.instance.addPostFrameCallback((_) {
             handleAutoError(error, ref, serviceErrorMessage: 'Failed to load groups');
           });
-          
+
           // Check if this is an authentication error to show appropriate UI
           final appError = error is Exception ? AppError.fromException(error) : null;
           if (appError?.type == ErrorType.authentication) {
@@ -65,7 +65,7 @@ class _GroupsScreenState extends ConsumerState<GroupsScreen> with ErrorHandlingM
               child: CircularProgressIndicator(),
             );
           }
-          
+
           // Show a fallback UI with retry button for other errors
           return Center(
             child: Padding(

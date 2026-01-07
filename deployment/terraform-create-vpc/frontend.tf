@@ -72,7 +72,7 @@ resource "aws_apprunner_service" "frontend" {
 
       image_configuration {
         port = "8080"
-        
+
         # Runtime environment variables
         runtime_environment_variables = {
           NGINX_PORT = "8080"
@@ -125,10 +125,10 @@ output "frontend_build_command" {
   value = <<-EOT
     # Build and push frontend container
     # Note: The API_BASE_URL is passed as a build argument
-    
+
     aws ecr get-login-password --region ${var.aws_region} | \
       docker login --username AWS --password-stdin ${aws_ecr_repository.frontend.repository_url}
-    
+
     docker buildx build --platform linux/amd64 \
       --build-arg API_BASE_URL=https://${aws_apprunner_service.backend.service_url} \
       --build-arg ENABLE_AGENTS=true \

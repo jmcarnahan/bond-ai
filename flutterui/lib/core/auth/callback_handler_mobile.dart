@@ -7,14 +7,14 @@ class CallbackHandlerImpl implements CallbackHandler {
     // Mobile apps don't have URLs, they use deep links
     return null;
   }
-  
+
   @override
   bool isAuthCallbackRoute() {
     // For mobile, auth callbacks come through deep links
     // This would be handled by the platform-specific code
     return false;
   }
-  
+
   @override
   String? extractToken() {
     // On mobile, tokens come through deep links or custom URL schemes

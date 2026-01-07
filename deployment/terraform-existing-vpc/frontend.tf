@@ -3,10 +3,10 @@
 # App Runner Auto Scaling Configuration for Frontend
 resource "aws_apprunner_auto_scaling_configuration_version" "frontend" {
   auto_scaling_configuration_name = "${var.project_name}-${var.environment}-frontend-autoscaling"
-  
+
   min_size = 1
   max_size = var.environment == "prod" ? 10 : 2
-  
+
   tags = {
     Name = "${var.project_name}-${var.environment}-frontend-autoscaling"
   }
@@ -20,14 +20,14 @@ resource "aws_apprunner_service" "frontend" {
     authentication_configuration {
       access_role_arn = aws_iam_role.app_runner_ecr_access.arn
     }
-    
+
     image_repository {
       image_identifier      = "${aws_ecr_repository.frontend.repository_url}:latest"
       image_repository_type = "ECR"
-      
+
       image_configuration {
         port = "8080"
-        
+
         runtime_environment_variables = {
           # API URL is already baked into the Docker image during build
           # This is just for reference/override if needed
@@ -35,7 +35,7 @@ resource "aws_apprunner_service" "frontend" {
         }
       }
     }
-    
+
     # Auto deploy when image updates
     auto_deployments_enabled = false
   }
@@ -65,7 +65,7 @@ resource "aws_apprunner_service" "frontend" {
     null_resource.build_frontend_image,
     aws_apprunner_service.backend  # Ensure backend exists first
   ]
-  
+
   # Lifecycle rules to prevent accidental recreation
   lifecycle {
     create_before_destroy = false

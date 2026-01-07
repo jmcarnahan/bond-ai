@@ -77,7 +77,7 @@ class VectorStoresProvider(ABC):
             else:
                 vector_store_file_ids.remove(file_id)
                 LOGGER.debug(f"Reusing vector store [{vector_store_id}] file record for file: {file_id}")
-                
+
         for file_id in vector_store_file_ids:
             removed = self.remove_vector_store_file(vector_store_id=vector_store_id, file_id=file_id)
             LOGGER.info(f"Deleted vector store [{vector_store_id}] file record for file: {file_id} - Success: {removed}")
@@ -86,7 +86,7 @@ class VectorStoresProvider(ABC):
     def get_or_create_default_vector_store_id(self, user_id: str, agent_id: str = None) -> str:
         """
         if the id of the agent is defined in the agent definition, then we should lookup the default vector store for the agent
-        if the if of the agent is not defined, then we should create a default vector store and allow the agent creating to assign 
+        if the if of the agent is not defined, then we should create a default vector store and allow the agent creating to assign
         as the default vector store later
         """
         if agent_id is None:
@@ -111,7 +111,7 @@ class VectorStoresProvider(ABC):
             vector_store_record = session.query(VectorStore).filter_by(name=name, owner_user_id=user_id).first()
             if vector_store_record:
                 LOGGER.debug(f"Reusing vector store {name} with vector_store_id: {vector_store_record.vector_store_id}")
-            else: 
+            else:
                 LOGGER.info(f"Vector store {name} not found for user {user_id}. Creating new vector store.")
                 vector_store_id = self.create_vector_store_resource(name=name)
                 vector_store_record = VectorStore(name=name, vector_store_id=vector_store_id, owner_user_id=user_id)
@@ -120,7 +120,7 @@ class VectorStoresProvider(ABC):
                 LOGGER.info(f"Created new vector store {name} with vector_store_id: {vector_store_record.vector_store_id}")
 
             return vector_store_record.vector_store_id
-        
+
     def delete_vector_store(self, vector_store_id: str) -> bool:
         """
         Deletes a file from the configured backend file storage.
@@ -135,10 +135,10 @@ class VectorStoresProvider(ABC):
                     LOGGER.info(f"Deleted {deleted_rows_count} local DB records for vector_store_id: {vector_store_id}")
                 else:
                     LOGGER.info(f"No local DB records found for vector_store_id: {vector_store_id}")
-                return True 
+                return True
             except Exception as e:
                 LOGGER.error(f"Error deleting file records from DB for vector_store_id {vector_store_id}: {e}", exc_info=True)
-                raise 
+                raise
 
     def delete_vector_stores_for_user(self, user_id: str) -> None:
         with self.metadata.get_db_session() as session:
@@ -157,14 +157,14 @@ class VectorStoresProvider(ABC):
             file_details_list = self.get_files_provider().get_file_details(file_ids=vector_store_file_ids)
             vs_file_details[vector_store_id] = file_details_list
         return vs_file_details
-    
+
     def get_default_vector_store(self, agent_id: str) -> Optional[VectorStore]:
         """
         Get the default vector store for a given agent.
-        
+
         Args:
             agent_id: The ID of the agent
-            
+
         Returns:
             VectorStore object if found, None otherwise
         """
@@ -177,5 +177,3 @@ class VectorStoresProvider(ABC):
             except Exception as e:
                 LOGGER.error(f"Error getting default vector store for agent {agent_id}: {e}", exc_info=True)
                 return None
-    
-

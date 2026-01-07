@@ -34,6 +34,3 @@ class Provider(ABC):
         self.threads.delete_threads_for_user(user_id)
         self.files.delete_files_for_user(user_id)
         self.vectorstores.delete_vector_stores_for_user(user_id)
-
-
-

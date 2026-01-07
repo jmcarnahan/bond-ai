@@ -48,7 +48,7 @@ class ThreadsNotifier extends StateNotifier<AsyncValue<List<Thread>>> {
         );
         currentThreads.add(newThread);
         state = AsyncValue.data(currentThreads);
-        
+
         // Automatically select the newly created thread
         selectThread(newThread.id);
       }
@@ -101,9 +101,9 @@ class ThreadsNotifier extends StateNotifier<AsyncValue<List<Thread>>> {
 final threadsProvider =
     StateNotifierProvider<ThreadsNotifier, AsyncValue<List<Thread>>>((ref) {
   final notifier = ThreadsNotifier(ref);
-  
+
   notifier.fetchThreads();
-  
+
   return notifier;
 });
 
@@ -115,7 +115,7 @@ final selectedThreadProvider = Provider<Thread?>((ref) {
   final threadsAsyncValue = ref.watch(threadsProvider);
   return threadsAsyncValue.whenOrNull(
     data: (threads) => threads.firstWhereOrNull((t) => t.id == selectedId),
-    loading: () => null, 
+    loading: () => null,
     error: (_, __) => null,
   );
 });

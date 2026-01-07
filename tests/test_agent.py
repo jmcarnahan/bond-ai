@@ -111,9 +111,9 @@ class TestAgent:
         assert response.deleted == True
         self.threads.delete_thread(thread_id)
 
-  
+
   def test_multiple_users_broadcast(self):
-    
+
     openai_client = self.config.get_openai_client()
     simple_assistant = openai_client.beta.assistants.create(
         name="Simple Agent",
@@ -135,22 +135,22 @@ class TestAgent:
       assert agent is not None
 
       agent.broadcast_response("Say Hello", thread_id)
-      
+
       response: BondMessage  = conn_1.wait_for_message()
       assert response is not None
       assert response.clob.get_content() == "Say Hello"
 
       response: BondMessage = conn_1.wait_for_message()
       assert response is not None
-      assert "hello" in response.clob.get_content().lower()      
-      
+      assert "hello" in response.clob.get_content().lower()
+
       response: BondMessage  = conn_2.wait_for_message()
       assert response is not None
       assert response.clob.get_content() == "Say Hello"
 
       response: BondMessage = conn_2.wait_for_message()
       assert response is not None
-      assert "hello" in response.clob.get_content().lower()      
+      assert "hello" in response.clob.get_content().lower()
 
     finally:
       response = openai_client.beta.assistants.delete(assistant_id=simple_assistant.id)
@@ -206,7 +206,7 @@ class TestAgent:
 
     conn = self.broker.connect(thread_id=thread_id, subscriber_id=user_id)
     assert conn is not None
-    
+
     try:
       agent = Agent.get_agent_by_name("Functions Agent")
       assert agent is not None
@@ -221,7 +221,7 @@ class TestAgent:
       assert response is not None
       assert "-1" in response.clob.get_content().lower()
 
-      
+
     finally:
       response = openai_client.beta.assistants.delete(assistant_id=functions_assistant.id)
       assert response is not None
@@ -277,4 +277,3 @@ class TestAgent:
   #     assert response is not None
   #     assert response.deleted == True
   #     threads.delete_thread(thread_id)
-      

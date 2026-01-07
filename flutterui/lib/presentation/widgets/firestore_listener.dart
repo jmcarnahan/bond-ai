@@ -6,7 +6,7 @@ import '../../core/utils/logger.dart';
 /// Widget that listens for incoming Firestore messages and processes them
 class FirestoreListener extends ConsumerStatefulWidget {
   final Widget child;
-  
+
   const FirestoreListener({
     super.key,
     required this.child,
@@ -27,19 +27,19 @@ class _FirestoreListenerState extends ConsumerState<FirestoreListener> {
       logger.i('[FirestoreListener] Widget initialized - Firestore listener INACTIVE (no FIRESTORE_DATABASE_ID)');
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final isEnabled = ref.watch(firestore.isFirestoreEnabledProvider);
-    
+
     // If Firestore is not enabled, just return the child widget
     if (!isEnabled) {
       return widget.child;
     }
-    
+
     // Watch the stream to ensure it stays active
     ref.watch(firestore.incomingMessageStreamProvider);
-    
+
     // Listen to incoming messages stream
     ref.listen(firestore.incomingMessageStreamProvider, (previous, next) {
       if (next.hasValue && next.value != null) {
@@ -49,7 +49,7 @@ class _FirestoreListenerState extends ConsumerState<FirestoreListener> {
         logger.e('[FirestoreListener] Stream error: ${next.error}');
       }
     });
-    
+
     return widget.child;
   }
 }

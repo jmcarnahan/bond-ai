@@ -102,13 +102,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   ) {
     final providerName = provider['name'] as String;
     final isLoading = authState is AuthLoading;
-    
+
     // Get provider-specific details
     String displayName;
     String? iconPath;
     Color? backgroundColor;
     Color? textColor;
-    
+
     switch (providerName.toLowerCase()) {
       case 'google':
         displayName = 'Sign in with Google';
