@@ -57,16 +57,8 @@ resource "aws_security_group" "app_runner" {
   }
 }
 
-# Add rule to allow App Runner to access RDS
-resource "aws_security_group_rule" "app_runner_to_rds" {
-  type                     = "egress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.rds.id
-  security_group_id        = aws_security_group.app_runner.id
-  description              = "Allow App Runner to access RDS"
-}
+# Note: App Runner to RDS access is covered by the "allow all outbound" egress rule above.
+# A separate aws_security_group_rule is not needed and causes drift.
 
 # Security Group for VPC Interface Endpoints
 resource "aws_security_group" "vpc_endpoints" {
