@@ -81,6 +81,9 @@ resource "aws_apprunner_service" "backend" {
 
           # MCP configuration (only set when provided)
           BOND_MCP_CONFIG = var.bond_mcp_config
+
+          # Admin configuration
+          ADMIN_EMAIL = var.admin_email
         }
       }
     }
