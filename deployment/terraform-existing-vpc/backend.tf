@@ -81,6 +81,9 @@ resource "aws_apprunner_service" "backend" {
           # MCP configuration (generic JSON variable approach)
           # See patches/MCP_CONFIG_MIGRATION.md for migration from inline config
           BOND_MCP_CONFIG = var.bond_mcp_config
+
+          # Admin configuration
+          ADMIN_EMAIL = var.admin_email
         }
       }
     }

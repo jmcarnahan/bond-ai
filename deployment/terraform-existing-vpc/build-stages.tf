@@ -12,7 +12,18 @@ resource "null_resource" "build_backend_image" {
   ]
 
   triggers = {
-    always_run = timestamp() # Force rebuild on each apply
+    # Force rebuild if explicitly requested
+    force_rebuild = var.force_rebuild
+
+    # Rebuild when Python code, dependencies, or Dockerfile changes
+    dockerfile_hash   = filemd5("${path.module}/../Dockerfile.backend")
+    requirements_hash = filemd5("${path.module}/../../requirements.txt")
+
+    # Hash of all Python files in bondable directory
+    bondable_hash = md5(join("", [
+      for f in fileset("${path.module}/../../bondable", "**/*.py") :
+      filemd5("${path.module}/../../bondable/${f}")
+    ]))
   }
 
   provisioner "local-exec" {
@@ -67,17 +78,30 @@ resource "null_resource" "build_backend_image" {
 }
 
 # Stage 2: Build frontend Docker image
-# This needs to happen after backend is deployed to get the URL
+# Uses var.backend_service_url from tfvars - no backend dependency needed
 resource "null_resource" "build_frontend_image" {
   depends_on = [
     aws_ecr_repository.frontend,
-    aws_ecr_repository_policy.frontend,
-    aws_apprunner_service.backend  # Frontend needs backend URL
+    aws_ecr_repository_policy.frontend
+    # Backend dependency removed - using var.backend_service_url from tfvars
   ]
 
   triggers = {
-    always_run  = timestamp() # Force rebuild on each apply
-    backend_url = aws_apprunner_service.backend.service_url
+    # Force rebuild if explicitly requested
+    force_rebuild = var.force_rebuild
+
+    # Rebuild when Flutter code, dependencies, or Dockerfile changes
+    dockerfile_hash = filemd5("${path.module}/../Dockerfile.frontend")
+    pubspec_hash    = filemd5("${path.module}/../../flutterui/pubspec.lock")
+
+    # Hash of all Dart source files
+    lib_hash = md5(join("", [
+      for f in fileset("${path.module}/../../flutterui/lib", "**/*.dart") :
+      filemd5("${path.module}/../../flutterui/lib/${f}")
+    ]))
+
+    # Backend URL from tfvars (triggers rebuild if config changes)
+    backend_url_config = var.backend_service_url
   }
 
   # Add lifecycle to ensure this completes before proceeding
@@ -96,31 +120,25 @@ resource "null_resource" "build_frontend_image" {
         exit 1
       fi
 
-      # Get backend URL and wait for it to be fully operational
-      BACKEND_URL="${aws_apprunner_service.backend.service_url}"
+      # Get backend URL from tfvars (static - no waiting needed)
+      BACKEND_URL="${var.backend_service_url}"
 
       if [ -z "$BACKEND_URL" ]; then
-        echo "Error: Backend URL is empty. Backend service may not be deployed."
+        echo "Error: backend_service_url not set in tfvars."
+        echo "For first deployment, set backend_service_url in your tfvars file."
+        echo "Get the URL after backend deploys: terraform output backend_app_runner_service_url"
         exit 1
       fi
 
-      echo "Backend URL: https://$BACKEND_URL"
-      echo "Verifying backend is operational before building frontend..."
+      # Require https:// prefix and normalize by removing it for internal use
+      if ! echo "$BACKEND_URL" | grep -qE '^https://'; then
+        echo "Error: backend_service_url must start with 'https://'. Current value: $BACKEND_URL"
+        echo "Update your tfvars file. Example: backend_service_url = \"https://xxx.us-west-2.awsapprunner.com\""
+        exit 1
+      fi
+      BACKEND_URL="${BACKEND_URL#https://}"
 
-      # Wait for backend to be accessible
-      for i in {1..30}; do
-        if curl -s -o /dev/null -w "%%{http_code}" "https://$BACKEND_URL/health" | grep -q "200\|503"; then
-          echo "✓ Backend is responding at https://$BACKEND_URL"
-          break
-        else
-          echo "  Waiting for backend to be accessible (attempt $i/30)..."
-          if [ "$i" -eq 30 ]; then
-            echo "⚠️ Warning: Backend may not be fully operational yet"
-            echo "  Continuing with frontend build anyway..."
-          fi
-          sleep 10
-        fi
-      done
+      echo "Backend URL: https://$BACKEND_URL (from tfvars)"
 
       echo "========================================="
       echo "Building Flutter web app locally..."
