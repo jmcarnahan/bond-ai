@@ -173,9 +173,10 @@ class TestEncryptionIntegration:
 
     def test_oauth_token_lifecycle(self):
         """Test complete OAuth token storage lifecycle"""
-        # Simulate receiving OAuth tokens
-        access_token = "ya29.a0AbVbY6PhKJ8Z3Qwhat..." # Simulated Google OAuth token format
-        refresh_token = "1//0eYr1Ke..." # Simulated refresh token
+        # Simulate receiving OAuth tokens - use randomized values to avoid credential patterns
+        import secrets
+        access_token = f"test_oauth_token_{secrets.token_urlsafe(48)}"
+        refresh_token = f"test_refresh_{secrets.token_urlsafe(32)}"
 
         # Encrypt for storage
         encrypted_access = encrypt_token(access_token)
