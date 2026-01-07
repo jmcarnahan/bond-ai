@@ -242,7 +242,7 @@ class _AssistantAvatar extends StatelessWidget {
         ),
       );
     }
-    
+
     return ref.watch(getCachedAgentDetailsProvider(message.agentId!)).when(
       data: (agent) {
         if (agent == null) {
@@ -257,7 +257,7 @@ class _AssistantAvatar extends StatelessWidget {
             ),
           );
         }
-        
+
         return Column(
           children: [
             // Smaller icon for chat messages

@@ -21,19 +21,19 @@ async def chat(
 ):
     """Stream chat responses for a specific thread and agent."""
     current_user, jwt_token = user_and_token
-    
+
     # Handle thread creation if thread_id is None
     thread_id = request_body.thread_id
     if thread_id is None:
         LOGGER.info(f"No thread_id provided, creating new thread for user {current_user.user_id} ({current_user.email})")
-        
+
         # Use prompt for thread name only if it's a user message, otherwise use generic name
         if request_body.override_role == "user":
             thread_name = request_body.prompt[:30] + "..." if len(request_body.prompt) > 30 else request_body.prompt
         else:
             # For system messages (introduction), use generic name
             thread_name = "New Conversation"
-        
+
         try:
             new_thread = provider.threads.create_thread(user_id=current_user.user_id, name=thread_name)
             thread_id = new_thread.thread_id
@@ -56,17 +56,17 @@ async def chat(
             except Exception as e:
                 LOGGER.error(f"Failed to update thread name for {thread_id}: {e}", exc_info=True)
                 # Don't fail the request, just log the error
-    
+
     if request_body.override_role == "system":
         LOGGER.info(f"System message (introduction) being sent: {request_body.prompt[:100]}...")
-    
+
     # Build resolved attachments with appropriate tools based on suggested_tool
     resolved_attachements = []
     if request_body.attachments:
         for attachment in request_body.attachments:
             tool_type = attachment.suggested_tool if attachment.suggested_tool in ["file_search", "code_interpreter"] else "file_search"
             resolved_attachements.append({
-                "file_id": attachment.file_id, 
+                "file_id": attachment.file_id,
                 "tools": [{"type": tool_type}]
             })
 
@@ -76,7 +76,7 @@ async def chat(
         if not agent_instance:
             LOGGER.warning(f"Agent {request_body.agent_id} not found for chat.")
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found.")
-        
+
         # Debug agent instance details
         LOGGER.debug(f"Chat Message Details:")
         LOGGER.debug(f"  Agent Name: {agent_instance.get_name()}")
@@ -95,7 +95,7 @@ async def chat(
             is_default_agent = default_agent and default_agent.get_agent_id() == request_body.agent_id
         except Exception as e:
             LOGGER.error(f"Error checking if agent {request_body.agent_id} is default: {e}")
-        
+
         # Validate user access to agent (skip validation for default agents)
         if not is_default_agent and not provider.agents.can_user_access_agent(user_id=current_user.user_id, agent_id=request_body.agent_id):
             LOGGER.warning(f"User {current_user.user_id} ({current_user.email}) attempted to access agent {request_body.agent_id} without permission for chat.")
@@ -114,7 +114,7 @@ async def chat(
                 yield response_chunk
 
         return StreamingResponse(stream_response_generator(), media_type="text/event-stream")
-        
+
     except HTTPException:
         raise
     except Exception as e:

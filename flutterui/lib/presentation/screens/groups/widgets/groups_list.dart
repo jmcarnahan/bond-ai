@@ -20,7 +20,7 @@ class GroupsList extends ConsumerWidget {
     sortedGroups.sort((a, b) {
       final aIsOwned = currentUser?.userId == a.ownerUserId;
       final bIsOwned = currentUser?.userId == b.ownerUserId;
-      
+
       if (aIsOwned && !bIsOwned) return -1;
       if (!aIsOwned && bIsOwned) return 1;
       return a.name.compareTo(b.name);

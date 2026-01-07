@@ -12,5 +12,5 @@ final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
 /// Provider for the application theme
 /// Returns the generated theme configuration
 final appThemeProvider = Provider<AppTheme>((ref) {
-  return AppGeneratedTheme(); 
+  return AppGeneratedTheme();
 });

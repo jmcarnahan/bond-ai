@@ -47,7 +47,7 @@ void main(List<String> arguments) async {
     generatedCode = _generateBaseThemeWrapper();
     stdout.writeln('No config path provided. Successfully generated theme file at $outputPath to use BaseTheme.');
   }
-  
+
   try {
     final outputFile = File(outputPath);
     await outputFile.create(recursive: true);
@@ -119,21 +119,21 @@ class AppGeneratedTheme implements AppTheme {
 }
 
 String _generateDartThemeClassFromConfig(Map<String, dynamic> config) {
-  const String className = 'AppGeneratedTheme'; 
+  const String className = 'AppGeneratedTheme';
   final themeName = config['themeName'] as String;
 
   final brandingMessage = config['brandingMessage'] as String? ?? 'Welcome';
-  
+
   final String baseAssetPath = 'assets/';
   final String configLogoPath = config['logoPath'] as String? ?? 'default_logo.png';
   final String configLogoIconPath = config['logoIconPath'] as String? ?? 'default_icon.png';
-  
+
   final logoPath = configLogoPath.startsWith('assets/') ? configLogoPath : baseAssetPath + configLogoPath;
   final logoIconPath = configLogoIconPath.startsWith('assets/') ? configLogoIconPath : baseAssetPath + configLogoIconPath;
 
   final fontFamily = config['fontFamily'] as String?;
   final useMaterial3 = config['useMaterial3'] as bool? ?? true;
-  
+
   final brightnessStr = config['brightness'] as String? ?? 'light';
   final brightness = brightnessStr == 'dark' ? 'Brightness.dark' : 'Brightness.light';
 
@@ -146,7 +146,7 @@ String _generateDartThemeClassFromConfig(Map<String, dynamic> config) {
 
   final colorSchemeConfig = config['colorScheme'] as Map<String, dynamic>;
   final textThemeConfig = config['textTheme'] as Map<String, dynamic>;
-  
+
   final appBarThemeConfig = config['appBarTheme'] as Map<String, dynamic>?;
   final cardThemeConfig = config['cardTheme'] as Map<String, dynamic>?;
   final elevatedButtonThemeConfig = config['elevatedButtonTheme'] as Map<String, dynamic>?;
@@ -204,7 +204,7 @@ String _generateDartThemeClassFromConfig(Map<String, dynamic> config) {
     buffer.writeln('        CustomColors(brandingSurface: ${_colorToCode(brandingSurfaceHex)}),');
     buffer.writeln('      ],');
   }
-  
+
   buffer.writeln('      textTheme: TextTheme(');
   textThemeConfig.forEach((key, value) {
     if (value is Map<String, dynamic>) {
@@ -247,7 +247,7 @@ String _generateDartThemeClassFromConfig(Map<String, dynamic> config) {
     if (inputDecorationThemeConfig['labelStyle'] is Map) buffer.writeln('        labelStyle: ${_textStyleToCode(inputDecorationThemeConfig['labelStyle'] as Map<String,dynamic>?)},');
     buffer.writeln('      ),');
   }
-  
+
   if (dialogThemeConfig != null) {
     buffer.writeln('      dialogTheme: DialogThemeData(');
     if (dialogThemeConfig['backgroundColor'] != null) buffer.writeln('        backgroundColor: ${_colorToCode(dialogThemeConfig['backgroundColor'] as String?)},');
@@ -264,7 +264,7 @@ String _generateDartThemeClassFromConfig(Map<String, dynamic> config) {
     if (snackBarThemeConfig['behavior'] != null) buffer.writeln('        behavior: ${_snackBarBehaviorToCode(snackBarThemeConfig['behavior'] as String?)},');
     buffer.writeln('      ),');
   }
-  
+
   if (iconThemeConfig != null) {
     buffer.writeln('      iconTheme: IconThemeData(');
     if (iconThemeConfig['color'] != null) buffer.writeln('        color: ${_colorToCode(iconThemeConfig['color'] as String?)},');
@@ -408,7 +408,7 @@ void _generateButtonTheme(StringBuffer buffer, String themeName, Map<String, dyn
   if (styleConfig['side'] is Map && isOutlined) {
     buffer.writeln('          side: WidgetStateProperty.all<BorderSide>(${_borderSideToCode(styleConfig['side'] as Map<String,dynamic>?)}),');
   }
-  
+
   buffer.writeln('        ),');
   buffer.writeln('      ),');
 }

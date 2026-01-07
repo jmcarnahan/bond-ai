@@ -57,14 +57,14 @@ class AsyncState<T> {
 
 extension AsyncStateExtensions<T> on AsyncState<T> {
   AsyncState<T> toLoading() => copyWith(isLoading: true, clearError: true);
-  
+
   AsyncState<T> toSuccess(T data) => copyWith(
     data: data,
     isLoading: false,
     clearError: true,
     lastUpdated: DateTime.now(),
   );
-  
+
   AsyncState<T> toError(String error) => copyWith(
     isLoading: false,
     error: error,

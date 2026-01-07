@@ -6,7 +6,7 @@ import re
 LOGGER = logging.getLogger(__name__)
 
 class ThreadsPage:
-     
+
     def __init__(self):
         if 'user_id' not in st.session_state:
             raise Exception("No user id provided")
@@ -63,7 +63,7 @@ class ThreadsPage:
                             self.threads.grant_thread(thread_id=thread_id, user_id=email)
                         else:
                             st.error("Please enter a valid email")
-                    
+
                     # def process_share():
                     #     email = st.session_state.get(f"{thread_id}_share_input", "")
                     #     LOGGER.info(f"Sharing thread {thread_id} with {email}")
@@ -88,7 +88,7 @@ class ThreadsPage:
 
                     with st.popover("Share"):
                         thread_id = thread['thread_id']
-                        email = st.text_input("Share this thread with others", 
-                                              key=f"{thread_id}_share_input", 
+                        email = st.text_input("Share this thread with others",
+                                              key=f"{thread_id}_share_input",
                                               on_change=process_share,
                                               args=(thread_id,))

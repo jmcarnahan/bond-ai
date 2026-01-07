@@ -120,14 +120,14 @@ class AgentsNotifier extends StateNotifier<AgentsState> with ErrorHandlerMixin<A
 
   Future<void> deleteAgent(String agentId) async {
     logger.i("[AgentsNotifier] Deleting agent: $agentId");
-    
+
     try {
       await _agentService.deleteAgent(agentId);
-      
+
       // Remove from local state
       final currentAgents = state.agents.data ?? [];
       final updatedAgents = currentAgents.where((agent) => agent.id != agentId).toList();
-      
+
       state = state.copyWith(
         agents: state.agents.toSuccess(updatedAgents),
       );

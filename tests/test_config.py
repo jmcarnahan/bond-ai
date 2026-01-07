@@ -1,4 +1,4 @@
-import logging 
+import logging
 LOGGER = logging.getLogger(__name__)
 
 
@@ -86,5 +86,3 @@ class TestConfig:
     metadata2 = Metadata.metadata()
     assert metadata2 is not None
     assert id(metadata) == id(metadata2)
-    
-

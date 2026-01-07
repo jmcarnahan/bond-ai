@@ -57,19 +57,19 @@ class FirestoreService {
     try {
       final data = messageDoc.data() as Map<String, dynamic>;
       logger.i('[FirestoreService] Processing incoming message data: $data');
-      
+
       final messageContent = data[FirestoreConstants.contentField] as String;
       final messageMetadata = Map<String, dynamic>.from(
         data[FirestoreConstants.metadataField] ?? {},
       );
-      
+
       logger.i('[FirestoreService] Message metadata: $messageMetadata');
       logger.i('[FirestoreService] Looking for agentId in metadata[${FirestoreConstants.agentIdField}]');
-      
+
       final agentId = messageMetadata[FirestoreConstants.agentIdField] as String? ??
           dotenv.env['DEFAULT_AGENT_ID'] ??
           'default_agent_id';
-      
+
       logger.i('[FirestoreService] Agent ID resolved to: $agentId');
 
       // Mark the message as processed

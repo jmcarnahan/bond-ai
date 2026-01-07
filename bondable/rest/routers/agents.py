@@ -1,8 +1,10 @@
 import os
 import uuid
-from typing import Annotated, List
+from typing import Annotated, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 import logging
+from sqlalchemy import text
 
 from bondable.bond.definition import AgentDefinition
 from bondable.bond.providers.provider import Provider
@@ -18,15 +20,26 @@ router = APIRouter(prefix="/agents", tags=["Agent"])
 LOGGER = logging.getLogger(__name__)
 
 
+# Admin endpoint models
+class ExecuteSQLRequest(BaseModel):
+    sql: str
+
+class ExecuteSQLResponse(BaseModel):
+    success: bool
+    message: str
+    rows_affected: int = 0
+    results: List[Dict[str, Any]] = []
+
+
 
 
 def _process_tool_resources(request_data, provider: Provider, user_id: str) -> dict:
     """Process tool resources for agent creation/update."""
     tool_resources_payload = {}
-    
+
     if not request_data.tool_resources:
         return tool_resources_payload
-    
+
     # Handle code interpreter files
     # Note: We check for `is not None` to distinguish between:
     # - file_ids=None (not provided, preserve existing)
@@ -36,7 +49,7 @@ def _process_tool_resources(request_data, provider: Provider, user_id: str) -> d
         tool_resources_payload["code_interpreter"] = {
             "file_ids": request_data.tool_resources.code_interpreter.file_ids
         }
-    
+
     # Handle file search files
     # Note: We check for `is not None` to distinguish between:
     # - file_ids=None (not provided, preserve existing)
@@ -49,13 +62,13 @@ def _process_tool_resources(request_data, provider: Provider, user_id: str) -> d
 
         # fs_file_ids = request_data.tool_resources.file_search.file_ids
         # file_tuples_for_fs = []
-        
+
         # # For already uploaded files, pass tuples of (file_id, None)
         # for file_id in fs_file_ids:
         #     file_tuples_for_fs.append((file_id, None))
-        
+
         # tool_resources_payload["file_search"] = {"files": file_tuples_for_fs}
-    
+
     return tool_resources_payload
 
 
@@ -108,7 +121,7 @@ async def get_default_agent(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to get or create default agent"
             )
-        
+
         return AgentResponse(
             agent_id=default_agent.get_agent_id(),
             name=default_agent.get_name()
@@ -150,7 +163,7 @@ async def create_agent(
     try:
         tool_resources_payload = _process_tool_resources(request_data, provider, current_user.user_id)
         LOGGER.debug(f"CREATE_AGENT: tool_resources_payload after processing: {tool_resources_payload}")
-        
+
         # Log complete request data for debugging
         LOGGER.debug("=== AGENT CREATE REQUEST DEBUG ===")
         LOGGER.debug(f"User: {current_user.user_id} ({current_user.email})")
@@ -164,7 +177,7 @@ async def create_agent(
         LOGGER.debug(f"  - mcp_resources: {request_data.mcp_resources}")
         LOGGER.debug(f"  - metadata: {request_data.metadata}")
         LOGGER.debug("=================================")
-        
+
         agent_def = AgentDefinition(
             name=request_data.name,
             description=request_data.description or "",  # Ensure description is never None
@@ -194,9 +207,9 @@ async def create_agent(
         LOGGER.debug(f"  - mcp_resources: {agent_def.mcp_resources}")
         LOGGER.debug(f"  - tools: {agent_def.tools}")
         LOGGER.debug("================================")
-        
+
         agent_instance = provider.agents.create_or_update_agent(agent_def=agent_def, user_id=current_user.user_id)
-        
+
         # Create default group for the agent and associate them
         try:
             group_id = provider.groups.create_default_group_and_associate(
@@ -208,7 +221,7 @@ async def create_agent(
         except Exception as group_error:
             LOGGER.error(f"Failed to create default group for agent '{request_data.name}': {group_error}")
             # Don't fail the agent creation if group creation fails, just log the error
-        
+
         # Associate agent with additional selected groups
         if request_data.group_ids:
             try:
@@ -221,10 +234,10 @@ async def create_agent(
             except Exception as group_error:
                 LOGGER.error(f"Failed to associate agent with additional groups: {group_error}")
                 # Don't fail the agent creation if additional group associations fail
-        
+
         LOGGER.info(f"Created agent '{agent_instance.get_name()}' with ID '{agent_instance.get_agent_id()}' for user {current_user.user_id} ({current_user.email}).")
         return AgentResponse(agent_id=agent_instance.get_agent_id(), name=agent_instance.get_name())
-        
+
     except Exception as e:
         LOGGER.error(f"Error creating agent '{request_data.name}' for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         if "already exists" in str(e).lower():
@@ -243,7 +256,7 @@ async def update_agent(
     LOGGER.info(f"Update agent request for agent {agent_id}, user {current_user.user_id} ({current_user.email}) - MCP tools: {request_data.mcp_tools}, MCP resources: {request_data.mcp_resources}")
     LOGGER.info(f"Update request - introduction: '{request_data.introduction[:50] if request_data.introduction else 'None'}'...")
     LOGGER.info(f"Update request - reminder: '{request_data.reminder[:50] if request_data.reminder else 'None'}'...")
-    
+
     # Log tool_resources for debugging
     LOGGER.debug(f"Update agent {agent_id} - tool_resources: {request_data.tool_resources}")
 
@@ -265,7 +278,7 @@ async def update_agent(
         LOGGER.debug(f"  - mcp_resources: {request_data.mcp_resources}")
         LOGGER.debug(f"  - metadata: {request_data.metadata}")
         LOGGER.debug("=================================")
-        
+
         # Get existing agent to preserve file_storage if not provided
         existing_file_storage = 'direct'
         if request_data.file_storage is None:
@@ -290,7 +303,7 @@ async def update_agent(
             mcp_resources=request_data.mcp_resources or [],
             file_storage=request_data.file_storage if request_data.file_storage else existing_file_storage
         )
-        
+
         # Log the created agent definition
         LOGGER.debug("=== AGENT DEFINITION UPDATED ===")
         LOGGER.debug(f"AgentDefinition object:")
@@ -301,12 +314,12 @@ async def update_agent(
         LOGGER.debug(f"  - mcp_resources: {agent_def.mcp_resources}")
         LOGGER.debug(f"  - tools: {agent_def.tools}")
         LOGGER.debug("================================")
-        
+
         agent_instance = provider.agents.create_or_update_agent(agent_def=agent_def, user_id=current_user.user_id)
-        
+
         LOGGER.info(f"Updated agent '{agent_instance.get_name()}' with ID '{agent_instance.get_agent_id()}' for user {current_user.user_id} ({current_user.email}).")
         return AgentResponse(agent_id=agent_instance.get_agent_id(), name=agent_instance.get_name())
-        
+
     except Exception as e:
         LOGGER.error(f"Error updating agent ID '{agent_id}' for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         if "not found" in str(e).lower():
@@ -334,14 +347,14 @@ async def get_agent_details(
             is_default_agent = default_agent and default_agent.get_agent_id() == agent_id
         except Exception as e:
             LOGGER.error(f"Error checking if agent {agent_id} is default: {e}")
-        
+
         # Validate user access to agent (skip validation for default agents)
         if not is_default_agent and not provider.agents.can_user_access_agent(user_id=current_user.user_id, agent_id=agent_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to this agent is forbidden.")
 
         agent_def = agent_instance.get_agent_definition()
         response_tool_resources = ToolResourcesResponse()
-        
+
         # Process code_interpreter files
         if agent_def.tool_resources and "code_interpreter" in agent_def.tool_resources:
             ci_file_ids = agent_def.tool_resources["code_interpreter"].get("file_ids", [])
@@ -362,7 +375,7 @@ async def get_agent_details(
 
         LOGGER.debug(f"Returning agent details - introduction: '{agent_def.introduction[:50] if agent_def.introduction else 'None'}'...")
         LOGGER.debug(f"Returning agent details - reminder: '{agent_def.reminder[:50] if agent_def.reminder else 'None'}'...")
-        
+
         return AgentDetailResponse(
             id=agent_instance.get_agent_id(),
             name=agent_def.name,
@@ -378,7 +391,7 @@ async def get_agent_details(
             mcp_resources=agent_def.mcp_resources if agent_def.mcp_resources else None,
             file_storage=getattr(agent_def, 'file_storage', 'direct')
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -406,11 +419,84 @@ async def delete_agent(
         success = provider.agents.delete_agent(agent_id=agent_id)
         if not success:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not delete agent.")
-        
+
         LOGGER.info(f"Deleted agent with ID '{agent_id}' for user {current_user.user_id} ({current_user.email}).")
-        
+
     except HTTPException:
         raise
     except Exception as e:
         LOGGER.error(f"Error deleting agent ID '{agent_id}' for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not delete agent: {str(e)}")
+
+
+@router.post("/admin/execute-sql", response_model=ExecuteSQLResponse)
+async def execute_admin_sql(
+    request: ExecuteSQLRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    provider: Provider = Depends(get_bond_provider)
+):
+    """
+    Admin endpoint to execute SQL queries directly on the database.
+    RESTRICTED to admin users only (configured via ADMIN_EMAIL env var).
+
+    This is a temporary endpoint for emergency database migrations.
+    """
+    # Strict access control - only allow admin user
+    admin_email = os.getenv("ADMIN_EMAIL")
+    if not admin_email:
+        LOGGER.error("ADMIN_EMAIL environment variable is not set; admin SQL endpoint is disabled due to misconfiguration.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Admin configuration error. Please contact the system administrator."
+        )
+
+    if current_user.email != admin_email:
+        LOGGER.warning(f"Unauthorized admin SQL access attempt by {current_user.email}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access forbidden. This endpoint is restricted to administrators only."
+        )
+
+    LOGGER.info(f"Admin SQL execution requested by {current_user.email}: {request.sql[:100]}...")
+
+    try:
+        # Get database engine from provider's metadata
+        engine = provider.metadata.engine
+
+        with engine.connect() as connection:
+            # Execute the SQL
+            result = connection.execute(text(request.sql))
+            connection.commit()
+
+            # Try to fetch results if it's a SELECT query
+            results = []
+            rows_affected = 0
+
+            if result.returns_rows:
+                # SELECT query - fetch results
+                rows = result.fetchall()
+                # Convert rows to list of dicts
+                if rows:
+                    columns = result.keys()
+                    results = [dict(zip(columns, row)) for row in rows]
+                rows_affected = len(results)
+                LOGGER.info(f"Admin SQL query returned {rows_affected} rows")
+            else:
+                # INSERT/UPDATE/DELETE/ALTER - get rows affected
+                rows_affected = result.rowcount
+                LOGGER.info(f"Admin SQL query affected {rows_affected} rows")
+
+            return ExecuteSQLResponse(
+                success=True,
+                message=f"SQL executed successfully. Rows affected/returned: {rows_affected}",
+                rows_affected=rows_affected,
+                results=results
+            )
+
+    except Exception as e:
+        error_msg = f"Error executing admin SQL: {str(e)}"
+        LOGGER.error(error_msg, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg
+        )

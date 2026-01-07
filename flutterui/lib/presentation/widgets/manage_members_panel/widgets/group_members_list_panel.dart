@@ -23,7 +23,7 @@ class GroupMembersListPanel extends ConsumerWidget {
 
   List<GroupMember> _getDisplayMembers(GroupWithMembers groupWithMembers, List<GroupMember> allUsers) {
     final currentMembers = [...groupWithMembers.members];
-    
+
     final ownerUser = allUsers.firstWhere(
       (user) => user.userId == groupWithMembers.ownerUserId,
       orElse: () => GroupMember(
@@ -32,12 +32,12 @@ class GroupMembersListPanel extends ConsumerWidget {
         name: 'Group Owner',
       ),
     );
-    
+
     final ownerAlreadyMember = currentMembers.any((member) => member.userId == groupWithMembers.ownerUserId);
     if (!ownerAlreadyMember) {
       currentMembers.insert(0, ownerUser);
     }
-    
+
     for (final userId in pendingAdditions) {
       if (userId != groupWithMembers.ownerUserId) {
         final alreadyInList = currentMembers.any((member) => member.userId == userId);
@@ -47,7 +47,7 @@ class GroupMembersListPanel extends ConsumerWidget {
         }
       }
     }
-    
+
     return currentMembers;
   }
 
@@ -87,7 +87,7 @@ class GroupMembersListPanel extends ConsumerWidget {
                   ),
                   data: (allUsers) {
                     final displayMembers = _getDisplayMembers(groupWithMembers, allUsers);
-                    
+
                     if (displayMembers.isEmpty) {
                       return const Center(
                         child: Column(

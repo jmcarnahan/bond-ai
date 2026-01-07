@@ -30,14 +30,14 @@ async def login_provider(provider: str, request: Request):
     try:
         config = Config.config()
         provider_config = config.get_oauth2_config(provider)
-        
+
         oauth_provider = OAuth2ProviderFactory.create_provider(provider, provider_config)
         authorization_url = oauth_provider.get_auth_url()
-        
+
         # Check if this is a mobile request with custom redirect
         platform = request.query_params.get('platform')
         redirect_uri = request.query_params.get('redirect_uri')
-        
+
         # If mobile parameters are provided, append them to the callback URL
         # so they're available when the OAuth provider redirects back
         if platform == 'mobile' and redirect_uri:
@@ -45,11 +45,11 @@ async def login_provider(provider: str, request: Request):
             from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
             parsed = urlparse(authorization_url)
             query_params = parse_qs(parsed.query)
-            
+
             # Add our mobile parameters to the state or as separate params
             # This ensures they're passed back to our callback
             query_params['state'] = [f"platform={platform}&redirect_uri={redirect_uri}"]
-            
+
             # Reconstruct the URL
             new_query = urlencode(query_params, doseq=True)
             authorization_url = urlunparse((
@@ -57,7 +57,7 @@ async def login_provider(provider: str, request: Request):
                 parsed.params, new_query, parsed.fragment
             ))
             LOGGER.info(f"Mobile login - added state parameters")
-        
+
         LOGGER.info(f"Redirecting user to {provider} for authentication: {authorization_url}")
         return RedirectResponse(url=authorization_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
     except ValueError as e:
@@ -94,10 +94,10 @@ async def auth_callback_provider(provider: str, request: Request, bond_provider 
     try:
         config = Config.config()
         provider_config = config.get_oauth2_config(provider)
-        
+
         oauth_provider = OAuth2ProviderFactory.create_provider(provider, provider_config)
         user_info = oauth_provider.get_user_info_from_code(auth_code)
-        
+
         LOGGER.info(f"Successfully authenticated user with {provider}: {user_info.get('email')}")
 
         user_id, is_new = bond_provider.users.get_or_create_user(
@@ -146,7 +146,7 @@ async def auth_callback_provider(provider: str, request: Request, bond_provider 
         # First check direct query params
         platform = request.query_params.get('platform')
         redirect_uri = request.query_params.get('redirect_uri')
-        
+
         # If not found, check the state parameter (OAuth providers pass this back)
         if not platform and not redirect_uri:
             state = request.query_params.get('state', '')
@@ -156,9 +156,9 @@ async def auth_callback_provider(provider: str, request: Request, bond_provider 
                 state_params = urllib.parse.parse_qs(state)
                 platform = state_params.get('platform', [None])[0]
                 redirect_uri = state_params.get('redirect_uri', [None])[0]
-        
+
         LOGGER.info(f"Auth callback - platform: {platform}, redirect_uri: {redirect_uri}")
-        
+
         # Handle mobile deep link redirect
         if platform == 'mobile' and redirect_uri:
             # Decode the redirect URI and append the token
@@ -169,7 +169,7 @@ async def auth_callback_provider(provider: str, request: Request, bond_provider 
         else:
             # Check if this is a web app request (no hash routing)
             user_agent = request.headers.get("user-agent", "").lower()
-            
+
             # For mobile app or when hash routing is not needed
             if "flutter" in user_agent or jwt_config.JWT_REDIRECT_URI.endswith(":5000"):
                 # Use regular routing for mobile app
@@ -177,7 +177,7 @@ async def auth_callback_provider(provider: str, request: Request, bond_provider 
             else:
                 # Use hash routing for web app
                 flutter_redirect_url = f"{jwt_config.JWT_REDIRECT_URI}/#/auth-callback?token={access_token}"
-            
+
         LOGGER.info(f"Redirecting to: {flutter_redirect_url}")
         return RedirectResponse(url=flutter_redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
@@ -196,7 +196,7 @@ async def list_auth_providers():
         config = Config.config()
         # Get only enabled providers from config
         enabled_configs = config.get_oauth2_config()
-        
+
         provider_info = []
         for provider_name in enabled_configs.keys():
             try:
@@ -208,12 +208,12 @@ async def list_auth_providers():
                 })
             except Exception as e:
                 LOGGER.warning(f"Could not get info for provider {provider_name}: {e}")
-        
+
         # Set default to first enabled provider or google if available
         default_provider = "google" if "google" in enabled_configs else (
             list(enabled_configs.keys())[0] if enabled_configs else "google"
         )
-        
+
         return {
             "providers": provider_info,
             "default": default_provider

@@ -80,13 +80,13 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
     // Cancel any ongoing operations and navigate back immediately
     final formNotifier = ref.read(createAgentFormProvider.notifier);
     formNotifier.cancelLoading();
-    
+
     Navigator.of(context).pop();
   }
 
   Future<void> _onDeletePressed() async {
     if (widget.agentId == null) return;
-    
+
     final confirmed = await _showDeleteConfirmationDialog();
     if (confirmed == true && mounted) {
       await _controller.deleteAgent(context);

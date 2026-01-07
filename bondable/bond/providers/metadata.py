@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional, Tuple
 LOGGER = logging.getLogger(__name__)
 
 
-# These are the default ORM classes 
+# These are the default ORM classes
 # All instances of Metadata should use these classes and augment them as needed
 Base = declarative_base()
 class Thread(Base):
@@ -44,7 +44,7 @@ class FileRecord(Base):
     file_size = Column(Integer, nullable=True)  # Size in bytes
     owner_user_id = Column(String, ForeignKey('users.id'), nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.now)
-    
+
     # Unique constraint on file_path + file_hash + owner_user_id
     # This allows same user to upload different versions of same file
     # and different users to upload same file
@@ -56,7 +56,7 @@ class VectorStore(Base):
     owner_user_id = Column(String, ForeignKey('users.id'), nullable=False)
     default_for_agent_id = Column(String, ForeignKey('agents.agent_id'), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
-    
+
     # Unique constraint on name + owner_user_id
     # This allows different users to have vector stores with the same name
     __table_args__ = (UniqueConstraint('name', 'owner_user_id', name='_vector_store_name_user_uc'),)
@@ -162,14 +162,14 @@ class Metadata(ABC):
     def create_all(self):
         # This method should be overriden by subclasses to create all necessary tables
         return Base.metadata.create_all(self.engine)
-    
+
     def drop_and_recreate_all(self):
         """Drop all tables and recreate them. Use with caution - this deletes all data!"""
         LOGGER.warning("Dropping all tables and recreating schema. All data will be lost!")
         Base.metadata.drop_all(self.engine)
         Base.metadata.create_all(self.engine)
         LOGGER.info("Schema recreated successfully")
-        
+
     def get_db_session(self) -> scoped_session:
         if not self.engine:
             self.engine = create_engine(self.metadata_db_url, echo=False)
@@ -186,17 +186,17 @@ class Metadata(ABC):
 
     def close(self) -> None:
         self.close_db_engine()
-    
+
     def get_or_create_system_user(self) -> User:
         """
         Get or create the system user for internal operations.
-        
+
         Returns:
             User: The system user object
         """
         with self.get_db_session() as session:
             system_user = session.query(User).filter(User.email == "system@bondableai.com").first()
-            
+
             if not system_user:
                 # Create system user
                 import uuid
@@ -209,9 +209,5 @@ class Metadata(ABC):
                 session.add(system_user)
                 session.commit()
                 LOGGER.info(f"Created system user with id: {system_user.id}")
-            
+
             return system_user
-
-
-
-
