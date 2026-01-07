@@ -235,6 +235,71 @@ alias deploy-bond='cd /Users/jcarnahan/projects/bond-ai/deployment/terraform-exi
 deploy-bond
 ```
 
+## 🚧 Maintenance Mode
+
+Maintenance mode deploys a lightweight static "under construction" page instead of the full Flutter app. This is useful for:
+- Database migrations
+- Major upgrades
+- Scheduled maintenance windows
+
+### Enable Maintenance Mode
+
+```bash
+cd deployment/terraform-existing-vpc
+
+# Basic maintenance mode with default message
+terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars \
+  -var="maintenance_mode=true"
+
+# With custom message
+terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars \
+  -var="maintenance_mode=true" \
+  -var="maintenance_message=We're upgrading our systems. Back online at 5pm PST."
+
+# With custom theme (for white-label deployments)
+terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars \
+  -var="maintenance_mode=true" \
+  -var="maintenance_message=Scheduled maintenance in progress" \
+  -var="theme_config_path=theme_configs/southbay_config.json"
+```
+
+### Disable Maintenance Mode
+
+```bash
+cd deployment/terraform-existing-vpc
+
+# Return to normal operation
+terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars
+```
+
+### Maintenance Mode Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `maintenance_mode` | Enable/disable maintenance page | `false` |
+| `maintenance_message` | Custom message displayed to users | `"We're performing scheduled maintenance. Please check back soon."` |
+| `theme_config_path` | Theme config for branding (relative to `flutterui/`) | `theme_configs/bondai_config.json` |
+
+### Available Themes
+
+Theme configs are located in `flutterui/theme_configs/`:
+- `bondai_config.json` - Default Bond AI branding
+- `southbay_config.json` - South Bay Equity Lending branding
+- `mcafee_config.json` - McAfee branding
+
+### How It Works
+
+When `maintenance_mode=true`:
+1. A lightweight nginx container is built (takes seconds vs minutes for Flutter)
+2. The maintenance page uses CSS generated from the theme config
+3. Custom message is injected at build time
+4. The backend remains fully operational (only frontend shows maintenance page)
+
+The maintenance page includes:
+- Themed styling matching your application
+- Custom maintenance message
+- Logo from the theme config
+- "Under Construction" heading with construction icon
 
 ## Monitoring Deployment
 
