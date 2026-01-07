@@ -442,7 +442,13 @@ async def execute_admin_sql(
     This is a temporary endpoint for emergency database migrations.
     """
     # Strict access control - only allow admin user
-    admin_email = os.getenv("ADMIN_EMAIL", "john_carnahan@mcafee.com")
+    admin_email = os.getenv("ADMIN_EMAIL")
+    if not admin_email:
+        LOGGER.error("ADMIN_EMAIL environment variable is not set; admin SQL endpoint is disabled due to misconfiguration.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Admin configuration error. Please contact the system administrator."
+        )
 
     if current_user.email != admin_email:
         LOGGER.warning(f"Unauthorized admin SQL access attempt by {current_user.email}")
