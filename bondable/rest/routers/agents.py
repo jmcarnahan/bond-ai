@@ -1,8 +1,10 @@
 import os
 import uuid
-from typing import Annotated, List
+from typing import Annotated, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 import logging
+from sqlalchemy import text
 
 from bondable.bond.definition import AgentDefinition
 from bondable.bond.providers.provider import Provider
@@ -16,6 +18,17 @@ from bondable.rest.dependencies.providers import get_bond_provider
 
 router = APIRouter(prefix="/agents", tags=["Agent"])
 LOGGER = logging.getLogger(__name__)
+
+
+# Admin endpoint models
+class ExecuteSQLRequest(BaseModel):
+    sql: str
+
+class ExecuteSQLResponse(BaseModel):
+    success: bool
+    message: str
+    rows_affected: int = 0
+    results: List[Dict[str, Any]] = []
 
 
 
@@ -414,3 +427,76 @@ async def delete_agent(
     except Exception as e:
         LOGGER.error(f"Error deleting agent ID '{agent_id}' for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not delete agent: {str(e)}")
+
+
+@router.post("/admin/execute-sql", response_model=ExecuteSQLResponse)
+async def execute_admin_sql(
+    request: ExecuteSQLRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    provider: Provider = Depends(get_bond_provider)
+):
+    """
+    Admin endpoint to execute SQL queries directly on the database.
+    RESTRICTED to admin users only (configured via ADMIN_EMAIL env var).
+
+    This is a temporary endpoint for emergency database migrations.
+    """
+    # Strict access control - only allow admin user
+    admin_email = os.getenv("ADMIN_EMAIL")
+    if not admin_email:
+        LOGGER.error("ADMIN_EMAIL environment variable is not set; admin SQL endpoint is disabled due to misconfiguration.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Admin configuration error. Please contact the system administrator."
+        )
+
+    if current_user.email != admin_email:
+        LOGGER.warning(f"Unauthorized admin SQL access attempt by {current_user.email}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access forbidden. This endpoint is restricted to administrators only."
+        )
+
+    LOGGER.info(f"Admin SQL execution requested by {current_user.email}: {request.sql[:100]}...")
+
+    try:
+        # Get database engine from provider's metadata
+        engine = provider.metadata.engine
+
+        with engine.connect() as connection:
+            # Execute the SQL
+            result = connection.execute(text(request.sql))
+            connection.commit()
+
+            # Try to fetch results if it's a SELECT query
+            results = []
+            rows_affected = 0
+
+            if result.returns_rows:
+                # SELECT query - fetch results
+                rows = result.fetchall()
+                # Convert rows to list of dicts
+                if rows:
+                    columns = result.keys()
+                    results = [dict(zip(columns, row)) for row in rows]
+                rows_affected = len(results)
+                LOGGER.info(f"Admin SQL query returned {rows_affected} rows")
+            else:
+                # INSERT/UPDATE/DELETE/ALTER - get rows affected
+                rows_affected = result.rowcount
+                LOGGER.info(f"Admin SQL query affected {rows_affected} rows")
+
+            return ExecuteSQLResponse(
+                success=True,
+                message=f"SQL executed successfully. Rows affected/returned: {rows_affected}",
+                rows_affected=rows_affected,
+                results=results
+            )
+
+    except Exception as e:
+        error_msg = f"Error executing admin SQL: {str(e)}"
+        LOGGER.error(error_msg, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg
+        )

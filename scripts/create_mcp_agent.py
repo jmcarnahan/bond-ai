@@ -2,6 +2,23 @@
 """
 Create a Bedrock agent with MCP tools for testing.
 
+⚠️ SECURITY NOTICE:
+This script creates a DEFAULT agent (user_id="default") which is accessible to ALL users.
+This is appropriate for:
+  - Development and testing environments
+  - Demonstration purposes
+  - Shared organizational assistants with non-sensitive tools
+
+This is NOT appropriate for:
+  - Production environments with sensitive data
+  - User-specific agents with personalized access
+  - Agents with tools that access privileged resources
+
+For production use, create user-specific agents with proper access controls:
+  - Set user_id to the specific user's ID
+  - Validate tool permissions for each user
+  - Review MCP tool capabilities for security implications
+
 Usage:
     poetry run python scripts/create_mcp_agent.py
 """
@@ -24,7 +41,9 @@ agent_def = AgentDefinition(
     introduction="Hello! I'm an MCP-enabled agent. I can use tools like greet, current_time, get_user_profile, and more. Try asking me to greet someone!",
     reminder="Use MCP tools when appropriate.",
     model="us.anthropic.claude-sonnet-4-20250514-v1:0",
-    user_id="default",  # Default agent accessible to all users
+    # SECURITY: user_id="default" creates an agent accessible to ALL users.
+    # Only use this for development/testing. For production, use specific user IDs.
+    user_id="default",
     mcp_tools=["greet", "current_time", "get_user_profile", "fetch_protected_data", "validate_auth"],
     mcp_resources=[],
     tools=[],
