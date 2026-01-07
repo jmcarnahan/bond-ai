@@ -130,8 +130,13 @@ resource "null_resource" "build_frontend_image" {
         exit 1
       fi
 
-      # Remove https:// prefix if present (URL may or may not have it)
-      BACKEND_URL=$(echo "$BACKEND_URL" | sed 's|^https://||')
+      # Require https:// prefix and normalize by removing it for internal use
+      if ! echo "$BACKEND_URL" | grep -qE '^https://'; then
+        echo "Error: backend_service_url must start with 'https://'. Current value: $BACKEND_URL"
+        echo "Update your tfvars file. Example: backend_service_url = \"https://xxx.us-west-2.awsapprunner.com\""
+        exit 1
+      fi
+      BACKEND_URL="${BACKEND_URL#https://}"
 
       echo "Backend URL: https://$BACKEND_URL (from tfvars)"
 
