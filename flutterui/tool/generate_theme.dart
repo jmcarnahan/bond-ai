@@ -37,6 +37,13 @@ void main(List<String> arguments) async {
       _validateThemeConfig(themeConfig);
       generatedCode = _generateDartThemeClassFromConfig(themeConfig);
       stdout.writeln('Successfully generated theme file at $outputPath based on configuration from $configPath');
+
+      // Also generate CSS file for maintenance page
+      final cssOutputPath = configPath.replaceFirst('.json', '.css');
+      final cssContent = _generateCssVariables(themeConfig, configPath);
+      final cssFile = File(cssOutputPath);
+      await cssFile.writeAsString(cssContent);
+      stdout.writeln('Successfully generated CSS file at $cssOutputPath');
     } catch (e, s) {
       stderr.writeln('An error occurred during theme generation from config: ${e.toString()}');
       stderr.writeln('Stack trace: \n$s');
@@ -411,4 +418,62 @@ void _generateButtonTheme(StringBuffer buffer, String themeName, Map<String, dyn
 
   buffer.writeln('        ),');
   buffer.writeln('      ),');
+}
+
+/// Generates CSS variables from theme config for maintenance page
+String _generateCssVariables(Map<String, dynamic> config, String configPath) {
+  final themeName = config['themeName'] as String? ?? 'Theme';
+  final brandingMessage = config['brandingMessage'] as String? ?? '';
+  final logoPath = config['logoPath'] as String? ?? '';
+  final fontFamily = config['fontFamily'] as String? ?? 'sans-serif';
+
+  final primaryColor = config['primaryColor'] as String? ?? '#000000';
+  final scaffoldBg = config['scaffoldBackgroundColor'] as String? ?? '#FFFFFF';
+
+  final colorScheme = config['colorScheme'] as Map<String, dynamic>? ?? {};
+  final textTheme = config['textTheme'] as Map<String, dynamic>? ?? {};
+
+  final buffer = StringBuffer();
+  buffer.writeln('/* Generated from ${configPath.split('/').last} - DO NOT EDIT */');
+  buffer.writeln('/* Run: dart run tool/generate_theme.dart -c $configPath */');
+  buffer.writeln(':root {');
+  buffer.writeln('  --theme-name: "$themeName";');
+  buffer.writeln('  --branding-message: "$brandingMessage";');
+  buffer.writeln('  --logo-path: "$logoPath";');
+  buffer.writeln('  --font-family: "$fontFamily", sans-serif;');
+  buffer.writeln('');
+  buffer.writeln('  /* Primary colors */');
+  buffer.writeln('  --primary-color: ${_normalizeCssColor(primaryColor)};');
+  buffer.writeln('  --on-primary: ${_normalizeCssColor(colorScheme['onPrimary'] as String?)};');
+  buffer.writeln('  --secondary: ${_normalizeCssColor(colorScheme['secondary'] as String?)};');
+  buffer.writeln('');
+  buffer.writeln('  /* Background colors */');
+  buffer.writeln('  --background: ${_normalizeCssColor(scaffoldBg)};');
+  buffer.writeln('  --surface: ${_normalizeCssColor(colorScheme['surface'] as String?)};');
+  buffer.writeln('  --on-background: ${_normalizeCssColor(colorScheme['onBackground'] as String?)};');
+  buffer.writeln('  --on-surface: ${_normalizeCssColor(colorScheme['onSurface'] as String?)};');
+  buffer.writeln('');
+  buffer.writeln('  /* Text colors */');
+
+  // Extract text colors from textTheme
+  final bodyLarge = textTheme['bodyLarge'] as Map<String, dynamic>?;
+  final bodyMedium = textTheme['bodyMedium'] as Map<String, dynamic>?;
+  final bodySmall = textTheme['bodySmall'] as Map<String, dynamic>?;
+
+  buffer.writeln('  --text-primary: ${_normalizeCssColor(bodyLarge?['color'] as String? ?? colorScheme['onBackground'] as String?)};');
+  buffer.writeln('  --text-secondary: ${_normalizeCssColor(bodyMedium?['color'] as String? ?? colorScheme['onSurface'] as String?)};');
+  buffer.writeln('  --text-muted: ${_normalizeCssColor(bodySmall?['color'] as String?)};');
+  buffer.writeln('');
+  buffer.writeln('  /* Error color */');
+  buffer.writeln('  --error: ${_normalizeCssColor(colorScheme['error'] as String?)};');
+  buffer.writeln('}');
+
+  return buffer.toString();
+}
+
+/// Normalizes a hex color string for CSS (ensures # prefix)
+String _normalizeCssColor(String? hexColor) {
+  if (hexColor == null || hexColor.isEmpty) return '#000000';
+  if (!hexColor.startsWith('#')) return '#$hexColor';
+  return hexColor;
 }

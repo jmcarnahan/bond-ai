@@ -183,3 +183,22 @@ variable "force_rebuild" {
   type        = string
   default     = ""
 }
+
+# Maintenance Mode
+variable "maintenance_mode" {
+  description = "Enable maintenance mode to show under construction page instead of the app"
+  type        = bool
+  default     = false
+}
+
+variable "maintenance_message" {
+  description = "Custom message to display on maintenance page"
+  type        = string
+  default     = "We're performing scheduled maintenance. Please check back soon."
+}
+
+variable "theme_config_path" {
+  description = "Path to theme config JSON file (relative to flutterui/)"
+  type        = string
+  default     = "theme_configs/bondai_config.json"
+}
