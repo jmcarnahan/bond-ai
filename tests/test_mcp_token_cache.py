@@ -504,11 +504,13 @@ class TestTokenCacheIntegration:
         connection = f"oauth_workflow_{uuid.uuid4().hex[:6]}"
 
         # Simulate OAuth token response
+        # Use randomized tokens to avoid any accidental credential patterns in version control
+        import secrets
         oauth_response = {
-            "access_token": "ya29.a0AbVbY6PhKJ8Z3Qw...",
+            "access_token": f"test_token_{secrets.token_urlsafe(32)}",
             "token_type": "Bearer",
             "expires_in": 3600,  # 1 hour
-            "refresh_token": "1//0eYr1Ke...",
+            "refresh_token": f"test_refresh_{secrets.token_urlsafe(32)}",
             "scope": "read:me read:jira-work"
         }
 

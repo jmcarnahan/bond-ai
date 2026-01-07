@@ -84,9 +84,9 @@ class AppError {
 
   factory AppError.fromException(Exception exception) {
     final String errorMessage = exception.toString();
-    
+
     // Check for authentication errors
-    if (errorMessage.contains('401') || 
+    if (errorMessage.contains('401') ||
         errorMessage.contains('Unauthorized') ||
         errorMessage.contains('token') ||
         errorMessage.contains('authentication')) {
@@ -95,7 +95,7 @@ class AppError {
         details: errorMessage,
       );
     }
-    
+
     // Critical errors - these break the app flow and require navigation to home
     if (errorMessage.contains('Missing agent details') ||
         errorMessage.contains('Invalid route') ||
@@ -109,7 +109,7 @@ class AppError {
         exception: exception,
       );
     }
-    
+
     // Service errors - API calls that failed but don't break the app
     if (errorMessage.contains('404') ||
         errorMessage.contains('500') ||
@@ -123,9 +123,9 @@ class AppError {
         exception: exception,
       );
     }
-    
+
     // Network errors - usually recoverable
-    if (errorMessage.contains('network') || 
+    if (errorMessage.contains('network') ||
         errorMessage.contains('connection') ||
         errorMessage.contains('timeout') ||
         errorMessage.contains('SocketException')) {
@@ -134,7 +134,7 @@ class AppError {
         details: errorMessage,
       );
     }
-    
+
     // Default to service error for unknown exceptions
     return AppError.service(
       'An error occurred. Please try again.',
@@ -146,7 +146,7 @@ class AppError {
 class ErrorHandlerService {
   static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
   static final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
-  
+
   static void handleError(AppError error, {WidgetRef? ref}) {
     logger.e('[ErrorHandler] ${error.type.name}: ${error.message}');
     if (error.exception != null) {
@@ -155,7 +155,7 @@ class ErrorHandlerService {
     if (error.details != null) {
       logger.d('Details: ${error.details}');
     }
-    
+
     switch (error.action) {
       case ErrorAction.navigateToLogin:
         _handleAuthError(error, ref);
@@ -176,7 +176,7 @@ class ErrorHandlerService {
         break;
     }
   }
-  
+
   static void _handleAuthError(AppError error, WidgetRef? ref) {
     // Clear auth state if ref is available
     if (ref != null) {
@@ -186,22 +186,22 @@ class ErrorHandlerService {
         logger.w('[ErrorHandler] Could not logout via auth notifier: $e');
       }
     }
-    
+
     // Navigate to login
     navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
-    
+
     // Show error message
     _showErrorSnackbar(error.message);
   }
-  
+
   static void _handleCriticalError(AppError error) {
     // Navigate to home
     navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);
-    
+
     // Show error message
     _showErrorSnackbar(error.message);
   }
-  
+
   static void _showErrorSnackbar(String message) {
     scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(
@@ -218,7 +218,7 @@ class ErrorHandlerService {
       ),
     );
   }
-  
+
   static void _showErrorDialog(AppError error) {
     final context = navigatorKey.currentContext;
     if (context != null) {

@@ -9,7 +9,7 @@ data "aws_subnets" "private" {
     name   = "vpc-id"
     values = [data.aws_vpc.existing.id]
   }
-  
+
   # Filter for private subnets (no public IP assignment)
   filter {
     name   = "map-public-ip-on-launch"
@@ -46,13 +46,13 @@ data "aws_route_table" "main" {
 # Get availability zones from subnets
 locals {
   availability_zones = distinct([for s in data.aws_subnet.private : s.availability_zone])
-  
+
   # Select subnets for RDS (need at least 2 in different AZs)
   rds_subnet_ids = [
-    for az in slice(local.availability_zones, 0, min(2, length(local.availability_zones))) : 
+    for az in slice(local.availability_zones, 0, min(2, length(local.availability_zones))) :
     [for s in data.aws_subnet.private : s.id if s.availability_zone == az][0]
   ]
-  
+
   # Select subnets for App Runner VPC connector
   # Use explicitly provided subnet IDs if available, otherwise auto-detect
   app_runner_subnet_ids = length(var.app_runner_subnet_ids) > 0 ? var.app_runner_subnet_ids : slice(data.aws_subnets.private.ids, 0, min(3, length(data.aws_subnets.private.ids)))

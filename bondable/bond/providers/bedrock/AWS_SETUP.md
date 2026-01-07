@@ -164,7 +164,7 @@ def test_bedrock_access():
         response = client.list_foundation_models()
         print(f"✓ Successfully connected to Bedrock")
         print(f"✓ Found {len(response['modelSummaries'])} available models")
-        
+
         # Test S3 access
         s3_client = boto3.client('s3')
         bucket_name = os.getenv('BEDROCK_S3_BUCKET')
@@ -176,7 +176,7 @@ def test_bedrock_access():
                 print(f"✗ S3 bucket error: {e}")
         else:
             print("⚠ BEDROCK_S3_BUCKET not configured")
-            
+
     except ClientError as e:
         print(f"✗ AWS Error: {e}")
         print("\nTroubleshooting:")

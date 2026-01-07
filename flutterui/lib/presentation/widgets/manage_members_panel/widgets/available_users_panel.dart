@@ -37,18 +37,18 @@ class _AvailableUsersPanelState extends ConsumerState<AvailableUsersPanel> {
 
   List<GroupMember> _filterUsers(List<GroupMember> allUsers, GroupWithMembers groupWithMembers) {
     final currentMemberIds = groupWithMembers.members.map((m) => m.userId).toSet();
-    
+
     return allUsers.where((user) {
       final isOwner = user.userId == groupWithMembers.ownerUserId;
       final isCurrentMember = currentMemberIds.contains(user.userId);
       final isPendingRemoval = widget.pendingRemovals.contains(user.userId);
-      
+
       if (isOwner) return false;
-      
+
       if (isCurrentMember && !isPendingRemoval) return false;
-      
+
       if (_searchQuery.isEmpty) return true;
-      
+
       final query = _searchQuery.toLowerCase();
       return user.email.toLowerCase().contains(query) ||
              (user.name?.toLowerCase().contains(query) ?? false);
@@ -116,7 +116,7 @@ class _AvailableUsersPanelState extends ConsumerState<AvailableUsersPanel> {
                   ),
                   data: (groupWithMembers) {
                     final availableUsers = _filterUsers(allUsers, groupWithMembers);
-                    
+
                     if (availableUsers.isEmpty) {
                       return const Center(
                         child: Text('No available users'),

@@ -72,7 +72,7 @@ class AgentToolSwitch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Card(
       elevation: 0.0,
       margin: AppSpacing.verticalSm,
@@ -87,8 +87,8 @@ class AgentToolSwitch extends StatelessWidget {
         title: Text(
           title,
           style: theme.textTheme.titleMedium?.copyWith(
-            color: onChanged == null 
-                ? theme.disabledColor 
+            color: onChanged == null
+                ? theme.disabledColor
                 : theme.colorScheme.onSurface,
           ),
         ),

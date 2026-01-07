@@ -14,10 +14,10 @@ resource "aws_apprunner_vpc_connector" "backend" {
 # App Runner Auto Scaling Configuration
 resource "aws_apprunner_auto_scaling_configuration_version" "backend" {
   auto_scaling_configuration_name = "${var.project_name}-${var.environment}-backend-autoscaling"
-  
+
   min_size = 1
   max_size = var.environment == "prod" ? 10 : 2
-  
+
   tags = {
     Name = "${var.project_name}-${var.environment}-backend-autoscaling"
   }
@@ -31,14 +31,14 @@ resource "aws_apprunner_service" "backend" {
     authentication_configuration {
       access_role_arn = aws_iam_role.app_runner_ecr_access.arn
     }
-    
+
     image_repository {
       image_identifier      = "${aws_ecr_repository.backend.repository_url}:latest"
       image_repository_type = "ECR"
-      
+
       image_configuration {
         port = "8000"
-        
+
         runtime_environment_variables = {
           AWS_REGION = var.aws_region
           BOND_PROVIDER_CLASS = "bondable.bond.providers.bedrock.BedrockProvider.BedrockProvider"
@@ -48,7 +48,7 @@ resource "aws_apprunner_service" "backend" {
           BEDROCK_AGENT_ROLE_ARN = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/BondAIBedrockAgentRole"
           BEDROCK_DEFAULT_MODEL = var.bedrock_default_model
           METADATA_DB_URL = "postgresql://bondadmin:${random_password.db_password.result}@${aws_db_instance.main.address}:5432/bondai"
-          
+
           # Okta OAuth Configuration
           OAUTH2_ENABLED_PROVIDERS = var.oauth2_providers
           OKTA_DOMAIN = var.okta_domain

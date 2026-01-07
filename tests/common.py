@@ -1,4 +1,4 @@
-import logging 
+import logging
 LOGGER = logging.getLogger(__name__)
 
 from typing import List
@@ -22,5 +22,3 @@ class MyFunctions(Functions):
       except Exception as e:
         LOGGER.error(f"Error in use_numbers: {e}")
         return '{"error": "Error in use_numbers"}'
-  
-

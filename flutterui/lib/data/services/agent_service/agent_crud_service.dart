@@ -26,7 +26,7 @@ class AgentCrudService {
         final List<AgentListItemModel> agents = data
             .map((item) => AgentListItemModel.fromJson(item as Map<String, dynamic>))
             .toList();
-        
+
         return agents;
       } else {
         final errorMsg = 'Failed to load agents: ${response.statusCode}';
@@ -61,12 +61,12 @@ class AgentCrudService {
   Future<AgentResponseModel> createAgent(AgentDetailModel agentData) async {
     try {
       final url = ApiConstants.baseUrl + ApiConstants.agentsEndpoint;
-      
+
       // Log the data being sent to the API
       final jsonData = agentData.toJson();
       logger.i("[AgentCrudService] Creating agent with data: ${json.encode(jsonData)}");
       logger.i("[AgentCrudService] Model being sent: ${jsonData['model']}");
-      
+
       final response = await _httpClient.post(url, jsonData);
 
       if (response.statusCode == 201) {
@@ -133,7 +133,7 @@ class AgentCrudService {
         final List<AvailableGroup> groups = data
             .map((item) => AvailableGroup.fromJson(item as Map<String, dynamic>))
             .toList();
-        
+
         logger.i("[AgentCrudService] Fetched ${groups.length} available groups");
         return groups;
       } else {
@@ -157,7 +157,7 @@ class AgentCrudService {
         final List<ModelInfo> models = data
             .map((item) => ModelInfo.fromJson(item as Map<String, dynamic>))
             .toList();
-        
+
         logger.i("[AgentCrudService] Fetched ${models.length} available models");
         return models;
       } else {

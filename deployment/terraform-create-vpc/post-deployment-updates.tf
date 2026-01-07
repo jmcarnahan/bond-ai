@@ -8,7 +8,7 @@
 # This dynamically gets service URLs to avoid hard dependencies
 resource "null_resource" "update_backend_config" {
   # No hard dependencies - this will be run in Phase 4 after services exist
-  
+
   # Trigger update on each apply
   triggers = {
     always_run = timestamp()
@@ -18,31 +18,31 @@ resource "null_resource" "update_backend_config" {
   provisioner "local-exec" {
     command = <<-EOT
       echo "Getting service URLs..."
-      
+
       # Get backend and frontend URLs from AWS
       BACKEND_URL=$(aws apprunner list-services --region ${var.aws_region} \
         --query "ServiceSummaryList[?ServiceName=='${var.project_name}-${var.environment}-backend'].ServiceUrl" \
         --output text)
-      
+
       FRONTEND_URL=$(aws apprunner list-services --region ${var.aws_region} \
         --query "ServiceSummaryList[?ServiceName=='${var.project_name}-${var.environment}-frontend'].ServiceUrl" \
         --output text)
-      
+
       if [ -z "$BACKEND_URL" ] || [ -z "$FRONTEND_URL" ]; then
         echo "Error: Backend or Frontend service not found. Please ensure Phases 2 and 3 have completed."
         exit 1
       fi
-      
+
       echo "Backend URL: https://$BACKEND_URL"
       echo "Frontend URL: https://$FRONTEND_URL"
-      
+
       echo "Updating backend service with frontend URL and proper CORS..."
-      
+
       # Get the backend service ARN
       SERVICE_ARN=$(aws apprunner list-services --region ${var.aws_region} \
         --query "ServiceSummaryList[?ServiceName=='${var.project_name}-${var.environment}-backend'].ServiceArn" \
         --output text)
-      
+
       # Update the service with new environment variables including correct frontend URL
       aws apprunner update-service \
         --service-arn "$SERVICE_ARN" \
@@ -75,17 +75,17 @@ resource "null_resource" "update_backend_config" {
           },
           "AutoDeploymentsEnabled": true
         }'
-      
+
       echo "Waiting for backend service to update..."
       sleep 30
-      
+
       # Check service status
       aws apprunner describe-service \
         --service-arn "$SERVICE_ARN" \
         --region ${var.aws_region} \
         --query "Service.Status" \
         --output text
-      
+
       echo "Backend configuration updated successfully!"
       echo "CORS now allows: https://$FRONTEND_URL"
       echo "Okta redirect URI: https://$BACKEND_URL/auth/okta/callback"

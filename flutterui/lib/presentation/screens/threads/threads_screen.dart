@@ -73,7 +73,7 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> with ErrorHandlin
           WidgetsBinding.instance.addPostFrameCallback((_) {
             handleAutoError(error, ref, serviceErrorMessage: 'Failed to load threads');
           });
-          
+
           // Check if this is an authentication error to show appropriate UI
           final appError = error is Exception ? AppError.fromException(error) : null;
           if (appError?.type == ErrorType.authentication) {
@@ -82,7 +82,7 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> with ErrorHandlin
               child: CircularProgressIndicator(),
             );
           }
-          
+
           // Show a fallback UI with retry button for other errors
           return Center(
             child: Padding(

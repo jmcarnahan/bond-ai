@@ -97,8 +97,8 @@ Create a file `environments/mcp-atlassian.tfvars`:
 
 ```hcl
 mcp_atlassian_enabled           = true
-mcp_atlassian_oauth_cloud_id    = "ec8ace41-7cde-4e66-aaf1-6fca83a00c53"
-mcp_atlassian_oauth_client_id   = "KHXrX7yQOU0dahJswA63C8drUeK9EtWJ"
+mcp_atlassian_oauth_cloud_id    = "<your-atlassian-cloud-id>"
+mcp_atlassian_oauth_client_id   = "<your-atlassian-client-id>"
 mcp_atlassian_oauth_secret_name = "bond-ai-dev-mcp-atlassian-oauth"
 ```
 

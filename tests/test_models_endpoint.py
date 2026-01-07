@@ -42,7 +42,7 @@ def mock_provider():
     """Mock provider with all sub-providers."""
     provider = MagicMock(spec=Provider)
     provider.agents = MagicMock(spec=AgentProvider)
-    
+
     # Mock the get_available_models method
     provider.agents.get_available_models.return_value = [
         {
@@ -51,7 +51,7 @@ def mock_provider():
             'is_default': True
         }
     ]
-    
+
     return provider
 
 @pytest.fixture
@@ -59,19 +59,19 @@ def authenticated_client(test_client, mock_provider):
     """Test client with authentication and mocked provider."""
     # Override provider dependency
     app.dependency_overrides[get_bond_provider] = lambda: mock_provider
-    
+
     # Create valid JWT token with required fields
     token_data = {
-        "sub": TEST_USER_EMAIL, 
+        "sub": TEST_USER_EMAIL,
         "name": "Test User",
         "provider": "google",
         "user_id": TEST_USER_ID
     }
     access_token = create_access_token(data=token_data, expires_delta=timedelta(minutes=15))
     auth_headers = {"Authorization": f"Bearer {access_token}"}
-    
+
     yield test_client, auth_headers, mock_provider
-    
+
     # Clean up
     if get_bond_provider in app.dependency_overrides:
         del app.dependency_overrides[get_bond_provider]
@@ -79,13 +79,13 @@ def authenticated_client(test_client, mock_provider):
 # --- Model Endpoint Tests ---
 
 class TestModelsEndpoint:
-    
+
     def test_get_available_models_success(self, authenticated_client):
         """Test getting available models successfully."""
         client, auth_headers, mock_provider = authenticated_client
-        
+
         response = client.get("/agents/models", headers=auth_headers)
-        
+
         assert response.status_code == 200
         models = response.json()
         assert len(models) == 1
@@ -97,14 +97,14 @@ class TestModelsEndpoint:
     def test_get_available_models_unauthorized(self, test_client):
         """Test getting models without authentication."""
         response = test_client.get("/agents/models")
-        
+
         assert response.status_code == 401
         assert response.json()["detail"] == "Not authenticated"
 
     def test_get_available_models_multiple(self, authenticated_client):
         """Test getting multiple available models."""
         client, auth_headers, mock_provider = authenticated_client
-        
+
         # Mock multiple models
         mock_provider.agents.get_available_models.return_value = [
             {
@@ -123,18 +123,18 @@ class TestModelsEndpoint:
                 'is_default': False
             }
         ]
-        
+
         response = client.get("/agents/models", headers=auth_headers)
-        
+
         assert response.status_code == 200
         models = response.json()
         assert len(models) == 3
-        
+
         # Check default model
         default_models = [m for m in models if m["is_default"]]
         assert len(default_models) == 1
         assert default_models[0]["name"] == "gpt-4o"
-        
+
         # Check non-default models
         non_default_models = [m for m in models if not m["is_default"]]
         assert len(non_default_models) == 2
@@ -144,12 +144,12 @@ class TestModelsEndpoint:
     def test_get_available_models_empty(self, authenticated_client):
         """Test getting models when none are available."""
         client, auth_headers, mock_provider = authenticated_client
-        
+
         # Mock empty models list
         mock_provider.agents.get_available_models.return_value = []
-        
+
         response = client.get("/agents/models", headers=auth_headers)
-        
+
         assert response.status_code == 200
         models = response.json()
         assert len(models) == 0
@@ -157,11 +157,11 @@ class TestModelsEndpoint:
     def test_get_available_models_error(self, authenticated_client):
         """Test handling error when getting models."""
         client, auth_headers, mock_provider = authenticated_client
-        
+
         # Mock exception
         mock_provider.agents.get_available_models.side_effect = Exception("Provider error")
-        
+
         response = client.get("/agents/models", headers=auth_headers)
-        
+
         assert response.status_code == 500
         assert response.json()["detail"] == "Could not fetch available models."

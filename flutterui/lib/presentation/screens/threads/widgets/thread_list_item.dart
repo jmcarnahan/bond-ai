@@ -32,7 +32,7 @@ class ThreadListItem extends ConsumerWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: isSelected 
+            color: isSelected
                 ? theme.colorScheme.primary.withValues(alpha: 0.15)
                 : theme.colorScheme.onSurface.withValues(alpha: 0.05),
             blurRadius: isSelected ? 12 : 8,
@@ -74,7 +74,7 @@ class ThreadListItem extends ConsumerWidget {
   }
 
   Widget _buildLeadingIcon(ThemeData theme, bool selected) {
-    
+
     return Container(
       width: 48,
       height: 48,
@@ -98,7 +98,7 @@ class ThreadListItem extends ConsumerWidget {
 
   Widget _buildTitle(ThemeData theme, bool selected) {
     final displayName = thread.name.isNotEmpty ? thread.name : "Unnamed Conversation";
-    
+
     return Text(
       displayName,
       style: TextStyle(
@@ -115,7 +115,7 @@ class ThreadListItem extends ConsumerWidget {
   Widget _buildTimestamp(ThemeData theme) {
     // Use updatedAt if available, otherwise fall back to createdAt
     final timestamp = thread.updatedAt ?? thread.createdAt;
-    
+
     if (timestamp == null) {
       return const SizedBox.shrink();
     }
@@ -150,7 +150,7 @@ class ThreadListItem extends ConsumerWidget {
     ThemeData theme,
   ) async {
     final displayName = thread.name.isNotEmpty ? thread.name : "this unnamed thread";
-    
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(

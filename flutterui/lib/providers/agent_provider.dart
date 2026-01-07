@@ -8,14 +8,14 @@ final agentsProvider = FutureProvider<List<AgentListItemModel>>((ref) async {
   try {
     final agents = await agentService.getAgents();
     logger.i("[agentsProvider] Loaded ${agents.length} agents");
-    
+
     // Debug logging for metadata
     for (var agent in agents) {
       logger.i("[agentsProvider] Agent: ${agent.name}");
       logger.i("[agentsProvider]   ID: ${agent.id}");
       logger.i("[agentsProvider]   Metadata: ${agent.metadata}");
     }
-    
+
     return agents;
   } catch (e) {
     logger.e("[agentsProvider] Error fetching agents: ${e.toString()}");
