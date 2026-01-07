@@ -33,7 +33,7 @@ variable "mcp_atlassian_service_url" {
 }
 
 variable "backend_service_url" {
-  description = "Backend service URL (set after first deployment for OAuth redirect)"
+  description = "Backend service URL (e.g., https://xxx.us-west-2.awsapprunner.com). Set after first deployment. Used by frontend build to configure API endpoint."
   type        = string
   default     = ""
 }
@@ -173,6 +173,13 @@ variable "waf_sampled_requests_enabled" {
 
 variable "admin_email" {
   description = "Admin email for privileged operations (SQL endpoint, user management)"
+  type        = string
+  default     = ""
+}
+
+# Build Configuration
+variable "force_rebuild" {
+  description = "Force rebuild of all Docker images regardless of source changes. Set to current timestamp to trigger: -var='force_rebuild=$(date +%s)'"
   type        = string
   default     = ""
 }
