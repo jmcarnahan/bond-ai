@@ -31,6 +31,7 @@ logs/
 
 # Claude state
 claude_state/
+.claude/
 
 docs/
 
