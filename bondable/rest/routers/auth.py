@@ -241,7 +241,13 @@ async def delete_user_by_email(
 ):
     """Delete user by email (admin only)."""
     # Admin authorization check - configurable via environment variable
-    admin_email = os.getenv("ADMIN_EMAIL", "john_carnahan@mcafee.com")
+    admin_email = os.getenv("ADMIN_EMAIL")
+    if not admin_email:
+        LOGGER.error("ADMIN_EMAIL environment variable is not set; user deletion endpoint is disabled due to misconfiguration.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Admin configuration error. Please contact the system administrator."
+        )
 
     if current_user.email != admin_email:
         LOGGER.warning(f"Unauthorized delete attempt by {current_user.email} for user {email}")
