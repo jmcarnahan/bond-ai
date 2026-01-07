@@ -170,3 +170,9 @@ variable "waf_sampled_requests_enabled" {
   type        = bool
   default     = true
 }
+
+variable "admin_email" {
+  description = "Admin email for privileged operations (SQL endpoint, user management)"
+  type        = string
+  default     = ""
+}
