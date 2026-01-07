@@ -1,0 +1,620 @@
+diff --git a/bondable/bond/providers/bedrock/BedrockAgent.py b/bondable/bond/providers/bedrock/BedrockAgent.py
+index ef95474..dc92f69 100644
+--- a/bondable/bond/providers/bedrock/BedrockAgent.py
++++ b/bondable/bond/providers/bedrock/BedrockAgent.py
+@@ -443,8 +443,19 @@ Please integrate any relevant insights from the documents with your analysis of
+             error_code = e.response['Error']['Code']
+             error_message = str(e)
+             LOGGER.exception(f"Bedrock Agent API error: {error_code} - {error_message} - {e}")
+-            yield from self._yield_error_message(thread_id, error_message, error_code)
+-            
++
++            # Provide helpful message for common issues
++            if error_code == 'internalServerException':
++                user_message = (
++                    "I encountered an error processing your request. This can happen when:\n"
++                    "- The question references tools or integrations that aren't configured\n"
++                    "- There's an issue with the tool definitions\n\n"
++                    "Please try rephrasing your question or ask about something else."
++                )
++                yield from self._yield_error_message(thread_id, user_message, error_code)
++            else:
++                yield from self._yield_error_message(thread_id, error_message, error_code)
++
+         except Exception as e:
+             LOGGER.exception(f"Unexpected error in stream_response: {e}")
+             yield from self._yield_error_message(thread_id, str(e))
+@@ -528,36 +539,40 @@ Please integrate any relevant insights from the documents with your analysis of
+                                 jwt_token=self._jwt_token
+                             )
+ 
+-                            LOGGER.debug(f"Executed MCP tool {tool_name} with result preview: {str(result)[:200]}")
++                            # Log result status
++                            success = result.get('success', False)
++                            status_code = 200 if success else 500
++                            result_preview = str(result.get('result', result.get('error', 'Unknown')))[:200]
++                            LOGGER.info(f"MCP tool {tool_name} completed - success: {success}, status: {status_code}, result preview: {result_preview}")
+ 
+                             # Format response
+                             response_body = json.dumps({
+                                 "result": result.get('result', result.get('error', 'Unknown error'))
+                             })
+-                            
++
+                             tool_response = {
+                                 "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
+                                 "apiPath": api_path,
+                                 "httpMethod": action_input.get('httpMethod', 'POST'),
+-                                "httpStatusCode": 200 if result.get('success') else 500,
++                                "httpStatusCode": status_code,
+                                 "responseBody": {
+                                     "application/json": {
+                                         "body": response_body
+                                     }
+                                 }
+                             }
+-                            
++
+                             # Wrap in apiResult if it was an apiInvocationInput
+                             if 'apiInvocationInput' in inv_input:
+                                 tool_response = {"apiResult": tool_response}
+-                            
+-                            LOGGER.debug(f"Executed MCP tool {tool_name} with response: \n{json.dumps(tool_response, indent=2)}")
++
++                            LOGGER.debug(f"Returning tool response to Bedrock: \n{json.dumps(tool_response, indent=2)}")
+ 
+                             results.append(tool_response)
+                         else:
+                             LOGGER.error("No MCP config available")
+                     except Exception as e:
+-                        LOGGER.error(f"Error executing MCP tool {tool_name}: {e}")
++                        LOGGER.exception(f"Error executing MCP tool {tool_name} with parameters {list(parameters.keys()) if parameters else []}: {e}")
+                         # Return error response
+                         error_response = {
+                             "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
+@@ -799,82 +814,108 @@ Please integrate any relevant insights from the documents with your analysis of
+         event_stream = response.get('completion')
+         if event_stream:
+             event_count = 0
+-            for event in event_stream:
+-                event_count += 1
+-                
+-                # Handle text chunks
+-                if 'chunk' in event:
+-                    text = self._handle_chunk_event(event['chunk'])
+-                    if text:
+-                        yield text
+-                        full_content += text
+-                
+-                # Handle files event
+-                elif 'files' in event:
+-                    files_event = event['files']
+-                    if 'files' in files_event:
+-                        for file_info in files_event['files']:
+-                            new_response_id = yield from self._handle_file_event_streaming(
+-                                file_info=file_info,
+-                                thread_id=thread_id,
+-                                user_id=user_id,
+-                                current_response_id=response_id,
+-                                full_content=full_content,
+-                                attachments=attachments if not phase_metadata else None,
+-                                seen_file_hashes=seen_file_hashes
+-                            )
+-                            
+-                            if new_response_id != response_id:
+-                                response_id = new_response_id
+-                                full_content = ''
+-                
+-                # Handle returnControl events for MCP tools
+-                elif 'returnControl' in event:
+-                    return_control = event['returnControl']
+-                    LOGGER.debug("Received returnControl event for tool execution")
+-                    
+-                    continuation_generator = self._handle_continuation_response(
+-                        return_control=return_control,
+-                        session_id=session_id,
+-                        thread_id=thread_id,
+-                        seen_file_hashes=seen_file_hashes,
+-                        attachments=attachments if not phase_metadata else None
+-                    )
+-                    
+-                    for cont_item in continuation_generator:
+-                        if isinstance(cont_item, str):
+-                            yield cont_item
+-                            full_content += cont_item
+-                        elif isinstance(cont_item, dict) and 'files_event' in cont_item:
+-                            files_event = cont_item['files_event']['files']
+-                            if 'files' in files_event:
+-                                for file_info in files_event['files']:
+-                                    new_response_id = yield from self._handle_file_event_streaming(
+-                                        file_info=file_info,
+-                                        thread_id=thread_id,
+-                                        user_id=user_id,
+-                                        current_response_id=response_id,
+-                                        full_content=full_content,
+-                                        attachments=attachments if not phase_metadata else None,
+-                                        seen_file_hashes=seen_file_hashes
+-                                    )
+-                                    if new_response_id != response_id:
+-                                        response_id = new_response_id
+-                                        full_content = ''
+-                        elif isinstance(cont_item, dict):
+-                            if cont_item.get('session_state'):
+-                                new_session_state = cont_item['session_state']
+-                
+-                # Handle session state updates
+-                elif 'sessionState' in event:
+-                    new_session_state = event['sessionState']
+-                    LOGGER.debug("Received session state update")
+-                
+-                elif 'trace' in event:
+-                    event_trace = event['trace']
+-                    LOGGER.debug(f" --- Received trace: {list(event_trace.keys())}")
+-            
+-            LOGGER.debug(f"Processed {event_count} events from completion stream")
++            last_event_type = None
++            try:
++                for event in event_stream:
++                    event_count += 1
++
++                    # Log event type for debugging
++                    event_type = list(event.keys())[0] if event else 'unknown'
++                    last_event_type = event_type
++                    LOGGER.info(f"Processing event #{event_count}, type: {event_type}")
++
++                    # Handle text chunks
++                    if 'chunk' in event:
++                        text = self._handle_chunk_event(event['chunk'])
++                        if text:
++                            yield text
++                            full_content += text
++
++                    # Handle files event
++                    elif 'files' in event:
++                        files_event = event['files']
++                        if 'files' in files_event:
++                            for file_info in files_event['files']:
++                                new_response_id = yield from self._handle_file_event_streaming(
++                                    file_info=file_info,
++                                    thread_id=thread_id,
++                                    user_id=user_id,
++                                    current_response_id=response_id,
++                                    full_content=full_content,
++                                    attachments=attachments if not phase_metadata else None,
++                                    seen_file_hashes=seen_file_hashes
++                                )
++
++                                if new_response_id != response_id:
++                                    response_id = new_response_id
++                                    full_content = ''
++
++                    # Handle returnControl events for MCP tools
++                    elif 'returnControl' in event:
++                        return_control = event['returnControl']
++                        LOGGER.info("Received returnControl event for tool execution")
++
++                        continuation_generator = self._handle_continuation_response(
++                            return_control=return_control,
++                            session_id=session_id,
++                            thread_id=thread_id,
++                            seen_file_hashes=seen_file_hashes,
++                            attachments=attachments if not phase_metadata else None
++                        )
++
++                        for cont_item in continuation_generator:
++                            if isinstance(cont_item, str):
++                                yield cont_item
++                                full_content += cont_item
++                            elif isinstance(cont_item, dict) and 'files_event' in cont_item:
++                                files_event = cont_item['files_event']['files']
++                                if 'files' in files_event:
++                                    for file_info in files_event['files']:
++                                        new_response_id = yield from self._handle_file_event_streaming(
++                                            file_info=file_info,
++                                            thread_id=thread_id,
++                                            user_id=user_id,
++                                            current_response_id=response_id,
++                                            full_content=full_content,
++                                            attachments=attachments if not phase_metadata else None,
++                                            seen_file_hashes=seen_file_hashes
++                                        )
++                                        if new_response_id != response_id:
++                                            response_id = new_response_id
++                                            full_content = ''
++                            elif isinstance(cont_item, dict):
++                                if cont_item.get('session_state'):
++                                    new_session_state = cont_item['session_state']
++
++                    # Handle session state updates
++                    elif 'sessionState' in event:
++                        new_session_state = event['sessionState']
++                        LOGGER.debug("Received session state update")
++
++                    elif 'trace' in event:
++                        event_trace = event['trace']
++                        trace_keys = list(event_trace.keys())
++                        LOGGER.debug(f" --- Received trace: {trace_keys}")
++
++                        # Log more details about orchestrationTrace which contains tool invocation plans
++                        if 'orchestrationTrace' in event_trace:
++                            orch_trace = event_trace['orchestrationTrace']
++                            if 'invocationInput' in orch_trace:
++                                inv_input = orch_trace['invocationInput']
++                                # Log what action the agent is planning
++                                if 'actionGroupInvocationInput' in inv_input:
++                                    action_input = inv_input['actionGroupInvocationInput']
++                                    api_path = action_input.get('apiPath', 'unknown')
++                                    LOGGER.info(f"Agent planning to invoke: {api_path}")
++                                elif 'apiInvocationInput' in inv_input:
++                                    api_input = inv_input['apiInvocationInput']
++                                    api_path = api_input.get('apiPath', 'unknown')
++                                    LOGGER.info(f"Agent planning to invoke API: {api_path}")
++            except Exception as e:
++                LOGGER.exception(f"Error processing event #{event_count}, type: {last_event_type}")
++                raise
++
++            LOGGER.info(f"Processed {event_count} events from completion stream")
+         
+         # Close bond message
+         yield '</_bondmessage>'
+diff --git a/bondable/bond/providers/bedrock/BedrockMCP.py b/bondable/bond/providers/bedrock/BedrockMCP.py
+index b0a77b0..41d5778 100644
+--- a/bondable/bond/providers/bedrock/BedrockMCP.py
++++ b/bondable/bond/providers/bedrock/BedrockMCP.py
+@@ -15,7 +15,7 @@ import json
+ import logging
+ from typing import List, Dict, Any, Optional
+ from fastmcp import Client
+-from fastmcp.client import StreamableHttpTransport
++from fastmcp.client import StreamableHttpTransport  # Use fastmcp's transport wrapper
+ from fastmcp.client.transports import SSETransport
+ import asyncio
+ from bondable.bond.config import Config
+@@ -124,6 +124,20 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
+                 }
+         
+         # Create action group
++        openapi_spec = {
++            "openapi": "3.0.0",
++            "info": {
++                "title": "MCP Tools API",
++                "version": "1.0.0",
++                "description": "MCP tools for external integrations"
++            },
++            "paths": paths
++        }
++
++        # Log the OpenAPI spec for debugging
++        LOGGER.info(f"[MCP Action Groups] Creating action group with {len(paths)} tools: {list(paths.keys())}")
++        LOGGER.debug(f"[MCP Action Groups] OpenAPI spec: {json.dumps(openapi_spec, indent=2)}")
++
+         action_group_spec = {
+             "actionGroupName": "MCPTools",
+             "description": "MCP (Model Context Protocol) tools for external integrations",
+@@ -131,18 +145,10 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
+                 "customControl": "RETURN_CONTROL"  # Return control to client for execution
+             },
+             "apiSchema": {
+-                "payload": json.dumps({
+-                    "openapi": "3.0.0",
+-                    "info": {
+-                        "title": "MCP Tools API",
+-                        "version": "1.0.0",
+-                        "description": "MCP tools for external integrations"
+-                    },
+-                    "paths": paths
+-                })
++                "payload": json.dumps(openapi_spec)
+             }
+         }
+-        
++
+         LOGGER.info(f"Creating MCP action group with {len(paths)} tools")
+         action_response = bedrock_agent_client.create_agent_action_group(
+             agentId=bedrock_agent_id,
+@@ -214,6 +220,10 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
+ 
+             # Use appropriate transport based on config
+             transport_type = server_config.get('transport', 'streamable-http')
++
++            # Note: Don't override Accept/Content-Type headers for streamable-http
++            # The MCP SDK sets these by default with lowercase keys
++
+             if transport_type == 'sse':
+                 transport = SSETransport(server_url, headers=headers)
+             else:
+@@ -346,6 +356,17 @@ def _get_auth_headers_for_server(
+ 
+         # Use "Bearer" (capitalized) as per RFC 6750 - some servers (like Atlassian) require this
+         headers['Authorization'] = f'Bearer {token_data.access_token}'
++
++        # TODO: Make cloud_id header configurable via oauth_config.cloud_id_header_name
++        # to support different MCP servers that may use different header names
++        # For now, hardcode X-Atlassian-Cloud-Id for Atlassian MCP compatibility
++        cloud_id = server_config.get('cloud_id')
++        if cloud_id:
++            headers['X-Atlassian-Cloud-Id'] = cloud_id
++            LOGGER.debug(f"[MCP Auth] Added X-Atlassian-Cloud-Id header: {cloud_id}")
++        else:
++            LOGGER.warning(f"[MCP Auth] No cloud_id found in config for OAuth2 server '{server_name}'. Some MCP servers (like Atlassian) may require this.")
++
+         LOGGER.debug(f"Using OAuth2 token for MCP server {server_name} (user: {user_email})")
+ 
+     elif auth_type == AUTH_TYPE_BOND_JWT:
+@@ -418,6 +439,10 @@ async def execute_mcp_tool(
+ 
+             # Use appropriate transport based on config
+             transport_type = server_config.get('transport', 'streamable-http')
++
++            # Note: Don't override Accept/Content-Type headers for streamable-http
++            # The MCP SDK sets these by default with lowercase keys
++
+             if transport_type == 'sse':
+                 transport = SSETransport(server_url, headers=headers)
+             else:
+@@ -474,7 +499,8 @@ async def execute_mcp_tool(
+                 "expired_at": safe_isoformat(e.expired_at)
+             }
+         except Exception as e:
+-            LOGGER.warning(f"[MCP Execute] Error on server '{server_name}': {e}")
++            # Log full exception details including traceback for debugging
++            LOGGER.exception(f"[MCP Execute] Error on server '{server_name}' when executing tool '{tool_name}' with parameters {list(parameters.keys()) if parameters else []}: {e}")
+             continue  # Try next server
+ 
+     # Tool not found on any server
+diff --git a/bondable/rest/routers/connections.py b/bondable/rest/routers/connections.py
+index 3fa302c..d09c2e0 100644
+--- a/bondable/rest/routers/connections.py
++++ b/bondable/rest/routers/connections.py
+@@ -307,9 +307,8 @@ async def authorize_connection(
+     Returns:
+         Authorization URL to redirect user to
+     """
+-    LOGGER.info(f"[Connections] ========== AUTHORIZE START ==========")
+-    LOGGER.info(f"[Connections] User: {current_user.email} (ID: {current_user.user_id})")
+-    LOGGER.info(f"[Connections] Connection: {connection_name}")
++    LOGGER.debug(f"[Connections] ========== AUTHORIZE START ==========")
++    LOGGER.debug(f"[Connections] Connection: {connection_name}")
+ 
+     config = _get_connection_config(connection_name)
+     if config is None:
+@@ -349,13 +348,7 @@ async def authorize_connection(
+         LOGGER.debug(f"[Connections] Using generated redirect_uri")
+ 
+     # Store state in database
+-    LOGGER.info(f"[Connections] Saving OAuth state to database:")
+-    LOGGER.info(f"[Connections]   state: {state[:20]}...")
+-    LOGGER.info(f"[Connections]   user_id: {current_user.user_id}")
+-    LOGGER.info(f"[Connections]   connection_name: {connection_name}")
+-    LOGGER.info(f"[Connections]   code_verifier: {code_verifier[:20]}...")
+-    LOGGER.info(f"[Connections]   redirect_uri: {redirect_uri}")
+-
++    LOGGER.info(f"[Connections] Saving OAuth state to database: connection_name: {connection_name}")
+     if not _save_oauth_state(state, current_user.user_id, connection_name, code_verifier, redirect_uri):
+         LOGGER.error(f"[Connections] Failed to save OAuth state!")
+         raise HTTPException(
+@@ -381,13 +374,6 @@ async def authorize_connection(
+ 
+     authorization_url = f"{authorize_url}?{urlencode(params)}"
+ 
+-    LOGGER.info(f"[Connections] Authorization URL params:")
+-    LOGGER.info(f"[Connections]   authorize_url: {authorize_url}")
+-    LOGGER.info(f"[Connections]   client_id: {config.get('oauth_client_id', '')}")
+-    LOGGER.info(f"[Connections]   redirect_uri: {redirect_uri}")
+-    LOGGER.info(f"[Connections]   scopes: {scopes}")
+-    LOGGER.info(f"[Connections] ========== AUTHORIZE END ==========")
+-
+     return AuthorizeResponse(
+         authorization_url=authorization_url,
+         connection_name=connection_name,
+@@ -407,13 +393,10 @@ async def oauth_callback(
+     Exchanges authorization code for access token and stores encrypted in database.
+     Redirects to frontend with success/error status.
+     """
+-    LOGGER.info(f"[Connections] ========== CALLBACK START ==========")
+-    LOGGER.info(f"[Connections] Connection: {connection_name}")
+-    LOGGER.info(f"[Connections] Received code: {code[:30]}..." if len(code) > 30 else f"[Connections] Received code: {code}")
+-    LOGGER.info(f"[Connections] Received state (raw from callback): {state}")
++    LOGGER.info(f"[Connections] Callback for Connection: {connection_name}")
+ 
+     # Validate and retrieve state
+-    LOGGER.info(f"[Connections] Looking up OAuth state in database...")
++    LOGGER.debug(f"[Connections] Looking up OAuth state in database...")
+     state_data = _get_and_delete_oauth_state(state)
+     if state_data is None:
+         LOGGER.warning(f"[Connections] Invalid state parameter for {connection_name} - state not found in database!")
+@@ -426,11 +409,7 @@ async def oauth_callback(
+     code_verifier = state_data["code_verifier"]
+     redirect_uri = state_data["redirect_uri"]
+ 
+-    LOGGER.info(f"[Connections] State data retrieved successfully:")
+-    LOGGER.info(f"[Connections]   user_id: {user_id}")
+-    LOGGER.info(f"[Connections]   connection_name from state: {state_data.get('connection_name', 'N/A')}")
+-    LOGGER.info(f"[Connections]   code_verifier: {code_verifier[:20]}..." if code_verifier else "[Connections]   code_verifier: None")
+-    LOGGER.info(f"[Connections]   redirect_uri: {redirect_uri}")
++    LOGGER.info(f"[Connections] State data retrieved successfully: connection_name: {connection_name}")
+ 
+     # Get connection configuration
+     config = _get_connection_config(connection_name)
+@@ -449,8 +428,6 @@ async def oauth_callback(
+             detail=f"No token URL configured for '{connection_name}'"
+         )
+ 
+-    LOGGER.info(f"[Connections] Token URL: {token_url}")
+-
+     # Exchange code for token
+     token_data = {
+         "grant_type": "authorization_code",
+@@ -471,18 +448,10 @@ async def oauth_callback(
+         token_data["client_secret"] = client_secret
+         LOGGER.info(f"[Connections] Using client_secret from extra_config (redacted)")
+ 
+-    LOGGER.info(f"[Connections] Token exchange request:")
+-    LOGGER.info(f"[Connections]   token_url: {token_url}")
+-    LOGGER.info(f"[Connections]   grant_type: authorization_code")
+-    LOGGER.info(f"[Connections]   client_id: {client_id}")
+-    LOGGER.info(f"[Connections]   redirect_uri: {redirect_uri}")
+-    LOGGER.info(f"[Connections]   code_verifier present: {bool(code_verifier)}")
+-
+     jwt_config = Config.config().get_jwt_config()
+     frontend_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
+ 
+     try:
+-        LOGGER.info(f"[Connections] Sending token exchange request to {token_url}...")
+         async with httpx.AsyncClient() as client:
+             response = await client.post(
+                 token_url,
+@@ -493,13 +462,6 @@ async def oauth_callback(
+             response.raise_for_status()
+             token_response = response.json()
+ 
+-        LOGGER.info(f"[Connections] Token response received:")
+-        LOGGER.info(f"[Connections]   token_type: {token_response.get('token_type', 'N/A')}")
+-        LOGGER.info(f"[Connections]   expires_in: {token_response.get('expires_in', 'N/A')}")
+-        LOGGER.info(f"[Connections]   scope: {token_response.get('scope', 'N/A')}")
+-        LOGGER.info(f"[Connections]   access_token present: {bool(token_response.get('access_token'))}")
+-        LOGGER.info(f"[Connections]   refresh_token present: {bool(token_response.get('refresh_token'))}")
+-
+         # Store token in cache (which persists to database)
+         token_cache = get_mcp_token_cache()
+         token_cache.set_token_from_response(
+@@ -511,8 +473,6 @@ async def oauth_callback(
+         )
+ 
+         LOGGER.info(f"[Connections] Token stored successfully for connection {connection_name}")
+-        LOGGER.info(f"[Connections] Redirecting to: {frontend_url}/connections?connection_success={connection_name}")
+-        LOGGER.info(f"[Connections] ========== CALLBACK SUCCESS ==========")
+ 
+         # Redirect to frontend with success
+         return RedirectResponse(
+@@ -524,14 +484,14 @@ async def oauth_callback(
+         LOGGER.error(f"[Connections] Token exchange failed!")
+         LOGGER.error(f"[Connections]   Status code: {e.response.status_code}")
+         LOGGER.error(f"[Connections]   Response: {e.response.text}")
+-        LOGGER.info(f"[Connections] ========== CALLBACK FAILED ==========")
++        LOGGER.error(f"[Connections] ========== CALLBACK FAILED ==========")
+         return RedirectResponse(
+             url=f"{frontend_url}/connections?connection_error={connection_name}&error=token_exchange_failed",
+             status_code=status.HTTP_302_FOUND
+         )
+     except Exception as e:
+         LOGGER.error(f"[Connections] Unexpected error: {type(e).__name__}: {e}")
+-        LOGGER.info(f"[Connections] ========== CALLBACK FAILED ==========")
++        LOGGER.error(f"[Connections] ========== CALLBACK FAILED ==========")
+         return RedirectResponse(
+             url=f"{frontend_url}/connections?connection_error={connection_name}&error=unknown",
+             status_code=status.HTTP_302_FOUND
+diff --git a/bondable/rest/routers/mcp.py b/bondable/rest/routers/mcp.py
+index f21d9b9..2edb740 100644
+--- a/bondable/rest/routers/mcp.py
++++ b/bondable/rest/routers/mcp.py
+@@ -77,7 +77,7 @@ async def list_mcp_tools(
+         List of available MCP tools with their schemas, or grouped response if grouped=True
+     """
+     from fastmcp.client.transports import SSETransport
+-    from fastmcp.client import StreamableHttpTransport
++    from fastmcp.client import StreamableHttpTransport  # Use fastmcp's wrapper which works with fastmcp.Client
+ 
+     LOGGER.info(f"[MCP Tools] Request received from user: {current_user.user_id} ({current_user.email}), grouped={grouped}")
+ 
+@@ -138,10 +138,12 @@ async def list_mcp_tools(
+                     # Create transport based on type
+                     if transport_type in ('sse', 'streamable-http'):
+                         # Add User-Agent header - some servers (like Atlassian MCP) require it
++                        # Note: Don't set accept/content-type - let StreamableHttpTransport set them
+                         headers_with_ua = {
+                             'User-Agent': 'Bond-AI-MCP-Client/1.0',
+                             **auth_headers
+                         }
++
+                         LOGGER.info(f"[MCP Tools] Creating {transport_type} transport for '{server_name}' at {server_url}")
+ 
+                         # Use correct transport class based on type
+@@ -340,6 +342,9 @@ async def list_mcp_resources(
+                 auth_headers = get_mcp_auth_headers(server_name, server_config, current_user)
+                 server_with_auth = server_config.copy()
+                 existing_headers = server_with_auth.get('headers', {})
++
++                # Note: Don't add Accept/Content-Type headers - MCP SDK sets these by default
++
+                 server_with_auth['headers'] = {**existing_headers, **auth_headers}
+                 authenticated_servers[server_name] = server_with_auth
+             except (AuthorizationRequiredError, TokenExpiredError):
+diff --git a/poetry.lock b/poetry.lock
+index 7a38669..bd0d339 100644
+--- a/poetry.lock
++++ b/poetry.lock
+@@ -1206,14 +1206,14 @@ devel = ["colorama", "json-spec", "jsonschema", "pylint", "pytest", "pytest-benc
+ 
+ [[package]]
+ name = "fastmcp"
+-version = "2.13.1"
++version = "2.13.2"
+ description = "The fast, Pythonic way to build MCP servers and clients."
+ optional = false
+ python-versions = ">=3.10"
+ groups = ["main"]
+ files = [
+-    {file = "fastmcp-2.13.1-py3-none-any.whl", hash = "sha256:7a78b19785c4ec04a758d920c312769a497e3f6ab4c80feed504df1ed7de9f3c"},
+-    {file = "fastmcp-2.13.1.tar.gz", hash = "sha256:b9c664c51f1ff47c698225e7304267ae29a51913f681bd49e442b8682f9a5f90"},
++    {file = "fastmcp-2.13.2-py3-none-any.whl", hash = "sha256:300c59eb970c235bb9d0575883322922e4f2e2468a3d45e90cbfd6b23b7be245"},
++    {file = "fastmcp-2.13.2.tar.gz", hash = "sha256:2a206401a6579fea621974162674beba85b467ad72c70c1a3752a31951dff7f0"},
+ ]
+ 
+ [package.dependencies]
+@@ -1225,7 +1225,7 @@ jsonschema-path = ">=0.3.4"
+ mcp = ">=1.19.0,<1.21.1 || >1.21.1,<2.0.0"
+ openapi-pydantic = ">=0.5.1"
+ platformdirs = ">=4.0.0"
+-py-key-value-aio = {version = ">=0.2.8,<0.3.0", extras = ["disk", "keyring", "memory"]}
++py-key-value-aio = {version = ">=0.2.8,<0.4.0", extras = ["disk", "memory"]}
+ pydantic = {version = ">=2.11.7", extras = ["email"]}
+ pyperclip = ">=1.9.0"
+ python-dotenv = ">=1.1.0"
+@@ -2423,14 +2423,14 @@ traitlets = "*"
+ 
+ [[package]]
+ name = "mcp"
+-version = "1.22.0"
++version = "1.23.1"
+ description = "Model Context Protocol SDK"
+ optional = false
+ python-versions = ">=3.10"
+ groups = ["main"]
+ files = [
+-    {file = "mcp-1.22.0-py3-none-any.whl", hash = "sha256:bed758e24df1ed6846989c909ba4e3df339a27b4f30f1b8b627862a4bade4e98"},
+-    {file = "mcp-1.22.0.tar.gz", hash = "sha256:769b9ac90ed42134375b19e777a2858ca300f95f2e800982b3e2be62dfc0ba01"},
++    {file = "mcp-1.23.1-py3-none-any.whl", hash = "sha256:3ce897fcc20a41bd50b4c58d3aa88085f11f505dcc0eaed48930012d34c731d8"},
++    {file = "mcp-1.23.1.tar.gz", hash = "sha256:7403e053e8e2283b1e6ae631423cb54736933fea70b32422152e6064556cd298"},
+ ]
+ 
+ [package.dependencies]
+@@ -3359,7 +3359,6 @@ files = [
+ beartype = ">=0.22.2"
+ cachetools = {version = ">=6.0.0", optional = true, markers = "extra == \"memory\""}
+ diskcache = {version = ">=5.6.0", optional = true, markers = "extra == \"disk\""}
+-keyring = {version = ">=25.6.0", optional = true, markers = "extra == \"keyring\""}
+ pathvalidate = {version = ">=3.3.1", optional = true, markers = "extra == \"disk\""}
+ py-key-value-shared = "0.2.8"
+ 
+@@ -5815,4 +5814,4 @@ cffi = ["cffi (>=1.11)"]
+ [metadata]
+ lock-version = "2.1"
+ python-versions = ">=3.12,<3.13"
+-content-hash = "a1d581ddde5aa95960aae30503d17cde4c95251dbd2b34fa80c0160fb547468b"
++content-hash = "62ff7580a1e7992cc6bb4249d865a864ac6fa6c28ddbbc611c41d4cf7d5d2103"
+diff --git a/pyproject.toml b/pyproject.toml
+index a6fb636..f227b34 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -25,8 +25,8 @@ poetry-plugin-export = "^1.9.0"
+ fastapi = {extras = ["standard"], version = "^0.121.3"}
+ uvicorn = ">=0.35"
+ python-jose = "^3.4.0"
+-mcp = {extras = ["cli"], version = "^1.9.1"}
+-fastmcp = ">=2.13.0"
++mcp = {extras = ["cli"], version = "^1.23.1"}
++fastmcp = "^2.13.2"
+ magika = "^0.6.2"
+ google-cloud-firestore = "^2.21.0"
+ boto3 = "^1.38.39"

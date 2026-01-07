@@ -51,11 +51,17 @@ LICENSE
 **/venv
 
 # Exclude terraform files
-terraform/.terraform
-terraform/*.tfstate
-terraform/*.tfstate.*
-terraform/*.tfvars
-terraform/.terraform.lock.hcl
+**/terraform/.terraform
+**/terraform/*.tfstate
+**/terraform/*.tfstate.*
+**/terraform/*.tfvars
+**/terraform/.terraform.lock.hcl
+deployment/terraform-existing-vpc/.terraform
+deployment/terraform-existing-vpc/*.tfstate
+deployment/terraform-existing-vpc/*.tfstate.*
+deployment/terraform-existing-vpc/*.tfvars
+deployment/terraform-existing-vpc/.terraform.lock.hcl
+deployment/terraform-existing-vpc/tfplan
 
 # Exclude AWS and credentials
 .aws

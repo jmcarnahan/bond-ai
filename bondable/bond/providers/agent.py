@@ -214,26 +214,30 @@ class AgentProvider(ABC):
         Deletes an agent and its associated resources (like default vector store).
         """
         # First, try to find and delete the default vector store for this agent
+        # Collect vector store IDs first, then delete outside the session to avoid
+        # DetachedInstanceError when delete_vector_store opens its own session
+        vector_store_ids_to_delete = []
         try:
             with self.metadata.get_db_session() as session:
                 # Find vector stores that are default for this agent
                 default_vector_stores = session.query(VectorStore).filter(
                     VectorStore.default_for_agent_id == agent_id
                 ).all()
-                
-                for vector_store in default_vector_stores:
-                    try:
-                        # Get the vector stores provider from the parent provider
-                        # We need to import here to avoid circular imports
-                        from bondable.bond.config import Config
-                        provider = Config.config().get_provider()
-                        if hasattr(provider, 'vectorstores'):
-                            provider.vectorstores.delete_vector_store(vector_store.vector_store_id)
-                            LOGGER.info(f"Deleted default vector store {vector_store.vector_store_id} for agent {agent_id}")
-                    except Exception as e:
-                        LOGGER.error(f"Error deleting vector store {vector_store.vector_store_id}: {e}")
+                # Extract IDs while session is still open
+                vector_store_ids_to_delete = [vs.vector_store_id for vs in default_vector_stores]
         except Exception as e:
-            LOGGER.error(f"Error finding/deleting default vector stores for agent {agent_id}: {e}")
+            LOGGER.error(f"Error finding default vector stores for agent {agent_id}: {e}")
+
+        # Now delete the vector stores outside the session
+        for vector_store_id in vector_store_ids_to_delete:
+            try:
+                from bondable.bond.config import Config
+                provider = Config.config().get_provider()
+                if hasattr(provider, 'vectorstores'):
+                    provider.vectorstores.delete_vector_store(vector_store_id)
+                    LOGGER.info(f"Deleted default vector store {vector_store_id} for agent {agent_id}")
+            except Exception as e:
+                LOGGER.error(f"Error deleting vector store {vector_store_id}: {e}")
         
         # Delete the agent resource
         deleted_resource = self.delete_agent_resource(agent_id)

@@ -1,0 +1,13 @@
+diff --git a/deployment/terraform-existing-vpc/rds.tf b/deployment/terraform-existing-vpc/rds.tf
+index 23d21e5..a12034b 100644
+--- a/deployment/terraform-existing-vpc/rds.tf
++++ b/deployment/terraform-existing-vpc/rds.tf
+@@ -16,7 +16,7 @@ resource "aws_db_instance" "main" {
+ 
+   # Engine
+   engine         = "postgres"
+-  engine_version = "15.7"
++  engine_version = "15.12"
+   
+   # Instance
+   instance_class = var.db_instance_class
