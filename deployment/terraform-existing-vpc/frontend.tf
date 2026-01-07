@@ -29,15 +29,15 @@ resource "aws_apprunner_service" "frontend" {
         port = "8080"
 
         runtime_environment_variables = {
-          # API URL is already baked into the Docker image during build
-          # This is just for reference/override if needed
-          API_BASE_URL = "https://${aws_apprunner_service.backend.service_url}"
+          # API URL is baked into Docker image during build via --dart-define
+          # This env var is for reference only (Flutter doesn't read runtime env vars)
+          API_BASE_URL = var.backend_service_url != "" ? var.backend_service_url : "https://PLACEHOLDER"
         }
       }
     }
 
-    # Auto deploy when image updates
-    auto_deployments_enabled = false
+    # Auto deploy when image updates in ECR
+    auto_deployments_enabled = true
   }
 
   instance_configuration {
@@ -62,8 +62,8 @@ resource "aws_apprunner_service" "frontend" {
   }
 
   depends_on = [
-    null_resource.build_frontend_image,
-    aws_apprunner_service.backend  # Ensure backend exists first
+    null_resource.build_frontend_image
+    # Backend dependency removed - using var.backend_service_url from tfvars
   ]
 
   # Lifecycle rules to prevent accidental recreation
