@@ -5,7 +5,7 @@ This module extends the base Metadata class to add message storage capabilities
 since Bedrock doesn't have built-in thread/conversation management.
 """
 
-from sqlalchemy import Column, String, DateTime, JSON, ForeignKey, Integer, Index, Float
+from sqlalchemy import Column, String, DateTime, JSON, ForeignKey, Integer, Index, Float, UniqueConstraint
 from sqlalchemy.orm import relationship
 from bondable.bond.providers.metadata import Metadata, Base, Thread, AgentRecord, FileRecord, VectorStore
 import datetime
@@ -33,7 +33,8 @@ class BedrockAgentOptions(Base):
     mcp_tools = Column(JSON, nullable=False, default=dict)  # MCP tools list
     mcp_resources = Column(JSON, nullable=False, default=dict)  # MCP resources list
     agent_metadata = Column(JSON, nullable=True, default=dict)  # Additional metadata for the agent
-    
+    file_storage = Column(String, nullable=False, default='direct')  # 'direct' | 'knowledge_base'
+
     __table_args__ = (
         Index('idx_bedrock_agent_id', 'bedrock_agent_id'),
     )
@@ -64,15 +65,36 @@ class BedrockMessage(Base):
 class BedrockVectorStoreFile(Base):
     """Store file associations for vector stores in Bedrock"""
     __tablename__ = 'bedrock_vector_store_files'
-    
+
     vector_store_id = Column(String, ForeignKey('vector_stores.vector_store_id'), primary_key=True)
     file_id = Column(String, ForeignKey('files.file_id'), primary_key=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
-    
+
     # Create index for efficient lookups
     __table_args__ = (
         Index('idx_vector_store_file', 'vector_store_id', 'file_id'),
     )
+
+
+class KnowledgeBaseFile(Base):
+    """Track files uploaded to Bedrock Knowledge Base for each agent"""
+    __tablename__ = 'knowledge_base_files'
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    file_id = Column(String, ForeignKey('files.file_id'), nullable=False)
+    agent_id = Column(String, ForeignKey('agents.agent_id'), nullable=False)
+    s3_key = Column(String, nullable=False)  # S3 path: knowledge-base/{agent_id}/{uuid}/{filename}
+    ingestion_job_id = Column(String, nullable=True)  # Bedrock ingestion job ID
+    ingestion_status = Column(String, default='pending')  # pending, in_progress, completed, failed
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint('file_id', 'agent_id', name='_kb_file_agent_uc'),
+        Index('idx_kb_files_agent', 'agent_id'),
+        Index('idx_kb_files_status', 'ingestion_status'),
+    )
+
 
 # Extend the VectorStore model with Bedrock Knowledge Base fields
 VectorStore.knowledge_base_id = Column(String, nullable=True, unique=True)  # AWS Knowledge Base ID

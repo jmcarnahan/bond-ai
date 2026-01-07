@@ -54,19 +54,33 @@ resource "aws_apprunner_service" "backend" {
           OKTA_DOMAIN = var.okta_domain
           OKTA_CLIENT_ID = var.okta_client_id
           OKTA_CLIENT_SECRET = jsondecode(data.aws_secretsmanager_secret_version.okta_secret.secret_string)["client_secret"]
-          # Okta redirect URI - will be set to the actual backend URL after deployment
-          # We can't reference self here, so using a placeholder that you'll need to update in Okta
-          OKTA_REDIRECT_URI = var.okta_redirect_uri != "" ? var.okta_redirect_uri : "https://BACKEND_URL_PLACEHOLDER/auth/okta/callback"
+          # Okta redirect URI - uses variable to avoid circular dependency
+          OKTA_REDIRECT_URI = var.okta_redirect_uri != "" ? var.okta_redirect_uri : "https://PENDING_BACKEND_URL/auth/okta/callback"
           OKTA_SCOPES = var.okta_scopes
 
-          # JWT redirect URI for frontend - using the stable custom domain
-          # The frontend_fqdn is defined in custom-domain.tf and available before backend deployment
-          JWT_REDIRECT_URI = "https://${local.frontend_fqdn}"
+          # AWS Cognito OAuth Configuration (only if configured)
+          # Note: Add "cognito" to oauth2_providers variable to enable
+          COGNITO_DOMAIN       = var.cognito_domain
+          COGNITO_CLIENT_ID    = var.cognito_client_id
+          COGNITO_SECRET_NAME  = var.cognito_secret_name
+          COGNITO_REDIRECT_URI = var.cognito_redirect_uri != "" ? var.cognito_redirect_uri : (var.cognito_domain != "" ? "https://BACKEND_URL_PLACEHOLDER/auth/cognito/callback" : "")
+          COGNITO_SCOPES       = var.cognito_scopes
+          COGNITO_REGION       = var.cognito_region
 
-          # CORS configuration - include localhost and custom domain
-          # Note: We can't include the App Runner URL here since frontend doesn't exist yet
-          # The custom domain will be the primary access method
-          CORS_ALLOWED_ORIGINS = "${var.cors_allowed_origins},https://${local.frontend_fqdn}"
+          # JWT redirect URI for frontend - uses variable to avoid circular dependency
+          JWT_REDIRECT_URI = var.jwt_redirect_uri != "" ? var.jwt_redirect_uri : "*"
+
+          # CORS configuration - uses variable to allow post-deployment tightening
+          CORS_ALLOWED_ORIGINS = var.cors_allowed_origins
+
+          # Knowledge Base configuration (only set when KB is enabled)
+          BEDROCK_KNOWLEDGE_BASE_ID    = try(aws_bedrockagent_knowledge_base.main[0].id, "")
+          BEDROCK_KB_DATA_SOURCE_ID    = try(aws_bedrockagent_data_source.s3[0].data_source_id, "")
+          BEDROCK_KB_S3_PREFIX         = var.enable_knowledge_base ? "knowledge-base/" : ""
+
+          # MCP configuration (generic JSON variable approach)
+          # See patches/MCP_CONFIG_MIGRATION.md for migration from inline config
+          BOND_MCP_CONFIG = var.bond_mcp_config
         }
       }
     }

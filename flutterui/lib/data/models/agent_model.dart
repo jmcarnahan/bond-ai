@@ -178,6 +178,7 @@ class AgentDetailModel {
   final List<String>? mcpResources;
   final List<dynamic> files;
   final List<String>? groupIds;
+  final String? fileStorage;
 
 
   const AgentDetailModel({
@@ -195,6 +196,7 @@ class AgentDetailModel {
     this.mcpResources,
     required this.files,
     this.groupIds,
+    this.fileStorage,
   });
 
   factory AgentDetailModel.fromJson(Map<String, dynamic> json) {
@@ -223,9 +225,10 @@ class AgentDetailModel {
           ? List<String>.from(json['mcp_resources'] as List<dynamic>)
           : null,
       files: json['files'] as List<dynamic>? ?? [],
-      groupIds: json['group_ids'] != null 
+      groupIds: json['group_ids'] != null
           ? List<String>.from(json['group_ids'] as List<dynamic>)
           : null,
+      fileStorage: json['file_storage'] as String?,
     );
   }
 
@@ -245,6 +248,7 @@ class AgentDetailModel {
       if (mcpResources != null) 'mcp_resources': mcpResources,
       'files': files,
       if (groupIds != null) 'group_ids': groupIds,
+      if (fileStorage != null) 'file_storage': fileStorage,
     };
   }
 }

@@ -229,6 +229,70 @@ The service uses the same VPC connector as the backend. If connectivity issues o
 2. Verify NAT Gateway is configured for outbound internet access
 3. Check VPC endpoint configurations
 
+### SSL Certificate Verification Errors (Local Development)
+
+If you encounter SSL certificate verification errors when running the MCP Atlassian container locally:
+
+```
+[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate
+```
+
+This typically occurs on corporate networks with SSL-intercepting proxies. There are two solutions:
+
+#### Solution 1: Quick Fix (Development Only - Less Secure)
+
+Update your `mcp-atlassian.env` file:
+
+```bash
+JIRA_SSL_VERIFY=false
+CONFLUENCE_SSL_VERIFY=false
+```
+
+Then run the container:
+```bash
+docker run --rm --name mcp-atlassian -p 9001:8000 \
+  --env-file mcp-atlassian.env \
+  ghcr.io/sooperset/mcp-atlassian:latest \
+  --transport streamable-http --port 8000
+```
+
+**Warning**: Only use this for local development. Never disable SSL verification in production.
+
+#### Solution 2: Secure Fix (Recommended - Mount Certificates)
+
+Mount your system's CA certificates into the container:
+
+```bash
+docker run --rm --name mcp-atlassian -p 9001:8000 \
+  -v /path/to/your/ca-bundle.crt:/etc/ssl/certs/ca-bundle.crt:ro \
+  -e SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt \
+  -e REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-bundle.crt \
+  --env-file mcp-atlassian.env \
+  ghcr.io/sooperset/mcp-atlassian:latest \
+  --transport streamable-http --port 8000
+```
+
+Common certificate paths:
+- **macOS**: `/etc/ssl/cert.pem` or `/usr/local/etc/openssl/cert.pem`
+- **Linux**: `/etc/ssl/certs/ca-certificates.crt`
+- **Corporate**: Check with your IT department for corporate CA bundle location
+
+With this approach, SSL verification remains enabled (more secure) and the container can properly verify certificates using your corporate CA bundle.
+
+#### Production (AWS App Runner)
+
+SSL certificate verification should work automatically in AWS App Runner without any configuration, as AWS provides trusted CA certificates in the container environment. The Terraform configuration explicitly sets:
+
+```hcl
+JIRA_SSL_VERIFY       = "true"
+CONFLUENCE_SSL_VERIFY = "true"
+```
+
+If you encounter SSL errors in AWS, check:
+1. VPC endpoint configurations
+2. NAT Gateway has internet access
+3. Security group rules allow outbound HTTPS (port 443)
+
 ## Disabling/Removing
 
 ### Disable (keep resources for later)

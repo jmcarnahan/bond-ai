@@ -66,6 +66,7 @@ class CreateAgentFormState {
   final bool isLoading;
   final bool isUploadingFile;
   final String? errorMessage;
+  final String fileStorage; // 'direct' or 'knowledge_base'
 
   CreateAgentFormState({
     this.name = '',
@@ -80,6 +81,7 @@ class CreateAgentFormState {
     this.isLoading = false,
     this.isUploadingFile = false,
     this.errorMessage,
+    this.fileStorage = 'direct',
   });
 
   CreateAgentFormState copyWith({
@@ -96,6 +98,7 @@ class CreateAgentFormState {
     bool? isUploadingFile,
     String? errorMessage,
     bool clearErrorMessage = false,
+    String? fileStorage,
   }) {
     return CreateAgentFormState(
       name: name ?? this.name,
@@ -111,6 +114,7 @@ class CreateAgentFormState {
       isUploadingFile: isUploadingFile ?? this.isUploadingFile,
       errorMessage:
           clearErrorMessage ? null : errorMessage ?? this.errorMessage,
+      fileStorage: fileStorage ?? this.fileStorage,
     );
   }
 }
@@ -201,6 +205,10 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
 
   void setSelectedGroupIds(Set<String> groupIds) {
     state = state.copyWith(selectedGroupIds: groupIds);
+  }
+
+  void setFileStorage(String fileStorage) {
+    state = state.copyWith(fileStorage: fileStorage);
   }
 
   Future<void> uploadFile() async {
@@ -374,6 +382,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
             agentDetail.mcpResources != null
                 ? Set<String>.from(agentDetail.mcpResources!)
                 : {},
+        fileStorage: agentDetail.fileStorage ?? 'direct',
         isLoading: false,
       );
 
@@ -432,19 +441,13 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
             .map((f) => f.fileId)
             .toList();
 
-    AgentToolResourcesModel? toolResources;
-    if (codeInterpreterFiles.isNotEmpty || fileSearchFiles.isNotEmpty) {
-      toolResources = AgentToolResourcesModel(
-        codeInterpreter:
-            codeInterpreterFiles.isNotEmpty
-                ? ToolResourceFilesListModel(fileIds: codeInterpreterFiles)
-                : null,
-        fileSearch:
-            fileSearchFiles.isNotEmpty
-                ? ToolResourceFilesListModel(fileIds: fileSearchFiles)
-                : null,
-      );
-    }
+    // Always set toolResources explicitly, even with empty lists
+    // This tells the backend exactly what files the agent should have
+    // (empty list = clear all files, vs null = preserve existing files)
+    AgentToolResourcesModel toolResources = AgentToolResourcesModel(
+      codeInterpreter: ToolResourceFilesListModel(fileIds: codeInterpreterFiles),
+      fileSearch: ToolResourceFilesListModel(fileIds: fileSearchFiles),
+    );
 
     // Get the default model from the provider
     String? defaultModel = _getDefaultModel();
@@ -499,6 +502,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
           state.selectedGroupIds.isNotEmpty
               ? state.selectedGroupIds.toList()
               : null,
+      fileStorage: state.fileStorage,
     );
 
     logger.i(

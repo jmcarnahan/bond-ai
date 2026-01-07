@@ -29,7 +29,7 @@ from typing import Optional
 
 # Test configuration
 BACKEND_URL = "http://localhost:8000"
-ATLASSIAN_MCP_URL = "http://localhost:9000/mcp"
+ATLASSIAN_MCP_URL = os.environ.get("ATLASSIAN_MCP_URL", "http://localhost:9001/mcp")
 
 # Test user - must match your Okta user
 TEST_USER_EMAIL = os.environ.get("TEST_USER_EMAIL", "johncarnahan@bondableai.com")
