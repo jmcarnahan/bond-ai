@@ -47,7 +47,7 @@ class BondAITextBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -127,9 +127,9 @@ class BondAITextBox extends StatelessWidget {
               ),
             ),
             filled: true,
-            fillColor: enabled 
-                ? (readOnly 
-                    ? theme.colorScheme.surfaceContainerHighest 
+            fillColor: enabled
+                ? (readOnly
+                    ? theme.colorScheme.surfaceContainerHighest
                     : theme.colorScheme.surfaceContainerLow)
                 : theme.colorScheme.surfaceContainerHighest,
             floatingLabelBehavior: FloatingLabelBehavior.auto,
@@ -140,8 +140,8 @@ class BondAITextBox extends StatelessWidget {
             counterText: '',
           ),
           style: TextStyle(
-            color: enabled 
-                ? theme.colorScheme.onSurface 
+            color: enabled
+                ? theme.colorScheme.onSurface
                 : theme.colorScheme.onSurface.withValues(alpha: 0.6),
           ),
         ),

@@ -21,7 +21,7 @@ class Thread {
       id: json['id'] as String,
       name: json['name'] as String,
       description: json['description'] as String?,
-      createdAt: json['created_at'] != null 
+      createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String).toLocal()
           : null,
       updatedAt: json['updated_at'] != null
@@ -53,9 +53,9 @@ class Thread {
   }
 
   @override
-  int get hashCode => 
-      id.hashCode ^ 
-      name.hashCode ^ 
+  int get hashCode =>
+      id.hashCode ^
+      name.hashCode ^
       description.hashCode ^
       createdAt.hashCode ^
       updatedAt.hashCode;

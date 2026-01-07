@@ -8,7 +8,7 @@ import json
 import hashlib
 
 class AgentDefinition:
-    id: Optional[str] = None 
+    id: Optional[str] = None
     name: str
     description: str
     instructions: str
@@ -50,7 +50,7 @@ class AgentDefinition:
 
         if user_id is None:
             raise ValueError("User ID must be provided for agent definition.")
-        
+
         if name is None or name.strip() == "":
             raise ValueError("Agent name must be provided and cannot be empty.")
 
@@ -95,7 +95,7 @@ class AgentDefinition:
             # Process existing file_search resources
             if "vector_store_ids" in self.tool_resources["file_search"] and self.tool_resources["file_search"]["vector_store_ids"] is not None:
                 vector_store_ids.extend(self.tool_resources["file_search"]["vector_store_ids"])
-                
+
             if 'file_ids' in self.tool_resources["file_search"] and self.tool_resources["file_search"]["file_ids"] is not None:
                 self.provider.vectorstores.update_vector_store_file_ids(vector_store_id=default_vector_store_id, file_ids=self.tool_resources["file_search"]["file_ids"])
 
@@ -152,7 +152,7 @@ class AgentDefinition:
             "top_p": self.top_p,
             "file_storage": self.file_storage,
         }
-    
+
     def __str__(self):
         return json.dumps(self.__dict__(), sort_keys=True, indent=4)
 

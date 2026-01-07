@@ -31,11 +31,11 @@ class BondMessageParser {
 
     final assistantMessageRegex = RegExp(r'<_bondmessage[^>]*role="assistant"[^>]*>(.*?)(?:</_bondmessage>|$)', dotAll: true);
     final assistantMatch = assistantMessageRegex.firstMatch(accumulatedXml);
-    
+
     if (assistantMatch != null) {
       String rawBodyContent = assistantMatch.group(1) ?? '';
       String strippedContent = rawBodyContent.replaceAll(RegExp(r'<[^>]*>'), '').trim();
-      
+
       if (strippedContent.isNotEmpty) {
         stringToDisplayForUi = strippedContent;
       }
@@ -48,7 +48,7 @@ class BondMessageParser {
         if (tagContent.contains('role="system"')) {
           return stringToDisplayForUi;
         }
-        
+
         int bodyStartIndex = bondMessageStartTagMatch.end;
         if (bodyStartIndex <= accumulatedXml.length) {
           String contentAfterStartTag = accumulatedXml.substring(bodyStartIndex);
@@ -71,17 +71,17 @@ class BondMessageParser {
         }
       }
     }
-    
+
     return stringToDisplayForUi;
   }
 
   static List<ParsedBondMessage> parseAllBondMessages(String xmlString) {
     final List<ParsedBondMessage> messages = [];
-    
+
     if (xmlString.trim().isEmpty) {
       return messages;
     }
-    
+
     try {
       final wrappedXml = "<stream_wrapper>${xmlString.trim()}</stream_wrapper>";
       final XmlDocument doc = XmlDocument.parse(wrappedXml);
@@ -91,7 +91,7 @@ class BondMessageParser {
       for (final element in bondMessageElements) {
         String content = element.innerText.trim();
         String? imageData;
-        
+
         final messageType = element.getAttribute('type') ?? '';
         if (messageType == 'image_file' || messageType == 'image') {
           if (content.startsWith('data:image/png;base64,')) {
@@ -108,7 +108,7 @@ class BondMessageParser {
             }
           }
         }
-        
+
         messages.add(ParsedBondMessage(
           id: element.getAttribute('id') ?? '',
           threadId: element.getAttribute('thread_id') ?? '',
@@ -121,7 +121,7 @@ class BondMessageParser {
           parsingHadError: false,
         ));
       }
-      
+
     } catch (e) {
       messages.add(ParsedBondMessage(
         content: "Error parsing XML: ${e.toString()}",
@@ -129,7 +129,7 @@ class BondMessageParser {
         isErrorAttribute: true,
       ));
     }
-    
+
     return messages;
   }
 

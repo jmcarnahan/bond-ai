@@ -10,7 +10,7 @@ from unittest.mock import Mock, MagicMock
 
 class TestAttachmentConversion:
     """Test the convert_attachments_to_files method"""
-    
+
     def test_convert_attachments_with_code_interpreter(self):
         """Test converting attachments with code_interpreter tool type"""
         # Mock S3 client
@@ -35,14 +35,14 @@ class TestAttachmentConversion:
 
         # Create BedrockFilesProvider instance
         files_provider = BedrockFilesProvider(s3_client, provider, metadata)
-        
+
         # Mock get_file_details
         files_provider.get_file_details = Mock(side_effect=[[mock_file_details], [mock_file_details2]])
-        
+
         # Mock get_file_bytes to return test data
         test_bytes = io.BytesIO(b"test content")
         files_provider.get_file_bytes = Mock(return_value=test_bytes)
-        
+
         # Test attachments
         attachments = [
             {
@@ -54,10 +54,10 @@ class TestAttachmentConversion:
                 "tools": [{"type": "code_interpreter"}]
             }
         ]
-        
+
         # Convert attachments
         result = files_provider.convert_attachments_to_files(attachments)
-        
+
         # Verify result
         assert len(result) == 2
 
@@ -71,7 +71,7 @@ class TestAttachmentConversion:
         assert result[1]['name'] == 'bond_file_test456'
         assert result[1]['source']['sourceType'] == 'S3'
         assert result[1]['useCase'] == 'CODE_INTERPRETER'
-    
+
     def test_convert_attachments_with_file_search(self):
         """Test converting attachments with file_search tool type"""
         # Mock S3 client
@@ -90,14 +90,14 @@ class TestAttachmentConversion:
 
         # Create BedrockFilesProvider instance
         files_provider = BedrockFilesProvider(s3_client, provider, metadata)
-        
+
         # Mock get_file_details
         files_provider.get_file_details = Mock(return_value=[mock_file_details])
-        
+
         # Mock get_file_bytes
         test_bytes = io.BytesIO(b"test content")
         files_provider.get_file_bytes = Mock(return_value=test_bytes)
-        
+
         # Test attachments with file_search
         attachments = [
             {
@@ -105,16 +105,16 @@ class TestAttachmentConversion:
                 "tools": [{"type": "file_search"}]
             }
         ]
-        
+
         # Convert attachments
         result = files_provider.convert_attachments_to_files(attachments)
-        
+
         # Verify result
         assert len(result) == 1
         assert result[0]['name'] == 'bond_file_test789'
         assert result[0]['source']['sourceType'] == 'S3'  # Currently uses S3 (see TODO)
         assert result[0]['useCase'] == 'CHAT'  # file_search maps to CHAT
-    
+
     def test_convert_attachments_with_invalid_file_id(self):
         """Test handling invalid file IDs"""
         # Mock S3 client
@@ -133,14 +133,14 @@ class TestAttachmentConversion:
 
         # Create BedrockFilesProvider instance
         files_provider = BedrockFilesProvider(s3_client, provider, metadata)
-        
+
         # Mock get_file_details - only called for valid file
         files_provider.get_file_details = Mock(return_value=[mock_file_details])
-        
+
         # Mock get_file_bytes
         test_bytes = io.BytesIO(b"valid content")
         files_provider.get_file_bytes = Mock(return_value=test_bytes)
-        
+
         # Test attachments with invalid file_id
         attachments = [
             {
@@ -152,15 +152,15 @@ class TestAttachmentConversion:
                 "tools": [{"type": "code_interpreter"}]
             }
         ]
-        
+
         # Convert attachments
         result = files_provider.convert_attachments_to_files(attachments)
-        
+
         # Should only include valid file
         assert len(result) == 1
         assert result[0]['name'] == 'bond_file_valid'
         assert result[0]['source']['sourceType'] == 'S3'  # Currently uses S3 (see TODO)
-    
+
     def test_convert_attachments_large_file(self):
         """Test converting attachments with large files (>10MB)"""
         # Mock S3 client
@@ -179,10 +179,10 @@ class TestAttachmentConversion:
 
         # Create BedrockFilesProvider instance
         files_provider = BedrockFilesProvider(s3_client, provider, metadata)
-        
+
         # Mock get_file_details
         files_provider.get_file_details = Mock(return_value=[mock_file_details])
-        
+
         # Test attachment with large file
         attachments = [
             {
@@ -190,17 +190,17 @@ class TestAttachmentConversion:
                 "tools": [{"type": "code_interpreter"}]
             }
         ]
-        
+
         # Convert attachments
         result = files_provider.convert_attachments_to_files(attachments)
-        
+
         # Verify result - large file should use S3 location
         assert len(result) == 1
         assert result[0]['name'] == 'bond_file_large'
         assert result[0]['source']['sourceType'] == 'S3'
         assert result[0]['source']['s3Location']['uri'] == attachments[0]['file_id']
         assert result[0]['useCase'] == 'CODE_INTERPRETER'
-    
+
     def test_convert_empty_attachments(self):
         """Test converting empty attachments list"""
         # Mock S3 client

@@ -25,7 +25,7 @@ class InfoTooltip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Tooltip(
       message: message,
       padding: padding ?? const EdgeInsets.all(12.0),
@@ -68,7 +68,7 @@ class InfoIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return InfoTooltip(
       message: tooltip,
       child: Icon(

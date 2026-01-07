@@ -25,9 +25,9 @@ class AgentCard extends ConsumerWidget {
     if (authState is Authenticated) {
       currentUserId = authState.user.userId;
     }
-    
-    final bool isOwner = currentUserId != null && 
-        agent.metadata != null && 
+
+    final bool isOwner = currentUserId != null &&
+        agent.metadata != null &&
         (agent.metadata!['owner_user_id'] == currentUserId ||
          agent.metadata!['user_id'] == currentUserId);
 
@@ -41,7 +41,7 @@ class AgentCard extends ConsumerWidget {
         onTap: () {
           // Update the selected agent
           ref.read(selectedAgentProvider.notifier).selectAgent(agent);
-          
+
           // Navigate to the chat tab within the navigation shell
           final navItems = ref.read(bottomNavItemsProvider);
           final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');

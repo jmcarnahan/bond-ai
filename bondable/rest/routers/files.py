@@ -41,14 +41,14 @@ async def upload_file(
     try:
         file_content = await file.read()
         file_name = file.filename
-        
+
         file_details = provider.files.get_or_create_file_id(
             user_id=current_user.user_id,
             file_tuple=(file_name, file_content)
         )
-        
+
         suggested_tool = get_suggested_tool(file_details.mime_type)
-        
+
         LOGGER.info(f"File '{file_name}' processed for user {current_user.user_id} ({current_user.email}). Provider File ID: {file_details.file_id}, MIME type: {file_details.mime_type}, Suggested tool: {suggested_tool}")
         return FileUploadResponse(
             provider_file_id=file_details.file_id,
@@ -57,7 +57,7 @@ async def upload_file(
             suggested_tool=suggested_tool,
             message="File processed successfully."
         )
-        
+
     except openai.APIError as e:
         LOGGER.error(f"File provider API error while uploading file '{file.filename}' for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"File provider error: {str(e)}")
@@ -75,7 +75,7 @@ async def delete_file(
     """Delete a file from the provider and local metadata."""
     try:
         success = provider.files.delete_file(file_id=provider_file_id)
-        
+
         if success:
             LOGGER.info(f"File {provider_file_id} deletion process completed by user {current_user.user_id} ({current_user.email}).")
             return FileDeleteResponse(
@@ -115,15 +115,15 @@ async def get_file_details(
     # TODO: we should make sure that the file_ids belong to the current user
     try:
         file_details_list = provider.files.get_file_details(file_ids)
-        
+
         # Filter to only return files owned by the current user for security
         user_files = [
-            details for details in file_details_list 
+            details for details in file_details_list
             if details.owner_user_id == current_user.user_id
         ]
-        
+
         LOGGER.info(f"Retrieved {len(user_files)} file details for user {current_user.user_id} ({current_user.email})")
-        
+
         return [
             FileDetailsResponse(
                 file_id=details.file_id,
@@ -134,7 +134,7 @@ async def get_file_details(
             )
             for details in user_files
         ]
-        
+
     except Exception as e:
         LOGGER.error(f"Error retrieving file details for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not retrieve file details: {str(e)}")

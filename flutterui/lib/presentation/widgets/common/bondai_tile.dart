@@ -61,7 +61,7 @@ class BondAITile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isSelected = selected || (value ?? false);
-    
+
     return Container(
       margin: EdgeInsets.only(bottom: AppSpacing.md),
       decoration: BoxDecoration(
@@ -71,8 +71,8 @@ class BondAITile extends StatelessWidget {
                 color: isSelected
                     ? (selectedBorderColor ?? theme.colorScheme.primary.withValues(alpha: 0.5))
                     : (borderColor ?? theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
-                width: isSelected 
-                    ? (selectedBorderWidth ?? 2) 
+                width: isSelected
+                    ? (selectedBorderWidth ?? 2)
                     : (borderWidth ?? 1),
               )
             : null,
@@ -111,7 +111,7 @@ class BondAITile extends StatelessWidget {
           ),
           dense: dense,
         );
-        
+
       case BondAITileType.radio:
         return RadioListTile<bool>(
           title: _buildTitle(theme),
@@ -130,7 +130,7 @@ class BondAITile extends StatelessWidget {
           ),
           dense: dense,
         );
-        
+
       case BondAITileType.switch_:
         return SwitchListTile(
           title: _buildTitle(theme),
@@ -148,7 +148,7 @@ class BondAITile extends StatelessWidget {
           ),
           dense: dense,
         );
-        
+
       case BondAITileType.selectable:
       case BondAITileType.normal:
         return ListTile(
@@ -191,7 +191,7 @@ class BondAITile extends StatelessWidget {
 
   Widget? _buildSubtitle(ThemeData theme) {
     if (subtitle == null && description == null) return null;
-    
+
     if (description != null && subtitle != null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -216,7 +216,7 @@ class BondAITile extends StatelessWidget {
         ],
       );
     }
-    
+
     return Text(
       subtitle ?? description!,
       style: theme.textTheme.bodySmall?.copyWith(
@@ -260,7 +260,7 @@ class BondAITileGroup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Padding(
       padding: padding ?? EdgeInsets.zero,
       child: Column(

@@ -65,11 +65,11 @@ class AgentModelSection extends ConsumerWidget {
                               ),
                             ),
                             Text(
-                              defaultModel != null 
+                              defaultModel != null
                                   ? 'This model will be used for the agent'
                                   : 'Models are still loading or unavailable',
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: defaultModel == null 
+                                color: defaultModel == null
                                     ? theme.colorScheme.error.withValues(alpha: 0.8)
                                     : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                               ),

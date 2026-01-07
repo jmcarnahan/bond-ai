@@ -86,18 +86,18 @@ def run_agent_interaction_test(
             agent.broadcast_message(prompt_text, thread_id)
             response_thread = threading.Thread(target=agent.broadcast_response, args=(None, thread_id), daemon=True)
             response_thread.start()
-            
+
             prompt_messages_received = 0
             while True:
                 try:
                     bond_msg = conn.wait_for_message(timeout=5)
                     if bond_msg is None:
                         break
-                    
+
                     if bond_msg.role != "user":
                         collected_messages.append(bond_msg)
                         prompt_messages_received += 1
-                    
+
                     if bond_msg.is_done:
                         break
                 except BrokerConnectionEmpty:
@@ -105,9 +105,9 @@ def run_agent_interaction_test(
                 except Exception as e:
                     LOGGER.error(f"Error waiting for message: {e}")
                     break
-            
+
             response_thread.join()
-            
+
             assert prompt_messages_received >= expected_min_responses, \
                 f"Expected at least {expected_min_responses} response(s) for prompt '{prompt_text}', got {prompt_messages_received}"
 
@@ -182,14 +182,14 @@ def test_synth_agent_code_interpreter(provider_fixture, user_id_session, caplog)
         model="gpt-4.1-nano",
         user_id=user_id_session
     )
-    
+
     initial_prompt = agent_def.metadata.get('initial_prompt')
     prompts = [
         initial_prompt,
         "How many people are there in the dataset?",
         "What is the average height? (Provide just the number)"
     ]
-    
+
     responses = run_agent_interaction_test(
         provider=provider_fixture,
         user_id=user_id_session,
@@ -202,11 +202,11 @@ def test_synth_agent_code_interpreter(provider_fixture, user_id_session, caplog)
     # For now, let's simplify and check the first response block for the initial prompt's expected output
     # This relies on the order of prompts and responses being maintained.
     # We'll check responses that are not from the 'user' role.
-    
+
     # Get the message_id of the user's initial prompt message
     # This requires modifying run_agent_interaction_test or how agent.broadcast_message is called and its return captured.
     # For now, let's assume the first block of non-user responses is for the first prompt.
-    
+
     # Find the responses related to the first prompt (initial_prompt)
     # This is tricky without direct prompt-response linking in collected_messages.
     # We'll assume the first batch of assistant messages are for the first prompt.

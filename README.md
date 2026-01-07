@@ -33,7 +33,7 @@ cd flutterui && flutter run -d chrome --web-port=5000 --target lib/main.dart
 
 ## Prerequisites
 
-- **Python 3.12** 
+- **Python 3.12**
 - **Poetry** (for Python dependency management)
 - **Flutter SDK** (3.7.2 or higher)
 - **Chrome browser** (for Flutter web development)

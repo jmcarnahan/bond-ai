@@ -20,7 +20,7 @@ def configure_cache(type: CacheType):
 
 def bond_cache(func):
     """A decorator that provides a simple, thread-safe, global cache."""
-    if _CACHE_TYPE == CacheType.STREAMLIT:        
+    if _CACHE_TYPE == CacheType.STREAMLIT:
         LOGGER.debug("Using Streamlit cache")
         import streamlit as st
 
@@ -28,7 +28,7 @@ def bond_cache(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
             return func(*args, **kwargs)
-        
+
         return wrapper  # 🔥 This was missing!
 
 
@@ -37,16 +37,16 @@ def bond_cache(func):
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-            key = (func, args, frozenset(kwargs.items()))  
+            key = (func, args, frozenset(kwargs.items()))
 
             with _CACHE_LOCK:
                 if key in _GLOBAL_CACHE:
-                    return _GLOBAL_CACHE[key]  
+                    return _GLOBAL_CACHE[key]
 
-            result = func(*args, **kwargs)  
+            result = func(*args, **kwargs)
 
             with _CACHE_LOCK:
-                _GLOBAL_CACHE[key] = result 
+                _GLOBAL_CACHE[key] = result
 
             return result
 

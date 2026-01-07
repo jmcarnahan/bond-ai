@@ -33,7 +33,7 @@ class _CreateThreadDialogState extends ConsumerState<CreateThreadDialog> {
       await ref.read(threadsProvider.notifier).addThread(
         name: name.isNotEmpty ? name : null,
       );
-      
+
       if (mounted) {
         Navigator.of(context).pop();
       }

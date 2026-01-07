@@ -9,7 +9,7 @@ This guide explains the error handling system in the Bond AI Flutter application
 ### 1. **Critical Errors**
 - **Description**: Errors that break the application flow (missing required data, invalid routes)
 - **Action**: Navigate to home page with error message
-- **Examples**: 
+- **Examples**:
   - Missing agent details when opening chat
   - Invalid route parameters
   - Browser reload on pages requiring specific data
@@ -42,7 +42,7 @@ class MyScreen extends ConsumerStatefulWidget {
 }
 
 class _MyScreenState extends ConsumerState<MyScreen> with ErrorHandlingMixin {
-  
+
   void loadData() async {
     // Use withErrorHandling for async operations
     await withErrorHandling(
@@ -55,14 +55,14 @@ class _MyScreenState extends ConsumerState<MyScreen> with ErrorHandlingMixin {
       isCritical: false,  // Set to true for critical errors
     );
   }
-  
+
   void handleSpecificError() {
     try {
       // some operation
     } catch (e) {
       // For service errors
       handleServiceError(e, ref, customMessage: 'Custom error message');
-      
+
       // For critical errors
       handleCriticalError(e, ref, customMessage: 'Critical error occurred');
     }
