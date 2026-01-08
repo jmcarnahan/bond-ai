@@ -159,4 +159,77 @@ class ThreadService {
       throw Exception('Failed to delete thread $threadId: ${e.toString()}');
     }
   }
+
+  Future<void> submitFeedback(
+    String threadId,
+    String messageId,
+    String feedbackType,
+    String? feedbackMessage,
+  ) async {
+    logger.i(
+      "[ThreadService] submitFeedback called for message $messageId: $feedbackType",
+    );
+    try {
+      final headers = await _authService.authenticatedHeaders;
+      final body = json.encode({
+        'feedback_type': feedbackType,
+        'feedback_message': feedbackMessage,
+      });
+
+      final response = await _httpClient.put(
+        Uri.parse(
+          '${ApiConstants.baseUrl}${ApiConstants.threadsEndpoint}/$threadId/messages/$messageId/feedback',
+        ),
+        headers: headers,
+        body: body,
+      );
+
+      if (response.statusCode == 200) {
+        logger.i(
+          "[ThreadService] Submitted feedback for message $messageId: $feedbackType",
+        );
+        return;
+      } else {
+        logger.i(
+          "[ThreadService] Failed to submit feedback. Status: ${response.statusCode}, Body: ${response.body}",
+        );
+        throw Exception('Failed to submit feedback: ${response.statusCode}');
+      }
+    } catch (e) {
+      logger.i(
+        "[ThreadService] Error in submitFeedback for message $messageId: ${e.toString()}",
+      );
+      throw Exception('Failed to submit feedback: ${e.toString()}');
+    }
+  }
+
+  Future<void> deleteFeedback(String threadId, String messageId) async {
+    logger.i(
+      "[ThreadService] deleteFeedback called for message $messageId",
+    );
+    try {
+      final headers = await _authService.authenticatedHeaders;
+      final response = await _httpClient.delete(
+        Uri.parse(
+          '${ApiConstants.baseUrl}${ApiConstants.threadsEndpoint}/$threadId/messages/$messageId/feedback',
+        ),
+        headers: headers,
+      );
+
+      if (response.statusCode == 204) {
+        logger.i("[ThreadService] Deleted feedback for message $messageId");
+        return;
+      } else {
+        logger.i(
+          "[ThreadService] Failed to delete feedback. Status: ${response.statusCode}, Body: ${response.body}",
+        );
+        throw Exception('Failed to delete feedback: ${response.statusCode}');
+      }
+    } catch (e) {
+      logger.i(
+        "[ThreadService] Error in deleteFeedback for message $messageId: ${e.toString()}",
+      );
+      throw Exception('Failed to delete feedback: ${e.toString()}');
+    }
+  }
 }
