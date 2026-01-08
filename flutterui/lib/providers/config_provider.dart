@@ -28,8 +28,8 @@ final bottomNavItemsProvider = Provider<List<BottomNavItem>>((ref) {
 
   // Then add the core items
   items.addAll(const [
-    BottomNavItem(icon: Icons.chat, label: 'Chat'),
-    BottomNavItem(icon: Icons.list, label: 'Threads'),
+    BottomNavItem(icon: Icons.chat, label: 'Conversation'),
+    BottomNavItem(icon: Icons.list, label: 'History'),
   ]);
 
   return items;
