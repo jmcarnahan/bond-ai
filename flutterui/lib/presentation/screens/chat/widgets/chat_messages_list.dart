@@ -61,6 +61,14 @@ class _ChatMessagesListState extends ConsumerState<ChatMessagesList> {
     });
   }
 
+  void _handleFeedbackChanged(String messageId, String? feedbackType, String? feedbackMessage) {
+    ref.read(chatSessionNotifierProvider.notifier).updateMessageFeedback(
+      messageId,
+      feedbackType,
+      feedbackMessage,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final chatState = ref.watch(chatSessionNotifierProvider);
@@ -81,6 +89,8 @@ class _ChatMessagesListState extends ConsumerState<ChatMessagesList> {
           isSendingMessage: chatState.isSendingMessage,
           isLastMessage: isLastMessage,
           imageCache: widget.imageCache,
+          threadId: chatState.currentThreadId,
+          onFeedbackChanged: _handleFeedbackChanged,
         );
       },
     );

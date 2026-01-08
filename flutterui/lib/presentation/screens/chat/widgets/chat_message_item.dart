@@ -7,12 +7,16 @@ import 'package:flutterui/data/models/message_model.dart';
 import 'package:flutterui/providers/cached_agent_details_provider.dart';
 import 'package:flutterui/presentation/widgets/agent_icon.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/file_card.dart';
+import 'package:flutterui/presentation/screens/chat/widgets/feedback_dialog.dart';
+import 'package:flutterui/providers/services/service_providers.dart';
 
-class ChatMessageItem extends ConsumerWidget {
+class ChatMessageItem extends ConsumerStatefulWidget {
   final Message message;
   final bool isSendingMessage;
   final bool isLastMessage;
   final Map<String, Uint8List> imageCache;
+  final String? threadId;
+  final Function(String messageId, String? feedbackType, String? feedbackMessage)? onFeedbackChanged;
 
   const ChatMessageItem({
     super.key,
@@ -20,10 +24,26 @@ class ChatMessageItem extends ConsumerWidget {
     required this.isSendingMessage,
     required this.isLastMessage,
     required this.imageCache,
+    this.threadId,
+    this.onFeedbackChanged,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ChatMessageItem> createState() => _ChatMessageItemState();
+}
+
+class _ChatMessageItemState extends ConsumerState<ChatMessageItem> {
+  bool _showFeedbackDialog = false;
+  String? _selectedFeedbackType;
+  bool _isSubmitting = false;
+
+  Message get message => widget.message;
+  bool get isSendingMessage => widget.isSendingMessage;
+  bool get isLastMessage => widget.isLastMessage;
+  Map<String, Uint8List> get imageCache => widget.imageCache;
+
+  @override
+  Widget build(BuildContext context) {
     // Skip rendering messages with empty content (except when showing typing indicator)
     if (message.content.isEmpty &&
         !(message.role == 'assistant' &&
@@ -35,6 +55,7 @@ class ChatMessageItem extends ConsumerWidget {
     final isUserMessage = message.role == 'user';
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final showFeedbackThumbs = !isUserMessage && !isSendingMessage && message.content.isNotEmpty;
 
     return RepaintBoundary(
       child: Padding(
@@ -59,29 +80,57 @@ class ChatMessageItem extends ConsumerWidget {
               const SizedBox(width: 8),
             ],
             Flexible(
-              child: Container(
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.75,
-                ),
-                padding: const EdgeInsets.symmetric(
-                  vertical: 10.0,
-                  horizontal: 14.0,
-                ),
-                decoration: BoxDecoration(
-                  color: isUserMessage
-                      ? colorScheme.primary
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(16.0),
-                ),
-                child: DefaultTextStyle(
-                  style: TextStyle(
-                    color: isUserMessage
-                        ? colorScheme.onPrimary
-                        : colorScheme.onSurfaceVariant,
-                    fontSize: 14,
+              child: Column(
+                crossAxisAlignment: isUserMessage
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.75,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 10.0,
+                      horizontal: 14.0,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isUserMessage
+                          ? colorScheme.primary
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(16.0),
+                    ),
+                    child: DefaultTextStyle(
+                      style: TextStyle(
+                        color: isUserMessage
+                            ? colorScheme.onPrimary
+                            : colorScheme.onSurfaceVariant,
+                        fontSize: 14,
+                      ),
+                      child: _buildMessageContent(context),
+                    ),
                   ),
-                  child: _buildMessageContent(context),
-                ),
+                  if (showFeedbackThumbs)
+                    _buildFeedbackThumbs(colorScheme),
+                  if (_showFeedbackDialog && _selectedFeedbackType != null)
+                    Container(
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.of(context).size.width * 0.75,
+                      ),
+                      child: FeedbackDialog(
+                        feedbackType: _selectedFeedbackType!,
+                        existingMessage: message.feedbackMessage,
+                        isEditing: message.hasFeedback,
+                        onCancel: () {
+                          setState(() {
+                            _showFeedbackDialog = false;
+                            _selectedFeedbackType = null;
+                          });
+                        },
+                        onSubmit: _handleFeedbackSubmit,
+                        onDelete: message.hasFeedback ? _handleFeedbackDelete : null,
+                      ),
+                    ),
+                ],
               ),
             ),
             if (isUserMessage) ...[
@@ -102,6 +151,103 @@ class ChatMessageItem extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Widget _buildFeedbackThumbs(ColorScheme colorScheme) {
+    final hasUpFeedback = message.feedbackType == 'up';
+    final hasDownFeedback = message.feedbackType == 'down';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, left: 8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _FeedbackThumb(
+            isUp: true,
+            isFilled: hasUpFeedback,
+            isSubmitting: _isSubmitting,
+            colorScheme: colorScheme,
+            onTap: () => _handleThumbTap('up'),
+          ),
+          const SizedBox(width: 4),
+          _FeedbackThumb(
+            isUp: false,
+            isFilled: hasDownFeedback,
+            isSubmitting: _isSubmitting,
+            colorScheme: colorScheme,
+            onTap: () => _handleThumbTap('down'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleThumbTap(String feedbackType) {
+    setState(() {
+      _selectedFeedbackType = feedbackType;
+      _showFeedbackDialog = true;
+    });
+  }
+
+  Future<void> _handleFeedbackSubmit(String feedbackType, String? feedbackMessage) async {
+    if (widget.threadId == null) return;
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final threadService = ref.read(threadServiceProvider);
+      await threadService.submitFeedback(
+        widget.threadId!,
+        message.id,
+        feedbackType,
+        feedbackMessage,
+      );
+
+      widget.onFeedbackChanged?.call(message.id, feedbackType, feedbackMessage);
+
+      if (mounted) {
+        setState(() {
+          _showFeedbackDialog = false;
+          _selectedFeedbackType = null;
+          _isSubmitting = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to submit feedback: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleFeedbackDelete() async {
+    if (widget.threadId == null) return;
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final threadService = ref.read(threadServiceProvider);
+      await threadService.deleteFeedback(widget.threadId!, message.id);
+
+      widget.onFeedbackChanged?.call(message.id, null, null);
+
+      if (mounted) {
+        setState(() {
+          _showFeedbackDialog = false;
+          _selectedFeedbackType = null;
+          _isSubmitting = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete feedback: $e')),
+        );
+      }
+    }
   }
 
   Widget _buildMessageContent(BuildContext context) {
@@ -301,6 +447,42 @@ class _AssistantAvatar extends StatelessWidget {
           Icons.smart_toy_outlined,
           color: colorScheme.primary,
           size: 20,
+        ),
+      ),
+    );
+  }
+}
+
+class _FeedbackThumb extends StatelessWidget {
+  final bool isUp;
+  final bool isFilled;
+  final bool isSubmitting;
+  final ColorScheme colorScheme;
+  final VoidCallback onTap;
+
+  const _FeedbackThumb({
+    required this.isUp,
+    required this.isFilled,
+    required this.isSubmitting,
+    required this.colorScheme,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: isSubmitting ? null : onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Icon(
+          isUp
+              ? (isFilled ? Icons.thumb_up : Icons.thumb_up_outlined)
+              : (isFilled ? Icons.thumb_down : Icons.thumb_down_outlined),
+          size: 16,
+          color: isFilled
+              ? colorScheme.primary
+              : colorScheme.onSurfaceVariant.withAlpha(153),
         ),
       ),
     );
