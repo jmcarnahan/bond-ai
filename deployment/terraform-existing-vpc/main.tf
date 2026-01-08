@@ -49,8 +49,8 @@ resource "aws_secretsmanager_secret_version" "db_credentials" {
   secret_string = jsonencode({
     username = "bondadmin"
     password = random_password.db_password.result
-    engine   = "postgres"
-    host     = aws_db_instance.main.address
+    engine   = var.use_aurora ? "aurora-postgresql" : "postgres"
+    host     = local.database_endpoint
     port     = 5432
     dbname   = "bondai"
   })
