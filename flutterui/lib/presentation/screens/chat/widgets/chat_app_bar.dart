@@ -57,7 +57,7 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  "${appTheme.name} Companion",
+                  "Conversation",
                   style: TextStyle(
                     color: theme.colorScheme.onSurface,
                     fontSize: 18,
