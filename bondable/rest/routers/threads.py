@@ -1,10 +1,11 @@
 from typing import Annotated, List, Optional, Dict, Any
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 import logging
 
 from bondable.bond.providers.provider import Provider
 from bondable.rest.models.auth import User
-from bondable.rest.models.threads import ThreadRef, CreateThreadRequest, MessageRef
+from bondable.rest.models.threads import ThreadRef, CreateThreadRequest, MessageRef, MessageFeedbackRequest, MessageFeedbackResponse
 from bondable.rest.dependencies.auth import get_current_user
 from bondable.rest.dependencies.providers import get_bond_provider
 
@@ -126,8 +127,13 @@ async def get_messages(
                         actual_content = '[Image]'
 
             # Extract agent_id - BondMessage objects have agent_id attribute directly
-            metadata = getattr(msg_obj, 'metadata', {})
-            agent_id = metadata['agent_id'] if 'agent_id' in metadata else None
+            metadata = getattr(msg_obj, 'metadata', {}) or {}
+            agent_id = metadata.get('agent_id')
+
+            # Extract feedback from metadata
+            feedback = metadata.get('feedback', {}) or {}
+            feedback_type = feedback.get('type')
+            feedback_message = feedback.get('message')
 
             message_refs.append(MessageRef(
                 id=getattr(msg_obj, 'message_id', getattr(msg_obj, 'id', "unknown_id")),
@@ -136,7 +142,9 @@ async def get_messages(
                 content=actual_content,
                 image_data=image_data,
                 agent_id=agent_id,
-                metadata=metadata
+                metadata=metadata,
+                feedback_type=feedback_type,
+                feedback_message=feedback_message
             ))
         return message_refs
 
@@ -148,3 +156,79 @@ async def get_messages(
                 detail=f"Thread {thread_id} not found or messages not accessible."
             )
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not fetch messages.")
+
+
+@router.put("/{thread_id}/messages/{message_id}/feedback", response_model=MessageFeedbackResponse)
+async def update_message_feedback(
+    thread_id: str,
+    message_id: str,
+    request: MessageFeedbackRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    provider: Provider = Depends(get_bond_provider)
+):
+    """Update or create feedback for a specific message."""
+    try:
+        # Validate feedback_type
+        if request.feedback_type not in ('up', 'down'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="feedback_type must be 'up' or 'down'"
+            )
+
+        feedback = provider.threads.update_message_feedback(
+            message_id=message_id,
+            user_id=current_user.user_id,
+            feedback_type=request.feedback_type,
+            feedback_message=request.feedback_message
+        )
+
+        LOGGER.info(f"User {current_user.user_id} ({current_user.email}) updated feedback for message {message_id}: {request.feedback_type}")
+
+        return MessageFeedbackResponse(
+            message_id=message_id,
+            feedback_type=feedback['type'],
+            feedback_message=feedback.get('message'),
+            updated_at=datetime.fromisoformat(feedback['updated_at'])
+        )
+
+    except ValueError as e:
+        LOGGER.warning(f"Message not found for feedback update: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        LOGGER.error(f"Error updating feedback for message {message_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not update feedback.")
+
+
+@router.delete("/{thread_id}/messages/{message_id}/feedback", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_message_feedback(
+    thread_id: str,
+    message_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    provider: Provider = Depends(get_bond_provider)
+):
+    """Delete feedback for a specific message."""
+    try:
+        deleted = provider.threads.delete_message_feedback(
+            message_id=message_id,
+            user_id=current_user.user_id
+        )
+
+        if deleted:
+            LOGGER.info(f"User {current_user.user_id} ({current_user.email}) deleted feedback for message {message_id}")
+        else:
+            LOGGER.debug(f"No feedback to delete for message {message_id}")
+
+    except ValueError as e:
+        LOGGER.warning(f"Message not found for feedback deletion: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        LOGGER.error(f"Error deleting feedback for message {message_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not delete feedback.")
