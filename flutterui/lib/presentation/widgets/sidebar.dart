@@ -72,7 +72,7 @@ class AppSidebar extends ConsumerWidget {
           ),
           ListTile(
             leading: Icon(Icons.forum_outlined, color: currentPrimaryColor),
-            title: Text('Threads', style: TextStyle(color: currentOnSurfaceColor)),
+            title: Text('History', style: TextStyle(color: currentOnSurfaceColor)),
             onTap: () {
               Navigator.pop(context);
               if (ModalRoute.of(context)?.settings.name != '/threads') {

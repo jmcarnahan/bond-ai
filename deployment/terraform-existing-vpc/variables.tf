@@ -51,6 +51,26 @@ variable "db_allocated_storage" {
   default     = 20
 }
 
+# Main Database Aurora Configuration
+# Separate from Knowledge Base Aurora (defined in knowledge-base.tf)
+variable "use_aurora" {
+  description = "Use Aurora Serverless v2 instead of RDS for main database"
+  type        = bool
+  default     = false
+}
+
+variable "aurora_main_min_capacity" {
+  description = "Minimum Aurora Serverless v2 capacity for main database (ACUs)"
+  type        = number
+  default     = 0.5
+}
+
+variable "aurora_main_max_capacity" {
+  description = "Maximum Aurora Serverless v2 capacity for main database (ACUs)"
+  type        = number
+  default     = 2
+}
+
 # OAuth Configuration
 variable "oauth2_providers" {
   description = "Comma-separated list of enabled OAuth2 providers"

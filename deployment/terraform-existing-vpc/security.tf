@@ -1,7 +1,9 @@
 # Security Groups for existing VPC deployment
 
-# Security Group for RDS
+# Security Group for RDS (only created when use_aurora = false)
 resource "aws_security_group" "rds" {
+  count = var.use_aurora ? 0 : 1
+
   name_prefix = "${var.project_name}-${var.environment}-rds-"
   description = "Security group for RDS database"
   vpc_id      = data.aws_vpc.existing.id

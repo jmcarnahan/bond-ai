@@ -38,7 +38,7 @@ final navigationIndexProvider = StateProvider<int>((ref) {
 
   // Default to chat screen if agents are enabled (index 1), otherwise chat is at index 0
   if (isAgentsEnabled && navItems.length > 1) {
-    final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
+    final chatIndex = navItems.indexWhere((item) => item.label == 'Conversation');
     return chatIndex != -1 ? chatIndex : 0;
   }
   return 0;
@@ -120,10 +120,20 @@ class MobileApp extends ConsumerWidget {
         initialRoute = '/auth-callback';
         logger.i('[MobileApp] Starting with auth-callback route');
       }
+
+      // Set browser tab title dynamically based on theme
+      html.document.title = appTheme.name;
+
+      // Update favicon dynamically based on theme
+      final favicon = html.document.querySelector('link[rel="icon"]');
+      if (favicon != null) {
+        final iconPath = appTheme.logoIcon.replaceFirst('assets/', '');
+        favicon.setAttribute('href', 'assets/$iconPath');
+      }
     }
 
     return MaterialApp(
-      title: 'Bond AI Mobile',
+      title: appTheme.name,
       debugShowCheckedModeBanner: false,
       theme: appTheme.themeData,
       initialRoute: initialRoute,
@@ -334,7 +344,7 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
     int initialIndex = 0;
     if (isAgentsEnabled && navItems.length > 1) {
       // Find chat index (should be 1 when agents are enabled)
-      final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
+      final chatIndex = navItems.indexWhere((item) => item.label == 'Conversation');
       if (chatIndex != -1) {
         initialIndex = chatIndex;
       }
@@ -402,7 +412,7 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
       // Navigate to chat when a thread is selected from the threads tab
       if (next != null && previous?.id != next.id) {
         // Find the chat tab index (it might be 0 or 1 depending on agents)
-        final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
+        final chatIndex = navItems.indexWhere((item) => item.label == 'Conversation');
         if (chatIndex != -1 && currentIndex != chatIndex) {
           ref.read(navigationIndexProvider.notifier).state = chatIndex;
         }
@@ -417,7 +427,7 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
         case 'Agents':
           pages.add(const AgentsScreen());
           break;
-        case 'Chat':
+        case 'Conversation':
           // Use ref.watch here to get the default agent
           final defaultAgentAsync = ref.watch(defaultAgentProvider);
           pages.add(
@@ -450,7 +460,7 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
             ),
           );
           break;
-        case 'Threads':
+        case 'History':
           pages.add(const ThreadsScreen());
           break;
       }
