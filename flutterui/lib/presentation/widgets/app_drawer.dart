@@ -151,7 +151,7 @@ class AppDrawer extends ConsumerWidget {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      '${appTheme.name} Companion',
+                      appTheme.name,
                       style: TextStyle(
                         color: theme.colorScheme.onSurface,
                         fontSize: 18,
@@ -222,7 +222,7 @@ class AppDrawer extends ConsumerWidget {
                   color: theme.colorScheme.onSurface,
                 ),
                 title: Text(
-                  'Chat',
+                  'Conversation',
                   style: TextStyle(
                     color: theme.colorScheme.onSurface,
                     fontSize: 16,
@@ -238,7 +238,7 @@ class AppDrawer extends ConsumerWidget {
 
                   // Find the target index
                   final chatIndex = navItems.indexWhere(
-                    (item) => item.label == 'Chat',
+                    (item) => item.label == 'Conversation',
                   );
 
                   // Set the navigation index BEFORE navigating so the shell picks it up
@@ -262,7 +262,7 @@ class AppDrawer extends ConsumerWidget {
                   color: theme.colorScheme.onSurface,
                 ),
                 title: Text(
-                  'Threads',
+                  'History',
                   style: TextStyle(
                     color: theme.colorScheme.onSurface,
                     fontSize: 16,
@@ -278,7 +278,7 @@ class AppDrawer extends ConsumerWidget {
 
                   // Find the target index
                   final threadsIndex = navItems.indexWhere(
-                    (item) => item.label == 'Threads',
+                    (item) => item.label == 'History',
                   );
 
                   // Set the navigation index BEFORE navigating so the shell picks it up
