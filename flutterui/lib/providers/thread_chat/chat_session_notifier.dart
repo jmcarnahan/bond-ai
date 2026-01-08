@@ -202,6 +202,27 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState>
     state = ChatSessionState();
   }
 
+  void updateMessageFeedback(String messageId, String? feedbackType, String? feedbackMessage) {
+    final messages = state.messages.map((msg) {
+      if (msg.id == messageId) {
+        if (feedbackType == null) {
+          // Delete feedback
+          return msg.copyWith(clearFeedback: true);
+        } else {
+          // Update feedback
+          return msg.copyWith(
+            feedbackType: feedbackType,
+            feedbackMessage: feedbackMessage,
+          );
+        }
+      }
+      return msg;
+    }).toList();
+
+    state = state.copyWith(messages: messages);
+    logger.i("[ChatSessionNotifier] Updated feedback for message $messageId: $feedbackType");
+  }
+
   @override
   void dispose() {
     chatStreamSubscription?.cancel();
