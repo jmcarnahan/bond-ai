@@ -516,3 +516,100 @@ class BedrockThreadsProvider(ThreadsProvider):
         except Exception as e:
             LOGGER.error(f"Error getting assistant message count for thread {thread_id}: {e}")
             return 0
+
+    def update_message_feedback(self, message_id: str, user_id: str,
+                                feedback_type: str, feedback_message: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Update feedback in message_metadata JSON field.
+
+        Args:
+            message_id: The message ID to update
+            user_id: User providing feedback (must own the message)
+            feedback_type: "up" or "down"
+            feedback_message: Optional feedback text
+
+        Returns:
+            Updated feedback dict with type, message, and updated_at
+        """
+        from sqlalchemy.orm.attributes import flag_modified
+
+        session = self.metadata.get_db_session()
+        try:
+            message = session.query(BedrockMessage)\
+                .filter_by(id=message_id, user_id=user_id)\
+                .first()
+
+            if not message:
+                raise ValueError(f"Message {message_id} not found for user {user_id}")
+
+            # Get existing metadata or create new dict
+            metadata = dict(message.message_metadata) if message.message_metadata else {}
+
+            # Update feedback in metadata
+            feedback = {
+                'type': feedback_type,
+                'message': feedback_message,
+                'updated_at': datetime.datetime.now().isoformat()
+            }
+            metadata['feedback'] = feedback
+
+            # Update the message metadata - assign new dict to trigger SQLAlchemy change detection
+            message.message_metadata = metadata
+            # Flag the JSON column as modified to ensure SQLAlchemy persists the change
+            flag_modified(message, 'message_metadata')
+            session.commit()
+
+            LOGGER.info(f"Updated feedback for message {message_id}: {feedback_type}")
+            return feedback
+
+        except Exception as e:
+            session.rollback()
+            LOGGER.error(f"Error updating message feedback: {e}")
+            raise
+        finally:
+            session.close()
+
+    def delete_message_feedback(self, message_id: str, user_id: str) -> bool:
+        """
+        Remove feedback from message_metadata.
+
+        Args:
+            message_id: The message ID to update
+            user_id: User removing feedback (must own the message)
+
+        Returns:
+            True if feedback was deleted, False if no feedback existed
+        """
+        from sqlalchemy.orm.attributes import flag_modified
+
+        session = self.metadata.get_db_session()
+        try:
+            message = session.query(BedrockMessage)\
+                .filter_by(id=message_id, user_id=user_id)\
+                .first()
+
+            if not message:
+                raise ValueError(f"Message {message_id} not found for user {user_id}")
+
+            # Get existing metadata as a new dict to avoid mutation issues
+            metadata = dict(message.message_metadata) if message.message_metadata else {}
+
+            # Remove feedback if it exists
+            if 'feedback' in metadata:
+                del metadata['feedback']
+                message.message_metadata = metadata
+                # Flag the JSON column as modified to ensure SQLAlchemy persists the change
+                flag_modified(message, 'message_metadata')
+                session.commit()
+                LOGGER.info(f"Deleted feedback for message {message_id}")
+                return True
+            else:
+                LOGGER.debug(f"No feedback to delete for message {message_id}")
+                return False
+
+        except Exception as e:
+            session.rollback()
+            LOGGER.error(f"Error deleting message feedback: {e}")
+            raise
+        finally:
+            session.close()
