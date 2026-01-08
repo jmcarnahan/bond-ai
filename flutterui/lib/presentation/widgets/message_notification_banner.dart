@@ -86,7 +86,7 @@ class _MessageNotificationBannerState extends ConsumerState<MessageNotificationB
 
     // Find the correct index for the chat screen
     final navItems = ref.read(bottomNavItemsProvider);
-    final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
+    final chatIndex = navItems.indexWhere((item) => item.label == 'Conversation');
 
     logger.d('[MessageNotificationBanner] Chat screen is at index: $chatIndex');
 
