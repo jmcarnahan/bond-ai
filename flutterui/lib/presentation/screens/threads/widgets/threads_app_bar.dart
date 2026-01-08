@@ -58,7 +58,7 @@ class ThreadsAppBar extends ConsumerWidget implements PreferredSizeWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  "Conversation History",
+                  "History",
                   style: TextStyle(
                     color: theme.colorScheme.onSurface,
                     fontSize: 18,
@@ -67,7 +67,7 @@ class ThreadsAppBar extends ConsumerWidget implements PreferredSizeWidget {
                   ),
                 ),
                 Text(
-                  "${appTheme.name} Companion",
+                  appTheme.brandingMessage,
                   style: TextStyle(
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     fontSize: 12,
