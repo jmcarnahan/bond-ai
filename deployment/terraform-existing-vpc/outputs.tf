@@ -6,24 +6,35 @@ output "vpc_id" {
 }
 
 output "database_endpoint" {
-  value = aws_db_instance.main.endpoint
-  sensitive = true
-  description = "RDS database endpoint"
+  value       = local.database_endpoint
+  sensitive   = true
+  description = "Database endpoint (RDS or Aurora depending on use_aurora)"
 }
 
 output "database_secret_arn" {
-  value = aws_secretsmanager_secret.db_credentials.arn
+  value       = aws_secretsmanager_secret.db_credentials.arn
   description = "ARN of the database credentials secret"
 }
 
 output "database_secret_name" {
-  value = aws_secretsmanager_secret.db_credentials.name
+  value       = aws_secretsmanager_secret.db_credentials.name
   description = "Name of the database credentials secret"
 }
 
 output "database_security_group_id" {
-  value = aws_security_group.rds.id
-  description = "Security group ID for RDS"
+  value       = var.use_aurora ? aws_security_group.aurora[0].id : aws_security_group.rds[0].id
+  description = "Security group ID for database"
+}
+
+output "aurora_reader_endpoint" {
+  value       = var.use_aurora ? aws_rds_cluster.aurora[0].reader_endpoint : null
+  description = "Aurora cluster reader endpoint (null if using RDS)"
+  sensitive   = true
+}
+
+output "use_aurora" {
+  value       = var.use_aurora
+  description = "Whether Aurora is being used instead of RDS"
 }
 
 output "s3_bucket_name" {
