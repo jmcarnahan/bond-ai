@@ -24,3 +24,17 @@ class MessageRef(BaseModel):
     agent_id: Optional[str] = None
     is_error: bool = False
     metadata: Optional[dict] = None
+    feedback_type: Optional[str] = None  # "up", "down", or None
+    feedback_message: Optional[str] = None
+
+
+class MessageFeedbackRequest(BaseModel):
+    feedback_type: str  # "up" or "down"
+    feedback_message: Optional[str] = None
+
+
+class MessageFeedbackResponse(BaseModel):
+    message_id: str
+    feedback_type: str
+    feedback_message: Optional[str]
+    updated_at: datetime
