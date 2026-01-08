@@ -44,7 +44,7 @@ class AgentCard extends ConsumerWidget {
 
           // Navigate to the chat tab within the navigation shell
           final navItems = ref.read(bottomNavItemsProvider);
-          final chatIndex = navItems.indexWhere((item) => item.label == 'Chat');
+          final chatIndex = navItems.indexWhere((item) => item.label == 'Conversation');
           if (chatIndex != -1) {
             ref.read(navigationIndexProvider.notifier).state = chatIndex;
           }
