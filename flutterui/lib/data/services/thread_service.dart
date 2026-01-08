@@ -190,13 +190,13 @@ class ThreadService {
         );
         return;
       } else {
-        logger.i(
+        logger.e(
           "[ThreadService] Failed to submit feedback. Status: ${response.statusCode}, Body: ${response.body}",
         );
         throw Exception('Failed to submit feedback: ${response.statusCode}');
       }
     } catch (e) {
-      logger.i(
+      logger.e(
         "[ThreadService] Error in submitFeedback for message $messageId: ${e.toString()}",
       );
       throw Exception('Failed to submit feedback: ${e.toString()}');
@@ -220,13 +220,13 @@ class ThreadService {
         logger.i("[ThreadService] Deleted feedback for message $messageId");
         return;
       } else {
-        logger.i(
+        logger.e(
           "[ThreadService] Failed to delete feedback. Status: ${response.statusCode}, Body: ${response.body}",
         );
         throw Exception('Failed to delete feedback: ${response.statusCode}');
       }
     } catch (e) {
-      logger.i(
+      logger.e(
         "[ThreadService] Error in deleteFeedback for message $messageId: ${e.toString()}",
       );
       throw Exception('Failed to delete feedback: ${e.toString()}');
