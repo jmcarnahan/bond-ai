@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/agent_provider.dart';
+import 'package:flutterui/providers/core_providers.dart';
 import 'package:flutterui/presentation/screens/agents/widgets/agent_card.dart';
 import 'package:flutterui/presentation/screens/agents/create_agent_screen.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 import 'package:flutterui/core/error_handling/error_handler.dart';
-import 'package:flutterui/core/theme/generated_theme.dart';
 import 'package:flutterui/presentation/widgets/app_drawer.dart';
 
 class AgentsScreen extends ConsumerStatefulWidget {
@@ -31,6 +31,7 @@ class _AgentsScreenState extends ConsumerState<AgentsScreen> with ErrorHandlingM
   @override
   Widget build(BuildContext context) {
     final agentsAsyncValue = ref.watch(agentsProvider);
+    final appTheme = ref.watch(appThemeProvider);
 
     final ThemeData currentThemeData = Theme.of(context);
     final TextTheme textTheme = currentThemeData.textTheme;
@@ -39,7 +40,7 @@ class _AgentsScreenState extends ConsumerState<AgentsScreen> with ErrorHandlingM
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight),
+        preferredSize: const Size.fromHeight(kToolbarHeight + 8),
         child: Container(
           decoration: BoxDecoration(
             color: colorScheme.surface,
@@ -62,17 +63,34 @@ class _AgentsScreenState extends ConsumerState<AgentsScreen> with ErrorHandlingM
                     color: colorScheme.onSurface.withValues(alpha: 0.1),
                   ),
                   child: Image.asset(
-                    const AppGeneratedTheme().logoIcon,
+                    appTheme.logoIcon,
                     height: 24,
                     width: 24,
                   ),
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  'Agents',
-                  style: textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Agents',
+                      style: TextStyle(
+                        color: colorScheme.onSurface,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    Text(
+                      appTheme.brandingMessage,
+                      style: TextStyle(
+                        color: colorScheme.onSurface.withValues(alpha: 0.7),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

@@ -1,7 +1,10 @@
 # RDS Database configuration for existing VPC
+# Only created when use_aurora = false
 
 # DB Subnet Group using existing subnets
 resource "aws_db_subnet_group" "main" {
+  count = var.use_aurora ? 0 : 1
+
   name       = "${var.project_name}-${var.environment}-db-subnet"
   subnet_ids = local.rds_subnet_ids
 
@@ -12,6 +15,8 @@ resource "aws_db_subnet_group" "main" {
 
 # RDS Instance
 resource "aws_db_instance" "main" {
+  count = var.use_aurora ? 0 : 1
+
   identifier = "${var.project_name}-${var.environment}-db"
 
   # Engine
@@ -33,8 +38,8 @@ resource "aws_db_instance" "main" {
   port     = 5432
 
   # Network - Using existing VPC subnets
-  db_subnet_group_name   = aws_db_subnet_group.main.name
-  vpc_security_group_ids = [aws_security_group.rds.id]
+  db_subnet_group_name   = aws_db_subnet_group.main[0].name
+  vpc_security_group_ids = [aws_security_group.rds[0].id]
   publicly_accessible    = false  # Keep in private subnets
 
   # Backup

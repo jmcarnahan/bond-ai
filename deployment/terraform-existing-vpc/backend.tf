@@ -47,7 +47,7 @@ resource "aws_apprunner_service" "backend" {
           JWT_SECRET_KEY = random_password.jwt_secret.result
           BEDROCK_AGENT_ROLE_ARN = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/BondAIBedrockAgentRole"
           BEDROCK_DEFAULT_MODEL = var.bedrock_default_model
-          METADATA_DB_URL = "postgresql://bondadmin:${random_password.db_password.result}@${aws_db_instance.main.address}:5432/bondai"
+          METADATA_DB_URL = "postgresql://bondadmin:${random_password.db_password.result}@${local.database_endpoint}:5432/bondai?sslmode=require"
 
           # Okta OAuth Configuration
           OAUTH2_ENABLED_PROVIDERS = var.oauth2_providers
@@ -120,7 +120,7 @@ resource "aws_apprunner_service" "backend" {
 
   depends_on = [
     null_resource.build_backend_image,
-    aws_db_instance.main,
     aws_secretsmanager_secret_version.db_credentials
   ]
+  # Note: Database dependency handled via local.database_endpoint
 }
