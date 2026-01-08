@@ -36,6 +36,8 @@ claude_state/
 
 docs/
 
+patches/
+
 # deployment/*
 
 # Terraform
