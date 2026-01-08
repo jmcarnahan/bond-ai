@@ -101,6 +101,7 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
         if (i == 0 && assistantMessageIndex < currentMessages.length) {
           currentMessages[assistantMessageIndex] =
               currentMessages[assistantMessageIndex].copyWith(
+                id: parsedMessage.id,  // Update to real backend message ID
                 type: parsedMessage.type,
                 content: parsedMessage.content,
                 imageData: parsedMessage.imageData,
@@ -112,7 +113,9 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
           );
         } else {
           final newMessage = Message(
-            id: (DateTime.now().millisecondsSinceEpoch + i).toString(),
+            id: parsedMessage.id.isNotEmpty
+                ? parsedMessage.id
+                : (DateTime.now().millisecondsSinceEpoch + i).toString(),
             type: parsedMessage.type,
             role: 'assistant',
             content: parsedMessage.content,
