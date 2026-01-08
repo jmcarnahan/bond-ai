@@ -26,7 +26,8 @@ class FeedbackDialog extends StatefulWidget {
 class _FeedbackDialogState extends State<FeedbackDialog>
     with SingleTickerProviderStateMixin {
   late final TextEditingController _controller;
-  late final FocusNode _focusNode;
+  late final FocusNode _textFieldFocusNode;
+  late final FocusNode _keyboardListenerFocusNode;
   late final AnimationController _animationController;
   late final Animation<double> _slideAnimation;
   late final Animation<double> _fadeAnimation;
@@ -35,7 +36,8 @@ class _FeedbackDialogState extends State<FeedbackDialog>
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.existingMessage ?? '');
-    _focusNode = FocusNode();
+    _textFieldFocusNode = FocusNode();
+    _keyboardListenerFocusNode = FocusNode();
 
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 200),
@@ -53,14 +55,15 @@ class _FeedbackDialogState extends State<FeedbackDialog>
     _animationController.forward();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focusNode.requestFocus();
+      _textFieldFocusNode.requestFocus();
     });
   }
 
   @override
   void dispose() {
     _controller.dispose();
-    _focusNode.dispose();
+    _textFieldFocusNode.dispose();
+    _keyboardListenerFocusNode.dispose();
     _animationController.dispose();
     super.dispose();
   }
@@ -86,7 +89,7 @@ class _FeedbackDialogState extends State<FeedbackDialog>
         );
       },
       child: KeyboardListener(
-        focusNode: FocusNode(),
+        focusNode: _keyboardListenerFocusNode,
         onKeyEvent: (event) {
           if (event is KeyDownEvent &&
               event.logicalKey == LogicalKeyboardKey.escape) {
@@ -132,7 +135,7 @@ class _FeedbackDialogState extends State<FeedbackDialog>
               const SizedBox(height: 8),
               TextField(
                 controller: _controller,
-                focusNode: _focusNode,
+                focusNode: _textFieldFocusNode,
                 maxLines: 2,
                 minLines: 1,
                 style: TextStyle(
