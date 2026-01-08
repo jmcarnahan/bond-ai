@@ -9,6 +9,8 @@ class Message {
   final String? imageData;
   final String? agentId;
   final bool isError;
+  final String? feedbackType;
+  final String? feedbackMessage;
 
   const Message({
     required this.id,
@@ -18,7 +20,11 @@ class Message {
     this.imageData,
     this.agentId,
     this.isError = false,
+    this.feedbackType,
+    this.feedbackMessage,
   });
+
+  bool get hasFeedback => feedbackType != null;
 
   factory Message.fromJson(Map<String, dynamic> json) {
     return Message(
@@ -29,6 +35,8 @@ class Message {
       imageData: json['image_data'] as String?,
       agentId: json['agent_id'] as String?,
       isError: json['is_error'] as bool? ?? false,
+      feedbackType: json['feedback_type'] as String?,
+      feedbackMessage: json['feedback_message'] as String?,
     );
   }
 
@@ -41,6 +49,8 @@ class Message {
       'image_data': imageData,
       'agent_id': agentId,
       'is_error': isError,
+      'feedback_type': feedbackType,
+      'feedback_message': feedbackMessage,
     };
   }
 
@@ -52,6 +62,9 @@ class Message {
     String? imageData,
     String? agentId,
     bool? isError,
+    String? feedbackType,
+    String? feedbackMessage,
+    bool clearFeedback = false,
   }) {
     return Message(
       id: id ?? this.id,
@@ -61,6 +74,8 @@ class Message {
       imageData: imageData ?? this.imageData,
       agentId: agentId ?? this.agentId,
       isError: isError ?? this.isError,
+      feedbackType: clearFeedback ? null : (feedbackType ?? this.feedbackType),
+      feedbackMessage: clearFeedback ? null : (feedbackMessage ?? this.feedbackMessage),
     );
   }
 }
