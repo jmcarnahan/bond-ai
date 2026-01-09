@@ -1,17 +1,20 @@
 # VPC Endpoints for AWS services
 
 # VPC Endpoint for S3 (Gateway type - FREE, no security groups needed)
-# Already exists in VPC - commenting out to avoid conflict
-# resource "aws_vpc_endpoint" "s3" {
-#   vpc_id            = data.aws_vpc.existing.id
-#   service_name      = "com.amazonaws.${var.aws_region}.s3"
-#   vpc_endpoint_type = "Gateway"
-#   route_table_ids   = concat(data.aws_route_tables.private.ids, [data.aws_route_table.main.id])
-#
-#   tags = {
-#     Name = "${var.project_name}-${var.environment}-s3-endpoint"
-#   }
-# }
+# Set create_s3_vpc_endpoint = false in tfvars if your VPC already has an S3 endpoint
+# Note: Only one S3 Gateway endpoint is allowed per VPC (AWS limitation)
+resource "aws_vpc_endpoint" "s3" {
+  count = var.create_s3_vpc_endpoint ? 1 : 0
+
+  vpc_id            = data.aws_vpc.existing.id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = concat(data.aws_route_tables.private.ids, [data.aws_route_table.main.id])
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-s3-endpoint"
+  }
+}
 
 # # VPC Endpoint for Secrets Manager (Interface type)
 # resource "aws_vpc_endpoint" "secretsmanager" {
