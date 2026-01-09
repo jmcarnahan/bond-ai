@@ -54,8 +54,9 @@ resource "aws_apprunner_service" "backend" {
           OKTA_DOMAIN = var.okta_domain
           OKTA_CLIENT_ID = var.okta_client_id
           OKTA_CLIENT_SECRET = jsondecode(data.aws_secretsmanager_secret_version.okta_secret.secret_string)["client_secret"]
-          # Okta redirect URI - uses variable to avoid circular dependency
-          OKTA_REDIRECT_URI = var.okta_redirect_uri != "" ? var.okta_redirect_uri : "https://PENDING_BACKEND_URL/auth/okta/callback"
+          # Okta redirect URI - will be set to the actual backend URL after deployment
+          # We can't reference self here, so using a placeholder that you'll need to update in Okta
+          OKTA_REDIRECT_URI = var.okta_redirect_uri != "" ? var.okta_redirect_uri : "https://BACKEND_URL_PLACEHOLDER/auth/okta/callback"
           OKTA_SCOPES = var.okta_scopes
 
           # AWS Cognito OAuth Configuration (only if configured)
@@ -78,8 +79,7 @@ resource "aws_apprunner_service" "backend" {
           BEDROCK_KB_DATA_SOURCE_ID    = try(aws_bedrockagent_data_source.s3[0].data_source_id, "")
           BEDROCK_KB_S3_PREFIX         = var.enable_knowledge_base ? "knowledge-base/" : ""
 
-          # MCP configuration (generic JSON variable approach)
-          # See patches/MCP_CONFIG_MIGRATION.md for migration from inline config
+          # MCP configuration (only set when provided)
           BOND_MCP_CONFIG = var.bond_mcp_config
 
           # Admin configuration
