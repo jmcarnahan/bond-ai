@@ -125,6 +125,9 @@ resource "aws_rds_cluster" "aurora" {
 
   storage_encrypted = true
 
+  # Enable Data API for Query Editor access
+  enable_http_endpoint = true
+
   backup_retention_period = var.environment == "prod" ? 7 : 1
   preferred_backup_window = "03:00-04:00"
 
