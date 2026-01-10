@@ -26,6 +26,12 @@ variable "app_runner_subnet_ids" {
   default     = []
 }
 
+variable "create_s3_vpc_endpoint" {
+  description = "Whether to create S3 VPC endpoint. Set to false if your VPC already has an S3 endpoint configured."
+  type        = bool
+  default     = true
+}
+
 variable "mcp_atlassian_service_url" {
   description = "MCP Atlassian service URL (set after first deployment to avoid circular dependency)"
   type        = string
