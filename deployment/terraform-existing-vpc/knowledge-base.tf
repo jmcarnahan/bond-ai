@@ -13,7 +13,7 @@
 variable "enable_knowledge_base" {
   description = "Whether to create Knowledge Base infrastructure"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "knowledge_base_embedding_model" {
@@ -155,7 +155,7 @@ resource "aws_rds_cluster" "aurora_kb" {
   cluster_identifier = "${var.project_name}-${var.environment}-aurora-kb"
   engine             = "aurora-postgresql"
   engine_mode        = "provisioned"
-  engine_version     = "15.12"  # Match RDS instance version
+  engine_version     = "15.12"
   database_name      = local.aurora_kb_database
   master_username    = "postgres"
   master_password    = random_password.aurora_kb_password[0].result
@@ -285,6 +285,15 @@ resource "null_resource" "init_aurora_kb" {
         --secret-arn "$SECRET_ARN" \
         --database "$DATABASE" \
         --sql "CREATE INDEX IF NOT EXISTS ${local.aurora_kb_table}_agent_id_idx ON ${local.aurora_kb_schema}.${local.aurora_kb_table} (agent_id);" \
+        --region "$REGION"
+
+      # Create GIN index on chunks for text search (required by Bedrock KB)
+      echo "Creating chunks text index..."
+      aws rds-data execute-statement \
+        --resource-arn "$CLUSTER_ARN" \
+        --secret-arn "$SECRET_ARN" \
+        --database "$DATABASE" \
+        --sql "CREATE INDEX IF NOT EXISTS ${local.aurora_kb_table}_chunks_idx ON ${local.aurora_kb_schema}.${local.aurora_kb_table} USING gin (to_tsvector('english', chunks));" \
         --region "$REGION"
 
       # Create HNSW index for vector search (pgvector 0.5+)

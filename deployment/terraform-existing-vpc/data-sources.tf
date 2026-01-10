@@ -53,8 +53,9 @@ locals {
     [for s in data.aws_subnet.private : s.id if s.availability_zone == az][0]
   ]
 
-  # Select subnets for App Runner VPC connector (limit to 3 subnets for better control)
-  app_runner_subnet_ids = slice(data.aws_subnets.private.ids, 0, min(3, length(data.aws_subnets.private.ids)))
+  # Select subnets for App Runner VPC connector
+  # Use explicitly provided subnet IDs if available, otherwise auto-detect
+  app_runner_subnet_ids = length(var.app_runner_subnet_ids) > 0 ? var.app_runner_subnet_ids : slice(data.aws_subnets.private.ids, 0, min(3, length(data.aws_subnets.private.ids)))
 
   # Select subnets for VPC endpoints (need different AZs for interface endpoints)
   vpc_endpoint_subnet_ids = [

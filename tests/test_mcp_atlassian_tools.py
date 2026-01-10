@@ -11,8 +11,7 @@ import os
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
-from mcp.client.streamable_http import StreamableHttpTransport
-from mcp import Client
+from mcp.client.streamable_http import StreamableHTTPTransport
 from bondable.bond.auth.mcp_token_cache import get_mcp_token_cache
 
 # Test user
@@ -43,23 +42,27 @@ async def main():
         "User-Agent": "Bond-AI-Test/1.0"
     }
 
-    transport = StreamableHttpTransport("http://localhost:9000/mcp", headers=headers)
+    mcp_url = os.environ.get("ATLASSIAN_MCP_URL", "http://localhost:9001/mcp")
+    transport = StreamableHTTPTransport(mcp_url, headers=headers)
 
-    async with Client(transport) as client:
-        # List all tools
-        tools = await client.list_tools()
+    async with transport:
+        async with ClientSession(*transport.get_read_write_pair()) as session:
+            await session.initialize()
 
-        print(f"Found {len(tools)} tools:\n")
+            # List all tools
+            tools = await session.list_tools()
 
-        for i, tool in enumerate(tools, 1):
-            print(f"{i}. {tool.name}")
-            print(f"   Description: {tool.description[:80]}...")
-            if hasattr(tool, 'inputSchema') and tool.inputSchema:
-                schema = tool.inputSchema
-                if 'properties' in schema:
-                    params = list(schema['properties'].keys())
-                    print(f"   Parameters: {', '.join(params[:5])}")
-            print()
+            print(f"Found {len(tools.tools)} tools:\n")
+
+            for i, tool in enumerate(tools.tools, 1):
+                print(f"{i}. {tool.name}")
+                print(f"   Description: {tool.description[:80]}...")
+                if hasattr(tool, 'inputSchema') and tool.inputSchema:
+                    schema = tool.inputSchema
+                    if 'properties' in schema:
+                        params = list(schema['properties'].keys())
+                        print(f"   Parameters: {', '.join(params[:5])}")
+                print()
 
     print(f"{'='*60}\n")
 

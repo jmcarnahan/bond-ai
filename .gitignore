@@ -1,6 +1,7 @@
 .env
 .env.bkup
 .env.*
+mcp-atlassian.env
 **/.metadata.db
 **/.bondcache.db
 # data # Commented out to allow flutterui/lib/data to be tracked
@@ -34,6 +35,8 @@ claude_state/
 .claude/
 
 docs/
+
+patches/
 
 # deployment/*
 
