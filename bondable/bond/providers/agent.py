@@ -501,7 +501,7 @@ class AgentProvider(ABC):
                 name="Home",
                 description="Your AI assistant for various tasks",
                 instructions="You are a helpful AI assistant. Help users with their questions and tasks.",
-                introduction="Hello! I'm your AI assistant. I can help you with various tasks, answer questions, and provide information.",
+                introduction="Tell me who you are and how you can assist me.",
                 reminder="",
                 model=self.get_default_model(),
                 tools=[{"type": "code_interpreter"}, {"type": "file_search"}],  # Enable code interpreter and file search

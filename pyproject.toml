@@ -26,7 +26,7 @@ fastapi = {extras = ["standard"], version = "^0.121.3"}
 uvicorn = ">=0.35"
 python-jose = "^3.4.0"
 mcp = {extras = ["cli"], version = "^1.23.1"}
-fastmcp = "^2.13.2"
+fastmcp = ">=2.14.0"
 magika = "^0.6.2"
 google-cloud-firestore = "^2.21.0"
 boto3 = "^1.38.39"
@@ -37,6 +37,9 @@ openpyxl = "^3.1.5"  # Required for XLSM to XLSX conversion
 websockets = ">=15.0.1"
 starlette = ">=0.49.1,<0.51.0"
 h11 = "^0.16.0"
+urllib3 = ">=2.6.3"
+authlib = ">=1.6.6"
+filelock = ">=3.20.1"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
