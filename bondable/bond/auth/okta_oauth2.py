@@ -85,11 +85,9 @@ class OktaOAuth2Provider(OAuth2Provider):
             'Accept': 'application/json'
         }
 
-        log_token_data = token_data.copy()
-        log_token_data['client_secret'] = log_token_data['client_secret'][:6] + '...' if log_token_data['client_secret'] else None
-        log_token_data['code'] = log_token_data['code'][:8] + '...' if log_token_data.get('code') else None
+        # Log token exchange with sensitive data masked
         LOGGER.debug(f"Token exchange headers: {headers}")
-        LOGGER.debug(f"Token exchange data: {log_token_data}")
+        LOGGER.debug(f"Token exchange: grant_type={token_data.get('grant_type')}, code=<masked>, client_id=<masked>")
         LOGGER.debug(f"Exchanging code for tokens at: {token_url}")
 
         response = requests.post(token_url, data=token_data, headers=headers)
