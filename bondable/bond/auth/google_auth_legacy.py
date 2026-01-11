@@ -20,7 +20,7 @@ class GoogleAuth:
     def __init__(self):
         config = Config.config()
         self.auth_info = config.get_auth_info()
-        LOGGER.debug(f"Google Auth initialized: redirect_uri={self.auth_info['redirect_uri']} scopes={self.auth_info['scopes']}")
+        LOGGER.debug(f"Google Auth initialized with {len(self.auth_info.get('scopes', []))} scopes")
 
     @classmethod
     @bond_cache

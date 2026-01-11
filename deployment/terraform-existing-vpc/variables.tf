@@ -160,6 +160,12 @@ variable "cors_allowed_origins" {
   default     = "http://localhost,http://localhost:3000,http://localhost:5000"
 }
 
+variable "allowed_redirect_domains" {
+  description = "Comma-separated list of allowed redirect domains for OAuth callbacks. Localhost and *.awsapprunner.com are always allowed by default. Add your custom domains here (e.g., 'example.com,api.example.com')"
+  type        = string
+  default     = ""
+}
+
 variable "bedrock_agent_role_name" {
   description = "Name of the Bedrock agent IAM role"
   type        = string

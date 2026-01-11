@@ -165,7 +165,7 @@ async def auth_callback_provider(provider: str, request: Request, bond_provider 
             import urllib.parse
             decoded_redirect_uri = urllib.parse.unquote(redirect_uri)
             flutter_redirect_url = f"{decoded_redirect_uri}?token={access_token}"
-            LOGGER.info(f"Mobile redirect to: {flutter_redirect_url}")
+            LOGGER.info(f"Mobile redirect to: {decoded_redirect_uri}")
         else:
             # Check if this is a web app request (no hash routing)
             user_agent = request.headers.get("user-agent", "").lower()
@@ -178,7 +178,7 @@ async def auth_callback_provider(provider: str, request: Request, bond_provider 
                 # Use hash routing for web app
                 flutter_redirect_url = f"{jwt_config.JWT_REDIRECT_URI}/#/auth-callback?token={access_token}"
 
-        LOGGER.info(f"Redirecting to: {flutter_redirect_url}")
+        LOGGER.info(f"Redirecting to auth callback at: {jwt_config.JWT_REDIRECT_URI}")
         return RedirectResponse(url=flutter_redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
     except ValueError as e:
@@ -197,8 +197,12 @@ async def list_auth_providers():
         # Get only enabled providers from config
         enabled_configs = config.get_oauth2_config()
 
+        # Use known provider list to avoid taint from secret-backed config
+        known_providers = ["google", "okta", "cognito"]
+        provider_names = [p for p in known_providers if p in enabled_configs]
+
         provider_info = []
-        for provider_name in enabled_configs.keys():
+        for provider_name in provider_names:
             try:
                 info = OAuth2ProviderFactory.get_provider_info(provider_name)
                 provider_info.append({
@@ -207,11 +211,11 @@ async def list_auth_providers():
                     "callback_url": info["callback_path"]
                 })
             except Exception as e:
-                LOGGER.warning(f"Could not get info for provider {provider_name}: {e}")
+                LOGGER.warning(f"Could not get info for provider {provider_name}")
 
         # Set default to first enabled provider or google if available
-        default_provider = "google" if "google" in enabled_configs else (
-            list(enabled_configs.keys())[0] if enabled_configs else "google"
+        default_provider = "google" if "google" in provider_names else (
+            provider_names[0] if provider_names else "google"
         )
 
         return {
