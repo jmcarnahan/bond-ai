@@ -87,7 +87,7 @@ class OktaOAuth2Provider(OAuth2Provider):
 
         # Log token exchange with sensitive data masked
         LOGGER.debug(f"Token exchange headers: {headers}")
-        LOGGER.debug(f"Token exchange: grant_type={token_data.get('grant_type')}, code=<masked>, client_id=<masked>")
+        LOGGER.debug("Token exchange: grant_type=authorization_code, code=<masked>, client_id=<masked>")
         LOGGER.debug(f"Exchanging code for tokens at: {token_url}")
 
         response = requests.post(token_url, data=token_data, headers=headers)
