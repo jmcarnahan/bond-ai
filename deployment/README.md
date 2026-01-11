@@ -342,6 +342,7 @@ This shows real-time status of:
 - **Secrets Manager**: Database and OAuth credentials
 - **Security Groups**: Network access control
 - **Bedrock Agent Role**: AI model access
+- **URL Redirect Validation**: OAuth callback redirect protection
 
 ### Authentication
 - **Okta OAuth2**: SSO authentication
@@ -427,6 +428,30 @@ After destroying, you can redeploy fresh:
 terraform init  # If you removed state files
 terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars -auto-approve
 ```
+
+## Security Configuration
+
+### URL Redirect Domain Allowlist
+
+The `allowed_redirect_domains` variable controls which domains are allowed for OAuth redirect callbacks. This prevents open redirect vulnerabilities.
+
+**Default Behavior (no configuration needed):**
+- `localhost`, `127.0.0.1`, `0.0.0.0` - Always allowed for development
+
+**Custom Domains:**
+If you're using a custom domain (e.g., `myapp.example.com`), add it to the allowlist:
+
+```hcl
+# In your .tfvars file
+allowed_redirect_domains = "example.com,myapp.example.com"
+```
+
+**Environment Variable:**
+The backend uses `ALLOWED_REDIRECT_DOMAINS` environment variable. Subdomains of allowed domains are automatically permitted.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `allowed_redirect_domains` | Comma-separated list of additional allowed domains | `""` (empty - uses defaults only) |
 
 ## Important Notes
 
