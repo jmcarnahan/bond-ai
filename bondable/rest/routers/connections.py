@@ -22,6 +22,7 @@ from bondable.bond.auth.mcp_token_cache import get_mcp_token_cache, TokenExpired
 from bondable.bond.auth.oauth_utils import generate_pkce_pair, generate_oauth_state
 from bondable.rest.models.auth import User
 from bondable.rest.dependencies.auth import get_current_user
+from bondable.utils.url_validation import is_safe_redirect_url
 
 router = APIRouter(prefix="/connections", tags=["Connections"])
 LOGGER = logging.getLogger(__name__)
@@ -450,6 +451,14 @@ async def oauth_callback(
 
     jwt_config = Config.config().get_jwt_config()
     frontend_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
+
+    # Validate redirect URL against allowed domains
+    if not is_safe_redirect_url(frontend_url):
+        LOGGER.error(f"[Connections] JWT_REDIRECT_URI is not on allowed domain list")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Server configuration error: invalid redirect URL"
+        )
 
     try:
         async with httpx.AsyncClient() as client:
