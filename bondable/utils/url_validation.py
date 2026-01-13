@@ -136,7 +136,11 @@ def is_safe_redirect_url(url: str) -> bool:
         return False
 
     except Exception as e:
-        LOGGER.error(f"Error validating redirect URL: {type(e).__name__}")
+        LOGGER.error(
+            "Error validating redirect URL: %s: %s",
+            type(e).__name__,
+            e,
+        )
         return False
 
 
