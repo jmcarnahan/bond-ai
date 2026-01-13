@@ -1,5 +1,11 @@
 # IAM Roles and Policies
 
+# Data source for MCP Atlassian OAuth secret (for backend access)
+data "aws_secretsmanager_secret" "mcp_atlassian_oauth_backend" {
+  count = var.mcp_atlassian_enabled ? 1 : 0
+  name  = var.mcp_atlassian_oauth_secret_name
+}
+
 # IAM Role for App Runner Instance
 resource "aws_iam_role" "app_runner_instance" {
   name = "${var.project_name}-${var.environment}-apprunner-instance-role"
@@ -46,10 +52,15 @@ resource "aws_iam_role_policy" "app_runner_instance" {
         Action = [
           "secretsmanager:GetSecretValue"
         ]
-        Resource = [
-          aws_secretsmanager_secret.db_credentials.arn,
-          data.aws_secretsmanager_secret.okta_secret.arn
-        ]
+        Resource = concat(
+          [
+            aws_secretsmanager_secret.db_credentials.arn,
+            data.aws_secretsmanager_secret.okta_secret.arn
+          ],
+          var.mcp_atlassian_enabled ? [
+            data.aws_secretsmanager_secret.mcp_atlassian_oauth_backend[0].arn
+          ] : []
+        )
       },
       {
         Effect = "Allow"

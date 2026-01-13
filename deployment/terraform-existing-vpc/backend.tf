@@ -74,6 +74,10 @@ resource "aws_apprunner_service" "backend" {
           # CORS configuration - uses variable to allow post-deployment tightening
           CORS_ALLOWED_ORIGINS = var.cors_allowed_origins
 
+          # Allowed redirect domains for OAuth callbacks (security)
+          # Localhost and *.awsapprunner.com are always allowed by default
+          ALLOWED_REDIRECT_DOMAINS = var.allowed_redirect_domains
+
           # Knowledge Base configuration (only set when KB is enabled)
           BEDROCK_KNOWLEDGE_BASE_ID    = try(aws_bedrockagent_knowledge_base.main[0].id, "")
           BEDROCK_KB_DATA_SOURCE_ID    = try(aws_bedrockagent_data_source.s3[0].data_source_id, "")
