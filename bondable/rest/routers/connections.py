@@ -53,7 +53,7 @@ def _resolve_secret_from_arn(secret_arn: str) -> Optional[str]:
             # Extract region from ARN (format: arn:aws:secretsmanager:REGION:ACCOUNT:secret:NAME)
             arn_parts = secret_arn.split(':')
             if len(arn_parts) < 6:
-                LOGGER.error(f"Invalid ARN format: {secret_arn}")
+                LOGGER.error("Invalid ARN format for secret identifier")
                 return None
             region = arn_parts[3]
             secret_id = secret_arn
@@ -61,7 +61,7 @@ def _resolve_secret_from_arn(secret_arn: str) -> Optional[str]:
             # It's just a secret name, use default region
             region = os.environ.get('AWS_REGION', 'us-west-2')
             secret_id = secret_arn
-            LOGGER.debug(f"Using secret name: {secret_arn}")
+            LOGGER.debug("Using configured secret name for AWS Secrets Manager lookup")
 
         # Create Secrets Manager client
         client = boto3.client('secretsmanager', region_name=region)
@@ -178,9 +178,9 @@ def _get_connection_configs() -> List[Dict[str, Any]]:
                     client_secret = _resolve_secret_from_arn(client_secret_arn)
                     if client_secret:
                         extra_config['client_secret'] = client_secret
-                        LOGGER.debug(f"Successfully resolved client_secret for connection '{name}'")
+                        LOGGER.debug("Successfully resolved client_secret from AWS Secrets Manager")
                     else:
-                        LOGGER.error(f"Failed to resolve client_secret for connection '{name}'")
+                        LOGGER.error("Failed to resolve client_secret from AWS Secrets Manager")
 
                 configs.append({
                     "name": name,
