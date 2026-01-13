@@ -2,6 +2,7 @@ import pytest
 import os
 import tempfile
 from unittest.mock import patch, MagicMock
+from urllib.parse import urlparse
 from fastapi.testclient import TestClient
 
 # --- Test Database Setup ---
@@ -60,9 +61,12 @@ class TestOktaOAuth2Provider:
         provider = OAuth2ProviderFactory.create_provider("okta", mock_okta_config)
         auth_url = provider.get_auth_url()
 
-        assert "trial-9457917.okta.com" in auth_url
+        # Verify URL uses the configured domain
+        parsed_url = urlparse(auth_url)
+        expected_domain = urlparse(mock_okta_config["domain"]).hostname
+        assert parsed_url.hostname == expected_domain
         assert "oauth2/default/v1/authorize" in auth_url
-        assert "client_id=test_client_id" in auth_url
+        assert f"client_id={mock_okta_config['client_id']}" in auth_url
         assert "response_type=code" in auth_url
         assert "scope=openid+profile+email" in auth_url
 
@@ -179,17 +183,22 @@ class TestOktaAuthenticationRoutes:
         assert okta_provider["login_url"] == "/login/okta"
         assert okta_provider["callback_url"] == "/auth/okta/callback"
 
-    def test_okta_login_redirect(self, test_client):
+    def test_okta_login_redirect(self, test_client, mock_okta_config):
         """Test Okta login redirect."""
         with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
             mock_provider = MagicMock()
-            mock_provider.get_auth_url.return_value = "https://trial-9457917.okta.com/oauth2/default/v1/authorize?..."
+            # Use domain and client_id from mock config instead of hardcoding
+            mock_auth_url = f"{mock_okta_config['domain']}/oauth2/default/v1/authorize?client_id={mock_okta_config['client_id']}"
+            mock_provider.get_auth_url.return_value = mock_auth_url
             mock_create.return_value = mock_provider
 
             response = test_client.get("/login/okta", follow_redirects=False)
 
             assert response.status_code == 307
-            assert "trial-9457917.okta.com" in response.headers["location"]
+            # Verify redirect uses the expected domain
+            parsed_location = urlparse(response.headers["location"])
+            expected_domain = urlparse(mock_okta_config["domain"]).hostname
+            assert parsed_location.hostname == expected_domain
 
     def test_okta_callback_success(self, test_client):
         """Test successful Okta OAuth callback."""

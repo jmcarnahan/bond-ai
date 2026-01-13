@@ -105,7 +105,7 @@ class Config:
                 response = client.get_secret_value(SecretId=secret_id)
                 return response['SecretString']
             except Exception as e:
-                LOGGER.error(f"Error getting AWS secret value {secret_id}: {e}")
+                LOGGER.error(f"Error getting AWS secret value")
                 return default
         else:
             # Use GCP Secrets Manager
@@ -115,7 +115,7 @@ class Config:
                 response = secrets.access_secret_version(name=secret_name)
                 return response.payload.data.decode("UTF-8")
             except Exception as e:
-                LOGGER.error(f"Error getting GCP secret value {secret_id}: {e}")
+                LOGGER.error(f"Error getting GCP secret value")
                 return default
 
     @classmethod
@@ -304,15 +304,15 @@ class Config:
             # Try to get from Secrets Manager
             secret_name = os.getenv('OKTA_SECRET_NAME', '')
             if secret_name:
-                LOGGER.info(f"Getting Okta client secret from Secrets Manager: {secret_name}")
+                LOGGER.info("Getting Okta client secret from Secrets Manager")
                 try:
                     secret_json = self.get_secret_value(secret_name, '{}')
                     secret_data = json.loads(secret_json)
                     client_secret = secret_data.get('client_secret', '')
                     if not client_secret:
-                        LOGGER.error(f"No 'client_secret' field found in secret {secret_name}")
+                        LOGGER.error("No 'client_secret' field found in Okta secret")
                 except Exception as e:
-                    LOGGER.error(f"Failed to get Okta client secret from Secrets Manager: {e}")
+                    LOGGER.error("Failed to get Okta client secret from Secrets Manager")
             else:
                 LOGGER.warning("No OKTA_CLIENT_SECRET or OKTA_SECRET_NAME configured")
 
