@@ -846,7 +846,7 @@ Please integrate any relevant insights from the documents with your analysis of 
                     # Log event type for debugging
                     event_type = list(event.keys())[0] if event else 'unknown'
                     last_event_type = event_type
-                    LOGGER.info(f"Processing event #{event_count}, type: {event_type}")
+                    LOGGER.debug(f"Processing event #{event_count}, type: {event_type}")
 
                     # Handle text chunks
                     if 'chunk' in event:
