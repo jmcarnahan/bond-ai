@@ -37,10 +37,11 @@ resource "null_resource" "build_backend_image" {
         exit 1
       fi
 
-      # Login to ECR
-      echo "Authenticating with ECR..."
+      # Login to ECR (use base registry URL, not repo-specific URL)
+      ECR_REGISTRY="${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
+      echo "Authenticating with ECR at $ECR_REGISTRY..."
       aws ecr get-login-password --region ${var.aws_region} | \
-        docker login --username AWS --password-stdin ${aws_ecr_repository.backend.repository_url}
+        docker login --username AWS --password-stdin $ECR_REGISTRY
 
       # Verify Dockerfile exists
       if [ ! -f "deployment/Dockerfile.backend" ]; then
@@ -129,10 +130,11 @@ resource "null_resource" "build_frontend_image" {
         exit 1
       fi
 
-      # Login to ECR
-      echo "Authenticating with ECR..."
+      # Login to ECR (use base registry URL, not repo-specific URL)
+      ECR_REGISTRY="${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
+      echo "Authenticating with ECR at $ECR_REGISTRY..."
       aws ecr get-login-password --region ${var.aws_region} | \
-        docker login --username AWS --password-stdin ${aws_ecr_repository.frontend.repository_url}
+        docker login --username AWS --password-stdin $ECR_REGISTRY
 
       # Check if maintenance mode is enabled
       if [ "${var.maintenance_mode}" = "true" ]; then
