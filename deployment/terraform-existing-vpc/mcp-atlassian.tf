@@ -201,10 +201,11 @@ resource "null_resource" "mirror_mcp_atlassian_image" {
         exit 1
       fi
 
-      # Login to ECR
-      echo "Authenticating with ECR..."
+      # Login to ECR (use base registry URL, not repo-specific URL)
+      ECR_REGISTRY="${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
+      echo "Authenticating with ECR at $ECR_REGISTRY..."
       aws ecr get-login-password --region ${var.aws_region} | \
-        docker login --username AWS --password-stdin ${aws_ecr_repository.mcp_atlassian[0].repository_url}
+        docker login --username AWS --password-stdin $ECR_REGISTRY
 
       # Pull from ghcr.io (force amd64 platform for AWS App Runner)
       echo "Pulling image from ghcr.io/sooperset/mcp-atlassian:latest (linux/amd64)..."
