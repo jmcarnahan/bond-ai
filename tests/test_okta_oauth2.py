@@ -187,8 +187,8 @@ class TestOktaAuthenticationRoutes:
         """Test Okta login redirect."""
         with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
             mock_provider = MagicMock()
-            # Use domain from mock config instead of hardcoding
-            mock_auth_url = f"{mock_okta_config['domain']}/oauth2/default/v1/authorize?client_id=test"
+            # Use domain and client_id from mock config instead of hardcoding
+            mock_auth_url = f"{mock_okta_config['domain']}/oauth2/default/v1/authorize?client_id={mock_okta_config['client_id']}"
             mock_provider.get_auth_url.return_value = mock_auth_url
             mock_create.return_value = mock_provider
 

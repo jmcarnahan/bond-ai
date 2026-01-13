@@ -29,6 +29,65 @@ LOGGER = logging.getLogger(__name__)
 
 
 # =============================================================================
+# Helper Functions
+# =============================================================================
+
+def _resolve_secret_from_arn(secret_arn: str) -> Optional[str]:
+    """
+    Resolve a secret value from AWS Secrets Manager ARN or name.
+
+    Args:
+        secret_arn: Either a full ARN (arn:aws:secretsmanager:REGION:ACCOUNT:secret:NAME)
+                   or just the secret name (NAME)
+
+    Returns:
+        The client_secret value from the secret, or None if resolution fails.
+    """
+    try:
+        import boto3
+        import json
+        import os
+
+        # Check if it's an ARN or just a secret name
+        if secret_arn.startswith('arn:aws:secretsmanager:'):
+            # Extract region from ARN (format: arn:aws:secretsmanager:REGION:ACCOUNT:secret:NAME)
+            arn_parts = secret_arn.split(':')
+            if len(arn_parts) < 6:
+                LOGGER.error("Invalid ARN format for secret identifier")
+                return None
+            region = arn_parts[3]
+            secret_id = secret_arn
+        else:
+            # It's just a secret name, use default region
+            region = os.environ.get('AWS_REGION', 'us-west-2')
+            secret_id = secret_arn
+            LOGGER.debug("Using configured secret name for AWS Secrets Manager lookup")
+
+        # Create Secrets Manager client
+        client = boto3.client('secretsmanager', region_name=region)
+
+        # Get secret value
+        LOGGER.debug(f"Fetching secret from Secrets Manager")
+        response = client.get_secret_value(SecretId=secret_id)
+
+        # Parse JSON secret string
+        secret_data = json.loads(response['SecretString'])
+
+        # Return client_secret from the secret
+        client_secret = secret_data.get('client_secret')
+        if client_secret:
+            LOGGER.debug(f"Successfully resolved client_secret")
+            return client_secret
+        else:
+            LOGGER.error(f"Secret does not contain 'client_secret' key")
+            return None
+
+    except Exception as e:
+        LOGGER.error(f"Failed to resolve secret: {type(e).__name__}")
+        return None
+
+
+# =============================================================================
 # Response Models
 # =============================================================================
 
@@ -110,8 +169,18 @@ def _get_connection_configs() -> List[Dict[str, Any]]:
 
                 # Build extra_config with client_secret from oauth_config
                 extra_config = server_config.get('extra_config', {}).copy()
+
                 if 'client_secret' in oauth_config:
                     extra_config['client_secret'] = oauth_config['client_secret']
+                elif 'client_secret_arn' in oauth_config:
+                    # Resolve client_secret from AWS Secrets Manager ARN or name
+                    client_secret_arn = oauth_config['client_secret_arn']
+                    client_secret = _resolve_secret_from_arn(client_secret_arn)
+                    if client_secret:
+                        extra_config['client_secret'] = client_secret
+                        LOGGER.debug("Successfully resolved client_secret from AWS Secrets Manager")
+                    else:
+                        LOGGER.error("Failed to resolve client_secret from AWS Secrets Manager")
 
                 configs.append({
                     "name": name,
@@ -308,9 +377,6 @@ async def authorize_connection(
     Returns:
         Authorization URL to redirect user to
     """
-    LOGGER.debug(f"[Connections] ========== AUTHORIZE START ==========")
-    LOGGER.debug(f"[Connections] Connection: {connection_name}")
-
     config = _get_connection_config(connection_name)
     if config is None:
         raise HTTPException(
@@ -349,14 +415,12 @@ async def authorize_connection(
         LOGGER.debug(f"[Connections] Using generated redirect_uri")
 
     # Store state in database
-    LOGGER.info(f"[Connections] Saving OAuth state to database: connection_name: {connection_name}")
     if not _save_oauth_state(state, current_user.user_id, connection_name, code_verifier, redirect_uri):
-        LOGGER.error(f"[Connections] Failed to save OAuth state!")
+        LOGGER.error(f"Failed to save OAuth state for connection: {connection_name}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save OAuth state"
         )
-    LOGGER.info(f"[Connections] OAuth state saved successfully")
 
     # Build authorization URL
     params = {
@@ -394,13 +458,10 @@ async def oauth_callback(
     Exchanges authorization code for access token and stores encrypted in database.
     Redirects to frontend with success/error status.
     """
-    LOGGER.info(f"[Connections] Callback for Connection: {connection_name}")
-
     # Validate and retrieve state
-    LOGGER.debug(f"[Connections] Looking up OAuth state in database...")
     state_data = _get_and_delete_oauth_state(state)
     if state_data is None:
-        LOGGER.warning(f"[Connections] Invalid state parameter for {connection_name} - state not found in database!")
+        LOGGER.warning(f"Invalid OAuth state for {connection_name} - possible CSRF attack or expired state")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid state parameter - possible CSRF attack or expired state"
@@ -410,12 +471,10 @@ async def oauth_callback(
     code_verifier = state_data["code_verifier"]
     redirect_uri = state_data["redirect_uri"]
 
-    LOGGER.info(f"[Connections] State data retrieved successfully: connection_name: {connection_name}")
-
     # Get connection configuration
     config = _get_connection_config(connection_name)
     if config is None:
-        LOGGER.error(f"[Connections] Connection config not found for: {connection_name}")
+        LOGGER.error(f"Connection config not found for: {connection_name}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Connection '{connection_name}' not found"
@@ -423,7 +482,7 @@ async def oauth_callback(
 
     token_url = config.get("oauth_token_url")
     if not token_url:
-        LOGGER.error(f"[Connections] No token URL configured for: {connection_name}")
+        LOGGER.error(f"No token URL configured for connection: {connection_name}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"No token URL configured for '{connection_name}'"
@@ -447,14 +506,13 @@ async def oauth_callback(
     client_secret = config.get("extra_config", {}).get("client_secret")
     if client_secret:
         token_data["client_secret"] = client_secret
-        LOGGER.info(f"[Connections] Using client_secret from extra_config (redacted)")
 
     jwt_config = Config.config().get_jwt_config()
     frontend_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
 
     # Validate redirect URL against allowed domains
     if not is_safe_redirect_url(frontend_url):
-        LOGGER.error(f"[Connections] JWT_REDIRECT_URI is not on allowed domain list")
+        LOGGER.error(f"JWT_REDIRECT_URI is not on allowed domain list")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Server configuration error: invalid redirect URL"
@@ -467,7 +525,7 @@ async def oauth_callback(
                 data=token_data,
                 headers={"Content-Type": "application/x-www-form-urlencoded"}
             )
-            LOGGER.info(f"[Connections] Token exchange response status: {response.status_code}")
+            LOGGER.info(f"Token exchange successful for {connection_name}")
             response.raise_for_status()
             token_response = response.json()
 
@@ -481,7 +539,7 @@ async def oauth_callback(
             provider_metadata=config.get("extra_config", {})
         )
 
-        LOGGER.info(f"[Connections] Token stored successfully for connection {connection_name}")
+        LOGGER.info(f"Token stored successfully for connection: {connection_name}")
 
         # Redirect to frontend with success
         return RedirectResponse(
@@ -490,17 +548,14 @@ async def oauth_callback(
         )
 
     except httpx.HTTPStatusError as e:
-        LOGGER.error(f"[Connections] Token exchange failed!")
-        LOGGER.error(f"[Connections]   Status code: {e.response.status_code}")
-        LOGGER.error(f"[Connections]   Response: {e.response.text}")
-        LOGGER.error(f"[Connections] ========== CALLBACK FAILED ==========")
+        LOGGER.error(f"Token exchange failed for {connection_name}: HTTP {e.response.status_code}")
+        # Don't log full response as it may contain sensitive error details
         return RedirectResponse(
             url=f"{frontend_url}/connections?connection_error={connection_name}&error=token_exchange_failed",
             status_code=status.HTTP_302_FOUND
         )
     except Exception as e:
-        LOGGER.error(f"[Connections] Unexpected error: {type(e).__name__}: {e}")
-        LOGGER.error(f"[Connections] ========== CALLBACK FAILED ==========")
+        LOGGER.error(f"Unexpected error during OAuth callback for {connection_name}: {type(e).__name__}")
         return RedirectResponse(
             url=f"{frontend_url}/connections?connection_error={connection_name}&error=unknown",
             status_code=status.HTTP_302_FOUND
@@ -555,7 +610,7 @@ async def disconnect(
     """
     Disconnect from a connection by removing the stored token.
     """
-    LOGGER.info(f"[Connections] User {current_user.email} disconnecting from {connection_name}")
+    LOGGER.info(f"User {current_user.email} disconnecting from {connection_name}")
 
     # Initialize token cache with database
 
@@ -563,7 +618,7 @@ async def disconnect(
     removed = token_cache.clear_token(current_user.user_id, connection_name)
 
     if removed:
-        LOGGER.info(f"[Connections] Successfully disconnected from {connection_name}")
+        LOGGER.info(f"Successfully disconnected from {connection_name}")
         return {
             "message": f"Successfully disconnected from '{connection_name}'",
             "connection_name": connection_name,
