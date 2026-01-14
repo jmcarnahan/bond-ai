@@ -23,7 +23,11 @@ from bondable.bond.providers.threads import ThreadsProvider
 from bondable.bond.providers.files import FilesProvider
 from bondable.bond.providers.metadata import AgentRecord
 from .BedrockCRUD import create_bedrock_agent, update_bedrock_agent, delete_bedrock_agent, get_bedrock_agent
-from .BedrockMCP import execute_mcp_tool_sync
+from .BedrockMCP import (
+    execute_mcp_tool_sync,
+    _parse_tool_path,
+    _resolve_server_from_hash
+)
 from .BedrockMetadata import BedrockMetadata, BedrockAgentOptions
 from .BedrockProvider import BedrockProvider
 
@@ -508,12 +512,15 @@ Please integrate any relevant insights from the documents with your analysis of 
             if action_input:
                 api_path = action_input.get('apiPath')
 
-                # Check if this is an MCP tool
-                if api_path and api_path.startswith('/_bond_mcp_tool_'):
-                    # Extract tool name
-                    tool_name = api_path.replace('/_bond_mcp_tool_', '')
+                # Check if this is an MCP tool using new format: /b.{hash6}.{tool_name}
+                server_hash, tool_name = _parse_tool_path(api_path)
+                if server_hash and tool_name:
+                    # Get MCP config to resolve server from hash
+                    from bondable.bond.config import Config
+                    mcp_config = Config.config().get_mcp_config()
+                    target_server = _resolve_server_from_hash(server_hash, mcp_config) if mcp_config else None
 
-                    LOGGER.info(f"Executing MCP tool: {tool_name}")
+                    LOGGER.info(f"Executing MCP tool: {tool_name} (server: {target_server or 'unknown'}, hash: {server_hash})")
                     LOGGER.debug(f"Tool name: {tool_name}, action input: {action_input}")
 
                     # Get parameters
@@ -549,18 +556,15 @@ Please integrate any relevant insights from the documents with your analysis of 
 
                     # Execute MCP tool
                     try:
-                        # Get MCP config
-                        from bondable.bond.config import Config
-                        config = Config.config()
-                        mcp_config = config.get_mcp_config()
-
+                        # mcp_config already fetched above for server resolution
                         if mcp_config:
                             result = execute_mcp_tool_sync(
                                 mcp_config,
                                 tool_name,
                                 parameters,
                                 current_user=self._current_user,
-                                jwt_token=self._jwt_token
+                                jwt_token=self._jwt_token,
+                                target_server=target_server  # Direct routing to correct server
                             )
 
                             # Log result status
