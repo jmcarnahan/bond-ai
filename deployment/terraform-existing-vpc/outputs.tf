@@ -109,3 +109,19 @@ output "deployment_instructions" {
   EOT
   description = "Post-deployment instructions"
 }
+
+# Databricks CDC Outputs
+output "aurora_replication_secret_arn" {
+  value       = var.use_aurora ? aws_secretsmanager_secret.aurora_replication_credentials[0].arn : null
+  description = "ARN of replication credentials secret for Databricks CDC"
+}
+
+output "aurora_replication_secret_name" {
+  value       = var.use_aurora ? aws_secretsmanager_secret.aurora_replication_credentials[0].name : null
+  description = "Name of replication credentials secret for Databricks CDC"
+}
+
+output "aurora_cluster_resource_id" {
+  value       = var.use_aurora ? aws_rds_cluster.aurora[0].cluster_resource_id : null
+  description = "Aurora cluster resource ID for IAM database authentication"
+}

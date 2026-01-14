@@ -59,7 +59,9 @@ resource "aws_iam_role_policy" "app_runner_instance" {
           ],
           var.mcp_atlassian_enabled ? [
             data.aws_secretsmanager_secret.mcp_atlassian_oauth_backend[0].arn
-          ] : []
+          ] : [],
+          # Add Databricks secret access
+          ["arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:bond-ai-dev-databricks-secret-*"]
         )
       },
       {
