@@ -40,9 +40,46 @@ resource "aws_rds_cluster_parameter_group" "aurora" {
     apply_method = "pending-reboot"
   }
 
+  # Logical Replication for Databricks CDC (requires cluster reboot)
+  parameter {
+    name         = "rds.logical_replication"
+    value        = "1"
+    apply_method = "pending-reboot"
+  }
+
+  # Replication slot configuration
+  parameter {
+    name         = "max_replication_slots"
+    value        = "5"
+    apply_method = "pending-reboot"
+  }
+
+  parameter {
+    name         = "max_wal_senders"
+    value        = "5"
+    apply_method = "pending-reboot"
+  }
+
+  parameter {
+    name         = "max_slot_wal_keep_size"
+    value        = "10240"  # 10GB in MB - prevents WAL bloat
+    apply_method = "pending-reboot"
+  }
+
   tags = {
     Name = "${var.project_name}-${var.environment}-aurora-params"
   }
+}
+
+# =============================================================================
+# Replication User Credentials
+# =============================================================================
+
+# Password for Databricks replication user
+resource "random_password" "aurora_replication_password" {
+  count   = var.use_aurora ? 1 : 0
+  length  = 32
+  special = false
 }
 
 # =============================================================================
@@ -159,4 +196,36 @@ resource "aws_rds_cluster_instance" "aurora" {
   tags = {
     Name = "${var.project_name}-${var.environment}-aurora-instance"
   }
+}
+
+# =============================================================================
+# Secrets Manager for Replication Credentials
+# =============================================================================
+
+# Store replication credentials for Databricks CDC
+resource "aws_secretsmanager_secret" "aurora_replication_credentials" {
+  count = var.use_aurora ? 1 : 0
+
+  name_prefix = "${var.project_name}-${var.environment}-aurora-replication-"
+  description = "Aurora PostgreSQL replication credentials for Databricks CDC"
+
+  tags = {
+    Name    = "${var.project_name}-${var.environment}-aurora-replication-creds"
+    Purpose = "Databricks-CDC"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "aurora_replication_credentials" {
+  count = var.use_aurora ? 1 : 0
+
+  secret_id = aws_secretsmanager_secret.aurora_replication_credentials[0].id
+  secret_string = jsonencode({
+    username         = "databricks_replication"
+    password         = random_password.aurora_replication_password[0].result
+    host             = aws_rds_cluster.aurora[0].endpoint
+    port             = 5432
+    dbname           = "bondai"
+    slot_name        = "databricks_lakeflow_slot"
+    publication_name = "databricks_publication"
+  })
 }
