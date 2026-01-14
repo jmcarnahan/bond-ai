@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart' show immutable;
 import 'package:flutter/material.dart' show Color, Colors;
 
+/// Regular expression to match Bond MCP tool names: b.{hash6}.{tool_name}
+final RegExp _bondMcpToolPattern = RegExp(r'^b\.([a-f0-9]{6})\.(.+)$');
+
 @immutable
 class McpToolModel {
   final String name;
@@ -12,6 +15,17 @@ class McpToolModel {
     required this.description,
     required this.inputSchema,
   });
+
+  /// Returns the user-friendly display name without the Bond MCP prefix.
+  /// If the name matches pattern b.{hash6}.{tool_name}, returns just {tool_name}.
+  /// Otherwise returns the full name unchanged.
+  String get displayName {
+    final match = _bondMcpToolPattern.firstMatch(name);
+    if (match != null) {
+      return match.group(2)!; // Return just the tool name
+    }
+    return name;
+  }
 
   factory McpToolModel.fromJson(Map<String, dynamic> json) {
     return McpToolModel(
