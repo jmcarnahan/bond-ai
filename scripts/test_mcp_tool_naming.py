@@ -136,6 +136,83 @@ def test_hash_functions():
 
 
 # =============================================================================
+# Unit Tests for Display Name Functions
+# =============================================================================
+
+def test_display_name_functions():
+    """Test display name extraction (mirrors Flutter logic)."""
+    import re
+
+    print("\n" + "=" * 60)
+    print("Testing Display Name Functions")
+    print("=" * 60)
+
+    # This mirrors the Flutter regex: RegExp(r'^b\.([a-f0-9]{6})\.(.+)$')
+    BOND_MCP_TOOL_PATTERN = re.compile(r'^b\.([a-f0-9]{6})\.(.+)$')
+
+    def get_display_name(full_name: str) -> str:
+        """Extract display name from full tool name (mirrors Flutter McpToolModel.displayName)."""
+        match = BOND_MCP_TOOL_PATTERN.match(full_name)
+        if match:
+            return match.group(2)  # Return just the tool name
+        return full_name
+
+    # Test 1: Valid Bond MCP tool names
+    print("\n1. Testing valid Bond MCP tool names...")
+    test_cases = [
+        ("b.abc123.current_time", "current_time"),
+        ("b.def456.fetch_data", "fetch_data"),
+        ("b.000000.simple", "simple"),
+        ("b.ffffff.tool_with_underscores", "tool_with_underscores"),
+        ("b.abcdef.tool.with.dots", "tool.with.dots"),
+    ]
+    for full_name, expected_display in test_cases:
+        result = get_display_name(full_name)
+        assert result == expected_display, f"Expected '{expected_display}', got '{result}' for '{full_name}'"
+        print(f"   '{full_name}' -> '{result}' ✓")
+    print("   PASSED: Valid tool names extracted correctly")
+
+    # Test 2: Non-Bond tool names (should return unchanged)
+    print("\n2. Testing non-Bond tool names (should return unchanged)...")
+    non_bond_names = [
+        "current_time",
+        "fetch_data",
+        "_bond_mcp_tool_old_format",
+        "b.short.tool",  # hash too short
+        "b.toolong1.tool",  # hash too long
+        "b.ABCDEF.uppercase_hash",  # uppercase not valid
+        "",
+    ]
+    for name in non_bond_names:
+        result = get_display_name(name)
+        assert result == name, f"Non-Bond name '{name}' should return unchanged, got '{result}'"
+        print(f"   '{name}' -> '{result}' (unchanged) ✓")
+    print("   PASSED: Non-Bond names returned unchanged")
+
+    # Test 3: Verify consistency with path functions
+    print("\n3. Testing consistency with path functions...")
+    from bondable.bond.providers.bedrock.BedrockMCP import (
+        _hash_server_name, _build_tool_path, _parse_tool_path
+    )
+    server_name = "my_client"
+    tool_name = "current_time"
+    path = _build_tool_path(server_name, tool_name)
+    # Remove leading slash for display name test
+    full_tool_name = path[1:] if path.startswith("/") else path
+
+    display_name = get_display_name(full_tool_name)
+    assert display_name == tool_name, f"Display name should be '{tool_name}', got '{display_name}'"
+    print(f"   Path: {path}")
+    print(f"   Full tool name: {full_tool_name}")
+    print(f"   Display name: {display_name}")
+    print("   PASSED: Display name consistent with path functions")
+
+    print("\n" + "=" * 60)
+    print("ALL DISPLAY NAME TESTS PASSED")
+    print("=" * 60)
+
+
+# =============================================================================
 # Integration Tests
 # =============================================================================
 
@@ -255,6 +332,19 @@ def main():
         all_passed = False
     except Exception as e:
         print(f"\nHash function test error: {e}")
+        all_passed = False
+
+    # Display name tests (can run without servers)
+    try:
+        test_display_name_functions()
+    except ImportError as e:
+        print(f"\nSkipping display name tests (import error): {e}")
+        all_passed = False
+    except AssertionError as e:
+        print(f"\nDisplay name test FAILED: {e}")
+        all_passed = False
+    except Exception as e:
+        print(f"\nDisplay name test error: {e}")
         all_passed = False
 
     # Integration tests (require running servers)
