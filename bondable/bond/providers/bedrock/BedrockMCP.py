@@ -13,7 +13,9 @@ Users must authorize external MCP servers each session.
 
 import json
 import logging
-from typing import List, Dict, Any, Optional
+import hashlib
+import re
+from typing import List, Dict, Any, Optional, Tuple
 from fastmcp import Client
 from fastmcp.client import StreamableHttpTransport  # Use fastmcp's transport wrapper
 from fastmcp.client.transports import SSETransport
@@ -34,6 +36,83 @@ AUTH_TYPE_OAUTH2 = "oauth2"
 AUTH_TYPE_STATIC = "static"
 
 # Token cache initialization no longer needed - it gets DB session automatically from Config
+
+
+# =============================================================================
+# Tool Naming Utilities
+# =============================================================================
+# New tool naming format: /b.{hash6}.{tool_name}
+# - Prefix: /b. (identifies Bond MCP tools)
+# - Hash: 6-character SHA256 hash of server name
+# - Tool name: Original MCP tool name
+# This enables direct server routing without searching all servers.
+# =============================================================================
+
+def _hash_server_name(server_name: str) -> str:
+    """
+    Generate 6-character hash of server name.
+
+    Uses SHA256 and takes first 6 hex characters. This provides
+    ~16 million unique values, sufficient for MCP server identification.
+
+    Args:
+        server_name: MCP server name from config
+
+    Returns:
+        6-character lowercase hex string
+    """
+    return hashlib.sha256(server_name.encode()).hexdigest()[:6]
+
+
+def _build_tool_path(server_name: str, tool_name: str) -> str:
+    """
+    Build tool path with server hash: /b.{hash6}.{tool_name}
+
+    Args:
+        server_name: MCP server name
+        tool_name: Original MCP tool name
+
+    Returns:
+        Tool path in new format, e.g., /b.a1b2c3.current_time
+    """
+    server_hash = _hash_server_name(server_name)
+    return f"/b.{server_hash}.{tool_name}"
+
+
+def _parse_tool_path(api_path: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Parse tool path to extract server hash and tool name.
+
+    Args:
+        api_path: API path from Bedrock action invocation
+
+    Returns:
+        Tuple of (server_hash, tool_name) or (None, None) if not a Bond MCP tool
+    """
+    if not api_path:
+        return None, None
+    match = re.match(r'^/b\.([a-f0-9]{6})\.(.+)$', api_path)
+    if match:
+        return match.group(1), match.group(2)
+    return None, None
+
+
+def _resolve_server_from_hash(server_hash: str, mcp_config: Dict[str, Any]) -> Optional[str]:
+    """
+    Resolve server hash to server name.
+
+    Args:
+        server_hash: 6-character hash from tool path
+        mcp_config: MCP configuration dict with mcpServers
+
+    Returns:
+        Server name if found, None otherwise
+    """
+    servers = mcp_config.get('mcpServers', {})
+    for server_name in servers:
+        if _hash_server_name(server_name) == server_hash:
+            return server_name
+    return None
 
 
 def _get_bedrock_agent_client() -> Any:
@@ -80,9 +159,12 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
         # Build OpenAPI paths for MCP tools
         paths = {}
         for tool in mcp_tool_definitions:
-            # Prefix with _bond_mcp_tool_
-            tool_path = f"/_bond_mcp_tool_{tool['name']}"
-            operation_id = f"_bond_mcp_tool_{tool['name']}"
+            # Use new naming format: /b.{hash6}.{tool_name}
+            # This embeds server identification in the tool path for direct routing
+            tool_server_name = tool.get('server_name', 'unknown')
+            tool_path = _build_tool_path(tool_server_name, tool['name'])
+            server_hash = _hash_server_name(tool_server_name)
+            operation_id = f"b_{server_hash}_{tool['name']}"
 
             paths[tool_path] = {
                 "post": {
@@ -242,7 +324,8 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
                         tool = tool_dict[tool_name]
                         tool_def = {
                             'name': tool_name,
-                            'description': tool.description or f"MCP tool {tool_name}"
+                            'description': tool.description or f"MCP tool {tool_name}",
+                            'server_name': server_name  # Track which server has this tool
                         }
 
                         # Add parameter schema if available
@@ -392,12 +475,14 @@ async def execute_mcp_tool(
     tool_name: str,
     parameters: Optional[Dict[str, Any]] = None,
     current_user: Optional[Any] = None,
-    jwt_token: Optional[str] = None
+    jwt_token: Optional[str] = None,
+    target_server: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Execute an MCP tool call with authentication.
 
-    Searches ALL configured MCP servers to find which one has the requested tool.
+    If target_server is provided, executes directly on that server.
+    Otherwise, searches ALL configured MCP servers to find which one has the tool.
 
     Args:
         mcp_config: MCP configuration dict
@@ -405,6 +490,7 @@ async def execute_mcp_tool(
         parameters: Parameters for the tool
         current_user: User object with authentication context
         jwt_token: Raw JWT token for authentication (used for bond_jwt auth_type)
+        target_server: Optional server name for direct routing (from tool path hash)
 
     Returns:
         Result dictionary with 'success' and 'result' or 'error' fields
@@ -418,10 +504,20 @@ async def execute_mcp_tool(
     if not servers:
         return {"success": False, "error": "No MCP servers configured"}
 
-    LOGGER.debug(f"[MCP Execute] Searching {len(servers)} servers for tool '{tool_name}'")
+    # If target_server is specified, only check that server (direct routing)
+    if target_server:
+        if target_server in servers:
+            servers_to_check = {target_server: servers[target_server]}
+            LOGGER.debug(f"[MCP Execute] Direct routing to server '{target_server}' for tool '{tool_name}'")
+        else:
+            LOGGER.error(f"[MCP Execute] Target server '{target_server}' not found in config")
+            return {"success": False, "error": f"Target server '{target_server}' not found in MCP configuration"}
+    else:
+        servers_to_check = servers
+        LOGGER.debug(f"[MCP Execute] Searching {len(servers)} servers for tool '{tool_name}'")
 
-    # Search each server for the tool
-    for server_name, server_config in servers.items():
+    # Search each server for the tool (or just the target server if direct routing)
+    for server_name, server_config in servers_to_check.items():
         server_url = server_config.get('url')
         if not server_url:
             LOGGER.warning(f"[MCP Execute] No URL configured for MCP server {server_name}")
@@ -483,21 +579,31 @@ async def execute_mcp_tool(
 
         except AuthorizationRequiredError as e:
             LOGGER.debug(f"[MCP Execute] Authorization required for server '{server_name}': {e.server_name}")
-            return {
-                "success": False,
-                "error": e.message,
-                "authorization_required": True,
-                "server_name": e.server_name
-            }
+            if target_server:
+                # Direct routing - return error immediately
+                return {
+                    "success": False,
+                    "error": e.message,
+                    "authorization_required": True,
+                    "server_name": e.server_name
+                }
+            # Searching - continue to next server
+            LOGGER.debug(f"[MCP Execute] Server '{server_name}' needs auth, trying next server...")
+            continue
         except TokenExpiredError as e:
             LOGGER.debug(f"[MCP Execute] Token expired for server '{server_name}': {e.connection_name}")
-            return {
-                "success": False,
-                "error": e.message,
-                "token_expired": True,
-                "connection_name": e.connection_name,
-                "expired_at": safe_isoformat(e.expired_at)
-            }
+            if target_server:
+                # Direct routing - return error immediately
+                return {
+                    "success": False,
+                    "error": e.message,
+                    "token_expired": True,
+                    "connection_name": e.connection_name,
+                    "expired_at": safe_isoformat(e.expired_at)
+                }
+            # Searching - continue to next server
+            LOGGER.debug(f"[MCP Execute] Server '{server_name}' token expired, trying next server...")
+            continue
         except Exception as e:
             # Log full exception details including traceback for debugging
             LOGGER.exception(f"[MCP Execute] Error on server '{server_name}' when executing tool '{tool_name}' with parameters {list(parameters.keys()) if parameters else []}: {e}")
@@ -513,7 +619,8 @@ def execute_mcp_tool_sync(
     tool_name: str,
     parameters: Optional[Dict[str, Any]] = None,
     current_user: Optional[Any] = None,
-    jwt_token: Optional[str] = None
+    jwt_token: Optional[str] = None,
+    target_server: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Synchronous wrapper for executing MCP tool with authentication.
@@ -524,6 +631,7 @@ def execute_mcp_tool_sync(
         parameters: Parameters for the tool
         current_user: User object with authentication context
         jwt_token: Raw JWT token for authentication
+        target_server: Optional server name for direct routing
 
     Returns:
         Result dictionary with 'success' and 'result' or 'error' fields
@@ -536,9 +644,9 @@ def execute_mcp_tool_sync(
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(
                 asyncio.run,
-                execute_mcp_tool(mcp_config, tool_name, parameters, current_user, jwt_token)
+                execute_mcp_tool(mcp_config, tool_name, parameters, current_user, jwt_token, target_server)
             )
             return future.result()
     except RuntimeError:
         # No event loop running, we can use asyncio.run directly
-        return asyncio.run(execute_mcp_tool(mcp_config, tool_name, parameters, current_user, jwt_token))
+        return asyncio.run(execute_mcp_tool(mcp_config, tool_name, parameters, current_user, jwt_token, target_server))
