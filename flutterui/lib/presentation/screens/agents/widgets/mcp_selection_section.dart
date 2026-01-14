@@ -369,11 +369,11 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
                   ...server.tools.map(
                     (tool) => BondAITile(
                       type: BondAITileType.checkbox,
-                      title: tool.name,
+                      title: tool.displayName, // Use displayName for UI (strips b.{hash}. prefix)
                       subtitle: tool.description,
-                      value: widget.selectedToolNames.contains(tool.name),
+                      value: widget.selectedToolNames.contains(tool.name), // Full name for state
                       enabled: widget.enabled && status.valid,
-                      onChanged: (value) => _onToolSelectionChanged(tool.name, value ?? false),
+                      onChanged: (value) => _onToolSelectionChanged(tool.name, value ?? false), // Full name for API
                     ),
                   ),
                 ],
