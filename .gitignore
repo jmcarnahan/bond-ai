@@ -76,3 +76,5 @@ kb-changes.md
 scripts/test_permissions.sh
 scripts/test-apprunner-connectivity.sh
 scripts/test-vpc-availability.sh
+
+bundles/
