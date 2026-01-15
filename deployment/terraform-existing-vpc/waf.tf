@@ -366,6 +366,9 @@ resource "aws_wafv2_web_acl_association" "backend" {
   count        = var.waf_enabled ? 1 : 0
   resource_arn = aws_apprunner_service.backend.arn
   web_acl_arn  = aws_wafv2_web_acl.backend[0].arn
+
+  # Wait for backend service to finish deploying before associating WAF
+  depends_on = [null_resource.wait_for_backend_ready]
 }
 
 resource "aws_wafv2_web_acl_association" "frontend" {

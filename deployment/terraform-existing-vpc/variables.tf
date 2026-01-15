@@ -62,7 +62,7 @@ variable "db_allocated_storage" {
 variable "use_aurora" {
   description = "Use Aurora Serverless v2 instead of RDS for main database"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "aurora_main_min_capacity" {

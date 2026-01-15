@@ -32,9 +32,14 @@ class AgentCard extends ConsumerWidget {
          agent.metadata!['user_id'] == currentUserId);
 
     return Card(
-      elevation: 1.0,
+      elevation: 2.0,
+      shadowColor: colorScheme.shadow.withValues(alpha: 0.15),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8.0),
+        borderRadius: BorderRadius.circular(12.0),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+          width: 1.0,
+        ),
       ),
       color: themeData.cardTheme.color ?? colorScheme.surface,
       child: InkWell(
@@ -49,9 +54,9 @@ class AgentCard extends ConsumerWidget {
             ref.read(navigationIndexProvider.notifier).state = chatIndex;
           }
         },
-        borderRadius: BorderRadius.circular(8.0),
+        borderRadius: BorderRadius.circular(12.0),
         child: Container(
-          padding: const EdgeInsets.all(8.0),
+          padding: const EdgeInsets.all(6.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -83,12 +88,12 @@ class AgentCard extends ConsumerWidget {
                   ),
                 )
               else
-                const SizedBox(height: 12), // Space when no edit button
-              // Agent icon - slightly bigger for agent cards
+                const SizedBox(height: 4), // Space when no edit button
+              // Agent icon
               AgentIcon(
                 agentName: agent.name,
                 metadata: agent.metadata,
-                size: 56,
+                size: 44,
                 showBackground: true,
                 isSelected: false,
               ),
@@ -113,7 +118,7 @@ class AgentCard extends ConsumerWidget {
                     color: colorScheme.onSurfaceVariant,
                     fontSize: 11,
                   ),
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
                 ),

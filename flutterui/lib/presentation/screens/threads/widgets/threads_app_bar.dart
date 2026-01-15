@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:flutterui/providers/core_providers.dart';
+import 'package:flutterui/presentation/widgets/connection_status_indicator.dart';
 
 class ThreadsAppBar extends ConsumerWidget implements PreferredSizeWidget {
   const ThreadsAppBar({
@@ -78,6 +79,10 @@ class ThreadsAppBar extends ConsumerWidget implements PreferredSizeWidget {
             ),
           ],
         ),
+        actions: const [
+          ConnectionStatusIndicator(),
+          SizedBox(width: 8),
+        ],
       ),
     );
   }
