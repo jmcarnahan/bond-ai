@@ -393,7 +393,7 @@ resource "aws_apprunner_service" "mcp_atlassian" {
 
   depends_on = [
     null_resource.mirror_mcp_atlassian_image,
-    aws_apprunner_service.backend
+    null_resource.wait_for_backend_ready  # Wait for backend to finish deploying
   ]
 }
 
