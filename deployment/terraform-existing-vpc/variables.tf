@@ -234,3 +234,22 @@ variable "theme_config_path" {
   type        = string
   default     = "theme_configs/bondai_config.json"
 }
+
+# Custom Domain Configuration
+variable "custom_domain_name" {
+  description = "Custom domain name for frontend (e.g., ai.southbayequity.cloud or southbayequity.cloud). Leave empty to skip custom domain setup."
+  type        = string
+  default     = ""
+}
+
+variable "hosted_zone_name" {
+  description = "Route 53 hosted zone name. Required when using a subdomain (e.g., 'southbayequity.cloud' for 'ai.southbayequity.cloud'). Leave empty to use custom_domain_name as the zone."
+  type        = string
+  default     = ""
+}
+
+variable "enable_www_subdomain" {
+  description = "Also configure www subdomain (e.g., www.southbayequity.cloud)"
+  type        = bool
+  default     = false
+}
