@@ -22,6 +22,3 @@ void clearQueryParams() {
     html.window.history.replaceState(null, '', cleanUrl);
   }
 }
-
-/// Returns true if running on web platform.
-bool get isWebPlatform => true;

@@ -14,6 +14,3 @@ Map<String, String> getCurrentQueryParams() {
 void clearQueryParams() {
   // No-op on mobile
 }
-
-/// Returns true if running on web platform.
-bool get isWebPlatform => false;
