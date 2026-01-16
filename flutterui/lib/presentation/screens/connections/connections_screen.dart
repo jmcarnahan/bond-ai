@@ -1,9 +1,14 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../providers/connections_provider.dart';
 import '../../../data/models/connection_model.dart';
 import '../../widgets/app_drawer.dart';
+
+// Conditional import for web-specific functionality
+import 'connections_web_utils_stub.dart'
+    if (dart.library.html) 'connections_web_utils.dart' as web_utils;
 
 class ConnectionsScreen extends ConsumerStatefulWidget {
   static const String routeName = '/connections';
@@ -15,12 +20,81 @@ class ConnectionsScreen extends ConsumerStatefulWidget {
 }
 
 class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
+  String? _successConnection;
+  String? _errorConnection;
+  String? _errorMessage;
+
   @override
   void initState() {
     super.initState();
+
+    // Check for OAuth callback query parameters (web only)
+    if (kIsWeb) {
+      final params = web_utils.getCurrentQueryParams();
+      _successConnection = params['connection_success'];
+      _errorConnection = params['connection_error'];
+      _errorMessage = params['error'];
+
+      // Clear query params from URL to prevent showing message on refresh
+      if (_successConnection != null || _errorConnection != null) {
+        web_utils.clearQueryParams();
+      }
+    }
+
     // Load connections when screen initializes
     Future.microtask(() {
       ref.read(connectionsNotifierProvider.notifier).loadConnections();
+
+      // Show success/error message after connections load
+      if (_successConnection != null) {
+        _showSuccessMessage(_successConnection!);
+      } else if (_errorConnection != null) {
+        _showErrorMessage(_errorConnection!, _errorMessage);
+      }
+    });
+  }
+
+  void _showSuccessMessage(String connectionName) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Successfully connected to $connectionName!'),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    });
+  }
+
+  void _showErrorMessage(String connectionName, String? error) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error, color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Failed to connect to $connectionName${error != null ? ': $error' : ''}',
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
     });
   }
 
@@ -68,7 +142,7 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
               isLoading: connectionsState.isLoading,
               error: connectionsState.error,
               onConnect: (connectionName) async {
-                // Get OAuth authorization URL and open in browser
+                // Get OAuth authorization URL
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Starting OAuth flow...'),
@@ -83,29 +157,35 @@ class _ConnectionsScreenState extends ConsumerState<ConnectionsScreen> {
                 if (!context.mounted) return;
 
                 if (url != null) {
-                  final uri = Uri.parse(url);
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-
-                    // Show success message
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Opening browser for authentication. After completing OAuth, you will be redirected back.'),
-                          backgroundColor: Colors.blue,
-                          duration: Duration(seconds: 5),
-                        ),
-                      );
-                    }
+                  if (kIsWeb) {
+                    // On web: navigate in the same window
+                    // User will be redirected back after OAuth completes
+                    web_utils.navigateSameWindow(url);
                   } else {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Could not open browser. Please try again.'),
-                          backgroundColor: Colors.red,
-                          duration: Duration(seconds: 3),
-                        ),
-                      );
+                    // On mobile: open external browser (deep links handle return)
+                    final uri = Uri.parse(url);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Opening browser for authentication...'),
+                            backgroundColor: Colors.blue,
+                            duration: Duration(seconds: 3),
+                          ),
+                        );
+                      }
+                    } else {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Could not open browser. Please try again.'),
+                            backgroundColor: Colors.red,
+                            duration: Duration(seconds: 3),
+                          ),
+                        );
+                      }
                     }
                   }
                 } else {
