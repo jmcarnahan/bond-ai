@@ -7,6 +7,7 @@ import 'package:flutterui/presentation/screens/agents/create_agent_screen.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 import 'package:flutterui/core/error_handling/error_handler.dart';
 import 'package:flutterui/presentation/widgets/app_drawer.dart';
+import 'package:flutterui/presentation/widgets/connection_status_indicator.dart';
 
 class AgentsScreen extends ConsumerStatefulWidget {
   const AgentsScreen({super.key});
@@ -103,6 +104,10 @@ class _AgentsScreenState extends ConsumerState<AgentsScreen> with ErrorHandlingM
                 onPressed: () => Scaffold.of(context).openDrawer(),
               ),
             ),
+            actions: const [
+              ConnectionStatusIndicator(),
+              SizedBox(width: 8),
+            ],
           ),
         ),
       ),
@@ -145,11 +150,11 @@ class _AgentsScreenState extends ConsumerState<AgentsScreen> with ErrorHandlingM
 
           return GridView.builder(
             padding: const EdgeInsets.all(16.0),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              childAspectRatio: 1.2,
-              crossAxisSpacing: 10.0,
-              mainAxisSpacing: 10.0,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 240,
+              childAspectRatio: 0.85,
+              crossAxisSpacing: 12.0,
+              mainAxisSpacing: 12.0,
             ),
             itemCount: agents.length,
             itemBuilder: (context, index) {
