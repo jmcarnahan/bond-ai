@@ -260,7 +260,7 @@ terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars \
 terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars \
   -var="maintenance_mode=true" \
   -var="maintenance_message=Scheduled maintenance in progress" \
-  -var="theme_config_path=theme_configs/southbay_config.json"
+  -var="theme_config_path=theme_configs/mytheme_config.json"
 ```
 
 ### Disable Maintenance Mode
@@ -284,7 +284,7 @@ terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars
 
 Theme configs are located in `flutterui/theme_configs/`:
 - `bondai_config.json` - Default Bond AI branding
-- `southbay_config.json` - South Bay Equity Lending branding
+- `mydomain.json` - my domain branding
 - `mcafee_config.json` - McAfee branding
 
 ### How It Works
