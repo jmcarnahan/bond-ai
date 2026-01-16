@@ -128,3 +128,43 @@ resource "aws_apprunner_service" "backend" {
   ]
   # Note: Database dependency handled via local.database_endpoint
 }
+
+# Wait for App Runner backend to reach RUNNING status before dependent resources proceed
+# This prevents race conditions where WAF/other resources try to update while deploying
+resource "null_resource" "wait_for_backend_ready" {
+  depends_on = [aws_apprunner_service.backend]
+
+  triggers = {
+    # Re-trigger when the backend service changes
+    service_arn = aws_apprunner_service.backend.arn
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Waiting for App Runner backend service to be ready..."
+      SERVICE_ARN="${aws_apprunner_service.backend.arn}"
+      MAX_ATTEMPTS=30
+      ATTEMPT=0
+
+      while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+        STATUS=$(aws apprunner describe-service \
+          --service-arn "$SERVICE_ARN" \
+          --region ${var.aws_region} \
+          --query 'Service.Status' \
+          --output text 2>/dev/null || echo "UNKNOWN")
+
+        if [ "$STATUS" = "RUNNING" ]; then
+          echo "✓ Backend service is ready (status: $STATUS)"
+          exit 0
+        fi
+
+        echo "Backend status: $STATUS (attempt $((ATTEMPT+1))/$MAX_ATTEMPTS)"
+        ATTEMPT=$((ATTEMPT+1))
+        sleep 10
+      done
+
+      echo "Warning: Backend service did not reach RUNNING state within timeout"
+      exit 0  # Don't fail the deployment, just warn
+    EOT
+  }
+}
