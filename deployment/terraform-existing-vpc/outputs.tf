@@ -125,3 +125,19 @@ output "aurora_cluster_resource_id" {
   value       = var.use_aurora ? aws_rds_cluster.aurora[0].cluster_resource_id : null
   description = "Aurora cluster resource ID for IAM database authentication"
 }
+
+# Custom Domain Outputs
+output "custom_domain_url" {
+  description = "Custom domain URL for frontend (null if not configured)"
+  value       = var.custom_domain_name != "" ? "https://${var.custom_domain_name}" : null
+}
+
+output "custom_domain_status" {
+  description = "Custom domain certificate status (null if not configured)"
+  value       = var.custom_domain_name != "" ? aws_apprunner_custom_domain_association.frontend[0].status : null
+}
+
+output "custom_domain_nameservers" {
+  description = "Route 53 nameservers for custom domain (null if not configured)"
+  value       = var.custom_domain_name != "" ? data.aws_route53_zone.frontend[0].name_servers : null
+}
