@@ -328,7 +328,7 @@ resource "aws_apprunner_service" "mcp_atlassian" {
       image_repository_type = "ECR"
 
       image_configuration {
-        port = "8000"
+        port          = "8000"
         start_command = "--transport streamable-http --port 8000"
 
         runtime_environment_variables = {
@@ -393,7 +393,7 @@ resource "aws_apprunner_service" "mcp_atlassian" {
 
   depends_on = [
     null_resource.mirror_mcp_atlassian_image,
-    null_resource.wait_for_backend_ready  # Wait for backend to finish deploying
+    null_resource.wait_for_backend_ready # Wait for backend to finish deploying
   ]
 }
 
