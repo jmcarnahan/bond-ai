@@ -1,7 +1,7 @@
 # Output values
 
 output "vpc_id" {
-  value = data.aws_vpc.existing.id
+  value       = data.aws_vpc.existing.id
   description = "ID of the existing VPC being used"
 }
 
@@ -38,32 +38,32 @@ output "use_aurora" {
 }
 
 output "s3_bucket_name" {
-  value = aws_s3_bucket.uploads.id
+  value       = aws_s3_bucket.uploads.id
   description = "Name of the S3 uploads bucket"
 }
 
 output "ecr_backend_repository_url" {
-  value = aws_ecr_repository.backend.repository_url
+  value       = aws_ecr_repository.backend.repository_url
   description = "URL of the backend ECR repository"
 }
 
 output "ecr_frontend_repository_url" {
-  value = aws_ecr_repository.frontend.repository_url
+  value       = aws_ecr_repository.frontend.repository_url
   description = "URL of the frontend ECR repository"
 }
 
 output "app_runner_vpc_connector_arn" {
-  value = aws_apprunner_vpc_connector.backend.arn
+  value       = aws_apprunner_vpc_connector.backend.arn
   description = "ARN of the App Runner VPC connector"
 }
 
 output "app_runner_service_url" {
-  value = "https://${aws_apprunner_service.backend.service_url}"
+  value       = "https://${aws_apprunner_service.backend.service_url}"
   description = "Backend App Runner service URL"
 }
 
 output "frontend_app_runner_service_url" {
-  value = "https://${aws_apprunner_service.frontend.service_url}"
+  value       = "https://${aws_apprunner_service.frontend.service_url}"
   description = "Frontend App Runner service URL (auto-generated)"
 }
 
@@ -90,7 +90,7 @@ output "app_runner_security_group_id" {
 }
 
 output "deployment_instructions" {
-  value = <<-EOT
+  value       = <<-EOT
 
     Deployment Complete!
 
