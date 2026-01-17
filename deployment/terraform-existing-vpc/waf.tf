@@ -161,6 +161,7 @@ resource "aws_wafv2_web_acl" "backend" {
 # Frontend WAF Web ACL
 # -----------------------------------------------------------------------------
 # Protects the frontend application service with standard rule configuration.
+# Includes a maintenance mode rule that can block all traffic with a custom page.
 # No special overrides needed as frontend doesn't handle file uploads.
 # -----------------------------------------------------------------------------
 
@@ -170,16 +171,113 @@ resource "aws_wafv2_web_acl" "frontend" {
   name  = "${var.project_name}-${var.environment}-frontend-waf"
   scope = "REGIONAL"
 
-  description = "WAF for frontend App Runner service"
+  description = "WAF for frontend App Runner service with maintenance mode support"
 
   default_action {
     allow {}
   }
 
+  # ---------------------------------------------------------------------------
+  # Custom Response Body for Maintenance Page
+  # ---------------------------------------------------------------------------
+  # This HTML is returned when maintenance mode is enabled.
+  # The page is self-contained with inline CSS for reliability.
+  # ---------------------------------------------------------------------------
+  custom_response_body {
+    key          = "maintenance-page"
+    content_type = "TEXT_HTML"
+    content      = <<-HTML
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Maintenance</title>
+  <style>
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f5;}
+    .container{text-align:center;padding:40px;background:white;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1);max-width:500px;margin:20px;}
+    h1{color:#333;margin-bottom:1rem;font-size:1.75rem;}
+    p{color:#666;line-height:1.6;margin:0.5rem 0;}
+    .icon{font-size:3rem;margin-bottom:1rem;}
+    .footer{font-size:0.875rem;color:#999;margin-top:2rem;}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">🔧</div>
+    <h1>Under Maintenance</h1>
+    <p>We're deploying updates to improve your experience.</p>
+    <p>Please check back in a few minutes.</p>
+    <p class="footer">We appreciate your patience.</p>
+  </div>
+</body>
+</html>
+HTML
+  }
+
+  # ---------------------------------------------------------------------------
+  # Rule 0: Maintenance Mode
+  # ---------------------------------------------------------------------------
+  # When waf_maintenance_mode=true, blocks ALL traffic and returns the
+  # maintenance page with a 503 status code.
+  # When waf_maintenance_mode=false, the rule counts (logs) but allows traffic.
+  # ---------------------------------------------------------------------------
+  rule {
+    name     = "maintenance-mode"
+    priority = 0
+
+    action {
+      dynamic "count" {
+        for_each = var.waf_maintenance_mode ? [] : [1]
+        content {}
+      }
+      dynamic "block" {
+        for_each = var.waf_maintenance_mode ? [1] : []
+        content {
+          custom_response {
+            response_code            = 503
+            custom_response_body_key = "maintenance-page"
+            response_header {
+              name  = "Cache-Control"
+              value = "no-cache, no-store, must-revalidate"
+            }
+            response_header {
+              name  = "Retry-After"
+              value = "300"
+            }
+          }
+        }
+      }
+    }
+
+    statement {
+      # Match ALL requests by checking if URI starts with "/" (always true)
+      byte_match_statement {
+        positional_constraint = "STARTS_WITH"
+        search_string         = "/"
+        field_to_match {
+          uri_path {}
+        }
+        text_transformation {
+          priority = 0
+          type     = "NONE"
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = var.waf_cloudwatch_enabled
+      metric_name                = "MaintenanceModeRule"
+      sampled_requests_enabled   = var.waf_sampled_requests_enabled
+    }
+  }
+
+  # ---------------------------------------------------------------------------
   # Rule 1: Common Rule Set (standard configuration)
+  # ---------------------------------------------------------------------------
   rule {
     name     = "AWS-AWSManagedRulesCommonRuleSet"
-    priority = 0
+    priority = 1
 
     override_action {
       none {}
@@ -199,10 +297,12 @@ resource "aws_wafv2_web_acl" "frontend" {
     }
   }
 
+  # ---------------------------------------------------------------------------
   # Rule 2: Known Bad Inputs Rule Set
+  # ---------------------------------------------------------------------------
   rule {
     name     = "AWS-AWSManagedRulesKnownBadInputsRuleSet"
-    priority = 1
+    priority = 2
 
     override_action {
       none {}
@@ -222,10 +322,12 @@ resource "aws_wafv2_web_acl" "frontend" {
     }
   }
 
+  # ---------------------------------------------------------------------------
   # Rule 3: Unix Rule Set
+  # ---------------------------------------------------------------------------
   rule {
     name     = "AWS-AWSManagedRulesUnixRuleSet"
-    priority = 2
+    priority = 3
 
     override_action {
       none {}
@@ -405,6 +507,11 @@ output "frontend_waf_arn" {
 output "frontend_waf_id" {
   value       = var.waf_enabled ? aws_wafv2_web_acl.frontend[0].id : ""
   description = "ID of the frontend WAF Web ACL"
+}
+
+output "frontend_waf_name" {
+  value       = var.waf_enabled ? aws_wafv2_web_acl.frontend[0].name : ""
+  description = "Name of the frontend WAF Web ACL (needed for maintenance scripts)"
 }
 
 output "mcp_atlassian_waf_arn" {
