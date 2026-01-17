@@ -65,7 +65,7 @@ resource "null_resource" "validate_deployment" {
   }
 
   depends_on = [
-    null_resource.wait_for_backend_ready,  # Wait for backend to finish deploying
+    null_resource.wait_for_backend_ready, # Wait for backend to finish deploying
     aws_apprunner_service.frontend
   ]
 }

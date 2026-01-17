@@ -27,9 +27,9 @@ resource "aws_db_instance" "main" {
   instance_class = var.db_instance_class
 
   # Storage
-  allocated_storage     = var.db_allocated_storage
-  storage_type          = "gp3"
-  storage_encrypted     = true
+  allocated_storage = var.db_allocated_storage
+  storage_type      = "gp3"
+  storage_encrypted = true
 
   # Database
   db_name  = "bondai"
@@ -40,12 +40,12 @@ resource "aws_db_instance" "main" {
   # Network - Using existing VPC subnets
   db_subnet_group_name   = aws_db_subnet_group.main[0].name
   vpc_security_group_ids = [aws_security_group.rds[0].id]
-  publicly_accessible    = false  # Keep in private subnets
+  publicly_accessible    = false # Keep in private subnets
 
   # Backup
   backup_retention_period = var.environment == "prod" ? 7 : 1
-  backup_window          = "03:00-04:00"
-  maintenance_window     = "sun:04:00-sun:05:00"
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "sun:04:00-sun:05:00"
 
   # Final snapshot
   skip_final_snapshot       = var.environment != "prod"
@@ -55,7 +55,7 @@ resource "aws_db_instance" "main" {
   deletion_protection = var.environment == "prod"
 
   # Performance Insights
-  performance_insights_enabled = var.environment == "prod"
+  performance_insights_enabled          = var.environment == "prod"
   performance_insights_retention_period = var.environment == "prod" ? 7 : 0
 
   tags = {

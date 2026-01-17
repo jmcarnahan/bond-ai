@@ -12,7 +12,7 @@ locals {
   # Use Aurora endpoint when enabled, otherwise RDS
   database_endpoint = var.use_aurora ? (
     aws_rds_cluster.aurora[0].endpoint
-  ) : (
+    ) : (
     aws_db_instance.main[0].address
   )
 }
@@ -62,7 +62,7 @@ resource "aws_rds_cluster_parameter_group" "aurora" {
 
   parameter {
     name         = "max_slot_wal_keep_size"
-    value        = "10240"  # 10GB in MB - prevents WAL bloat
+    value        = "10240" # 10GB in MB - prevents WAL bloat
     apply_method = "pending-reboot"
   }
 
@@ -142,9 +142,9 @@ resource "aws_rds_cluster" "aurora" {
 
   cluster_identifier = "${var.project_name}-${var.environment}-aurora"
 
-  engine             = "aurora-postgresql"
-  engine_mode        = "provisioned"
-  engine_version     = "15.12"
+  engine         = "aurora-postgresql"
+  engine_mode    = "provisioned"
+  engine_version = "15.12"
 
   database_name   = "bondai"
   master_username = "bondadmin"
