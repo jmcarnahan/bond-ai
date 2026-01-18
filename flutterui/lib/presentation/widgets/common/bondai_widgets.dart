@@ -7,3 +7,4 @@ export 'bondai_section_header.dart';
 export 'bondai_textbox.dart';
 export 'bondai_tile.dart';
 export 'info_tooltip.dart';
+export 'resizable_textbox.dart';
