@@ -40,24 +40,24 @@ resource "aws_apprunner_service" "backend" {
         port = "8000"
 
         runtime_environment_variables = {
-          AWS_REGION = var.aws_region
-          BOND_PROVIDER_CLASS = "bondable.bond.providers.bedrock.BedrockProvider.BedrockProvider"
-          DATABASE_SECRET_ARN = aws_secretsmanager_secret.db_credentials.arn
-          S3_BUCKET_NAME = aws_s3_bucket.uploads.id
-          JWT_SECRET_KEY = random_password.jwt_secret.result
+          AWS_REGION             = var.aws_region
+          BOND_PROVIDER_CLASS    = "bondable.bond.providers.bedrock.BedrockProvider.BedrockProvider"
+          DATABASE_SECRET_ARN    = aws_secretsmanager_secret.db_credentials.arn
+          S3_BUCKET_NAME         = aws_s3_bucket.uploads.id
+          JWT_SECRET_KEY         = random_password.jwt_secret.result
           BEDROCK_AGENT_ROLE_ARN = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/BondAIBedrockAgentRole"
-          BEDROCK_DEFAULT_MODEL = var.bedrock_default_model
-          METADATA_DB_URL = "postgresql://bondadmin:${random_password.db_password.result}@${local.database_endpoint}:5432/bondai?sslmode=require"
+          BEDROCK_DEFAULT_MODEL  = var.bedrock_default_model
+          METADATA_DB_URL        = "postgresql://bondadmin:${random_password.db_password.result}@${local.database_endpoint}:5432/bondai?sslmode=require"
 
           # Okta OAuth Configuration
           OAUTH2_ENABLED_PROVIDERS = var.oauth2_providers
-          OKTA_DOMAIN = var.okta_domain
-          OKTA_CLIENT_ID = var.okta_client_id
-          OKTA_CLIENT_SECRET = jsondecode(data.aws_secretsmanager_secret_version.okta_secret.secret_string)["client_secret"]
+          OKTA_DOMAIN              = var.okta_domain
+          OKTA_CLIENT_ID           = var.okta_client_id
+          OKTA_CLIENT_SECRET       = jsondecode(data.aws_secretsmanager_secret_version.okta_secret.secret_string)["client_secret"]
           # Okta redirect URI - will be set to the actual backend URL after deployment
           # We can't reference self here, so using a placeholder that you'll need to update in Okta
           OKTA_REDIRECT_URI = var.okta_redirect_uri != "" ? var.okta_redirect_uri : "https://BACKEND_URL_PLACEHOLDER/auth/okta/callback"
-          OKTA_SCOPES = var.okta_scopes
+          OKTA_SCOPES       = var.okta_scopes
 
           # AWS Cognito OAuth Configuration (only if configured)
           # Note: Add "cognito" to oauth2_providers variable to enable
@@ -79,15 +79,16 @@ resource "aws_apprunner_service" "backend" {
           ALLOWED_REDIRECT_DOMAINS = var.allowed_redirect_domains
 
           # Knowledge Base configuration (only set when KB is enabled)
-          BEDROCK_KNOWLEDGE_BASE_ID    = try(aws_bedrockagent_knowledge_base.main[0].id, "")
-          BEDROCK_KB_DATA_SOURCE_ID    = try(aws_bedrockagent_data_source.s3[0].data_source_id, "")
-          BEDROCK_KB_S3_PREFIX         = var.enable_knowledge_base ? "knowledge-base/" : ""
+          BEDROCK_KNOWLEDGE_BASE_ID = try(aws_bedrockagent_knowledge_base.main[0].id, "")
+          BEDROCK_KB_DATA_SOURCE_ID = try(aws_bedrockagent_data_source.s3[0].data_source_id, "")
+          BEDROCK_KB_S3_PREFIX      = var.enable_knowledge_base ? "knowledge-base/" : ""
 
           # MCP configuration (only set when provided)
           BOND_MCP_CONFIG = var.bond_mcp_config
 
-          # Admin configuration
-          ADMIN_EMAIL = var.admin_email
+          # Admin configuration (prefer ADMIN_USERS for multiple admins)
+          ADMIN_USERS = var.admin_users
+          ADMIN_EMAIL = var.admin_email  # Legacy fallback for backward compatibility
         }
       }
     }
@@ -111,7 +112,7 @@ resource "aws_apprunner_service" "backend" {
 
   health_check_configuration {
     protocol            = "HTTP"
-    path               = "/health"
+    path                = "/health"
     interval            = 10
     timeout             = 5
     healthy_threshold   = 1

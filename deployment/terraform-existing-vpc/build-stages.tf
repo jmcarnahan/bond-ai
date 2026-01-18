@@ -40,6 +40,12 @@ resource "null_resource" "build_backend_image" {
       # Login to ECR (use base registry URL, not repo-specific URL)
       ECR_REGISTRY="${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
       echo "Authenticating with ECR at $ECR_REGISTRY..."
+
+      # Clear any existing credentials to prevent Keychain conflicts on macOS
+      if [[ "$OSTYPE" == "darwin"* ]]; then
+        security delete-internet-password -s "$ECR_REGISTRY" 2>/dev/null || true
+      fi
+
       aws ecr get-login-password --region ${var.aws_region} | \
         docker login --username AWS --password-stdin $ECR_REGISTRY
 
@@ -133,6 +139,12 @@ resource "null_resource" "build_frontend_image" {
       # Login to ECR (use base registry URL, not repo-specific URL)
       ECR_REGISTRY="${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
       echo "Authenticating with ECR at $ECR_REGISTRY..."
+
+      # Clear any existing credentials to prevent Keychain conflicts on macOS
+      if [[ "$OSTYPE" == "darwin"* ]]; then
+        security delete-internet-password -s "$ECR_REGISTRY" 2>/dev/null || true
+      fi
+
       aws ecr get-login-password --region ${var.aws_region} | \
         docker login --username AWS --password-stdin $ECR_REGISTRY
 
