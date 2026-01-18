@@ -244,16 +244,20 @@ async def delete_user_by_email(
     bond_provider = Depends(get_bond_provider)
 ):
     """Delete user by email (admin only)."""
-    # Admin authorization check - configurable via environment variable
-    admin_email = os.getenv("ADMIN_EMAIL")
-    if not admin_email:
-        LOGGER.error("ADMIN_EMAIL environment variable is not set; user deletion endpoint is disabled due to misconfiguration.")
+    # Admin authorization check using unified config
+    from bondable.bond.config import Config
+
+    # Check if there are any admin users configured
+    admin_users = Config.config().get_admin_users()
+    if not admin_users:
+        LOGGER.error("No admin users configured (ADMIN_USERS or ADMIN_EMAIL); user deletion endpoint is disabled.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Admin configuration error. Please contact the system administrator."
         )
 
-    if current_user.email != admin_email:
+    # Check if current user is an admin
+    if not Config.config().is_admin_user(current_user.email):
         LOGGER.warning(f"Unauthorized delete attempt by {current_user.email} for user {email}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
