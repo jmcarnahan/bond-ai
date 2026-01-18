@@ -43,10 +43,23 @@ AUTH_TYPE_STATIC = "static"
 # =============================================================================
 # New tool naming format: /b.{hash6}.{tool_name}
 # - Prefix: /b. (identifies Bond MCP tools)
-# - Hash: 6-character SHA256 hash of server name
+# - Hash: 6-character SHA256 hash of server name (or "ADMIN0" for admin tools)
 # - Tool name: Original MCP tool name
 # This enables direct server routing without searching all servers.
+#
+# Admin tools use a special reserved hash "ADMIN0" that won't collide with
+# real SHA256 hashes (which are hex-only). Admin tool paths look like:
+# /b.ADMIN0.get_usage_stats
 # =============================================================================
+
+# Import admin tool constants
+from bondable.bond.providers.bedrock.AdminMCP import (
+    ADMIN_SERVER_HASH,
+    ADMIN_SERVER_NAME,
+    ADMIN_TOOL_NAMES,
+    get_admin_tool_definitions,
+    is_admin_tool
+)
 
 def _hash_server_name(server_name: str) -> str:
     """
@@ -83,6 +96,10 @@ def _parse_tool_path(api_path: str) -> Tuple[Optional[str], Optional[str]]:
     """
     Parse tool path to extract server hash and tool name.
 
+    Handles both:
+    - Regular MCP tools: /b.{hex6}.{tool_name} (e.g., /b.a1b2c3.list_tools)
+    - Admin tools: /b.ADMIN0.{tool_name} (e.g., /b.ADMIN0.get_usage_stats)
+
     Args:
         api_path: API path from Bedrock action invocation
 
@@ -91,10 +108,24 @@ def _parse_tool_path(api_path: str) -> Tuple[Optional[str], Optional[str]]:
     """
     if not api_path:
         return None, None
-    match = re.match(r'^/b\.([a-f0-9]{6})\.(.+)$', api_path)
+    # Match hex hash (a-f0-9) OR the special ADMIN0 identifier
+    match = re.match(r'^/b\.([a-f0-9]{6}|ADMIN0)\.(.+)$', api_path)
     if match:
         return match.group(1), match.group(2)
     return None, None
+
+
+def _build_admin_tool_path(tool_name: str) -> str:
+    """
+    Build tool path for an admin tool: /b.ADMIN0.{tool_name}
+
+    Args:
+        tool_name: Admin tool name
+
+    Returns:
+        Tool path in admin format, e.g., /b.ADMIN0.get_usage_stats
+    """
+    return f"/b.{ADMIN_SERVER_HASH}.{tool_name}"
 
 
 def _resolve_server_from_hash(server_hash: str, mcp_config: Dict[str, Any]) -> Optional[str]:
@@ -162,8 +193,16 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
             # Use new naming format: /b.{hash6}.{tool_name}
             # This embeds server identification in the tool path for direct routing
             tool_server_name = tool.get('server_name', 'unknown')
-            tool_path = _build_tool_path(tool_server_name, tool['name'])
-            server_hash = _hash_server_name(tool_server_name)
+
+            # Check if this is an admin tool (use ADMIN0 hash instead of hashing server name)
+            if tool_server_name == ADMIN_SERVER_NAME:
+                tool_path = _build_admin_tool_path(tool['name'])
+                server_hash = ADMIN_SERVER_HASH
+                LOGGER.debug(f"[MCP Action Groups] Building admin tool path: {tool_path}")
+            else:
+                tool_path = _build_tool_path(tool_server_name, tool['name'])
+                server_hash = _hash_server_name(tool_server_name)
+
             operation_id = f"b_{server_hash}_{tool['name']}"
 
             paths[tool_path] = {
@@ -278,7 +317,32 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
     tool_definitions = []
     remaining_tools = set(tool_names)  # Track which tools we still need to find
 
-    # Search each server for the requested tools
+    # =================================================================
+    # First, check for admin tools in the requested list
+    # =================================================================
+    # Admin tools are handled internally and don't need external MCP calls
+    admin_tool_names_requested = remaining_tools & ADMIN_TOOL_NAMES
+    if admin_tool_names_requested:
+        LOGGER.debug(f"[MCP Tool Defs] Found {len(admin_tool_names_requested)} admin tools in request: {admin_tool_names_requested}")
+        admin_tool_defs = get_admin_tool_definitions()
+        admin_tool_map = {t['name']: t for t in admin_tool_defs}
+
+        for tool_name in admin_tool_names_requested:
+            if tool_name in admin_tool_map:
+                admin_tool = admin_tool_map[tool_name]
+                tool_def = {
+                    'name': tool_name,
+                    'description': admin_tool['description'],
+                    'parameters': admin_tool['inputSchema'].get('properties', {}),
+                    'server_name': ADMIN_SERVER_NAME  # Mark as admin tool
+                }
+                tool_definitions.append(tool_def)
+                remaining_tools.remove(tool_name)
+                LOGGER.debug(f"[MCP Tool Defs] Added admin tool '{tool_name}'")
+
+    # =================================================================
+    # Search each external MCP server for the remaining tools
+    # =================================================================
     for server_name, server_config in servers.items():
         if not remaining_tools:
             break  # Found all tools

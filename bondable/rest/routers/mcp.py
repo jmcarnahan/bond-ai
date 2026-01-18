@@ -223,6 +223,48 @@ async def list_mcp_tools(
                 tool_count=len(server_tools)
             ))
 
+        # =================================================================
+        # Inject Admin Tools for Admin Users
+        # =================================================================
+        # Admin tools are internal tools that appear like a regular MCP server
+        # but are only visible to users configured as admins
+        # =================================================================
+        if Config.config().is_admin_user(current_user.email):
+            from bondable.bond.providers.bedrock.AdminMCP import (
+                ADMIN_SERVER_NAME, ADMIN_DISPLAY_NAME, ADMIN_DESCRIPTION,
+                get_admin_tool_definitions
+            )
+
+            admin_tool_defs = get_admin_tool_definitions()
+            admin_tools = [
+                MCPToolResponse(
+                    name=t["name"],
+                    description=t["description"],
+                    input_schema=t["inputSchema"]
+                )
+                for t in admin_tool_defs
+            ]
+
+            admin_server = MCPServerWithTools(
+                server_name=ADMIN_SERVER_NAME,
+                display_name=ADMIN_DISPLAY_NAME,
+                description=ADMIN_DESCRIPTION,
+                icon_url=None,
+                auth_type="internal",  # Special type for internal tools
+                connection_status=ConnectionStatusInfo(
+                    connected=True,
+                    valid=True,
+                    requires_authorization=False,
+                    expires_at=None
+                ),
+                tools=admin_tools,
+                tool_count=len(admin_tools)
+            )
+
+            server_tools_list.append(admin_server)
+            all_tools.extend(admin_tools)
+            LOGGER.info(f"[MCP Tools] Injected {len(admin_tools)} admin tools for admin user {current_user.email}")
+
         LOGGER.info(f"[MCP Tools] Total tools collected: {len(all_tools)}")
 
         if grouped:

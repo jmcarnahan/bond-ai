@@ -5,9 +5,9 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Environment = var.environment
-      Project     = var.project_name
-      ManagedBy   = "Terraform"
+      Environment    = var.environment
+      Project        = var.project_name
+      ManagedBy      = "Terraform"
       DeploymentType = "existing-vpc"
     }
   }
@@ -20,13 +20,13 @@ data "aws_region" "current" {}
 # Random password for RDS
 resource "random_password" "db_password" {
   length  = 32
-  special = false  # Use only alphanumeric for now to avoid encoding issues
+  special = false # Use only alphanumeric for now to avoid encoding issues
 }
 
 # Random JWT secret key
 resource "random_password" "jwt_secret" {
   length  = 64
-  special = false  # Use only alphanumeric for now to avoid encoding issues
+  special = false # Use only alphanumeric for now to avoid encoding issues
 }
 
 # Get Okta client secret from Secrets Manager
@@ -147,9 +147,9 @@ resource "aws_ecr_lifecycle_policy" "backend" {
         rulePriority = 1
         description  = "Keep last 10 images"
         selection = {
-          tagStatus     = "any"
-          countType     = "imageCountMoreThan"
-          countNumber   = 10
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 10
         }
         action = {
           type = "expire"
@@ -168,9 +168,9 @@ resource "aws_ecr_lifecycle_policy" "frontend" {
         rulePriority = 1
         description  = "Keep last 10 images"
         selection = {
-          tagStatus     = "any"
-          countType     = "imageCountMoreThan"
-          countNumber   = 10
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 10
         }
         action = {
           type = "expire"

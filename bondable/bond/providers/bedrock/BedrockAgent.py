@@ -28,6 +28,10 @@ from .BedrockMCP import (
     _parse_tool_path,
     _resolve_server_from_hash
 )
+from .AdminMCP import (
+    ADMIN_SERVER_HASH,
+    execute_admin_tool
+)
 from .BedrockMetadata import BedrockMetadata, BedrockAgentOptions
 from .BedrockProvider import BedrockProvider
 
@@ -488,6 +492,51 @@ Please integrate any relevant insights from the documents with your analysis of 
             LOGGER.exception(f"Unexpected error in stream_response: {e}")
             yield from self._yield_error_message(thread_id, str(e))
 
+    def _extract_tool_parameters(self, action_input: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Extract parameters from Bedrock action input.
+
+        Handles multiple parameter formats that Bedrock can send:
+        - 'parameters' array with name/value pairs
+        - 'requestBody' with 'properties' array
+        - 'requestBody' with 'body' JSON string
+
+        Args:
+            action_input: Action input from Bedrock invocation
+
+        Returns:
+            Dictionary of parameter names to values
+        """
+        parameters = {}
+
+        # First check if parameters are in the 'parameters' array
+        if 'parameters' in action_input and action_input['parameters']:
+            for param in action_input['parameters']:
+                if 'name' in param and 'value' in param:
+                    parameters[param['name']] = param['value']
+
+        # Also check requestBody (parameters might be there instead or in addition)
+        if 'requestBody' in action_input and not parameters:
+            request_body = action_input.get('requestBody', {})
+            content = request_body.get('content', {})
+            if 'application/json' in content:
+                json_content = content['application/json']
+
+                # Check if parameters are in 'properties' array format
+                if 'properties' in json_content:
+                    for prop in json_content['properties']:
+                        if 'name' in prop and 'value' in prop:
+                            parameters[prop['name']] = prop['value']
+                # Otherwise check for 'body' string format
+                elif 'body' in json_content:
+                    body_str = json_content.get('body', '{}')
+                    try:
+                        parameters = json.loads(body_str)
+                    except json.JSONDecodeError:
+                        LOGGER.error(f"Failed to parse request body JSON: {body_str}")
+
+        return parameters
+
     def _handle_return_control(self, return_control: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Handle returnControl event from Bedrock for tool execution.
@@ -515,8 +564,63 @@ Please integrate any relevant insights from the documents with your analysis of 
                 # Check if this is an MCP tool using new format: /b.{hash6}.{tool_name}
                 server_hash, tool_name = _parse_tool_path(api_path)
                 if server_hash and tool_name:
+                    # =============================================================
+                    # Check if this is an admin tool (ADMIN0 hash)
+                    # =============================================================
+                    if server_hash == ADMIN_SERVER_HASH:
+                        LOGGER.info(f"Executing admin tool: {tool_name} (hash: {server_hash})")
+
+                        # Verify user is still admin (belt and suspenders security)
+                        user_email = getattr(self._current_user, 'email', None) if self._current_user else None
+                        if not user_email or not Config.config().is_admin_user(user_email):
+                            LOGGER.warning(f"Non-admin user '{user_email}' attempted to execute admin tool '{tool_name}'")
+                            result = {"success": False, "error": "Admin access required to execute this tool"}
+                        else:
+                            # Get parameters for admin tool
+                            parameters = self._extract_tool_parameters(action_input)
+                            LOGGER.debug(f"Admin tool '{tool_name}' parameters: {parameters}")
+
+                            # Execute admin tool
+                            result = execute_admin_tool(
+                                tool_name=tool_name,
+                                parameters=parameters,
+                                current_user=self._current_user,
+                                db_session_factory=self.bond_provider.metadata.get_db_session
+                            )
+
+                        # Format response
+                        success = result.get('success', False)
+                        status_code = 200 if success else 403 if 'Admin access' in result.get('error', '') else 500
+                        result_preview = str(result.get('result', result.get('error', 'Unknown')))[:200]
+                        LOGGER.info(f"Admin tool {tool_name} completed - success: {success}, status: {status_code}, result preview: {result_preview}")
+
+                        response_body = json.dumps({
+                            "result": result.get('result', result.get('error', 'Unknown error'))
+                        })
+
+                        tool_response = {
+                            "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
+                            "apiPath": api_path,
+                            "httpMethod": action_input.get('httpMethod', 'POST'),
+                            "httpStatusCode": status_code,
+                            "responseBody": {
+                                "application/json": {
+                                    "body": response_body
+                                }
+                            }
+                        }
+
+                        # Wrap in apiResult if it was an apiInvocationInput
+                        if 'apiInvocationInput' in inv_input:
+                            tool_response = {"apiResult": tool_response}
+
+                        results.append(tool_response)
+                        continue  # Skip the rest of the loop for admin tools
+
+                    # =============================================================
+                    # Regular MCP tool - route to external server
+                    # =============================================================
                     # Get MCP config to resolve server from hash
-                    from bondable.bond.config import Config
                     mcp_config = Config.config().get_mcp_config()
                     target_server = _resolve_server_from_hash(server_hash, mcp_config) if mcp_config else None
 

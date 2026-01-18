@@ -9,7 +9,7 @@
 locals {
   custom_domain_enabled = var.custom_domain_name != ""
   # Use hosted_zone_name if provided, otherwise fall back to custom_domain_name (for root domains)
-  hosted_zone_name      = var.hosted_zone_name != "" ? var.hosted_zone_name : var.custom_domain_name
+  hosted_zone_name = var.hosted_zone_name != "" ? var.hosted_zone_name : var.custom_domain_name
 }
 
 # Use the existing Route 53 Hosted Zone (created automatically during domain registration)

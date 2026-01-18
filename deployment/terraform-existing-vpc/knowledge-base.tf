@@ -50,7 +50,7 @@ locals {
   aurora_kb_database = "bedrockdb"
   aurora_kb_schema   = "bedrock_integration"
   aurora_kb_table    = "bedrock_kb"
-  aurora_kb_username = "postgres"  # Use master user (init script + Bedrock KB access)
+  aurora_kb_username = "postgres" # Use master user (init script + Bedrock KB access)
 }
 
 # =============================================================================
@@ -180,7 +180,7 @@ resource "aws_rds_cluster" "aurora_kb" {
   preferred_backup_window = "03:00-04:00"
 
   # Skip final snapshot for dev (change for prod)
-  skip_final_snapshot = var.environment != "prod"
+  skip_final_snapshot       = var.environment != "prod"
   final_snapshot_identifier = var.environment == "prod" ? "${var.project_name}-${var.environment}-aurora-kb-final" : null
 
   # Enable IAM authentication
@@ -232,7 +232,7 @@ resource "null_resource" "init_aurora_kb" {
 
   provisioner "local-exec" {
     interpreter = ["/bin/bash", "-c"]
-    command = <<-EOT
+    command     = <<-EOT
       set -e
 
       echo "Initializing Aurora KB with pgvector extension..."

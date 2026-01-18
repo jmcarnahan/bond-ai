@@ -203,6 +203,12 @@ variable "waf_sampled_requests_enabled" {
   default     = true
 }
 
+variable "waf_maintenance_mode" {
+  description = "Enable WAF-based maintenance mode for frontend (blocks all traffic with maintenance page)"
+  type        = bool
+  default     = false
+}
+
 variable "admin_email" {
   description = "Admin email for privileged operations (SQL endpoint, user management)"
   type        = string
