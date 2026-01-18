@@ -417,3 +417,44 @@ class Config:
         except json.JSONDecodeError as e:
             LOGGER.error(f"Error parsing BOND_MCP_CONFIG: {e}")
             return {"mcpServers": {}}
+
+    def get_admin_users(self) -> list:
+        """
+        Get list of admin user emails from environment configuration.
+
+        Supports two environment variables:
+        - ADMIN_USERS: Comma-separated list of admin emails (preferred)
+        - ADMIN_EMAIL: Single admin email (legacy, for backward compatibility)
+
+        Returns:
+            List of admin email addresses (lowercase normalized)
+        """
+        # First check for comma-separated list
+        admin_users_str = os.getenv('ADMIN_USERS', '')
+        if admin_users_str:
+            admins = [email.strip().lower() for email in admin_users_str.split(',') if email.strip()]
+            LOGGER.debug(f"Admin users from ADMIN_USERS: {len(admins)} users")
+            return admins
+
+        # Fallback to single ADMIN_EMAIL for backward compatibility
+        admin_email = os.getenv('ADMIN_EMAIL', '')
+        if admin_email:
+            LOGGER.debug(f"Admin user from ADMIN_EMAIL: {admin_email}")
+            return [admin_email.strip().lower()]
+
+        LOGGER.debug("No admin users configured")
+        return []
+
+    def is_admin_user(self, email: str) -> bool:
+        """
+        Check if an email belongs to an admin user.
+
+        Args:
+            email: Email address to check
+
+        Returns:
+            True if the email is in the admin users list
+        """
+        if not email:
+            return False
+        return email.strip().lower() in self.get_admin_users()
