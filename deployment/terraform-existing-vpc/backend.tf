@@ -86,8 +86,9 @@ resource "aws_apprunner_service" "backend" {
           # MCP configuration (only set when provided)
           BOND_MCP_CONFIG = var.bond_mcp_config
 
-          # Admin configuration
-          ADMIN_EMAIL = var.admin_email
+          # Admin configuration (prefer ADMIN_USERS for multiple admins)
+          ADMIN_USERS = var.admin_users
+          ADMIN_EMAIL = var.admin_email  # Legacy fallback for backward compatibility
         }
       }
     }
