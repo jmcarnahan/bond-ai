@@ -50,7 +50,7 @@ resource "aws_apprunner_service" "frontend" {
 
   health_check_configuration {
     protocol            = "HTTP"
-    path               = "/"
+    path                = "/"
     interval            = 10
     timeout             = 5
     healthy_threshold   = 1

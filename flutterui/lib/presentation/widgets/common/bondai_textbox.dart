@@ -21,6 +21,7 @@ class BondAITextBox extends StatelessWidget {
   final FocusNode? focusNode;
   final TextInputAction? textInputAction;
   final void Function(String)? onFieldSubmitted;
+  final double? fontSize;
 
   const BondAITextBox({
     super.key,
@@ -42,6 +43,7 @@ class BondAITextBox extends StatelessWidget {
     this.focusNode,
     this.textInputAction,
     this.onFieldSubmitted,
+    this.fontSize,
   });
 
   @override
@@ -143,6 +145,7 @@ class BondAITextBox extends StatelessWidget {
             color: enabled
                 ? theme.colorScheme.onSurface
                 : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            fontSize: fontSize,
           ),
         ),
         if (maxLength != null)
