@@ -703,6 +703,24 @@ Please integrate any relevant insights from the documents with your analysis of 
                             results.append(tool_response)
                         else:
                             LOGGER.error("No MCP config available")
+                            # Create error response for Bedrock so agent can respond to user
+                            error_response = {
+                                "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
+                                "apiPath": api_path,
+                                "httpMethod": action_input.get('httpMethod', 'POST'),
+                                "httpStatusCode": 500,
+                                "responseBody": {
+                                    "application/json": {
+                                        "body": json.dumps({"error": "MCP configuration not available. The tool could not be executed."})
+                                    }
+                                }
+                            }
+
+                            # Wrap in apiResult if it was an apiInvocationInput
+                            if 'apiInvocationInput' in inv_input:
+                                error_response = {"apiResult": error_response}
+
+                            results.append(error_response)
                     except Exception as e:
                         LOGGER.exception(f"Error executing MCP tool {tool_name} with parameters {list(parameters.keys()) if parameters else []}: {e}")
                         # Return error response
@@ -723,6 +741,26 @@ Please integrate any relevant insights from the documents with your analysis of 
                             error_response = {"apiResult": error_response}
 
                         results.append(error_response)
+                else:
+                    # Tool path doesn't match expected format (/b.{hash}.{tool_name})
+                    LOGGER.warning(f"Unrecognized tool path format: {api_path}")
+                    error_response = {
+                        "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
+                        "apiPath": api_path,
+                        "httpMethod": action_input.get('httpMethod', 'POST'),
+                        "httpStatusCode": 404,
+                        "responseBody": {
+                            "application/json": {
+                                "body": json.dumps({"error": f"Tool path not recognized: {api_path}. Expected format: /b.{{hash}}.{{tool_name}}"})
+                            }
+                        }
+                    }
+
+                    # Wrap in apiResult if it was an apiInvocationInput
+                    if 'apiInvocationInput' in inv_input:
+                        error_response = {"apiResult": error_response}
+
+                    results.append(error_response)
 
         return results
 
@@ -1016,6 +1054,8 @@ Please integrate any relevant insights from the documents with your analysis of 
                                             response_id = new_response_id
                                             full_content = ''
                             elif isinstance(cont_item, dict):
+                                # Handle session_state from continuation response
+                                # (files_event is already handled by the condition at line 1040)
                                 if cont_item.get('session_state'):
                                     new_session_state = cont_item['session_state']
 
@@ -1085,9 +1125,13 @@ Please integrate any relevant insights from the documents with your analysis of 
             )
             LOGGER.debug(f"Updated session state for thread {thread_id}")
 
+    # Maximum recursion depth for nested tool calls (safety limit)
+    MAX_TOOL_CALL_DEPTH = 10
+
     def _handle_continuation_response(self, return_control: Dict[str, Any], session_id: str,
                                     thread_id: str, seen_file_hashes: set,
-                                    attachments: Optional[List] = None) -> Generator[str, None, Dict[str, Any]]:
+                                    attachments: Optional[List] = None,
+                                    depth: int = 0) -> Generator[str, None, Dict[str, Any]]:
         """
         Handle continuation response after tool execution.
 
@@ -1097,50 +1141,120 @@ Please integrate any relevant insights from the documents with your analysis of 
             thread_id: Thread ID
             seen_file_hashes: Set of already seen file hashes
             attachments: Optional attachments
+            depth: Current recursion depth for nested tool calls
 
         Yields:
-            Response chunks
+            Response chunks and session state dicts
 
         Returns:
             Dictionary with accumulated content and new session state
         """
+        # Safety check for recursion depth
+        if depth >= self.MAX_TOOL_CALL_DEPTH:
+            LOGGER.error(f"Maximum tool call depth ({self.MAX_TOOL_CALL_DEPTH}) exceeded - stopping recursion")
+            yield f"\n\n[Error: Maximum tool call depth exceeded. The agent attempted too many sequential tool calls.]\n"
+            return {'full_content': '', 'session_state': None}
+
         tool_results = self._handle_return_control(return_control)
         full_content = ""
         new_session_state = None
 
-        if tool_results:
-            # Continue the agent with the tool results
-            continuation_request = {
-                'agentId': self.bedrock_agent_id,
-                'agentAliasId': self.bedrock_agent_alias_id,
-                'sessionId': session_id,
-                'sessionState': {
-                    'invocationId': return_control.get('invocationId'),
-                    'returnControlInvocationResults': tool_results
-                },
-                'enableTrace': True,
-                'streamingConfigurations': {
-                    'streamFinalResponse': True
+        # If no tool results were generated, create a fallback error response
+        # This ensures the agent always gets a continuation signal and can respond to the user
+        if not tool_results:
+            # Extract action group name from return_control if possible
+            invocation_inputs = return_control.get('invocationInputs', [])
+            LOGGER.warning(
+                f"No tool results generated - creating fallback error response for agent continuation. "
+                f"invocationInputs count: {len(invocation_inputs)}"
+            )
+            first_input = invocation_inputs[0] if invocation_inputs else {}
+            action_input = first_input.get('actionGroupInvocationInput', first_input.get('apiInvocationInput', {}))
+            action_group = action_input.get('actionGroup') or action_input.get('actionGroupName', 'Unknown')
+            api_path = action_input.get('apiPath', '/unknown')
+
+            fallback_error = {
+                "actionGroup": action_group,
+                "apiPath": api_path,
+                "httpMethod": "POST",
+                "httpStatusCode": 500,
+                "responseBody": {
+                    "application/json": {
+                        "body": json.dumps({"error": "Tool execution failed - no response was generated. Please inform the user that the operation could not be completed."})
+                    }
                 }
             }
 
-            # Get continuation response
-            continuation_response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**continuation_request)
-            continuation_stream = continuation_response.get('completion')
+            # Wrap in apiResult if it was an apiInvocationInput
+            if 'apiInvocationInput' in first_input:
+                fallback_error = {"apiResult": fallback_error}
 
-            if continuation_stream:
-                for cont_event in continuation_stream:
-                    if 'chunk' in cont_event:
-                        text = self._handle_chunk_event(cont_event['chunk'])
-                        if text:
-                            yield text
-                            full_content += text
-                    elif 'files' in cont_event:
-                        # Note: File handling in continuation is handled by the caller
-                        # We just pass the event through
-                        yield {'files_event': cont_event}
-                    elif 'sessionState' in cont_event:
-                        new_session_state = cont_event['sessionState']
+            tool_results = [fallback_error]
+
+        # Always continue the agent with the tool results
+        continuation_request = {
+            'agentId': self.bedrock_agent_id,
+            'agentAliasId': self.bedrock_agent_alias_id,
+            'sessionId': session_id,
+            'sessionState': {
+                'invocationId': return_control.get('invocationId'),
+                'returnControlInvocationResults': tool_results
+            },
+            'enableTrace': True,
+            'streamingConfigurations': {
+                'streamFinalResponse': True
+            }
+        }
+
+        # Get continuation response
+        continuation_response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**continuation_request)
+        continuation_stream = continuation_response.get('completion')
+
+        if continuation_stream:
+            for cont_event in continuation_stream:
+                if 'chunk' in cont_event:
+                    text = self._handle_chunk_event(cont_event['chunk'])
+                    if text:
+                        yield text
+                        full_content += text
+                elif 'files' in cont_event:
+                    # Note: File handling in continuation is handled by the caller
+                    # We just pass the event through
+                    yield {'files_event': cont_event}
+                elif 'returnControl' in cont_event:
+                    # Agent wants to call another tool - handle recursively
+                    nested_return_control = cont_event['returnControl']
+                    LOGGER.info(f"Received nested returnControl event in continuation stream - handling recursively (depth={depth + 1})")
+
+                    # Recursively call ourselves to handle the nested tool call
+                    nested_generator = self._handle_continuation_response(
+                        return_control=nested_return_control,
+                        session_id=session_id,
+                        thread_id=thread_id,
+                        seen_file_hashes=seen_file_hashes,
+                        attachments=attachments,
+                        depth=depth + 1
+                    )
+
+                    # Forward all yielded items from nested handler
+                    for nested_item in nested_generator:
+                        if isinstance(nested_item, str):
+                            yield nested_item
+                            full_content += nested_item
+                        elif isinstance(nested_item, dict):
+                            # Forward files_event and capture session_state
+                            if 'files_event' in nested_item:
+                                yield nested_item
+                            if nested_item.get('session_state'):
+                                new_session_state = nested_item['session_state']
+
+                elif 'sessionState' in cont_event:
+                    new_session_state = cont_event['sessionState']
+
+        # Yield the final session state so callers can capture it
+        # (return value from generators is not accessible via iteration)
+        if new_session_state:
+            yield {'session_state': new_session_state}
 
         return {'full_content': full_content, 'session_state': new_session_state}
 
