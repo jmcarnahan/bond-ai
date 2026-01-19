@@ -576,7 +576,7 @@ def _handle_execute_sql_query(session, parameters: Dict[str, Any], current_user:
                 row_dict[col] = value
             data.append(row_dict)
 
-        return {
+        result = {
             "database_dialect": db_dialect,
             "query": query,
             "columns": columns,
@@ -586,6 +586,12 @@ def _handle_execute_sql_query(session, parameters: Dict[str, Any], current_user:
             "executed_by": user_email,
             "executed_at": datetime.now(timezone.utc).isoformat()
         }
+
+        # Add helpful message for empty results so agent can respond appropriately
+        if len(data) == 0:
+            result["message"] = "Query executed successfully but returned no results. Please inform the user that the query completed but no matching records were found."
+
+        return result
 
     except Exception as e:
         LOGGER.exception(f"[Admin MCP] SQL query execution error: {e}")
