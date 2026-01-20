@@ -201,15 +201,26 @@ class BedrockProvider(Provider):
                     if is_supported:
                         # Filter by selectable models if configured
                         # Check both with and without 'us.' prefix for cross-region inference compatibility
+                        # Also determine which ID variant to use (prefer the one in selectable_models)
+                        model_id_with_us = f"us.{model_id}" if not model_id.startswith('us.') else model_id
+                        model_id_without_us = model_id[3:] if model_id.startswith('us.') else model_id
+
                         if selectable_models:
-                            model_id_with_us = f"us.{model_id}" if not model_id.startswith('us.') else model_id
-                            model_id_without_us = model_id[3:] if model_id.startswith('us.') else model_id
-                            if model_id not in selectable_models and model_id_with_us not in selectable_models and model_id_without_us not in selectable_models:
-                                continue
+                            if model_id in selectable_models:
+                                effective_model_id = model_id
+                            elif model_id_with_us in selectable_models:
+                                effective_model_id = model_id_with_us
+                            elif model_id_without_us in selectable_models:
+                                effective_model_id = model_id_without_us
+                            else:
+                                continue  # Model not in selectable list
+                        else:
+                            # No selectable filter - prefer us. prefix for cross-region inference
+                            effective_model_id = model_id_with_us
 
                         model_info = {
-                            'id': model_id,
-                            'name': model_id,  # Use model ID as name for consistency
+                            'id': effective_model_id,
+                            'name': effective_model_id,  # Use effective model ID (with correct prefix)
                             'description': f"{model['providerName']} - {model['modelName']}",
                             'is_default': False,  # Will be set later
                             'provider': model['providerName'],
