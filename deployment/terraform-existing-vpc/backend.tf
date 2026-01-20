@@ -46,8 +46,9 @@ resource "aws_apprunner_service" "backend" {
           S3_BUCKET_NAME         = aws_s3_bucket.uploads.id
           JWT_SECRET_KEY         = random_password.jwt_secret.result
           BEDROCK_AGENT_ROLE_ARN = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/BondAIBedrockAgentRole"
-          BEDROCK_DEFAULT_MODEL  = var.bedrock_default_model
-          METADATA_DB_URL        = "postgresql://bondadmin:${random_password.db_password.result}@${local.database_endpoint}:5432/bondai?sslmode=require"
+          BEDROCK_DEFAULT_MODEL      = var.bedrock_default_model
+          BEDROCK_SELECTABLE_MODELS  = var.bedrock_selectable_models
+          METADATA_DB_URL            = "postgresql://bondadmin:${random_password.db_password.result}@${local.database_endpoint}:5432/bondai?sslmode=require"
 
           # Okta OAuth Configuration
           OAUTH2_ENABLED_PROVIDERS = var.oauth2_providers
