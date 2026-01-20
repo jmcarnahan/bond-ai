@@ -178,6 +178,12 @@ variable "bedrock_default_model" {
   default     = "us.anthropic.claude-sonnet-4-20250514-v1:0"
 }
 
+variable "bedrock_selectable_models" {
+  description = "Comma-separated list of Bedrock model IDs available for selection in UI. If empty, all models are available."
+  type        = string
+  default     = "us.anthropic.claude-opus-4-5-20251101-v1:0,us.anthropic.claude-sonnet-4-5-20250929-v1:0,us.anthropic.claude-haiku-4-5-20251001-v1:0,us.anthropic.claude-sonnet-4-20250514-v1:0"
+}
+
 variable "bond_mcp_config" {
   description = "JSON configuration for MCP servers"
   type        = string

@@ -59,6 +59,7 @@ class CreateAgentFormState {
   final String instructions;
   final String introduction;
   final String reminder;
+  final String? selectedModel; // Selected AI model (null = use default)
   final List<UploadedFileInfo> uploadedFiles;
   final Set<String> selectedMcpTools;
   final Set<String> selectedMcpResources;
@@ -74,6 +75,7 @@ class CreateAgentFormState {
     this.instructions = '',
     this.introduction = '',
     this.reminder = '',
+    this.selectedModel,
     this.uploadedFiles = const [],
     this.selectedMcpTools = const {},
     this.selectedMcpResources = const {},
@@ -90,6 +92,8 @@ class CreateAgentFormState {
     String? instructions,
     String? introduction,
     String? reminder,
+    String? selectedModel,
+    bool clearSelectedModel = false,
     List<UploadedFileInfo>? uploadedFiles,
     Set<String>? selectedMcpTools,
     Set<String>? selectedMcpResources,
@@ -106,6 +110,7 @@ class CreateAgentFormState {
       instructions: instructions ?? this.instructions,
       introduction: introduction ?? this.introduction,
       reminder: reminder ?? this.reminder,
+      selectedModel: clearSelectedModel ? null : selectedModel ?? this.selectedModel,
       uploadedFiles: uploadedFiles ?? this.uploadedFiles,
       selectedMcpTools: selectedMcpTools ?? this.selectedMcpTools,
       selectedMcpResources: selectedMcpResources ?? this.selectedMcpResources,
@@ -209,6 +214,13 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
 
   void setFileStorage(String fileStorage) {
     state = state.copyWith(fileStorage: fileStorage);
+  }
+
+  void setSelectedModel(String? model) {
+    state = state.copyWith(
+      selectedModel: model,
+      clearSelectedModel: model == null,
+    );
   }
 
   Future<void> uploadFile() async {
@@ -373,6 +385,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
         instructions: agentDetail.instructions ?? '',
         introduction: agentDetail.introduction ?? '',
         reminder: agentDetail.reminder ?? '',
+        selectedModel: agentDetail.model,
         uploadedFiles: uploadedFiles,
         selectedMcpTools:
             agentDetail.mcpTools != null
@@ -387,7 +400,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       );
 
       logger.i(
-        "[CreateAgentFormNotifier] Loaded agent data for editing: ${agentDetail.name}",
+        "[CreateAgentFormNotifier] Loaded agent data for editing: ${agentDetail.name} with model: ${agentDetail.model}",
       );
       // logger.i("[CreateAgentFormNotifier] MCP Tools: ${agentDetail.mcpTools}");
       // logger.i(
@@ -449,25 +462,30 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       fileSearch: ToolResourceFilesListModel(fileIds: fileSearchFiles),
     );
 
-    // Get the default model from the provider
-    String? defaultModel = _getDefaultModel();
+    // Use selected model from state, or fall back to default model
+    String? modelToUse = state.selectedModel;
 
-    // If model is null, models might not be loaded yet, wait and retry
-    if (defaultModel == null) {
+    // If no model selected, get the default model from the provider
+    if (modelToUse == null || modelToUse.isEmpty) {
+      modelToUse = _getDefaultModel();
+    }
+
+    // If model is still null, models might not be loaded yet, wait and retry
+    if (modelToUse == null) {
       logger.w('[CreateAgentFormNotifier] Model is null, waiting for models to load...');
 
       // Wait up to 3 seconds for models to load
       for (int i = 0; i < 6; i++) {
         await Future.delayed(const Duration(milliseconds: 500));
-        defaultModel = _getDefaultModel();
-        if (defaultModel != null) {
+        modelToUse = _getDefaultModel();
+        if (modelToUse != null) {
           logger.i('[CreateAgentFormNotifier] Models loaded after ${(i + 1) * 500}ms');
           break;
         }
       }
 
       // If still null after waiting, fail the save
-      if (defaultModel == null) {
+      if (modelToUse == null) {
         state = state.copyWith(
           isLoading: false,
           errorMessage: "Unable to determine AI model. Please refresh and try again.",
@@ -477,7 +495,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       }
     }
 
-    logger.i('[CreateAgentFormNotifier] Using model for agent creation: $defaultModel');
+    logger.i('[CreateAgentFormNotifier] Using model for agent: $modelToUse (selected: ${state.selectedModel != null})');
 
     final agentData = AgentDetailModel(
       id: agentId ?? '',
@@ -486,7 +504,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       instructions: state.instructions.isNotEmpty ? state.instructions : null,
       introduction: state.introduction.isNotEmpty ? state.introduction : null,
       reminder: state.reminder.isNotEmpty ? state.reminder : null,
-      model: defaultModel, // guaranteed non-null by check above
+      model: modelToUse, // guaranteed non-null by check above
       tools: tools,
       toolResources: toolResources,
       mcpTools:
