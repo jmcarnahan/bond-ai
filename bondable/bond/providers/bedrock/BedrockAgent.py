@@ -1836,39 +1836,10 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
             List of available model information
         """
         # Delegate to the main provider's get_available_models method
-        # We need to access it through the metadata's reference
+        # Use same pattern as select_material_icon() - get provider via Config
         try:
-            # Get the provider instance through metadata
-            if hasattr(self.metadata, '_provider') and self.metadata._provider:
-                return self.metadata._provider.get_available_models()
-            else:
-                # Fallback: we need the bedrock client (not runtime) to list models
-                # Try to get it from the bedrock_agent_client's session
-                response = self.bedrock_client.list_foundation_models(
-                    byOutputModality='TEXT'
-                )
-                models = []
-                # Always use cross-region inference models with us. prefix
-                default_model = os.getenv('BEDROCK_DEFAULT_MODEL', 'us.anthropic.claude-3-haiku-20240307-v1:0')
-
-                for model in response.get('modelSummaries', []):
-                    if model.get('responseStreamingSupported', False) and 'TEXT' in model.get('outputModalities', []):
-                        model_id = model['modelId']
-                        models.append({
-                            'name': model_id,
-                            'description': f"{model['providerName']} - {model['modelName']}",
-                            'is_default': model_id == default_model
-                        })
-
-                # Add default model if not in list
-                if default_model and not any(m['name'] == default_model for m in models):
-                    models.append({
-                        'name': default_model,
-                        'description': 'Default model from environment',
-                        'is_default': True
-                    })
-
-                return models
+            provider = Config.config().get_provider()
+            return provider.get_available_models()
         except Exception as e:
             LOGGER.error(f"Error getting available models: {e}")
             return []

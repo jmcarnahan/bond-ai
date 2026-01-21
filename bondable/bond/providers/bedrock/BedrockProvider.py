@@ -164,10 +164,18 @@ class BedrockProvider(Provider):
         """
         Get list of available models from Bedrock.
 
+        If BEDROCK_SELECTABLE_MODELS is set, only those models are returned.
+        Otherwise, all available models are returned.
+
         Returns:
             List of model information dictionaries
         """
         try:
+            # Get selectable models from config (if configured)
+            config = Config.config()
+            selectable_models = config.get_selectable_models()
+            LOGGER.info(f"BEDROCK_SELECTABLE_MODELS check: {len(selectable_models)} models configured, list: {selectable_models}")
+
             # List foundation models
             response = self.bedrock_client.list_foundation_models(
                 byOutputModality='TEXT'
@@ -191,9 +199,28 @@ class BedrockProvider(Provider):
                     is_supported = any(model_id.startswith(prefix) for prefix in supported_prefixes)
 
                     if is_supported:
+                        # Filter by selectable models if configured
+                        # Check both with and without 'us.' prefix for cross-region inference compatibility
+                        # Also determine which ID variant to use (prefer the one in selectable_models)
+                        model_id_with_us = f"us.{model_id}" if not model_id.startswith('us.') else model_id
+                        model_id_without_us = model_id[3:] if model_id.startswith('us.') else model_id
+
+                        if selectable_models:
+                            if model_id in selectable_models:
+                                effective_model_id = model_id
+                            elif model_id_with_us in selectable_models:
+                                effective_model_id = model_id_with_us
+                            elif model_id_without_us in selectable_models:
+                                effective_model_id = model_id_without_us
+                            else:
+                                continue  # Model not in selectable list
+                        else:
+                            # No selectable filter - prefer us. prefix for cross-region inference
+                            effective_model_id = model_id_with_us
+
                         model_info = {
-                            'id': model_id,
-                            'name': model_id,  # Use model ID as name for consistency
+                            'id': effective_model_id,
+                            'name': effective_model_id,  # Use effective model ID (with correct prefix)
                             'description': f"{model['providerName']} - {model['modelName']}",
                             'is_default': False,  # Will be set later
                             'provider': model['providerName'],
@@ -209,29 +236,43 @@ class BedrockProvider(Provider):
             default_model = self.get_default_model()
 
             # Mark the default model and check if it's in the list
+            # Handle cross-region prefix matching (us.anthropic... vs anthropic...)
             default_found = False
+            default_model_without_us = default_model[3:] if default_model and default_model.startswith('us.') else default_model
+            default_model_with_us = f"us.{default_model}" if default_model and not default_model.startswith('us.') else default_model
+
             for model in models:
-                if model['id'] == default_model:
+                model_id = model['id']
+                if model_id == default_model or model_id == default_model_without_us or model_id == default_model_with_us:
                     model['is_default'] = True
                     default_found = True
                     break
 
             # If the default model is not in the list (e.g., cross-region models), add it
+            # Only add if no selectable restriction OR default is in selectable list
             if not default_found and default_model:
-                # Add the default model to the list
-                models.append({
-                    'id': default_model,
-                    'name': default_model,
-                    'description': 'Anthropic - Claude (Default from BEDROCK_DEFAULT_MODEL)',
-                    'is_default': True,
-                    'provider': 'Anthropic',
-                    'input_modalities': ['TEXT'],
-                    'output_modalities': ['TEXT'],
-                    'supports_streaming': True,
-                    'supports_tools': True,
-                    'max_tokens': 4096
-                })
-                LOGGER.info(f"Added default model from environment: {default_model}")
+                # Check selectable models with prefix flexibility
+                default_in_selectable = (
+                    not selectable_models or
+                    default_model in selectable_models or
+                    default_model_without_us in selectable_models or
+                    default_model_with_us in selectable_models
+                )
+                if default_in_selectable:
+                    # Add the default model to the list
+                    models.append({
+                        'id': default_model,
+                        'name': default_model,
+                        'description': 'Anthropic - Claude (Default from BEDROCK_DEFAULT_MODEL)',
+                        'is_default': True,
+                        'provider': 'Anthropic',
+                        'input_modalities': ['TEXT'],
+                        'output_modalities': ['TEXT'],
+                        'supports_streaming': True,
+                        'supports_tools': True,
+                        'max_tokens': 4096
+                    })
+                    LOGGER.info(f"Added default model from environment: {default_model}")
 
             # Sort by provider and name
             models.sort(key=lambda x: (x['provider'], x['name']))
