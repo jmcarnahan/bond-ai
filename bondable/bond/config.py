@@ -458,3 +458,23 @@ class Config:
         if not email:
             return False
         return email.strip().lower() in self.get_admin_users()
+
+    def get_selectable_models(self) -> list:
+        """
+        Get list of selectable model IDs from environment configuration.
+
+        Environment variable:
+        - BEDROCK_SELECTABLE_MODELS: Comma-separated list of model IDs
+
+        Returns:
+            List of model IDs that should be available for selection.
+            Empty list means all available models are selectable.
+        """
+        selectable_models_str = os.getenv('BEDROCK_SELECTABLE_MODELS', '')
+        if selectable_models_str:
+            models = [model_id.strip() for model_id in selectable_models_str.split(',') if model_id.strip()]
+            LOGGER.debug(f"Selectable models from BEDROCK_SELECTABLE_MODELS: {len(models)} models")
+            return models
+
+        LOGGER.debug("No selectable models configured - all models will be available")
+        return []
