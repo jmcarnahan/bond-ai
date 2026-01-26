@@ -109,7 +109,7 @@ resource "aws_security_group" "aurora_kb" {
 resource "aws_db_subnet_group" "aurora_kb" {
   count = local.kb_enabled ? 1 : 0
 
-  name        = "${var.project_name}-${var.environment}-aurora-kb-subnet-group"
+  name        = "${var.project_name}-${var.environment}-aurora-kb-subnet-group-v2"
   description = "Subnet group for Aurora KB cluster"
   subnet_ids  = local.rds_subnet_ids
 
