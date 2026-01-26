@@ -125,7 +125,7 @@ resource "aws_security_group" "aurora" {
 resource "aws_db_subnet_group" "aurora" {
   count = var.use_aurora ? 1 : 0
 
-  name       = "${var.project_name}-${var.environment}-aurora-subnet"
+  name       = "${var.project_name}-${var.environment}-aurora-subnet-v2"
   subnet_ids = local.rds_subnet_ids
 
   tags = {
