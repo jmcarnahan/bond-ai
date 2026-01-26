@@ -43,7 +43,7 @@ resource "null_resource" "build_backend_image" {
 
       # Clear any existing credentials to prevent Keychain conflicts on macOS
       if [[ "$OSTYPE" == "darwin"* ]]; then
-        security delete-internet-password -s "$ECR_REGISTRY" 2>/dev/null || true
+        security delete-internet-password -s "$ECR_REGISTRY" -a AWS 2>/dev/null || true
       fi
 
       aws ecr get-login-password --region ${var.aws_region} | \
@@ -142,7 +142,7 @@ resource "null_resource" "build_frontend_image" {
 
       # Clear any existing credentials to prevent Keychain conflicts on macOS
       if [[ "$OSTYPE" == "darwin"* ]]; then
-        security delete-internet-password -s "$ECR_REGISTRY" 2>/dev/null || true
+        security delete-internet-password -s "$ECR_REGISTRY" -a AWS 2>/dev/null || true
       fi
 
       aws ecr get-login-password --region ${var.aws_region} | \
