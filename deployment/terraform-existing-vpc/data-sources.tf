@@ -48,7 +48,8 @@ locals {
   availability_zones = distinct([for s in data.aws_subnet.private : s.availability_zone])
 
   # Select subnets for RDS (need at least 2 in different AZs)
-  rds_subnet_ids = [
+  # Use explicitly provided subnet IDs if available, otherwise auto-detect
+  rds_subnet_ids = length(var.rds_subnet_ids) > 0 ? var.rds_subnet_ids : [
     for az in slice(local.availability_zones, 0, min(2, length(local.availability_zones))) :
     [for s in data.aws_subnet.private : s.id if s.availability_zone == az][0]
   ]

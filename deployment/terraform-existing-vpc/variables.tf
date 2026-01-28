@@ -26,6 +26,12 @@ variable "app_runner_subnet_ids" {
   default     = []
 }
 
+variable "rds_subnet_ids" {
+  description = "List of subnet IDs for RDS/Aurora databases. Defaults to auto-detection if not specified."
+  type        = list(string)
+  default     = []
+}
+
 variable "create_s3_vpc_endpoint" {
   description = "Whether to create S3 VPC endpoint. Set to false if your VPC already has an S3 endpoint configured."
   type        = bool
