@@ -125,7 +125,7 @@ resource "aws_security_group" "aurora" {
 resource "aws_db_subnet_group" "aurora" {
   count = var.use_aurora ? 1 : 0
 
-  name       = "${var.project_name}-${var.environment}-aurora-subnet"
+  name       = "${var.project_name}-${var.environment}-aurora-subnet-v2"
   subnet_ids = local.rds_subnet_ids
 
   tags = {
@@ -165,7 +165,7 @@ resource "aws_rds_cluster" "aurora" {
   # Enable Data API for Query Editor access
   enable_http_endpoint = true
 
-  backup_retention_period = var.environment == "prod" ? 7 : 1
+  backup_retention_period = 7  # Enable backups in all environments
   preferred_backup_window = "03:00-04:00"
 
   skip_final_snapshot       = var.environment != "prod"
