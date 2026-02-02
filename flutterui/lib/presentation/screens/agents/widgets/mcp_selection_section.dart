@@ -209,7 +209,7 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
       children: [
         // Header with total count
         Padding(
-          padding: const EdgeInsets.only(bottom: AppSpacing.md),
+          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
           child: Text(
             'Available Tools (${_groupedData!.totalTools} from ${_groupedData!.totalServers} servers)',
             style: theme.textTheme.titleSmall?.copyWith(
@@ -217,6 +217,42 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
             ),
           ),
         ),
+        // Tool limit guidance
+        Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.md),
+          child: Text(
+            'For best results, select no more than 5 tools per agent.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        // Warning when too many tools selected
+        if (widget.selectedToolNames.length > 5)
+          Container(
+            margin: const EdgeInsets.only(bottom: AppSpacing.md),
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: Colors.amber.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.amber.shade300),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.amber.shade800, size: 20),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    'You have ${widget.selectedToolNames.length} tools selected. '
+                    'Agents with more than 5 tools may experience reduced performance.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.amber.shade900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         // Server groups
         ..._groupedData!.servers.map(
           (server) => _buildServerGroup(server, theme),
