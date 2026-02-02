@@ -1,8 +1,14 @@
 import 'dart:convert';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:js_util' as js_util;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:markdown/markdown.dart' as md;
 import 'package:flutterui/data/models/message_model.dart';
 import 'package:flutterui/providers/cached_agent_details_provider.dart';
 import 'package:flutterui/presentation/widgets/agent_icon.dart';
@@ -99,14 +105,24 @@ class _ChatMessageItemState extends ConsumerState<ChatMessageItem> {
                           : Colors.transparent,
                       borderRadius: BorderRadius.circular(16.0),
                     ),
-                    child: DefaultTextStyle(
-                      style: TextStyle(
-                        color: isUserMessage
-                            ? colorScheme.onPrimary
-                            : colorScheme.onSurfaceVariant,
-                        fontSize: 14,
+                    child: Theme(
+                      data: isUserMessage
+                          ? Theme.of(context).copyWith(
+                              textSelectionTheme: TextSelectionThemeData(
+                                selectionColor:
+                                    Colors.white.withValues(alpha: 0.3),
+                              ),
+                            )
+                          : Theme.of(context),
+                      child: DefaultTextStyle(
+                        style: TextStyle(
+                          color: isUserMessage
+                              ? colorScheme.onPrimary
+                              : colorScheme.onSurfaceVariant,
+                          fontSize: 14,
+                        ),
+                        child: _buildMessageContent(context),
                       ),
-                      child: _buildMessageContent(context),
                     ),
                   ),
                   if (showFeedbackThumbs)
@@ -156,6 +172,7 @@ class _ChatMessageItemState extends ConsumerState<ChatMessageItem> {
   Widget _buildFeedbackThumbs(ColorScheme colorScheme) {
     final hasUpFeedback = message.feedbackType == 'up';
     final hasDownFeedback = message.feedbackType == 'down';
+    final hasImage = message.imageData != null;
 
     return Padding(
       padding: const EdgeInsets.only(top: 4, left: 8),
@@ -177,6 +194,31 @@ class _ChatMessageItemState extends ConsumerState<ChatMessageItem> {
             colorScheme: colorScheme,
             onTap: () => _handleThumbTap('down'),
           ),
+          if (!hasImage) ...[
+            const SizedBox(width: 8),
+            _ImageActionButton(
+              icon: Icons.content_copy_rounded,
+              tooltip: 'Copy text',
+              colorScheme: colorScheme,
+              onTap: () => _copyTextToClipboard(context),
+            ),
+          ],
+          if (hasImage) ...[
+            const SizedBox(width: 8),
+            _ImageActionButton(
+              icon: Icons.copy_rounded,
+              tooltip: 'Copy image',
+              colorScheme: colorScheme,
+              onTap: () => _copyImageToClipboard(context),
+            ),
+            const SizedBox(width: 4),
+            _ImageActionButton(
+              icon: Icons.download_rounded,
+              tooltip: 'Download image',
+              colorScheme: colorScheme,
+              onTap: () => _downloadImage(),
+            ),
+          ],
         ],
       ),
     );
@@ -187,6 +229,72 @@ class _ChatMessageItemState extends ConsumerState<ChatMessageItem> {
       _selectedFeedbackType = feedbackType;
       _showFeedbackDialog = true;
     });
+  }
+
+  void _copyTextToClipboard(BuildContext context) {
+    final plainText = _MarkdownTextExtractor().extract(message.content);
+    Clipboard.setData(ClipboardData(text: plainText));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Text copied to clipboard'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<void> _copyImageToClipboard(BuildContext context) async {
+    final bytes = imageCache[message.id];
+    if (bytes == null) return;
+
+    try {
+      final blob = html.Blob([bytes], 'image/png');
+      final clipboardItem = js_util.callConstructor(
+        js_util.getProperty(html.window, 'ClipboardItem'),
+        [js_util.jsify({'image/png': blob})],
+      );
+      final clipboard = html.window.navigator.clipboard;
+      if (clipboard == null) throw Exception('Clipboard API not available');
+      await js_util.promiseToFuture(
+        js_util.callMethod(
+          clipboard,
+          'write',
+          [js_util.jsify([clipboardItem])],
+        ),
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Image copied to clipboard'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to copy image to clipboard'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  void _downloadImage() {
+    final bytes = imageCache[message.id];
+    if (bytes == null) return;
+
+    final blob = html.Blob([bytes], 'image/png');
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    final anchor = html.AnchorElement()
+      ..href = url
+      ..download = 'chart_${message.id}.png'
+      ..style.display = 'none';
+    html.document.body?.append(anchor);
+    anchor.click();
+    anchor.remove();
+    html.Url.revokeObjectUrl(url);
   }
 
   Future<void> _handleFeedbackSubmit(String feedbackType, String? feedbackMessage) async {
@@ -486,5 +594,78 @@ class _FeedbackThumb extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _ImageActionButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final ColorScheme colorScheme;
+  final VoidCallback onTap;
+
+  const _ImageActionButton({
+    required this.icon,
+    required this.tooltip,
+    required this.colorScheme,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(
+            icon,
+            size: 16,
+            color: colorScheme.onSurfaceVariant.withAlpha(153),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MarkdownTextExtractor implements md.NodeVisitor {
+  final StringBuffer _buffer = StringBuffer();
+
+  String extract(String markdownText) {
+    _buffer.clear();
+    final lines = markdownText.split('\n');
+    final document = md.Document().parseLines(lines);
+    for (final node in document) {
+      node.accept(this);
+    }
+    return _buffer.toString().trim();
+  }
+
+  @override
+  bool visitElementBefore(md.Element element) {
+    if (_buffer.isNotEmpty &&
+        !_buffer.toString().endsWith('\n') &&
+        const ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'pre']
+            .contains(element.tag)) {
+      _buffer.write('\n');
+    }
+    return true;
+  }
+
+  @override
+  void visitElementAfter(md.Element element) {
+    if (const ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote']
+        .contains(element.tag)) {
+      if (!_buffer.toString().endsWith('\n')) {
+        _buffer.write('\n');
+      }
+    }
+  }
+
+  @override
+  void visitText(md.Text text) {
+    _buffer.write(text.text);
   }
 }
