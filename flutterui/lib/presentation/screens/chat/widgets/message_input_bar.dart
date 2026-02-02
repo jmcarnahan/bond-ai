@@ -33,6 +33,7 @@ class MessageInputBar extends ConsumerStatefulWidget {
 
 class _MessageInputBarState extends ConsumerState<MessageInputBar> {
   late final FocusNode _keyboardFocusNode;
+  late final ScrollController _inputScrollController;
 
   Future<void> _pickFiles() async {
     final result = await FilePicker.platform.pickFiles(allowMultiple: true);
@@ -53,11 +54,13 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
   void initState() {
     super.initState();
     _keyboardFocusNode = FocusNode();
+    _inputScrollController = ScrollController();
   }
 
   @override
   void dispose() {
     _keyboardFocusNode.dispose();
+    _inputScrollController.dispose();
     super.dispose();
   }
 
@@ -103,7 +106,10 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
               Expanded(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  constraints: const BoxConstraints(minHeight: 48),
+                  constraints: BoxConstraints(
+                    minHeight: 48,
+                    maxHeight: MediaQuery.of(context).size.height * 0.4,
+                  ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(28.0),
                     color: colorScheme.surfaceContainerHighest,
@@ -145,9 +151,12 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                             widget.onSendMessage();
                           }
                         },
-                        child: TextField(
+                        child: Scrollbar(
+                          controller: _inputScrollController,
+                          child: TextField(
                           controller: widget.textController,
                           focusNode: widget.focusNode,
+                          scrollController: _inputScrollController,
                           maxLines: null,
                           keyboardType: TextInputType.multiline,
                           textCapitalization: TextCapitalization.sentences,
@@ -172,12 +181,13 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                               vertical: 12.0,
                             ),
                           ),
-                          onSubmitted: (value) {
-                            if (!widget.isSendingMessage &&
-                                value.trim().isNotEmpty) {
-                              widget.onSendMessage();
-                            }
-                          },
+                            onSubmitted: (value) {
+                              if (!widget.isSendingMessage &&
+                                  value.trim().isNotEmpty) {
+                                widget.onSendMessage();
+                              }
+                            },
+                          ),
                         ),
                       ),
                     ),
