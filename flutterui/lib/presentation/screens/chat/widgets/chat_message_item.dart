@@ -1,10 +1,6 @@
 import 'dart:convert';
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:js_util' as js_util;
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutterui/presentation/screens/chat/widgets/clipboard_helper.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -246,38 +242,18 @@ class _ChatMessageItemState extends ConsumerState<ChatMessageItem> {
     final bytes = imageCache[message.id];
     if (bytes == null) return;
 
-    try {
-      final blob = html.Blob([bytes], 'image/png');
-      final clipboardItem = js_util.callConstructor(
-        js_util.getProperty(html.window, 'ClipboardItem'),
-        [js_util.jsify({'image/png': blob})],
-      );
-      final clipboard = html.window.navigator.clipboard;
-      if (clipboard == null) throw Exception('Clipboard API not available');
-      await js_util.promiseToFuture(
-        js_util.callMethod(
-          clipboard,
-          'write',
-          [js_util.jsify([clipboardItem])],
+    final success = await ClipboardHelper.copyImageToClipboard(bytes);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'Image copied to clipboard'
+                : 'Failed to copy image to clipboard',
+          ),
+          duration: const Duration(seconds: 2),
         ),
       );
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Image copied to clipboard'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to copy image to clipboard'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
     }
   }
 
@@ -285,16 +261,7 @@ class _ChatMessageItemState extends ConsumerState<ChatMessageItem> {
     final bytes = imageCache[message.id];
     if (bytes == null) return;
 
-    final blob = html.Blob([bytes], 'image/png');
-    final url = html.Url.createObjectUrlFromBlob(blob);
-    final anchor = html.AnchorElement()
-      ..href = url
-      ..download = 'chart_${message.id}.png'
-      ..style.display = 'none';
-    html.document.body?.append(anchor);
-    anchor.click();
-    anchor.remove();
-    html.Url.revokeObjectUrl(url);
+    ClipboardHelper.downloadImage(bytes, 'chart_${message.id}.png');
   }
 
   Future<void> _handleFeedbackSubmit(String feedbackType, String? feedbackMessage) async {
@@ -590,7 +557,7 @@ class _FeedbackThumb extends StatelessWidget {
           size: 16,
           color: isFilled
               ? colorScheme.primary
-              : colorScheme.onSurfaceVariant.withAlpha(153),
+              : colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
         ),
       ),
     );
@@ -622,7 +589,7 @@ class _ImageActionButton extends StatelessWidget {
           child: Icon(
             icon,
             size: 16,
-            color: colorScheme.onSurfaceVariant.withAlpha(153),
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
           ),
         ),
       ),
