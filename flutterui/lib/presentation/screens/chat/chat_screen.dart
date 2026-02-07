@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart' show PlatformFile;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -38,6 +39,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   final ScrollController _scrollController = ScrollController();
   final FocusNode _textFieldFocusNode = FocusNode();
   bool _isTextFieldFocused = false;
+  bool _isDragging = false;
   List<PlatformFile> _fileAttachments = [];
   // Cache for decoded images to prevent repeated base64 decoding
   final Map<String, Uint8List> _imageCache = {};
@@ -236,6 +238,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     });
   }
 
+  /// Replace non-ASCII characters in filenames with spaces.
+  /// macOS uses \u202f (narrow no-break space) in screenshot names which
+  /// breaks S3 metadata uploads.
+  String _sanitizeFilename(String name) {
+    return name.replaceAll(RegExp(r'[^\x20-\x7E]'), ' ').replaceAll(RegExp(r' {2,}'), ' ').trim();
+  }
+
+  void _handleFileDrop(DropDoneDetails details) async {
+    setState(() => _isDragging = false);
+
+    final droppedFiles = <PlatformFile>[];
+    for (final xfile in details.files) {
+      final bytes = await xfile.readAsBytes();
+      droppedFiles.add(PlatformFile(
+        name: _sanitizeFilename(xfile.name),
+        size: bytes.length,
+        bytes: Uint8List.fromList(bytes),
+      ));
+    }
+
+    final updated = List<PlatformFile>.from(_fileAttachments)
+      ..addAll(droppedFiles);
+    _onAttachmentsChanged(updated);
+  }
+
   void _sendMessage() {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
@@ -352,39 +379,86 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       }
     });
 
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       drawer: const AppDrawer(),
       appBar: ChatAppBar(agentName: _currentAgentName),
-      body: Row(
-        children: [
-          AgentSidebar(
-            currentAgentId: _currentAgentId,
-            onAgentSelected: _handleAgentSwitch,
-          ),
-          Expanded(
-            child: Column(
+      body: DropTarget(
+        onDragDone: _handleFileDrop,
+        onDragEntered: (_) => setState(() => _isDragging = true),
+        onDragExited: (_) => setState(() => _isDragging = false),
+        child: Stack(
+          children: [
+            Row(
               children: [
-                Expanded(
-                  child: ChatMessagesList(
-                    scrollController: _scrollController,
-                    imageCache: _imageCache,
-                  ),
+                AgentSidebar(
+                  currentAgentId: _currentAgentId,
+                  onAgentSelected: _handleAgentSwitch,
                 ),
-                MessageInputBar(
-                  textController: _textController,
-                  focusNode: _textFieldFocusNode,
-                  isTextFieldFocused: _isTextFieldFocused,
-                  isSendingMessage: chatState.isSendingMessage,
-                  onSendMessage: _sendMessage,
-                  onFileAttachmentsChanged: _onAttachmentsChanged,
-                  attachments: _fileAttachments,
-                  onCreateNewThread: _createNewThread,
+                Expanded(
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: ChatMessagesList(
+                          scrollController: _scrollController,
+                          imageCache: _imageCache,
+                        ),
+                      ),
+                      MessageInputBar(
+                        textController: _textController,
+                        focusNode: _textFieldFocusNode,
+                        isTextFieldFocused: _isTextFieldFocused,
+                        isSendingMessage: chatState.isSendingMessage,
+                        onSendMessage: _sendMessage,
+                        onFileAttachmentsChanged: _onAttachmentsChanged,
+                        attachments: _fileAttachments,
+                        onCreateNewThread: _createNewThread,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-          ),
-        ],
+            if (_isDragging)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.08),
+                      border: Border.all(
+                        color: colorScheme.primary,
+                        width: 3,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.cloud_upload_outlined,
+                            size: 64,
+                            color: colorScheme.primary,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Drop files here to attach',
+                            style: TextStyle(
+                              fontSize: 20,
+                              color: colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
