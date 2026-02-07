@@ -10,6 +10,11 @@ Future<bool> copyImageToClipboard(Uint8List bytes) async {
   return false;
 }
 
+Future<List<({String name, Uint8List bytes})>> readFilesFromClipboard() async {
+  // Not supported on non-web platforms
+  return [];
+}
+
 void downloadImage(Uint8List bytes, String filename) {
   // Not supported on non-web platforms
 }
