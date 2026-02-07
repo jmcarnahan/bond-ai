@@ -8,6 +8,7 @@ import os
 import uuid
 import logging
 import base64
+import unicodedata
 import boto3
 from typing import Optional, Tuple, Dict, Any, List
 from botocore.exceptions import ClientError
@@ -17,6 +18,16 @@ from bondable.bond.providers.files import FilesProvider, FileDetails
 from bondable.bond.providers.bedrock.BedrockMetadata import BedrockMetadata
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _sanitize_ascii(value: str) -> str:
+    """Normalize unicode to ASCII-safe string.
+    macOS filenames often contain non-ASCII chars like \\u202f (narrow no-break space).
+    NFKD normalization converts these to ASCII equivalents (e.g. \\u202f -> space).
+    """
+    return unicodedata.normalize('NFKD', value).encode('ascii', 'replace').decode('ascii')
+
+
 CODE_INTERPRETER_MIME_TYPES = {
     "text/csv",
     "application/vnd.ms-excel",
@@ -25,6 +36,27 @@ CODE_INTERPRETER_MIME_TYPES = {
     "application/x-msexcel",
     "text/tab-separated-values",
 }
+
+IMAGE_MIME_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+}
+
+def is_image_mime_type(mime_type: str) -> bool:
+    """Check if a MIME type is a supported image type for Converse API."""
+    return mime_type in IMAGE_MIME_TYPES
+
+def get_converse_image_format(mime_type: str) -> Optional[str]:
+    """Map a MIME type to the Converse API image format string."""
+    mapping = {
+        "image/jpeg": "jpeg",
+        "image/png": "png",
+        "image/gif": "gif",
+        "image/webp": "webp",
+    }
+    return mapping.get(mime_type)
 
 class BedrockFilesProvider(FilesProvider):
     """
@@ -123,14 +155,14 @@ class BedrockFilesProvider(FilesProvider):
             # Reset BytesIO position
             file_bytes.seek(0)
 
-            # Upload to S3
+            # Upload to S3 (metadata values must be ASCII-only)
             self.s3_client.upload_fileobj(
                 file_bytes,
                 self.bucket_name,
                 s3_key,
                 ExtraArgs={
                     'Metadata': {
-                        'original_path': file_path,
+                        'original_path': _sanitize_ascii(file_path),
                         'file_id': file_id
                     }
                 }
@@ -292,7 +324,7 @@ class BedrockFilesProvider(FilesProvider):
 
             # Determine useCase based on mime_type
             files.append({
-                'name': os.path.basename(file_details.file_path),
+                'name': _sanitize_ascii(os.path.basename(file_details.file_path)),
                 'source': {
                     's3Location': {
                         'uri': file_details.file_id
@@ -370,7 +402,7 @@ class BedrockFilesProvider(FilesProvider):
                 # See: bondable/bond/providers/bedrock/BedrockFiles.py:283-299 (get_files_invocation also needs fix)
                 if file_size > 0:  # Always use S3 location for attachments
                     files.append({
-                        'name': os.path.basename(file_details.file_path),
+                        'name': _sanitize_ascii(os.path.basename(file_details.file_path)),
                         'source': {
                             's3Location': {
                                 'uri': file_id
@@ -384,7 +416,7 @@ class BedrockFilesProvider(FilesProvider):
                     file_bytes = self.get_file_bytes((file_id, None))
                     file_data = base64.b64encode(file_bytes.getvalue()).decode('utf-8')
                     files.append({
-                        'name': os.path.basename(file_details.file_path),
+                        'name': _sanitize_ascii(os.path.basename(file_details.file_path)),
                         'source': {
                             'byteContent': {
                                 'data': file_data,
