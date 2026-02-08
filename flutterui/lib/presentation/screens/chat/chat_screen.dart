@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart' show PlatformFile;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -13,6 +14,7 @@ import 'package:flutterui/presentation/screens/chat/widgets/chat_app_bar.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/message_input_bar.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/agent_sidebar.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/chat_messages_list.dart';
+import 'package:flutterui/presentation/screens/chat/widgets/web_drop_helper.dart';
 import 'package:flutterui/presentation/widgets/app_drawer.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 import 'package:flutterui/providers/notification_provider.dart';
@@ -54,6 +56,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _currentAgentId = widget.agentId;
     _currentAgentName = widget.agentName;
     _textFieldFocusNode.addListener(_onFocusChange);
+    if (kIsWeb && WebDropHelper.isSupported) {
+      WebDropHelper.init(
+        onFileDrop: _handleWebFileDrop,
+        onDragEnter: () { if (mounted) setState(() => _isDragging = true); },
+        onDragLeave: () { if (mounted) setState(() => _isDragging = false); },
+      );
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeChatSession();
     });
@@ -209,6 +218,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
   @override
   void dispose() {
+    if (kIsWeb && WebDropHelper.isSupported) {
+      WebDropHelper.dispose();
+    }
     _textFieldFocusNode.removeListener(_onFocusChange);
     _textFieldFocusNode.dispose();
     _textController.dispose();
@@ -257,6 +269,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         bytes: Uint8List.fromList(bytes),
       ));
     }
+
+    final updated = List<PlatformFile>.from(_fileAttachments)
+      ..addAll(droppedFiles);
+    _onAttachmentsChanged(updated);
+  }
+
+  /// Handle files dropped via our custom JavaScript bridge (web only).
+  /// This bypasses desktop_drop which gets tree-shaken in release builds.
+  void _handleWebFileDrop(List<({String name, Uint8List bytes})> files) {
+    if (!mounted) return;
+    setState(() => _isDragging = false);
+
+    final droppedFiles = files.map((f) => PlatformFile(
+      name: _sanitizeFilename(f.name),
+      size: f.bytes.length,
+      bytes: f.bytes,
+    )).toList();
 
     final updated = List<PlatformFile>.from(_fileAttachments)
       ..addAll(droppedFiles);
@@ -386,6 +415,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       drawer: const AppDrawer(),
       appBar: ChatAppBar(agentName: _currentAgentName),
       body: DropTarget(
+        enable: !kIsWeb,
         onDragDone: _handleFileDrop,
         onDragEntered: (_) => setState(() => _isDragging = true),
         onDragExited: (_) => setState(() => _isDragging = false),
