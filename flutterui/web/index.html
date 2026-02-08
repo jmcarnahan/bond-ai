@@ -33,6 +33,72 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <script>
+    // Bond AI drag-and-drop bridge for Flutter web.
+    //
+    // Problem: desktop_drop plugin's web event handlers use package:web
+    // property setters (window.ondrop = ...) which dart2js tree-shakes
+    // in release builds. See: https://github.com/MixinNetwork/flutter-plugins/issues/219
+    //
+    // Solution: Handle drag/drop in plain JavaScript (immune to tree-shaking),
+    // store dropped files globally, and dispatch custom events that Dart code
+    // picks up via dart:html (which uses addEventListener, not property setters).
+    (function() {
+      var dragCounter = 0;
+
+      // Prevent default on dragover — REQUIRED for drop events to fire
+      window.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      }, true);
+
+      // Track drag enter/leave with counter (dragenter fires on every child element)
+      window.addEventListener('dragenter', function(e) {
+        e.preventDefault();
+        dragCounter++;
+        if (dragCounter === 1) {
+          window.dispatchEvent(new Event('bond-drag-enter'));
+        }
+      }, true);
+
+      window.addEventListener('dragleave', function(e) {
+        dragCounter--;
+        if (dragCounter <= 0) {
+          dragCounter = 0;
+          window.dispatchEvent(new Event('bond-drag-leave'));
+        }
+      }, true);
+
+      // Capture drop: store FileList globally and notify Dart
+      window.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dragCounter = 0;
+        window.dispatchEvent(new Event('bond-drag-leave'));
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          window._bondDroppedFiles = e.dataTransfer.files;
+          window.dispatchEvent(new Event('bond-file-drop'));
+        }
+      }, true);
+
+      // Also handle Flutter's CanvasKit glass pane shadow DOM
+      new MutationObserver(function(mutations, observer) {
+        var glassPane = document.querySelector('flt-glass-pane');
+        if (glassPane) {
+          var targets = [glassPane];
+          if (glassPane.shadowRoot) targets.push(glassPane.shadowRoot);
+          targets.forEach(function(target) {
+            ['dragenter', 'dragover', 'drop'].forEach(function(evt) {
+              target.addEventListener(evt, function(e) {
+                e.preventDefault();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+              }, true);
+            });
+          });
+          observer.disconnect();
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    })();
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
