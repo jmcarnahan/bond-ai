@@ -78,6 +78,17 @@ resource "aws_wafv2_web_acl" "backend" {
             count {}
           }
         }
+
+        # Override the CrossSiteScripting_BODY rule action
+        # Image binary data (PNG, JPEG, etc.) contains byte patterns that
+        # trigger XSS false positives. Changes to COUNT so file uploads
+        # aren't blocked while still collecting metrics.
+        rule_action_override {
+          name = "CrossSiteScripting_BODY"
+          action_to_use {
+            count {}
+          }
+        }
       }
     }
 
