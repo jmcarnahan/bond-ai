@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
   cloud_firestore
+  desktop_drop
   firebase_auth
   firebase_core
   url_launcher_windows
