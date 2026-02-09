@@ -33,6 +33,11 @@ class AgentFormController with ErrorHandlingMixin {
 
   void initializeForm() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Force fresh data for sharing panel — the cached providers
+      // may not include groups/users created since last load
+      ref.invalidate(groupsProvider);
+      ref.invalidate(allUsersProvider);
+
       if (agentId != null) {
         _notifier.loadAgentForEditing(agentId!);
       } else {
