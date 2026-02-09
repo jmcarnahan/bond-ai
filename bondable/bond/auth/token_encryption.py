@@ -1,23 +1,25 @@
 """
 Token encryption utilities for secure storage of OAuth tokens.
 
-Uses Fernet symmetric encryption with a key derived from the JWT secret.
-This allows reusing the existing JWT_SECRET_KEY for token encryption
-without needing additional secret management.
+Uses AES-256-GCM authenticated encryption with a key derived from the
+JWT secret via HKDF. This provides 256-bit key strength with authenticated
+encryption (no separate HMAC needed).
 
 Security Note:
 - Tokens are encrypted at rest in the database
 - Decryption only happens when tokens are needed for API calls
-- Key is derived from JWT_SECRET_KEY using SHA-256 hashing
+- Key is derived from JWT_SECRET_KEY using HKDF with a domain separator
 """
 
 import base64
-import hashlib
 import logging
 import os
 from typing import Optional
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
 
 LOGGER = logging.getLogger(__name__)
 
@@ -37,29 +39,32 @@ def _get_jwt_secret() -> str:
 
 def _derive_encryption_key(secret: str) -> bytes:
     """
-    Derive a Fernet-compatible encryption key from the JWT secret.
+    Derive a 256-bit AES key from the JWT secret using HKDF.
 
-    Fernet requires a 32-byte key that is URL-safe base64 encoded.
-    We use SHA-256 to hash the JWT secret to get exactly 32 bytes.
+    Uses HKDF with SHA-256 and a domain-specific info parameter to derive
+    a key that is distinct from any other use of JWT_SECRET_KEY.
 
     Args:
         secret: The JWT secret key string
 
     Returns:
-        URL-safe base64 encoded 32-byte key suitable for Fernet
+        32-byte (256-bit) raw key suitable for AES-256-GCM
     """
-    # Hash the secret to get exactly 32 bytes
-    key_bytes = hashlib.sha256(secret.encode('utf-8')).digest()
-    # Fernet expects URL-safe base64 encoded key
-    return base64.urlsafe_b64encode(key_bytes)
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,  # 256 bits
+        salt=None,
+        info=b"bond-ai-token-encryption",
+    )
+    return hkdf.derive(secret.encode('utf-8'))
 
 
 def get_encryption_key() -> bytes:
     """
-    Get the Fernet encryption key derived from JWT secret.
+    Get the AES-256-GCM encryption key derived from JWT secret.
 
     Returns:
-        URL-safe base64 encoded encryption key
+        32-byte raw encryption key
 
     Raises:
         TokenEncryptionError: If JWT_SECRET_KEY is not set
@@ -70,13 +75,13 @@ def get_encryption_key() -> bytes:
 
 def encrypt_token(token: str) -> str:
     """
-    Encrypt a token for secure database storage.
+    Encrypt a token for secure database storage using AES-256-GCM.
 
     Args:
         token: The plaintext token to encrypt
 
     Returns:
-        Base64-encoded encrypted token string
+        Base64-encoded string containing nonce (12 bytes) + ciphertext + GCM tag
 
     Raises:
         TokenEncryptionError: If encryption fails
@@ -86,9 +91,13 @@ def encrypt_token(token: str) -> str:
 
     try:
         key = get_encryption_key()
-        fernet = Fernet(key)
-        encrypted_bytes = fernet.encrypt(token.encode('utf-8'))
-        return encrypted_bytes.decode('utf-8')
+        aesgcm = AESGCM(key)
+        nonce = os.urandom(12)  # 96-bit nonce, recommended for GCM
+        ciphertext = aesgcm.encrypt(nonce, token.encode('utf-8'), None)
+        # Store as base64: nonce (12 bytes) || ciphertext + GCM tag
+        return base64.urlsafe_b64encode(nonce + ciphertext).decode('utf-8')
+    except TokenEncryptionError:
+        raise
     except Exception as e:
         LOGGER.error(f"Failed to encrypt token: {e}")
         raise TokenEncryptionError(f"Token encryption failed: {e}")
@@ -96,7 +105,7 @@ def encrypt_token(token: str) -> str:
 
 def decrypt_token(encrypted_token: str) -> str:
     """
-    Decrypt a token from database storage.
+    Decrypt a token from database storage using AES-256-GCM.
 
     Args:
         encrypted_token: The base64-encoded encrypted token
@@ -112,12 +121,17 @@ def decrypt_token(encrypted_token: str) -> str:
 
     try:
         key = get_encryption_key()
-        fernet = Fernet(key)
-        decrypted_bytes = fernet.decrypt(encrypted_token.encode('utf-8'))
-        return decrypted_bytes.decode('utf-8')
-    except InvalidToken:
+        raw = base64.urlsafe_b64decode(encrypted_token.encode('utf-8'))
+        nonce = raw[:12]
+        ciphertext = raw[12:]
+        aesgcm = AESGCM(key)
+        plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+        return plaintext.decode('utf-8')
+    except InvalidTag:
         LOGGER.error("Invalid token: decryption failed - possibly wrong key or corrupted data")
         raise TokenEncryptionError("Token decryption failed: invalid or corrupted token")
+    except TokenEncryptionError:
+        raise
     except Exception as e:
         LOGGER.error(f"Failed to decrypt token: {e}")
         raise TokenEncryptionError(f"Token decryption failed: {e}")
