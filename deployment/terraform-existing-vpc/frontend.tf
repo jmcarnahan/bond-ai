@@ -12,6 +12,59 @@ resource "aws_apprunner_auto_scaling_configuration_version" "frontend" {
   }
 }
 
+# Wait for App Runner to finish any auto-deployment triggered by the ECR image push.
+resource "null_resource" "wait_for_frontend_auto_deploy" {
+  depends_on = [null_resource.build_frontend_image]
+
+  triggers = {
+    build_id = null_resource.build_frontend_image.id
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Waiting for App Runner frontend to finish any auto-deployment..."
+      SERVICE_NAME="bond-ai-${var.environment}-frontend"
+
+      # Find the service ARN
+      SERVICE_ARN=$(aws apprunner list-services \
+        --region ${var.aws_region} \
+        --query "ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceArn" \
+        --output text 2>/dev/null || echo "")
+
+      if [ -z "$SERVICE_ARN" ] || [ "$SERVICE_ARN" = "None" ]; then
+        echo "Service not found yet (first deploy) — skipping wait."
+        exit 0
+      fi
+
+      # Give App Runner a moment to detect the new image
+      sleep 15
+
+      MAX_ATTEMPTS=60
+      ATTEMPT=0
+
+      while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+        STATUS=$(aws apprunner describe-service \
+          --service-arn "$SERVICE_ARN" \
+          --region ${var.aws_region} \
+          --query 'Service.Status' \
+          --output text 2>/dev/null || echo "UNKNOWN")
+
+        if [ "$STATUS" = "RUNNING" ]; then
+          echo "✓ Frontend service is RUNNING — safe to proceed with Terraform update."
+          exit 0
+        fi
+
+        echo "Frontend status: $STATUS (attempt $((ATTEMPT+1))/$MAX_ATTEMPTS, waiting 10s...)"
+        ATTEMPT=$((ATTEMPT+1))
+        sleep 10
+      done
+
+      echo "Warning: Frontend did not reach RUNNING within timeout. Proceeding anyway."
+      exit 0
+    EOT
+  }
+}
+
 # App Runner Service for Frontend
 resource "aws_apprunner_service" "frontend" {
   service_name = "${var.project_name}-${var.environment}-frontend"
@@ -62,7 +115,7 @@ resource "aws_apprunner_service" "frontend" {
   }
 
   depends_on = [
-    null_resource.build_frontend_image
+    null_resource.wait_for_frontend_auto_deploy
     # Backend dependency removed - using var.backend_service_url from tfvars
   ]
 
