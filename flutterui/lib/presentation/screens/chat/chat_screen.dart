@@ -1,5 +1,7 @@
 import 'dart:typed_data';
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart' show PlatformFile;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,6 +14,7 @@ import 'package:flutterui/presentation/screens/chat/widgets/chat_app_bar.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/message_input_bar.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/agent_sidebar.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/chat_messages_list.dart';
+import 'package:flutterui/presentation/screens/chat/widgets/web_drop_helper.dart';
 import 'package:flutterui/presentation/widgets/app_drawer.dart';
 import 'package:flutterui/core/error_handling/error_handling_mixin.dart';
 import 'package:flutterui/providers/notification_provider.dart';
@@ -38,6 +41,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   final ScrollController _scrollController = ScrollController();
   final FocusNode _textFieldFocusNode = FocusNode();
   bool _isTextFieldFocused = false;
+  bool _isDragging = false;
   List<PlatformFile> _fileAttachments = [];
   // Cache for decoded images to prevent repeated base64 decoding
   final Map<String, Uint8List> _imageCache = {};
@@ -52,6 +56,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _currentAgentId = widget.agentId;
     _currentAgentName = widget.agentName;
     _textFieldFocusNode.addListener(_onFocusChange);
+    if (kIsWeb && WebDropHelper.isSupported) {
+      WebDropHelper.init(
+        onFileDrop: _handleWebFileDrop,
+        onDragEnter: () { if (mounted) setState(() => _isDragging = true); },
+        onDragLeave: () { if (mounted) setState(() => _isDragging = false); },
+      );
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeChatSession();
     });
@@ -207,6 +218,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
   @override
   void dispose() {
+    if (kIsWeb && WebDropHelper.isSupported) {
+      WebDropHelper.dispose();
+    }
     _textFieldFocusNode.removeListener(_onFocusChange);
     _textFieldFocusNode.dispose();
     _textController.dispose();
@@ -234,6 +248,48 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       _currentAgentId = agent.id;
       _currentAgentName = agent.name;
     });
+  }
+
+  /// Replace non-ASCII characters in filenames with spaces.
+  /// macOS uses \u202f (narrow no-break space) in screenshot names which
+  /// breaks S3 metadata uploads.
+  String _sanitizeFilename(String name) {
+    return name.replaceAll(RegExp(r'[^\x20-\x7E]'), ' ').replaceAll(RegExp(r' {2,}'), ' ').trim();
+  }
+
+  void _handleFileDrop(DropDoneDetails details) async {
+    setState(() => _isDragging = false);
+
+    final droppedFiles = <PlatformFile>[];
+    for (final xfile in details.files) {
+      final bytes = await xfile.readAsBytes();
+      droppedFiles.add(PlatformFile(
+        name: _sanitizeFilename(xfile.name),
+        size: bytes.length,
+        bytes: Uint8List.fromList(bytes),
+      ));
+    }
+
+    final updated = List<PlatformFile>.from(_fileAttachments)
+      ..addAll(droppedFiles);
+    _onAttachmentsChanged(updated);
+  }
+
+  /// Handle files dropped via our custom JavaScript bridge (web only).
+  /// This bypasses desktop_drop which gets tree-shaken in release builds.
+  void _handleWebFileDrop(List<({String name, Uint8List bytes})> files) {
+    if (!mounted) return;
+    setState(() => _isDragging = false);
+
+    final droppedFiles = files.map((f) => PlatformFile(
+      name: _sanitizeFilename(f.name),
+      size: f.bytes.length,
+      bytes: f.bytes,
+    )).toList();
+
+    final updated = List<PlatformFile>.from(_fileAttachments)
+      ..addAll(droppedFiles);
+    _onAttachmentsChanged(updated);
   }
 
   void _sendMessage() {
@@ -352,39 +408,87 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       }
     });
 
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       drawer: const AppDrawer(),
       appBar: ChatAppBar(agentName: _currentAgentName),
-      body: Row(
-        children: [
-          AgentSidebar(
-            currentAgentId: _currentAgentId,
-            onAgentSelected: _handleAgentSwitch,
-          ),
-          Expanded(
-            child: Column(
+      body: DropTarget(
+        enable: !kIsWeb,
+        onDragDone: _handleFileDrop,
+        onDragEntered: (_) => setState(() => _isDragging = true),
+        onDragExited: (_) => setState(() => _isDragging = false),
+        child: Stack(
+          children: [
+            Row(
               children: [
-                Expanded(
-                  child: ChatMessagesList(
-                    scrollController: _scrollController,
-                    imageCache: _imageCache,
-                  ),
+                AgentSidebar(
+                  currentAgentId: _currentAgentId,
+                  onAgentSelected: _handleAgentSwitch,
                 ),
-                MessageInputBar(
-                  textController: _textController,
-                  focusNode: _textFieldFocusNode,
-                  isTextFieldFocused: _isTextFieldFocused,
-                  isSendingMessage: chatState.isSendingMessage,
-                  onSendMessage: _sendMessage,
-                  onFileAttachmentsChanged: _onAttachmentsChanged,
-                  attachments: _fileAttachments,
-                  onCreateNewThread: _createNewThread,
+                Expanded(
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: ChatMessagesList(
+                          scrollController: _scrollController,
+                          imageCache: _imageCache,
+                        ),
+                      ),
+                      MessageInputBar(
+                        textController: _textController,
+                        focusNode: _textFieldFocusNode,
+                        isTextFieldFocused: _isTextFieldFocused,
+                        isSendingMessage: chatState.isSendingMessage,
+                        onSendMessage: _sendMessage,
+                        onFileAttachmentsChanged: _onAttachmentsChanged,
+                        attachments: _fileAttachments,
+                        onCreateNewThread: _createNewThread,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-          ),
-        ],
+            if (_isDragging)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.08),
+                      border: Border.all(
+                        color: colorScheme.primary,
+                        width: 3,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.cloud_upload_outlined,
+                            size: 64,
+                            color: colorScheme.primary,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Drop files here to attach',
+                            style: TextStyle(
+                              fontSize: 20,
+                              color: colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

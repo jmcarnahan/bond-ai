@@ -104,8 +104,9 @@ resource "null_resource" "build_frontend_image" {
     theme_config_path   = var.theme_config_path
 
     # Rebuild when Flutter code, dependencies, or Dockerfile changes (only matters when not in maintenance mode)
-    dockerfile_hash = filemd5("${path.module}/../Dockerfile.frontend")
-    pubspec_hash    = filemd5("${path.module}/../../flutterui/pubspec.lock")
+    dockerfile_hash  = filemd5("${path.module}/../Dockerfile.frontend")
+    pubspec_hash     = filemd5("${path.module}/../../flutterui/pubspec.lock")
+    index_html_hash  = filemd5("${path.module}/../../flutterui/web/index.html")
 
     # Hash of all Dart source files
     lib_hash = md5(join("", [

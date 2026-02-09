@@ -94,7 +94,7 @@ resource "aws_iam_role_policy" "app_runner_instance" {
         ]
         Resource = [
           aws_iam_role.app_runner_instance.arn,
-          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/BondAIBedrockAgentRole"
+          aws_iam_role.bedrock_agent.arn
         ]
       },
       {
@@ -145,6 +145,74 @@ resource "aws_iam_role" "frontend_apprunner_instance" {
         Effect = "Allow"
         Principal = {
           Service = "tasks.apprunner.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# =============================================================================
+# Bedrock Agent Role
+# This role is assumed by AWS Bedrock when executing agents.
+# =============================================================================
+
+resource "aws_iam_role" "bedrock_agent" {
+  name = var.bedrock_agent_role_name
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "bedrock.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+# Managed policy: AmazonBedrockFullAccess
+resource "aws_iam_role_policy_attachment" "bedrock_agent_bedrock_full_access" {
+  role       = aws_iam_role.bedrock_agent.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"
+}
+
+# Managed policy: AmazonS3FullAccess
+resource "aws_iam_role_policy_attachment" "bedrock_agent_s3_full_access" {
+  role       = aws_iam_role.bedrock_agent.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+}
+
+# Managed policy: CloudWatchEventsFullAccess
+resource "aws_iam_role_policy_attachment" "bedrock_agent_cloudwatch_events" {
+  role       = aws_iam_role.bedrock_agent.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchEventsFullAccess"
+}
+
+# Managed policy: AmazonOpenSearchServiceFullAccess
+resource "aws_iam_role_policy_attachment" "bedrock_agent_opensearch_full_access" {
+  role       = aws_iam_role.bedrock_agent.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonOpenSearchServiceFullAccess"
+}
+
+# Inline policy: Allow role to pass itself to Bedrock
+resource "aws_iam_role_policy" "bedrock_agent_pass_role" {
+  name = "BondAIBedrockAgentRolePassRole"
+  role = aws_iam_role.bedrock_agent.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = aws_iam_role.bedrock_agent.arn
+        Condition = {
+          StringEquals = {
+            "iam:PassedToService" = "bedrock.amazonaws.com"
+          }
         }
       }
     ]
