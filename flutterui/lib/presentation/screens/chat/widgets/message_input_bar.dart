@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutterui/presentation/screens/chat/widgets/clipboard_helper.dart';
 import 'package:flutterui/presentation/screens/chat/widgets/message_attachment_bar.dart';
 import 'package:flutterui/providers/core_providers.dart' show appThemeProvider;
 
@@ -35,18 +36,45 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
   late final FocusNode _keyboardFocusNode;
   late final ScrollController _inputScrollController;
 
+  /// Replace non-ASCII characters in filenames with spaces.
+  String _sanitizeFilename(String name) {
+    return name.replaceAll(RegExp(r'[^\x20-\x7E]'), ' ').replaceAll(RegExp(r' {2,}'), ' ').trim();
+  }
+
   Future<void> _pickFiles() async {
     final result = await FilePicker.platform.pickFiles(allowMultiple: true);
 
     if (result != null && result.files.isNotEmpty) {
+      final sanitized = result.files.map((f) => PlatformFile(
+        name: _sanitizeFilename(f.name),
+        size: f.size,
+        bytes: f.bytes,
+      )).toList();
       final updated = List<PlatformFile>.from(widget.attachments)
-        ..addAll(result.files);
+        ..addAll(sanitized);
       widget.onFileAttachmentsChanged(List.unmodifiable(updated));
     }
   }
 
   void _onAttachmentRemoved(PlatformFile file) {
     final updated = List<PlatformFile>.from(widget.attachments)..remove(file);
+    widget.onFileAttachmentsChanged(updated);
+  }
+
+  Future<void> _handlePaste() async {
+    final files = await ClipboardHelper.readFilesFromClipboard();
+    if (files.isEmpty) return;
+
+    final platformFiles = files
+        .map((f) => PlatformFile(
+              name: f.name,
+              size: f.bytes.length,
+              bytes: f.bytes,
+            ))
+        .toList();
+
+    final updated = List<PlatformFile>.from(widget.attachments)
+      ..addAll(platformFiles);
     widget.onFileAttachmentsChanged(updated);
   }
 
@@ -149,6 +177,13 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                               !widget.isSendingMessage &&
                               widget.textController.text.trim().isNotEmpty) {
                             widget.onSendMessage();
+                          }
+                          // Ctrl+V / Cmd+V: check clipboard for files
+                          if (event is KeyDownEvent &&
+                              event.logicalKey == LogicalKeyboardKey.keyV &&
+                              (HardwareKeyboard.instance.isControlPressed ||
+                                  HardwareKeyboard.instance.isMetaPressed)) {
+                            _handlePaste();
                           }
                         },
                         child: Scrollbar(

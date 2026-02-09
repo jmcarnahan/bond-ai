@@ -34,6 +34,7 @@ from .AdminMCP import (
 )
 from .BedrockMetadata import BedrockMetadata, BedrockAgentOptions
 from .BedrockProvider import BedrockProvider
+from .BedrockFiles import is_image_mime_type, get_converse_image_format
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_TEMPERATURE = 0.0
@@ -383,12 +384,24 @@ class BedrockAgent(Agent):
                 if session_files:
                     all_files.extend(session_files)
 
-            # Add files from attachments
+            # Add files from attachments (intercept images for Converse API)
             if attachments:
                 LOGGER.debug(f"Streaming response with attachments\n: {json.dumps(attachments, indent=2)}")
-                attachment_files = self.bond_provider.files.convert_attachments_to_files(attachments)
-                if attachment_files:
-                    all_files.extend(attachment_files)
+
+                # Separate image attachments from non-image attachments
+                image_attachments, non_image_attachments = self._separate_image_files(attachments)
+
+                # Analyze images via Converse API and augment the prompt
+                if image_attachments:
+                    image_analysis = self._analyze_images_via_converse(image_attachments, prompt)
+                    prompt = f"{prompt}\n\n--- Image Analysis ---\n{image_analysis}\n--- End Image Analysis ---"
+                    LOGGER.info(f"Augmented prompt with image analysis from {len(image_attachments)} image(s)")
+
+                # Convert remaining non-image attachments to Bedrock files
+                if non_image_attachments:
+                    attachment_files = self.bond_provider.files.convert_attachments_to_files(non_image_attachments)
+                    if attachment_files:
+                        all_files.extend(attachment_files)
 
             # Check the number of files in session state
             if len(all_files) > 5:
@@ -900,6 +913,135 @@ Please integrate any relevant insights from the documents with your analysis of 
 
         return chat_files, code_files
 
+    def _separate_image_files(self, attachments: List[Dict[str, Any]]) -> tuple:
+        """
+        Separate image attachments from non-image attachments based on MIME type.
+
+        Args:
+            attachments: List of attachment dicts with 'file_id' and 'tools' keys
+
+        Returns:
+            Tuple of (image_attachments, non_image_attachments)
+        """
+        image_attachments = []
+        non_image_attachments = []
+
+        for attachment in attachments:
+            file_id = attachment.get('file_id')
+            if not file_id:
+                non_image_attachments.append(attachment)
+                continue
+
+            try:
+                file_details_list = self.bond_provider.files.get_file_details([file_id])
+                if not file_details_list:
+                    non_image_attachments.append(attachment)
+                    continue
+
+                mime_type = file_details_list[0].mime_type or ''
+                if is_image_mime_type(mime_type):
+                    image_attachments.append(attachment)
+                else:
+                    non_image_attachments.append(attachment)
+            except Exception as e:
+                LOGGER.warning(f"Could not determine MIME type for {file_id}, treating as non-image: {e}")
+                non_image_attachments.append(attachment)
+
+        if image_attachments:
+            LOGGER.info(f"Separated {len(image_attachments)} image(s) and {len(non_image_attachments)} non-image file(s)")
+
+        return image_attachments, non_image_attachments
+
+    def _analyze_images_via_converse(self, image_attachments: List[Dict[str, Any]], user_prompt: str) -> str:
+        """
+        Analyze image files using the Bedrock Converse API (multimodal).
+
+        Args:
+            image_attachments: List of image attachment dicts with 'file_id'
+            user_prompt: The user's original prompt for context
+
+        Returns:
+            Text analysis of the images, or a fallback message on error
+        """
+        content_blocks = [
+            {"text": f"Please analyze the following image(s) in the context of this request: {user_prompt}"}
+        ]
+
+        max_image_size = 20 * 1024 * 1024  # 20MB
+        images_included = 0
+
+        for attachment in image_attachments:
+            file_id = attachment.get('file_id')
+            try:
+                file_details_list = self.bond_provider.files.get_file_details([file_id])
+                if not file_details_list:
+                    content_blocks.append({"text": f"[Image '{file_id}' could not be loaded]"})
+                    continue
+
+                file_details = file_details_list[0]
+                mime_type = file_details.mime_type or ''
+                file_size = file_details.file_size or 0
+                file_name = file_details.file_path or file_id
+
+                # Skip images that are too large
+                if file_size > max_image_size:
+                    LOGGER.warning(f"Skipping image {file_name}: size {file_size} exceeds {max_image_size} byte limit")
+                    content_blocks.append({"text": f"[Image '{file_name}' skipped: exceeds 20MB size limit]"})
+                    continue
+
+                image_format = get_converse_image_format(mime_type)
+                if not image_format:
+                    LOGGER.warning(f"Unsupported image format for Converse: {mime_type}")
+                    content_blocks.append({"text": f"[Image '{file_name}' skipped: unsupported format '{mime_type}']"})
+                    continue
+
+                # Retrieve image bytes from S3
+                file_bytes_io = self.bond_provider.files.get_file_bytes((file_id, None))
+                raw_bytes = file_bytes_io.getvalue()
+
+                content_blocks.append({
+                    "image": {
+                        "format": image_format,
+                        "source": {
+                            "bytes": raw_bytes
+                        }
+                    }
+                })
+                images_included += 1
+                LOGGER.info(f"Added image to Converse request: {file_name} ({mime_type}, {len(raw_bytes)} bytes)")
+
+            except Exception as e:
+                LOGGER.error(f"Error loading image {file_id} for Converse: {e}")
+                content_blocks.append({"text": f"[Image could not be loaded: {e}]"})
+
+        if images_included == 0:
+            return "[No images could be processed for analysis]"
+
+        try:
+            LOGGER.info(f"Calling Converse API with {images_included} image(s) using model {self.model}")
+            response = self.bond_provider.bedrock_runtime_client.converse(
+                modelId=self.model,
+                messages=[{
+                    "role": "user",
+                    "content": content_blocks
+                }]
+            )
+
+            # Extract text from response
+            output_message = response.get('output', {}).get('message', {})
+            result_parts = []
+            for block in output_message.get('content', []):
+                if 'text' in block:
+                    result_parts.append(block['text'])
+
+            analysis_text = '\n'.join(result_parts)
+            LOGGER.info(f"Converse image analysis completed ({len(analysis_text)} chars)")
+            return analysis_text
+
+        except Exception as e:
+            LOGGER.error(f"Converse API call failed for image analysis: {e}")
+            return f"[Image analysis unavailable: {e}. The images were attached but could not be analyzed.]"
+
     def _process_bedrock_invocation(self, prompt: Optional[str], thread_id: str, session_id: str,
                                    session_state: Dict[str, Any], files: Optional[List[Dict]],
                                    attachments: Optional[List], override_role: str, user_id: str,
@@ -928,9 +1070,6 @@ Please integrate any relevant insights from the documents with your analysis of 
         updated_session_state = session_state.copy()
         if files:
             updated_session_state['files'] = files
-            LOGGER.debug(f"Session state contains {len(files)} files")
-            for i, file in enumerate(files):
-                LOGGER.debug(f"  File {i}: {file.get('name')} - useCase: {file.get('useCase')}")
 
         # Build request
         request = {
@@ -944,12 +1083,6 @@ Please integrate any relevant insights from the documents with your analysis of 
                 'streamFinalResponse': True
             }
         }
-
-        # Log request
-        request_log = {k: v for k, v in request.items() if k != 'sessionState'}
-        LOGGER.debug(f"Sending request (without sessionState): {request_log}")
-        if 'sessionState' in request and 'files' in request['sessionState']:
-            LOGGER.debug(f"Session state files count: {len(request['sessionState']['files'])}")
 
         # Initialize response tracking
         full_content = ""
