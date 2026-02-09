@@ -395,6 +395,10 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
             agentDetail.mcpResources != null
                 ? Set<String>.from(agentDetail.mcpResources!)
                 : {},
+        selectedGroupIds:
+            agentDetail.groupIds != null
+                ? Set<String>.from(agentDetail.groupIds!)
+                : {},
         fileStorage: agentDetail.fileStorage ?? 'direct',
         isLoading: false,
       );
