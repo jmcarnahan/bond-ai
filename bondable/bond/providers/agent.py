@@ -501,7 +501,7 @@ class AgentProvider(ABC):
                 name="Home",
                 description="Your AI assistant for various tasks",
                 instructions="You are a helpful AI assistant. Help users with their questions and tasks.",
-                introduction="Tell me who you are and how you can assist me.",
+                introduction="Greet the user with a brief, friendly welcome. Keep it to 2-3 sentences. Do not mention your model name or creator. Simply let them know you're here to help and ask what they'd like to work on.",
                 reminder="",
                 model=self.get_default_model(),
                 tools=[{"type": "code_interpreter"}, {"type": "file_search"}],  # Enable code interpreter and file search

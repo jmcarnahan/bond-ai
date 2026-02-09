@@ -304,6 +304,24 @@ async def update_agent(
 
         agent_instance = provider.agents.create_or_update_agent(agent_def=agent_def, user_id=current_user.user_id)
 
+        # Sync group associations if group_ids was provided
+        if request_data.group_ids is not None:
+            try:
+                # Find default group to preserve it from removal
+                default_group_name = f"{agent_instance.get_name()} Default Group"
+                user_groups = provider.groups.get_user_groups(current_user.user_id)
+                default_group_ids = [g['id'] for g in user_groups if g['name'] == default_group_name]
+
+                provider.groups.sync_agent_groups(
+                    agent_id=agent_instance.get_agent_id(),
+                    desired_group_ids=request_data.group_ids,
+                    preserve_group_ids=default_group_ids
+                )
+                LOGGER.info(f"Synced agent '{agent_instance.get_agent_id()}' with {len(request_data.group_ids)} groups")
+            except Exception as group_error:
+                LOGGER.error(f"Failed to sync agent group associations: {group_error}")
+                # Don't fail the agent update if group sync fails
+
         LOGGER.info(f"Updated agent '{agent_instance.get_name()}' with ID '{agent_instance.get_agent_id()}' for user {current_user.user_id} ({current_user.email}).")
         return AgentResponse(agent_id=agent_instance.get_agent_id(), name=agent_instance.get_name())
 
@@ -363,6 +381,9 @@ async def get_agent_details(
         LOGGER.debug(f"Returning agent details - introduction: '{agent_def.introduction[:50] if agent_def.introduction else 'None'}'...")
         LOGGER.debug(f"Returning agent details - reminder: '{agent_def.reminder[:50] if agent_def.reminder else 'None'}'...")
 
+        # Get associated group IDs
+        agent_group_ids = provider.groups.get_agent_group_ids(agent_id)
+
         return AgentDetailResponse(
             id=agent_instance.get_agent_id(),
             name=agent_def.name,
@@ -376,7 +397,8 @@ async def get_agent_details(
             metadata=agent_def.metadata,
             mcp_tools=agent_def.mcp_tools if agent_def.mcp_tools else None,
             mcp_resources=agent_def.mcp_resources if agent_def.mcp_resources else None,
-            file_storage=getattr(agent_def, 'file_storage', 'direct')
+            file_storage=getattr(agent_def, 'file_storage', 'direct'),
+            group_ids=agent_group_ids if agent_group_ids else None
         )
 
     except HTTPException:
