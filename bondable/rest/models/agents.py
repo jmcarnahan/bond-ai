@@ -52,6 +52,7 @@ class AgentUpdateRequest(BaseModel):
     mcp_tools: Optional[List[str]] = None
     mcp_resources: Optional[List[str]] = None
     file_storage: Optional[str] = None  # 'direct' | 'knowledge_base'
+    group_ids: Optional[List[str]] = None
 
 
 class AgentResponse(BaseModel):
@@ -73,6 +74,7 @@ class AgentDetailResponse(BaseModel):
     mcp_tools: Optional[List[str]] = None
     mcp_resources: Optional[List[str]] = None
     file_storage: Optional[str] = 'direct'  # 'direct' | 'knowledge_base'
+    group_ids: Optional[List[str]] = None
 
 
 class ModelInfo(BaseModel):
