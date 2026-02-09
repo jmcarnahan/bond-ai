@@ -263,8 +263,58 @@ class Groups:
                 LOGGER.error(f"Error associating agent '{agent_id}' with group '{group_id}': {e}")
                 raise e
 
-    def get_all_users(self) -> List[Dict]:
-        """Get all users for group member selection."""
+    def get_agent_group_ids(self, agent_id: str) -> List[str]:
+        """Get all group IDs associated with an agent."""
         with self.metadata.get_db_session() as db_session:
-            users = db_session.query(UserModel).all()
+            agent_groups = db_session.query(AgentGroupModel.group_id).filter(
+                AgentGroupModel.agent_id == agent_id
+            ).all()
+            return [ag.group_id for ag in agent_groups]
+
+    def sync_agent_groups(self, agent_id: str, desired_group_ids: List[str],
+                          preserve_group_ids: Optional[List[str]] = None) -> None:
+        """Synchronize agent-group associations to match the desired set.
+
+        Groups in preserve_group_ids will not be removed even if not in desired_group_ids.
+        This is used to protect the default group from accidental removal.
+        """
+        with self.metadata.get_db_session() as db_session:
+            try:
+                current = set(
+                    row.group_id for row in
+                    db_session.query(AgentGroupModel.group_id).filter(
+                        AgentGroupModel.agent_id == agent_id
+                    ).all()
+                )
+                desired = set(desired_group_ids)
+                protected = set(preserve_group_ids or [])
+
+                to_add = desired - current
+                to_remove = (current - desired) - protected
+
+                for group_id in to_add:
+                    db_session.add(AgentGroupModel(agent_id=agent_id, group_id=group_id))
+
+                if to_remove:
+                    db_session.query(AgentGroupModel).filter(
+                        AgentGroupModel.agent_id == agent_id,
+                        AgentGroupModel.group_id.in_(to_remove)
+                    ).delete(synchronize_session='fetch')
+
+                db_session.commit()
+                LOGGER.info(
+                    f"Synced groups for agent '{agent_id}': "
+                    f"added {len(to_add)}, removed {len(to_remove)}"
+                )
+            except Exception as e:
+                db_session.rollback()
+                LOGGER.error(f"Error syncing groups for agent '{agent_id}': {e}")
+                raise e
+
+    def get_all_users(self) -> List[Dict]:
+        """Get all users for group member selection. Excludes system users."""
+        with self.metadata.get_db_session() as db_session:
+            users = db_session.query(UserModel).filter(
+                UserModel.email != 'system@bondableai.com'
+            ).all()
             return [self._get_user_dict(user) for user in users]
