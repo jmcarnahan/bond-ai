@@ -151,6 +151,406 @@ def _get_bedrock_agent_client() -> Any:
     bond_provider: BedrockProvider = Config.config().get_provider()
     return bond_provider.bedrock_agent_client
 
+
+# =============================================================================
+# Bedrock Schema Sanitization
+# =============================================================================
+# Bedrock's OpenAPI parser only supports basic JSON Schema types:
+# string, integer, number, boolean. Complex constructs like anyOf, oneOf,
+# allOf, $ref, nested objects, and arrays of objects cause
+# internalServerException at invocation time.
+#
+# Bedrock also has limits:
+# - Max 11 APIs per agent (adjustable quota)
+# - Max 5 parameters per function (adjustable quota)
+# - Max 200 characters for action group description
+# =============================================================================
+
+MAX_APIS_PER_AGENT = 11
+MAX_PARAMS_PER_FUNCTION = 5
+MAX_DESCRIPTION_LENGTH = 200
+
+# Unsupported JSON Schema keywords that must be removed for Bedrock
+_UNSUPPORTED_SCHEMA_KEYWORDS = {
+    'anyOf', 'oneOf', 'allOf', '$ref', 'additionalProperties',
+    'items', 'prefixItems', 'patternProperties', 'if', 'then', 'else',
+    'not', 'dependentSchemas', 'dependentRequired', 'unevaluatedProperties',
+    'unevaluatedItems', 'contains', 'minContains', 'maxContains',
+}
+
+
+def _sanitize_property_schema(prop_name: str, prop_schema: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Sanitize a single property schema for Bedrock OpenAPI compatibility.
+
+    Bedrock supports only basic types: string, integer, number, boolean.
+    Complex constructs are converted to string type with descriptive text.
+
+    Args:
+        prop_name: Property name (for logging)
+        prop_schema: Raw JSON Schema for this property
+
+    Returns:
+        Sanitized schema dict with only Bedrock-compatible constructs
+    """
+    if not isinstance(prop_schema, dict):
+        return {"type": "string", "description": f"Parameter {prop_name}"}
+
+    result = {}
+    original_desc = prop_schema.get('description', '')
+    original_title = prop_schema.get('title', '')
+
+    # Handle anyOf/oneOf (common in Python type hints like str | None, dict | str | None)
+    for union_key in ('anyOf', 'oneOf'):
+        if union_key in prop_schema:
+            variants = prop_schema[union_key]
+            non_null_variants = [v for v in variants if v.get('type') != 'null']
+
+            if len(non_null_variants) == 1:
+                # Simple nullable: str | None -> string
+                inner = non_null_variants[0]
+                inner_type = inner.get('type', 'string')
+                if inner_type in ('string', 'integer', 'number', 'boolean'):
+                    result = {"type": inner_type}
+                elif inner_type == 'object':
+                    result = {"type": "string"}
+                    if not original_desc:
+                        original_desc = f"JSON object string for {prop_name}"
+                elif inner_type == 'array':
+                    result = {"type": "string"}
+                    if not original_desc:
+                        original_desc = f"JSON array string for {prop_name}"
+                else:
+                    result = {"type": "string"}
+            elif len(non_null_variants) > 1:
+                # Mixed union: dict | str | None -> string with JSON hint
+                type_names = [v.get('type', 'unknown') for v in non_null_variants]
+                result = {"type": "string"}
+                if not original_desc:
+                    original_desc = f"Value for {prop_name} (accepts: {', '.join(type_names)}). Use JSON string for complex types."
+            else:
+                # All null or empty - fallback to string
+                result = {"type": "string"}
+
+            # Add description and return early
+            desc = original_desc or original_title or f"Parameter {prop_name}"
+            if desc:
+                result['description'] = desc
+            if 'enum' in prop_schema:
+                result['enum'] = prop_schema['enum']
+            return result
+
+    # Handle allOf (merge schemas)
+    if 'allOf' in prop_schema:
+        result = {"type": "string"}
+        desc = original_desc or original_title or f"Parameter {prop_name}"
+        if desc:
+            result['description'] = desc
+        return result
+
+    # Handle $ref
+    if '$ref' in prop_schema:
+        result = {"type": "string"}
+        desc = original_desc or original_title or f"Parameter {prop_name} (reference type)"
+        result['description'] = desc
+        return result
+
+    # Handle by type
+    prop_type = prop_schema.get('type', 'string')
+
+    if prop_type == 'object':
+        # Convert object types to string (user passes JSON string)
+        result = {"type": "string"}
+        if not original_desc:
+            original_desc = f"JSON object string for {prop_name}"
+
+    elif prop_type == 'array':
+        # Convert array types to string (user passes JSON array or comma-separated)
+        items = prop_schema.get('items', {})
+        items_type = items.get('type', 'string') if isinstance(items, dict) else 'string'
+        result = {"type": "string"}
+        if items_type in ('string', 'integer', 'number'):
+            if not original_desc:
+                original_desc = f"Comma-separated list of {items_type} values for {prop_name}"
+        else:
+            if not original_desc:
+                original_desc = f"JSON array string for {prop_name}"
+
+    elif prop_type in ('string', 'integer', 'number', 'boolean'):
+        result = {"type": prop_type}
+    else:
+        # Unknown type - default to string
+        result = {"type": "string"}
+        LOGGER.debug(f"[Schema Sanitize] Unknown type '{prop_type}' for property '{prop_name}', defaulting to string")
+
+    # Preserve safe attributes
+    desc = original_desc or original_title
+    if desc:
+        result['description'] = desc
+    if 'enum' in prop_schema:
+        result['enum'] = prop_schema['enum']
+    if 'default' in prop_schema and isinstance(prop_schema['default'], (str, int, float, bool)):
+        result['default'] = prop_schema['default']
+
+    return result
+
+
+def _sanitize_tool_parameters(
+    tool_name: str,
+    properties: Dict[str, Any],
+    required: Optional[List[str]] = None,
+    max_params: int = MAX_PARAMS_PER_FUNCTION,
+) -> Tuple[Dict[str, Any], List[str]]:
+    """
+    Sanitize all parameters for a tool for Bedrock compatibility.
+
+    Sanitizes each property schema and enforces the max parameter limit,
+    prioritizing required parameters when truncating.
+
+    Args:
+        tool_name: Tool name for logging
+        properties: Raw properties dict from inputSchema
+        required: List of required parameter names
+        max_params: Maximum allowed parameters per function
+
+    Returns:
+        Tuple of (sanitized_properties, filtered_required_list)
+    """
+    if not properties:
+        return {}, []
+
+    required = required or []
+
+    # Sanitize each property
+    sanitized = {}
+    for prop_name, prop_schema in properties.items():
+        sanitized[prop_name] = _sanitize_property_schema(prop_name, prop_schema)
+
+    # Enforce max parameter limit
+    if len(sanitized) > max_params:
+        # Prioritize required parameters, then take remaining in order
+        required_params = {k: sanitized[k] for k in required if k in sanitized}
+        optional_params = {k: v for k, v in sanitized.items() if k not in required_params}
+
+        truncated = dict(required_params)
+        remaining_slots = max_params - len(truncated)
+        for k, v in optional_params.items():
+            if remaining_slots <= 0:
+                break
+            truncated[k] = v
+            remaining_slots -= 1
+
+        dropped = set(sanitized.keys()) - set(truncated.keys())
+        LOGGER.warning(
+            f"[Schema Sanitize] Tool '{tool_name}': truncated from {len(sanitized)} to "
+            f"{len(truncated)} params (Bedrock limit: {max_params}). "
+            f"Dropped: {dropped}"
+        )
+        sanitized = truncated
+
+    # Filter required list to only include params that survived truncation
+    filtered_required = [r for r in required if r in sanitized]
+
+    return sanitized, filtered_required
+
+
+def _sanitize_description(description: str, max_length: int = MAX_DESCRIPTION_LENGTH) -> str:
+    """
+    Truncate description to Bedrock's max length.
+
+    Args:
+        description: Original description text
+        max_length: Maximum allowed length
+
+    Returns:
+        Truncated description string
+    """
+    if not description:
+        return ""
+    if len(description) <= max_length:
+        return description
+    return description[:max_length - 3] + "..."
+
+
+def _validate_openapi_for_bedrock(openapi_spec: Dict[str, Any]) -> List[str]:
+    """
+    Validate an OpenAPI spec against known Bedrock restrictions.
+
+    Returns a list of warning messages for any issues found.
+    This is a safety-net check run after sanitization.
+
+    Args:
+        openapi_spec: The generated OpenAPI 3.0 spec
+
+    Returns:
+        List of warning strings (empty if no issues)
+    """
+    warnings = []
+    paths = openapi_spec.get('paths', {})
+
+    # Check total API count
+    if len(paths) > MAX_APIS_PER_AGENT:
+        warnings.append(
+            f"API count ({len(paths)}) exceeds Bedrock limit ({MAX_APIS_PER_AGENT})"
+        )
+
+    # Check payload size
+    payload_json = json.dumps(openapi_spec)
+    payload_size = len(payload_json.encode('utf-8'))
+    if payload_size > 100000:
+        warnings.append(f"OpenAPI payload size ({payload_size} bytes) exceeds 100KB threshold")
+
+    for path_key, path_def in paths.items():
+        for method, operation in path_def.items():
+            op_id = operation.get('operationId', path_key)
+
+            # Check description length
+            for desc_field in ('summary', 'description'):
+                desc = operation.get(desc_field, '')
+                if len(desc) > MAX_DESCRIPTION_LENGTH:
+                    warnings.append(
+                        f"{op_id}: {desc_field} length ({len(desc)}) exceeds {MAX_DESCRIPTION_LENGTH}"
+                    )
+
+            # Check parameter schemas for unsupported constructs
+            request_body = operation.get('requestBody', {})
+            schema = (request_body.get('content', {})
+                     .get('application/json', {})
+                     .get('schema', {}))
+            props = schema.get('properties', {})
+
+            if len(props) > MAX_PARAMS_PER_FUNCTION:
+                warnings.append(
+                    f"{op_id}: parameter count ({len(props)}) exceeds {MAX_PARAMS_PER_FUNCTION}"
+                )
+
+            for prop_name, prop_schema in props.items():
+                if isinstance(prop_schema, dict):
+                    for keyword in _UNSUPPORTED_SCHEMA_KEYWORDS:
+                        if keyword in prop_schema:
+                            warnings.append(
+                                f"{op_id}.{prop_name}: contains unsupported keyword '{keyword}'"
+                            )
+
+    return warnings
+
+
+def _resolve_expected_type(prop_schema: Dict[str, Any]) -> Optional[str]:
+    """
+    Resolve the expected non-null type from a property schema.
+
+    Handles direct types and anyOf/oneOf unions (picks the first non-null type).
+
+    Args:
+        prop_schema: Property schema dict
+
+    Returns:
+        Expected type string (e.g., 'string', 'integer', 'object') or None
+    """
+    direct_type = prop_schema.get('type')
+    if direct_type:
+        return direct_type
+
+    # Check anyOf/oneOf for the first non-null type
+    for union_key in ('anyOf', 'oneOf'):
+        if union_key in prop_schema:
+            for variant in prop_schema[union_key]:
+                vtype = variant.get('type')
+                if vtype and vtype != 'null':
+                    return vtype
+
+    return None
+
+
+def _coerce_parameters_for_mcp(tool_name: str, parameters: Dict[str, Any], tool_schema: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Coerce parameter values to match the MCP tool's expected types.
+
+    Bedrock sends ALL parameter values as strings. This function converts
+    them back to the types the MCP server expects based on the tool's
+    original inputSchema:
+    - "true"/"false" -> True/False for boolean params
+    - "10" -> 10 for integer params
+    - "3.14" -> 3.14 for number params
+    - '{"key": "val"}' -> {"key": "val"} for object params
+    - '["a", "b"]' -> ["a", "b"] for array params
+
+    Args:
+        tool_name: Tool name for logging
+        parameters: Parameters dict from Bedrock (values are typically strings)
+        tool_schema: The tool's original inputSchema from the MCP server
+
+    Returns:
+        New parameters dict with coerced values
+    """
+    if not parameters or not tool_schema:
+        return parameters
+
+    properties = tool_schema.get('properties', {})
+    if not properties:
+        return parameters
+
+    coerced = parameters.copy()
+
+    for param_name, value in coerced.items():
+        if not isinstance(value, str) or param_name not in properties:
+            continue
+
+        prop_schema = properties[param_name]
+        expected_type = _resolve_expected_type(prop_schema)
+
+        if not expected_type or expected_type == 'string':
+            continue  # Already a string, no coercion needed
+
+        # Boolean coercion
+        if expected_type == 'boolean':
+            lower = value.strip().lower()
+            if lower == 'true':
+                coerced[param_name] = True
+                LOGGER.debug(f"[MCP Execute] Coerced '{param_name}' to bool True")
+            elif lower == 'false':
+                coerced[param_name] = False
+                LOGGER.debug(f"[MCP Execute] Coerced '{param_name}' to bool False")
+            continue
+
+        # Integer coercion
+        if expected_type == 'integer':
+            try:
+                coerced[param_name] = int(value)
+                LOGGER.debug(f"[MCP Execute] Coerced '{param_name}' to int {coerced[param_name]}")
+            except ValueError:
+                LOGGER.debug(f"[MCP Execute] Could not coerce '{param_name}' to int, keeping string")
+            continue
+
+        # Number (float) coercion
+        if expected_type == 'number':
+            try:
+                coerced[param_name] = float(value)
+                LOGGER.debug(f"[MCP Execute] Coerced '{param_name}' to float {coerced[param_name]}")
+            except ValueError:
+                LOGGER.debug(f"[MCP Execute] Could not coerce '{param_name}' to float, keeping string")
+            continue
+
+        # Object/array coercion (parse JSON string)
+        if expected_type in ('object', 'array'):
+            stripped = value.strip()
+            if (stripped.startswith('{') and stripped.endswith('}')) or \
+               (stripped.startswith('[') and stripped.endswith(']')):
+                try:
+                    coerced[param_name] = json.loads(value)
+                    LOGGER.debug(
+                        f"[MCP Execute] Coerced '{param_name}' from string to "
+                        f"{type(coerced[param_name]).__name__}"
+                    )
+                except json.JSONDecodeError:
+                    LOGGER.debug(
+                        f"[MCP Execute] '{param_name}' looks like JSON but "
+                        f"failed to parse, keeping as string"
+                    )
+
+    return coerced
+
+
 def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_resources: List[str], user_id: Optional[str] = None):
     """
     Create action groups for MCP tools.
@@ -187,6 +587,15 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
 
         LOGGER.debug(f"[MCP Action Groups] Got {len(mcp_tool_definitions)} tool definitions")
 
+        # Enforce Bedrock API count limit
+        if len(mcp_tool_definitions) > MAX_APIS_PER_AGENT:
+            LOGGER.warning(
+                f"[MCP Action Groups] {len(mcp_tool_definitions)} tools exceed Bedrock limit of "
+                f"{MAX_APIS_PER_AGENT}. Only first {MAX_APIS_PER_AGENT} will be registered. "
+                f"All tools: {[t['name'] for t in mcp_tool_definitions]}"
+            )
+            mcp_tool_definitions = mcp_tool_definitions[:MAX_APIS_PER_AGENT]
+
         # Build OpenAPI paths for MCP tools
         paths = {}
         for tool in mcp_tool_definitions:
@@ -205,11 +614,16 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
 
             operation_id = f"b_{server_hash}_{tool['name']}"
 
+            # Sanitize descriptions to fit Bedrock limits
+            tool_desc = _sanitize_description(
+                tool.get('description', f"MCP tool {tool['name']}")
+            )
+
             paths[tool_path] = {
                 "post": {
                     "operationId": operation_id,
-                    "summary": tool.get('description', f"MCP tool {tool['name']}"),
-                    "description": tool.get('description', f"MCP tool {tool['name']}"),
+                    "summary": tool_desc,
+                    "description": tool_desc,
                     "responses": {
                         "200": {
                             "description": "Tool execution result",
@@ -231,15 +645,19 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
                 }
             }
 
-            # Add parameters if any
+            # Add parameters if any (already sanitized in _get_mcp_tool_definitions)
             if tool.get('parameters'):
+                schema_obj = {
+                    "type": "object",
+                    "properties": tool['parameters']
+                }
+                if tool.get('required'):
+                    schema_obj["required"] = tool['required']
+
                 paths[tool_path]["post"]["requestBody"] = {
                     "content": {
                         "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": tool['parameters']
-                            }
+                            "schema": schema_obj
                         }
                     }
                 }
@@ -255,18 +673,30 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
             "paths": paths
         }
 
-        # Log the OpenAPI spec for debugging
-        LOGGER.info(f"[MCP Action Groups] Creating action group with {len(paths)} tools: {list(paths.keys())}")
+        # Validate and log diagnostics
+        payload_json = json.dumps(openapi_spec)
+        payload_size = len(payload_json.encode('utf-8'))
+        LOGGER.info(
+            f"[MCP Action Groups] Creating action group with {len(paths)} tools "
+            f"(payload: {payload_size} bytes): {list(paths.keys())}"
+        )
         LOGGER.debug(f"[MCP Action Groups] OpenAPI spec: {json.dumps(openapi_spec, indent=2)}")
+
+        # Run validation and log any warnings
+        validation_warnings = _validate_openapi_for_bedrock(openapi_spec)
+        for warning in validation_warnings:
+            LOGGER.warning(f"[MCP Action Groups] Bedrock validation: {warning}")
 
         action_group_spec = {
             "actionGroupName": "MCPTools",
-            "description": "MCP (Model Context Protocol) tools for external integrations",
+            "description": _sanitize_description(
+                "MCP (Model Context Protocol) tools for external integrations"
+            ),
             "actionGroupExecutor": {
                 "customControl": "RETURN_CONTROL"  # Return control to client for execution
             },
             "apiSchema": {
-                "payload": json.dumps(openapi_spec)
+                "payload": payload_json
             }
         }
 
@@ -330,10 +760,18 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
         for tool_name in admin_tool_names_requested:
             if tool_name in admin_tool_map:
                 admin_tool = admin_tool_map[tool_name]
+                raw_properties = admin_tool['inputSchema'].get('properties', {})
+                raw_required = admin_tool['inputSchema'].get('required', [])
+                sanitized_props, sanitized_required = _sanitize_tool_parameters(
+                    tool_name=tool_name,
+                    properties=raw_properties,
+                    required=raw_required,
+                )
                 tool_def = {
                     'name': tool_name,
                     'description': admin_tool['description'],
-                    'parameters': admin_tool['inputSchema'].get('properties', {}),
+                    'parameters': sanitized_props,
+                    'required': sanitized_required,
                     'server_name': ADMIN_SERVER_NAME  # Mark as admin tool
                 }
                 tool_definitions.append(tool_def)
@@ -392,15 +830,31 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
                             'server_name': server_name  # Track which server has this tool
                         }
 
-                        # Add parameter schema if available
+                        # Add parameter schema if available, with sanitization
                         if hasattr(tool, 'inputSchema') and tool.inputSchema:
                             schema = tool.inputSchema
                             if 'properties' in schema:
-                                # Copy properties
-                                parameters = dict(schema['properties'])
-                                tool_def['parameters'] = parameters
+                                raw_properties = dict(schema['properties'])
+                                raw_required = schema.get('required', [])
+                                sanitized_props, sanitized_required = _sanitize_tool_parameters(
+                                    tool_name=tool_name,
+                                    properties=raw_properties,
+                                    required=raw_required,
+                                )
+                                tool_def['parameters'] = sanitized_props
+                                tool_def['required'] = sanitized_required
+                                LOGGER.info(
+                                    f"[MCP Tool Defs] Tool '{tool_name}' schema: "
+                                    f"{len(raw_properties)} raw params -> "
+                                    f"{len(sanitized_props)} sanitized params, "
+                                    f"required={sanitized_required}"
+                                )
+                            else:
+                                tool_def['parameters'] = {}
+                                tool_def['required'] = []
                         else:
                             tool_def['parameters'] = {}
+                            tool_def['required'] = []
 
                         tool_definitions.append(tool_def)
                         remaining_tools.remove(tool_name)
@@ -580,6 +1034,9 @@ async def execute_mcp_tool(
         servers_to_check = servers
         LOGGER.debug(f"[MCP Execute] Searching {len(servers)} servers for tool '{tool_name}'")
 
+    # Track whether the tool was found (vs execution failed) for better error messages
+    last_execution_error = None
+
     # Search each server for the tool (or just the target server if direct routing)
     for server_name, server_config in servers_to_check.items():
         server_url = server_config.get('url')
@@ -611,9 +1068,9 @@ async def execute_mcp_tool(
             async with Client(transport) as client:
                 # Check if this server has the tool
                 all_tools = await client.list_tools()
-                tool_names_on_server = [t.name for t in all_tools]
+                tool_dict = {t.name: t for t in all_tools}
 
-                if tool_name not in tool_names_on_server:
+                if tool_name not in tool_dict:
                     LOGGER.debug(f"[MCP Execute] Tool '{tool_name}' not found on server '{server_name}'")
                     continue
 
@@ -621,6 +1078,12 @@ async def execute_mcp_tool(
 
                 # Prepare parameters
                 tool_parameters = parameters.copy() if parameters else {}
+
+                # Coerce parameters to match MCP tool's expected types
+                # (reverses object/array -> string sanitization done for Bedrock)
+                tool = tool_dict[tool_name]
+                tool_schema = getattr(tool, 'inputSchema', None) or {}
+                tool_parameters = _coerce_parameters_for_mcp(tool_name, tool_parameters, tool_schema)
 
                 LOGGER.debug(f"[MCP Execute] Executing tool '{tool_name}' with parameters: {list(tool_parameters.keys())}")
                 result = await client.call_tool(tool_name, tool_parameters)
@@ -671,11 +1134,16 @@ async def execute_mcp_tool(
         except Exception as e:
             # Log full exception details including traceback for debugging
             LOGGER.exception(f"[MCP Execute] Error on server '{server_name}' when executing tool '{tool_name}' with parameters {list(parameters.keys()) if parameters else []}: {e}")
+            last_execution_error = str(e)
             continue  # Try next server
 
-    # Tool not found on any server
-    LOGGER.error(f"[MCP Execute] Tool '{tool_name}' not found on any configured MCP server")
-    return {"success": False, "error": f"Tool '{tool_name}' not found on any configured MCP server"}
+    # Distinguish between "tool not found" and "tool found but execution failed"
+    if last_execution_error:
+        LOGGER.error(f"[MCP Execute] Tool '{tool_name}' execution failed: {last_execution_error}")
+        return {"success": False, "error": f"Tool '{tool_name}' execution failed: {last_execution_error}"}
+    else:
+        LOGGER.error(f"[MCP Execute] Tool '{tool_name}' not found on any configured MCP server")
+        return {"success": False, "error": f"Tool '{tool_name}' not found on any configured MCP server"}
 
 
 def execute_mcp_tool_sync(
