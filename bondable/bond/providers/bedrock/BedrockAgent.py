@@ -489,12 +489,40 @@ Please integrate any relevant insights from the documents with your analysis of 
             error_message = str(e)
             LOGGER.exception(f"Bedrock Agent API error: {error_code} - {error_message} - {e}")
 
-            # Provide helpful message for common issues
+            # Provide helpful message and diagnostics for common issues
             if error_code == 'internalServerException':
+                # Log extensive diagnostics
+                LOGGER.error(
+                    f"[Bedrock ISE] Agent: {self.bedrock_agent_id}, "
+                    f"Alias: {self.bedrock_agent_alias_id}, "
+                    f"Model: {self.model}"
+                )
+                LOGGER.error(
+                    f"[Bedrock ISE] MCP Tools: {self.mcp_tools}, "
+                    f"Session: {session_id}, "
+                    f"Prompt length: {len(prompt) if prompt else 0}"
+                )
+
+                # Try to get action group details for diagnosis
+                try:
+                    bedrock_client = self.bond_provider.bedrock_agent_client
+                    ag_response = bedrock_client.list_agent_action_groups(
+                        agentId=self.bedrock_agent_id,
+                        agentVersion='DRAFT'
+                    )
+                    action_groups = ag_response.get('actionGroupSummaries', [])
+                    for ag in action_groups:
+                        LOGGER.error(
+                            f"[Bedrock ISE] Action Group: {ag.get('actionGroupName')} "
+                            f"(ID: {ag.get('actionGroupId')}, "
+                            f"State: {ag.get('actionGroupState')})"
+                        )
+                except Exception as diag_e:
+                    LOGGER.error(f"[Bedrock ISE] Failed to get action group diagnostics: {diag_e}")
+
                 user_message = (
-                    "I encountered an error processing your request. This can happen when:\n"
-                    "- The question references tools or integrations that aren't configured\n"
-                    "- There's an issue with the tool definitions\n\n"
+                    "I encountered an internal error processing your request. "
+                    "This may be caused by a tool configuration issue. "
                     "Please try rephrasing your question or ask about something else."
                 )
                 yield from self._yield_error_message(thread_id, user_message, error_code)
