@@ -1633,6 +1633,7 @@ Please integrate any relevant insights from the documents with your analysis of 
         # Bedrock may close the connection if the payload is large or on transient network issues.
         continuation_stream = None
         for attempt in range(MAX_CONTINUATION_RETRIES + 1):
+            invoke_start = time.monotonic()
             try:
                 if attempt > 0:
                     delay = CONTINUATION_RETRY_BASE_DELAY * (2 ** (attempt - 1))
