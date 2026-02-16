@@ -84,8 +84,13 @@ class AgentDefinition:
                 "file_ids": list(set(file_ids))
             }
         else:
-             # Ensure the structure exists even if no resources were provided
-            self.tool_resources["code_interpreter"] = {"file_ids": []}
+            # Only create default code_interpreter resources if code_interpreter is in tools list
+            has_code_interpreter = any(
+                isinstance(t, dict) and t.get('type') == 'code_interpreter'
+                for t in self.tools
+            )
+            if has_code_interpreter:
+                self.tool_resources["code_interpreter"] = {"file_ids": []}
 
         # Always create a default vector store for the agent
         default_vector_store_id = self.provider.vectorstores.get_or_create_default_vector_store_id(user_id=user_id, agent_id=self.id)
