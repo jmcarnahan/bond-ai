@@ -199,12 +199,20 @@ async def create_agent(
 
         # Create default group for the agent and associate them
         try:
-            group_id = provider.groups.create_default_group_and_associate(
+            default_group_id = provider.groups.create_default_group_and_associate(
                 agent_name=request_data.name,
                 agent_id=agent_instance.get_agent_id(),
                 user_id=current_user.user_id
             )
-            LOGGER.info(f"Created and associated default group '{group_id}' for agent '{agent_instance.get_name()}'")
+            LOGGER.info(f"Created and associated default group '{default_group_id}' for agent '{agent_instance.get_name()}'")
+            # Store default_group_id on the agent record
+            try:
+                provider.agents.set_default_group_id(
+                    agent_id=agent_instance.get_agent_id(),
+                    default_group_id=default_group_id
+                )
+            except Exception as e:
+                LOGGER.error(f"Failed to set default_group_id for agent: {e}")
         except Exception as group_error:
             LOGGER.error(f"Failed to create default group for agent '{request_data.name}': {group_error}")
             # Don't fail the agent creation if group creation fails, just log the error
@@ -307,15 +315,14 @@ async def update_agent(
         # Sync group associations if group_ids was provided
         if request_data.group_ids is not None:
             try:
-                # Find default group to preserve it from removal
-                default_group_name = f"{agent_instance.get_name()} Default Group"
-                user_groups = provider.groups.get_user_groups(current_user.user_id)
-                default_group_ids = [g['id'] for g in user_groups if g['name'] == default_group_name]
+                # Look up default_group_id from agent record to preserve it
+                agent_record = provider.agents.get_agent_record(agent_instance.get_agent_id())
+                preserve_ids = [agent_record.default_group_id] if agent_record and agent_record.default_group_id else []
 
                 provider.groups.sync_agent_groups(
                     agent_id=agent_instance.get_agent_id(),
                     desired_group_ids=request_data.group_ids,
-                    preserve_group_ids=default_group_ids
+                    preserve_group_ids=preserve_ids
                 )
                 LOGGER.info(f"Synced agent '{agent_instance.get_agent_id()}' with {len(request_data.group_ids)} groups")
             except Exception as group_error:
@@ -381,8 +388,10 @@ async def get_agent_details(
         LOGGER.debug(f"Returning agent details - introduction: '{agent_def.introduction[:50] if agent_def.introduction else 'None'}'...")
         LOGGER.debug(f"Returning agent details - reminder: '{agent_def.reminder[:50] if agent_def.reminder else 'None'}'...")
 
-        # Get associated group IDs
+        # Get associated group IDs and default group ID
         agent_group_ids = provider.groups.get_agent_group_ids(agent_id)
+        agent_record = provider.agents.get_agent_record(agent_id)
+        default_group_id = agent_record.default_group_id if agent_record else None
 
         return AgentDetailResponse(
             id=agent_instance.get_agent_id(),
@@ -398,7 +407,8 @@ async def get_agent_details(
             mcp_tools=agent_def.mcp_tools if agent_def.mcp_tools else None,
             mcp_resources=agent_def.mcp_resources if agent_def.mcp_resources else None,
             file_storage=getattr(agent_def, 'file_storage', 'direct'),
-            group_ids=agent_group_ids if agent_group_ids else None
+            group_ids=agent_group_ids if agent_group_ids else None,
+            default_group_id=default_group_id
         )
 
     except HTTPException:
