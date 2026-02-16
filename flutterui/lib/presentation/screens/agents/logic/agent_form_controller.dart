@@ -104,6 +104,22 @@ class AgentFormController with ErrorHandlingMixin {
   bool get isEditing => agentId != null;
 
   Future<void> _saveMemberChanges() async {
+    final formState = ref.read(createAgentFormProvider);
+    final defaultGroupId = formState.defaultGroupId;
+
+    // Primary: use default group ID directly (reliable, handles special characters)
+    if (defaultGroupId != null) {
+      try {
+        final memberNotifier = ref.read(manageMembersProvider(defaultGroupId).notifier);
+        await memberNotifier.saveChanges();
+        return;
+      } catch (e) {
+        logger.e('Error saving member changes: $e');
+        return;
+      }
+    }
+
+    // Fallback: name matching for backward compatibility with old agents
     final agentName = nameController.text;
     if (agentName.isEmpty) return;
 
@@ -117,7 +133,7 @@ class AgentFormController with ErrorHandlingMixin {
         await memberNotifier.saveChanges();
       }
     } catch (e) {
-      logger.e('Error saving member changes: $e');
+      logger.e('Error saving member changes (fallback): $e');
     }
   }
 
