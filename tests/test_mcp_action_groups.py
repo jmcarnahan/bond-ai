@@ -300,20 +300,21 @@ class TestBedrockCRUDWithMCP:
         from bondable.bond.providers.bedrock.BedrockCRUD import create_bedrock_agent
         from bondable.bond.definition import AgentDefinition
 
-        agent_def = AgentDefinition(
-            name="Test Agent",
-            description="Test description",
-            instructions="Test instructions",
-            model="us.anthropic.claude-3-5-sonnet-20241022-v2:0",
-            user_id=MOCK_USER_ID,
-            mcp_tools=["getJiraIssue"],
-            mcp_resources=[]
-        )
-
         with patch('bondable.bond.providers.bedrock.BedrockCRUD._get_bedrock_agent_client') as mock_client, \
              patch('bondable.bond.providers.bedrock.BedrockCRUD.create_mcp_action_groups') as mock_mcp, \
              patch('bondable.bond.providers.bedrock.BedrockCRUD._wait_for_resource_status'), \
+             patch('bondable.bond.providers.bedrock.BedrockFiles.BedrockFilesProvider._ensure_bucket_exists'), \
              patch.dict('os.environ', {'BEDROCK_AGENT_ROLE_ARN': 'arn:aws:iam::123456789:role/test'}):
+
+            agent_def = AgentDefinition(
+                name="Test Agent",
+                description="Test description",
+                instructions="Test instructions",
+                model="us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                user_id=MOCK_USER_ID,
+                mcp_tools=["getJiraIssue"],
+                mcp_resources=[]
+            )
 
             # Setup mock Bedrock client
             mock_bedrock = Mock()
@@ -346,23 +347,24 @@ class TestBedrockCRUDWithMCP:
         from bondable.bond.providers.bedrock.BedrockCRUD import update_bedrock_agent
         from bondable.bond.definition import AgentDefinition
 
-        # Create agent_def without id to avoid vector store lookup
-        agent_def = AgentDefinition(
-            name="Test Agent Updated",
-            description="Updated description",
-            instructions="Updated instructions",
-            model="us.anthropic.claude-3-5-sonnet-20241022-v2:0",
-            user_id=MOCK_USER_ID,
-            mcp_tools=["getJiraIssue", "searchJira"],
-            mcp_resources=[]
-        )
-        # Set id manually after creation to bypass vector store logic
-        agent_def.id = "test-bond-agent-id"
-
         with patch('bondable.bond.providers.bedrock.BedrockCRUD._get_bedrock_agent_client') as mock_client, \
              patch('bondable.bond.providers.bedrock.BedrockCRUD.create_mcp_action_groups') as mock_mcp, \
              patch('bondable.bond.providers.bedrock.BedrockCRUD._wait_for_resource_status'), \
+             patch('bondable.bond.providers.bedrock.BedrockFiles.BedrockFilesProvider._ensure_bucket_exists'), \
              patch.dict('os.environ', {'BEDROCK_AGENT_ROLE_ARN': 'arn:aws:iam::123456789:role/test'}):
+
+            # Create agent_def inside patch context to avoid real S3 HeadBucket call
+            agent_def = AgentDefinition(
+                name="Test Agent Updated",
+                description="Updated description",
+                instructions="Updated instructions",
+                model="us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                user_id=MOCK_USER_ID,
+                mcp_tools=["getJiraIssue", "searchJira"],
+                mcp_resources=[]
+            )
+            # Set id manually after creation to bypass vector store logic
+            agent_def.id = "test-bond-agent-id"
 
             # Setup mock Bedrock client
             mock_bedrock = Mock()
