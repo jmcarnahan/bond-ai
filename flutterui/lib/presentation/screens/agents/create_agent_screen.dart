@@ -227,7 +227,14 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
                   const SizedBox(height: 16),
                   _buildSectionCard(
                     title: 'Files & Resources',
-                    child: const AgentFilesTable(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildCodeInterpreterToggle(formState, theme),
+                        const SizedBox(height: 16),
+                        const AgentFilesTable(),
+                      ],
+                    ),
                     theme: theme,
                   ),
                   const SizedBox(height: 16),
@@ -247,6 +254,7 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
                     title: 'Sharing',
                     child: AgentSharingSection(
                       agentName: _nameController.text.isNotEmpty ? _nameController.text : null,
+                      defaultGroupId: formState.defaultGroupId,
                       selectedGroupIds: formState.selectedGroupIds,
                       onGroupSelectionChanged: _controller.onGroupSelectionChanged,
                     ),
@@ -301,6 +309,65 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCodeInterpreterToggle(CreateAgentFormState formState, ThemeData theme) {
+    final formNotifier = ref.read(createAgentFormProvider.notifier);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SwitchListTile(
+          title: Text(
+            'Code Interpreter',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          subtitle: Text(
+            'Allows the agent to write and execute code to analyze data, create charts, and process files',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          value: formState.enableCodeInterpreter,
+          onChanged: formState.isLoading
+              ? null
+              : (value) => formNotifier.setEnableCodeInterpreter(value),
+          activeColor: theme.colorScheme.primary,
+          contentPadding: EdgeInsets.zero,
+        ),
+        if (!formState.enableCodeInterpreter)
+          Container(
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: theme.colorScheme.outline.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Enable Code Interpreter to use data files for analysis and chart generation.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
