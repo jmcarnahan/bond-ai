@@ -15,6 +15,15 @@ from bondable.bond.providers.bedrock.BedrockMCP import create_mcp_action_groups
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_TEMPERATURE = 0.0
+
+
+def _has_code_interpreter(agent_def) -> bool:
+    """Check if code interpreter is enabled in the agent's tools list."""
+    return any(
+        isinstance(t, dict) and t.get('type') == 'code_interpreter'
+        for t in (agent_def.tools or [])
+    )
+
 # Ensure instructions meet minimum length requirement (40 chars for Bedrock)
 MIN_INSTRUCTION_LENGTH = 40
 DEFAULT_INSTRUCTION = "You are a helpful AI assistant. Be helpful, accurate, and concise in your responses."
@@ -81,20 +90,23 @@ def create_bedrock_agent(agent_id: str, agent_def: AgentDefinition, owner_user_i
         _wait_for_resource_status('agent', bedrock_agent_id, ['NOT_PREPARED', 'PREPARED'])
         LOGGER.info(f"Successfully created Bedrock Agent: {bedrock_agent_id} for bond agent {agent_id}")
 
-        # Step 3: Enable code interpreter (always enabled for all agents)
-        LOGGER.debug(f"Enabling code interpreter for Bedrock Agent {bedrock_agent_id}")
-        try:
-            code_interpreter_response = bedrock_agent_client.create_agent_action_group(
-                agentId=bedrock_agent_id,
-                agentVersion=AGENT_VERSION,
-                actionGroupName='CodeInterpreterActionGroup',
-                parentActionGroupSignature='AMAZON.CodeInterpreter',
-                actionGroupState='ENABLED'
-            )
-            LOGGER.debug(f"Enabled code interpreter: {code_interpreter_response['agentActionGroup']['actionGroupId']} for bond agent {agent_id}")
-        except ClientError as e:
-            LOGGER.warning(f"Failed to enable code interpreter: {e}")
-            # Continue without code interpreter rather than failing
+        # Step 3: Conditionally enable code interpreter based on tools list
+        if _has_code_interpreter(agent_def):
+            LOGGER.debug(f"Enabling code interpreter for Bedrock Agent {bedrock_agent_id}")
+            try:
+                code_interpreter_response = bedrock_agent_client.create_agent_action_group(
+                    agentId=bedrock_agent_id,
+                    agentVersion=AGENT_VERSION,
+                    actionGroupName='CodeInterpreterActionGroup',
+                    parentActionGroupSignature='AMAZON.CodeInterpreter',
+                    actionGroupState='ENABLED'
+                )
+                LOGGER.debug(f"Enabled code interpreter: {code_interpreter_response['agentActionGroup']['actionGroupId']} for bond agent {agent_id}")
+            except ClientError as e:
+                LOGGER.warning(f"Failed to enable code interpreter: {e}")
+                # Continue without code interpreter rather than failing
+        else:
+            LOGGER.debug(f"Code interpreter not requested for Bedrock Agent {bedrock_agent_id}, skipping")
 
         # Step 4: Prepare the agent with code interpreter enabled
         bedrock_agent_client.prepare_agent(agentId=bedrock_agent_id)
@@ -191,14 +203,44 @@ def update_bedrock_agent(agent_def: AgentDefinition, bedrock_agent_id: str, bedr
         except ClientError as e:
             LOGGER.warning(f"Failed to list action groups: {e}")
 
-        # Find MCP action group if it exists
+        # Find existing action groups by name
         mcp_action_group_id = None
+        code_interpreter_action_group_id = None
         for group in existing_action_groups:
             if group.get('actionGroupName') == 'MCPTools':
                 mcp_action_group_id = group.get('actionGroupId')
-                break
+            elif group.get('actionGroupName') == 'CodeInterpreterActionGroup':
+                code_interpreter_action_group_id = group.get('actionGroupId')
 
-        # Update MCP tools if needed
+        # Step 3a: Handle code interpreter toggle
+        wants_code_interpreter = _has_code_interpreter(agent_def)
+        if wants_code_interpreter and not code_interpreter_action_group_id:
+            # Need to create code interpreter action group
+            LOGGER.debug(f"Creating code interpreter action group for Bedrock Agent {bedrock_agent_id}")
+            try:
+                bedrock_agent_client.create_agent_action_group(
+                    agentId=bedrock_agent_id,
+                    agentVersion=AGENT_VERSION,
+                    actionGroupName='CodeInterpreterActionGroup',
+                    parentActionGroupSignature='AMAZON.CodeInterpreter',
+                    actionGroupState='ENABLED'
+                )
+            except ClientError as e:
+                LOGGER.warning(f"Failed to create code interpreter action group: {e}")
+        elif not wants_code_interpreter and code_interpreter_action_group_id:
+            # Need to delete code interpreter action group
+            LOGGER.debug(f"Deleting code interpreter action group {code_interpreter_action_group_id} for Bedrock Agent {bedrock_agent_id}")
+            try:
+                bedrock_agent_client.delete_agent_action_group(
+                    agentId=bedrock_agent_id,
+                    agentVersion=AGENT_VERSION,
+                    actionGroupId=code_interpreter_action_group_id,
+                    skipResourceInUseCheck=True
+                )
+            except ClientError as e:
+                LOGGER.warning(f"Failed to delete code interpreter action group: {e}")
+
+        # Step 3b: Update MCP tools if needed
         if agent_def.mcp_tools:
             if mcp_action_group_id:
                 # Delete existing MCP action group to replace it
