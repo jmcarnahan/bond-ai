@@ -51,6 +51,12 @@ variable "backend_service_url" {
 }
 
 # Database
+variable "db_username" {
+  description = "Database master username"
+  type        = string
+  default     = "bondadmin"
+}
+
 variable "db_instance_class" {
   description = "RDS instance type"
   type        = string
