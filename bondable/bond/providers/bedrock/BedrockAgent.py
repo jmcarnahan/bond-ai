@@ -8,12 +8,17 @@ providing conversation management with native session support.
 import os
 import uuid
 import json
+import time
+import csv
+import pandas as pd
 import logging
 import base64
 import hashlib
 import boto3
 from typing import List, Dict, Optional, Generator, Any
-from botocore.exceptions import ClientError, EventStreamError
+from http.client import RemoteDisconnected
+from botocore.exceptions import ClientError, ConnectionClosedError, EventStreamError, ReadTimeoutError
+from urllib3.exceptions import ReadTimeoutError as Urllib3ReadTimeoutError
 from typing_extensions import override
 from bondable.bond.providers.agent import Agent, AgentProvider
 from bondable.bond.definition import AgentDefinition
@@ -41,6 +46,16 @@ DEFAULT_TEMPERATURE = 0.0
 # Ensure instructions meet minimum length requirement (40 chars for Bedrock)
 MIN_INSTRUCTION_LENGTH = 40
 DEFAULT_INSTRUCTION = "You are a helpful AI assistant. Be helpful, accurate, and concise in your responses."
+# Maximum size (in bytes) for tool result payloads sent back to Bedrock.
+# Bedrock's invoke_agent API closes the connection when payloads exceed ~25KB.
+MAX_TOOL_RESULT_BYTES = 20_000
+# Minimum number of records in a list-of-dicts to trigger CSV conversion for token efficiency.
+# Even when results are under the byte limit, CSV uses ~50-70% fewer tokens than JSON,
+# which reduces LLM latency and cost on every continuation call.
+MIN_RECORDS_FOR_CSV = 5
+# Retry configuration for transient connection errors on continuation invoke_agent calls
+MAX_CONTINUATION_RETRIES = 2
+CONTINUATION_RETRY_BASE_DELAY = 1.0  # seconds; exponential backoff (1s, 2s)
 
 
 class BedrockAgent(Agent):
@@ -578,6 +593,218 @@ Please integrate any relevant insights from the documents with your analysis of 
 
         return parameters
 
+    def _compact_tool_result(self, result_string: str, tool_name: str = "unknown") -> str:
+        """
+        Compact a tool result string for token efficiency and Bedrock payload limits.
+
+        Two concerns are addressed independently:
+        1. Token optimization: list-of-dicts with >= MIN_RECORDS_FOR_CSV records are
+           converted to CSV even when under the byte limit (~50-70% token reduction).
+        2. Byte limit enforcement: results exceeding MAX_TOOL_RESULT_BYTES are truncated.
+
+        Pipeline:
+        1. Try JSON parse; detect list-of-dicts with 5+ records -> convert to CSV
+        2. If over byte limit and no CSV conversion -> compact JSON or truncate
+        3. Small results without lists -> return as-is
+
+        Args:
+            result_string: The raw result string from MCP tool execution
+            tool_name: Tool name for logging
+
+        Returns:
+            Compacted result string that fits within MAX_TOOL_RESULT_BYTES
+        """
+        # The result will be wrapped as json.dumps({"result": compacted_result})
+        # so we must measure size *after* JSON serialization (which escapes \r\n, quotes, etc.)
+        def _json_wrapped_size(s: str) -> int:
+            return len(json.dumps({"result": s}).encode('utf-8'))
+
+        original_size = _json_wrapped_size(result_string)
+        # Conservative raw-byte budget for truncation: leave headroom for JSON escaping.
+        raw_budget = int(MAX_TOOL_RESULT_BYTES * 0.70)
+
+        # --- Phase 1: Token optimization via CSV conversion ---
+        # Try to parse as JSON to detect list-of-dicts patterns
+        parsed = None
+        try:
+            parsed = json.loads(result_string)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        if parsed is not None:
+            records = self._extract_records(parsed)
+            if records and len(records) >= MIN_RECORDS_FOR_CSV:
+                csv_result = self._records_to_csv(records, tool_name)
+                csv_wrapped_size = _json_wrapped_size(csv_result)
+
+                if csv_wrapped_size <= MAX_TOOL_RESULT_BYTES:
+                    LOGGER.info(
+                        f"[Compaction] Tool '{tool_name}': converted {len(records)} records to CSV "
+                        f"({original_size} -> {csv_wrapped_size} bytes JSON-wrapped, "
+                        f"{100 - (csv_wrapped_size * 100 // original_size)}% reduction)"
+                    )
+                    return csv_result
+                else:
+                    LOGGER.warning(
+                        f"[Compaction] Tool '{tool_name}': CSV is {csv_wrapped_size} bytes "
+                        f"(JSON-wrapped), exceeds {MAX_TOOL_RESULT_BYTES} byte limit, will truncate"
+                    )
+                    return self._truncate_result(csv_result, raw_budget, tool_name)
+
+        # --- Phase 2: Byte limit enforcement ---
+        if original_size <= MAX_TOOL_RESULT_BYTES:
+            return result_string
+
+        LOGGER.warning(
+            f"[Compaction] Tool '{tool_name}' result is {original_size} bytes "
+            f"(JSON-wrapped), exceeds {MAX_TOOL_RESULT_BYTES} byte limit."
+        )
+
+        # Non-JSON text -> truncate
+        if parsed is None:
+            return self._truncate_result(result_string, raw_budget, tool_name)
+
+        # JSON but not list-of-dicts (or < MIN_RECORDS_FOR_CSV) - try compact serialization
+        try:
+            compact_json = json.dumps(parsed, separators=(',', ':'))
+            if _json_wrapped_size(compact_json) <= MAX_TOOL_RESULT_BYTES:
+                LOGGER.info(f"[Compaction] Tool '{tool_name}': compact JSON serialization fits")
+                return compact_json
+        except (TypeError, ValueError):
+            pass
+
+        return self._truncate_result(result_string, raw_budget, tool_name)
+
+    @staticmethod
+    def _extract_records(parsed: Any) -> Optional[List[Dict]]:
+        """
+        Extract a list of dict records from a parsed JSON structure.
+
+        Handles common patterns:
+        - Direct list: [{...}, {...}]
+        - Top-level wrapper: {"issues": [...], "total": 50}
+        - Two levels deep: {"data": {"issues": [...]}} or {"result": {"rows": [...]}}
+        - Recursive fallback: largest list-of-dicts at any depth (up to 5 levels)
+
+        Returns:
+            List of dicts if a records pattern is found, None otherwise
+        """
+        # Direct list of dicts
+        if isinstance(parsed, list):
+            if len(parsed) > 0 and isinstance(parsed[0], dict):
+                return parsed
+            return None
+
+        if not isinstance(parsed, dict):
+            return None
+
+        # Common list-of-dicts wrapper keys (Jira, Confluence, Databricks, generic APIs)
+        candidate_keys = [
+            'issues', 'results', 'items', 'data', 'pages',
+            'comments', 'values', 'records', 'entries', 'nodes',
+            'rows', 'row', 'result', 'columns', 'objects', 'content',
+            'documents', 'messages', 'events', 'resources',
+        ]
+
+        for key in candidate_keys:
+            if key in parsed:
+                val = parsed[key]
+                if isinstance(val, list) and len(val) > 0 and isinstance(val[0], dict):
+                    return val
+                # One level deeper (e.g., {"data": {"issues": [...]}} or {"result": {"rows": [...]}})
+                if isinstance(val, dict):
+                    for sub_key in candidate_keys:
+                        if sub_key in val:
+                            sub_val = val[sub_key]
+                            if isinstance(sub_val, list) and len(sub_val) > 0 and isinstance(sub_val[0], dict):
+                                return sub_val
+
+        # Recursive fallback: find the largest list-of-dicts at any nesting depth.
+        # This catches structures where key names aren't in the candidate list.
+        best = None
+        best_len = 0
+
+        def _scan(obj: Any, depth: int = 0) -> None:
+            nonlocal best, best_len
+            if depth > 5:  # Safety limit to avoid pathological structures
+                return
+            if isinstance(obj, list):
+                if len(obj) > best_len and len(obj) > 0 and isinstance(obj[0], dict):
+                    best = obj
+                    best_len = len(obj)
+            elif isinstance(obj, dict):
+                for val in obj.values():
+                    _scan(val, depth + 1)
+
+        _scan(parsed)
+        return best
+
+    @staticmethod
+    def _records_to_csv(records: List[Dict], tool_name: str = "unknown") -> str:
+        """
+        Convert a list of dicts to CSV string format using pandas json_normalize.
+
+        Flattens nested dicts to arbitrary depth using dot notation (e.g., "user.address.city").
+        Truncates individual cell values that are very long.
+
+        Returns:
+            CSV-formatted string
+        """
+        if not records:
+            return ""
+
+        MAX_CELL_LENGTH = 200
+
+        # Use pandas json_normalize for deep flattening with dot-notation columns
+        df = pd.json_normalize(records, sep='.')
+
+        # Truncate long string cell values
+        for col in df.columns:
+            df[col] = df[col].apply(
+                lambda v: (str(v)[:MAX_CELL_LENGTH] + '...') if isinstance(v, str) and len(str(v)) > MAX_CELL_LENGTH else v
+            )
+
+        csv_string = df.to_csv(index=False)
+        LOGGER.debug(
+            f"[Compaction] Tool '{tool_name}': converted {len(records)} records "
+            f"with {len(df.columns)} columns to CSV ({len(csv_string)} chars)"
+        )
+        return csv_string
+
+    @staticmethod
+    def _truncate_result(text: str, max_bytes: int, tool_name: str = "unknown") -> str:
+        """
+        Truncate a result string to fit within a byte limit.
+
+        Appends an indicator so the LLM knows the result is partial.
+        Handles multi-byte characters safely.
+
+        Returns:
+            Truncated text with indicator suffix
+        """
+        suffix = (
+            "\n\n[TRUNCATED: Result was too large. The data above is partial. "
+            "Ask the user to refine their query for fewer results.]"
+        )
+        suffix_bytes = len(suffix.encode('utf-8'))
+        available_bytes = max_bytes - suffix_bytes
+
+        if available_bytes <= 0:
+            return "[Result too large to display. Please refine your query for fewer results.]"
+
+        encoded = text.encode('utf-8')
+        if len(encoded) <= max_bytes:
+            return text
+
+        # Truncate at byte boundary; decode with errors='ignore' for UTF-8 safety
+        truncated_text = encoded[:available_bytes].decode('utf-8', errors='ignore')
+
+        LOGGER.info(
+            f"[Compaction] Tool '{tool_name}': truncated from {len(encoded)} to "
+            f"{len(truncated_text.encode('utf-8'))} bytes"
+        )
+        return truncated_text + suffix
+
     def _handle_return_control(self, return_control: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Handle returnControl event from Bedrock for tool execution.
@@ -631,19 +858,27 @@ Please integrate any relevant insights from the documents with your analysis of 
 
                         # Format response
                         success = result.get('success', False)
-                        status_code = 200 if success else 403 if 'Admin access' in result.get('error', '') else 500
                         result_preview = str(result.get('result', result.get('error', 'Unknown')))[:200]
-                        LOGGER.info(f"Admin tool {tool_name} completed - success: {success}, status: {status_code}, result preview: {result_preview}")
+                        if success:
+                            LOGGER.info(f"Admin tool {tool_name} completed successfully, result preview: {result_preview}")
+                        else:
+                            LOGGER.warning(f"Admin tool {tool_name} returned an error, result preview: {result_preview}")
 
-                        response_body = json.dumps({
-                            "result": result.get('result', result.get('error', 'Unknown error'))
-                        })
+                        # Always return 200 to Bedrock so the LLM sees the error and can relay it
+                        # to the user or adjust its approach.  Non-200 codes cause Bedrock to throw
+                        # dependencyFailedException which aborts the conversation entirely.
+                        raw_result = result.get('result', result.get('error', 'Unknown error'))
+                        compacted_result = self._compact_tool_result(
+                            json.dumps(raw_result, default=str) if not isinstance(raw_result, str) else raw_result,
+                            tool_name=tool_name
+                        )
+                        response_body = json.dumps({"result": compacted_result})
 
                         tool_response = {
                             "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
                             "apiPath": api_path,
                             "httpMethod": action_input.get('httpMethod', 'POST'),
-                            "httpStatusCode": status_code,
+                            "httpStatusCode": 200,
                             "responseBody": {
                                 "application/json": {
                                     "body": response_body
@@ -714,20 +949,28 @@ Please integrate any relevant insights from the documents with your analysis of 
 
                             # Log result status
                             success = result.get('success', False)
-                            status_code = 200 if success else 500
                             result_preview = str(result.get('result', result.get('error', 'Unknown')))[:200]
-                            LOGGER.info(f"MCP tool {tool_name} completed - success: {success}, status: {status_code}, result preview: {result_preview}")
+                            if success:
+                                LOGGER.info(f"MCP tool {tool_name} completed successfully, result preview: {result_preview}")
+                            else:
+                                LOGGER.warning(f"MCP tool {tool_name} returned an error, result preview: {result_preview}")
 
-                            # Format response
-                            response_body = json.dumps({
-                                "result": result.get('result', result.get('error', 'Unknown error'))
-                            })
+                            # Always return 200 to Bedrock so the LLM sees the error message and can
+                            # respond intelligently (e.g. retry with corrected parameters, explain the
+                            # issue to the user, etc.).  Non-200 codes cause Bedrock to throw
+                            # dependencyFailedException which aborts the conversation entirely.
+                            raw_result = result.get('result', result.get('error', 'Unknown error'))
+                            compacted_result = self._compact_tool_result(
+                                json.dumps(raw_result, default=str) if not isinstance(raw_result, str) else raw_result,
+                                tool_name=tool_name
+                            )
+                            response_body = json.dumps({"result": compacted_result})
 
                             tool_response = {
                                 "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
                                 "apiPath": api_path,
                                 "httpMethod": action_input.get('httpMethod', 'POST'),
-                                "httpStatusCode": status_code,
+                                "httpStatusCode": 200,
                                 "responseBody": {
                                     "application/json": {
                                         "body": response_body
@@ -744,12 +987,13 @@ Please integrate any relevant insights from the documents with your analysis of 
                             results.append(tool_response)
                         else:
                             LOGGER.error("No MCP config available")
-                            # Create error response for Bedrock so agent can respond to user
+                            # Always return 200 to Bedrock so the LLM sees the error and can
+                            # respond to the user.  Non-200 codes cause dependencyFailedException.
                             error_response = {
                                 "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
                                 "apiPath": api_path,
                                 "httpMethod": action_input.get('httpMethod', 'POST'),
-                                "httpStatusCode": 500,
+                                "httpStatusCode": 200,
                                 "responseBody": {
                                     "application/json": {
                                         "body": json.dumps({"error": "MCP configuration not available. The tool could not be executed."})
@@ -764,15 +1008,16 @@ Please integrate any relevant insights from the documents with your analysis of 
                             results.append(error_response)
                     except Exception as e:
                         LOGGER.exception(f"Error executing MCP tool {tool_name} with parameters {list(parameters.keys()) if parameters else []}: {e}")
-                        # Return error response
+                        # Always return 200 to Bedrock so the LLM sees the error and can
+                        # respond to the user.  Non-200 codes cause dependencyFailedException.
                         error_response = {
                             "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
                             "apiPath": api_path,
                             "httpMethod": action_input.get('httpMethod', 'POST'),
-                            "httpStatusCode": 500,
+                            "httpStatusCode": 200,
                             "responseBody": {
                                 "application/json": {
-                                    "body": json.dumps({"error": str(e)})
+                                    "body": json.dumps({"error": f"Tool execution failed: {str(e)}"})
                                 }
                             }
                         }
@@ -785,11 +1030,13 @@ Please integrate any relevant insights from the documents with your analysis of 
                 else:
                     # Tool path doesn't match expected format (/b.{hash}.{tool_name})
                     LOGGER.warning(f"Unrecognized tool path format: {api_path}")
+                    # Always return 200 to Bedrock so the LLM sees the error and can
+                    # respond to the user.  Non-200 codes cause dependencyFailedException.
                     error_response = {
                         "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
                         "apiPath": api_path,
                         "httpMethod": action_input.get('httpMethod', 'POST'),
-                        "httpStatusCode": 404,
+                        "httpStatusCode": 200,
                         "responseBody": {
                             "application/json": {
                                 "body": json.dumps({"error": f"Tool path not recognized: {api_path}. Expected format: /b.{{hash}}.{{tool_name}}"})
@@ -1292,7 +1539,7 @@ Please integrate any relevant insights from the documents with your analysis of 
     def _handle_continuation_response(self, return_control: Dict[str, Any], session_id: str,
                                     thread_id: str, seen_file_hashes: set,
                                     attachments: Optional[List] = None,
-                                    depth: int = 0) -> Generator[str, None, Dict[str, Any]]:
+                                    depth: int = 0) -> Generator[Any, None, None]:
         """
         Handle continuation response after tool execution.
 
@@ -1305,18 +1552,18 @@ Please integrate any relevant insights from the documents with your analysis of 
             depth: Current recursion depth for nested tool calls
 
         Yields:
-            Response chunks and session state dicts
-
-        Returns:
-            Dictionary with accumulated content and new session state
+            str: Response text chunks
+            dict: Files events (with 'files_event' key) or session state (with 'session_state' key)
         """
         # Safety check for recursion depth
         if depth >= self.MAX_TOOL_CALL_DEPTH:
             LOGGER.error(f"Maximum tool call depth ({self.MAX_TOOL_CALL_DEPTH}) exceeded - stopping recursion")
             yield f"\n\n[Error: Maximum tool call depth exceeded. The agent attempted too many sequential tool calls.]\n"
-            return {'full_content': '', 'session_state': None}
+            return
 
+        continuation_start_time = time.monotonic()
         tool_results = self._handle_return_control(return_control)
+        tool_exec_elapsed = time.monotonic() - continuation_start_time
         full_content = ""
         new_session_state = None
 
@@ -1360,9 +1607,11 @@ Please integrate any relevant insights from the documents with your analysis of 
             path = api_result.get('apiPath', 'unknown')
             result_summary.append(f"{path}={status}")
         invocation_id = return_control.get('invocationId', 'unknown')
+        total_result_bytes = sum(len(json.dumps(tr).encode('utf-8')) for tr in tool_results)
         LOGGER.info(
             f"[Continuation] Sending {len(tool_results)} tool result(s) to Bedrock at depth={depth}, "
-            f"invocationId={invocation_id}: {result_summary}"
+            f"invocationId={invocation_id}: {result_summary}, "
+            f"payload={total_result_bytes} bytes, tool_exec={tool_exec_elapsed:.3f}s"
         )
 
         # Always continue the agent with the tool results
@@ -1380,17 +1629,68 @@ Please integrate any relevant insights from the documents with your analysis of 
             }
         }
 
-        # Get continuation response with error handling
-        try:
-            continuation_response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**continuation_request)
-            continuation_stream = continuation_response.get('completion')
-            LOGGER.debug(f"[Continuation] Received continuation response at depth={depth}, stream={'present' if continuation_stream else 'absent'}")
-        except Exception as e:
-            LOGGER.exception(
-                f"[Continuation] invoke_agent failed at depth={depth}, invocationId={invocation_id}: {e}"
-            )
-            yield f"\n\nI encountered an error while processing the tool results. Please try your request again.\n"
-            return {'full_content': '', 'session_state': None}
+        # Get continuation response with retry for transient connection errors.
+        # Bedrock may close the connection if the payload is large or on transient network issues.
+        continuation_stream = None
+        for attempt in range(MAX_CONTINUATION_RETRIES + 1):
+            try:
+                if attempt > 0:
+                    delay = CONTINUATION_RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                    LOGGER.warning(
+                        f"[Continuation] Retry {attempt}/{MAX_CONTINUATION_RETRIES} "
+                        f"after {delay}s delay (invocationId={invocation_id}, depth={depth})"
+                    )
+                    time.sleep(delay)
+
+                invoke_start = time.monotonic()
+                total_elapsed = invoke_start - continuation_start_time
+                LOGGER.info(
+                    f"[Continuation] Calling invoke_agent at depth={depth}, attempt={attempt + 1}, "
+                    f"elapsed_since_returnControl={total_elapsed:.3f}s, session={session_id}"
+                )
+                continuation_response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**continuation_request)
+                continuation_stream = continuation_response.get('completion')
+                invoke_elapsed = time.monotonic() - invoke_start
+                LOGGER.info(
+                    f"[Continuation] invoke_agent succeeded at depth={depth} in {invoke_elapsed:.3f}s, "
+                    f"stream={'present' if continuation_stream else 'absent'}"
+                    f"{f', attempt={attempt + 1}' if attempt > 0 else ''}"
+                )
+                break  # Success - exit retry loop
+
+            except (RemoteDisconnected, ConnectionClosedError, ConnectionError, OSError) as e:
+                invoke_elapsed = time.monotonic() - invoke_start
+                LOGGER.warning(
+                    f"[Continuation] Connection error on attempt {attempt + 1}/"
+                    f"{MAX_CONTINUATION_RETRIES + 1} at depth={depth} after {invoke_elapsed:.3f}s: "
+                    f"{type(e).__name__}: {e}"
+                )
+                if attempt == MAX_CONTINUATION_RETRIES:
+                    total_result_size = sum(
+                        len(json.dumps(tr).encode('utf-8')) for tr in tool_results
+                    )
+                    LOGGER.error(
+                        f"[Continuation] All {MAX_CONTINUATION_RETRIES + 1} attempts failed. "
+                        f"Tool result payload size: {total_result_size} bytes. "
+                        f"This may indicate the payload exceeds Bedrock's size limit despite compaction."
+                    )
+                    yield (
+                        f"\n\nI was unable to send the tool results back to the agent because "
+                        f"the response was too large ({total_result_size} bytes), even after compaction. "
+                        f"Please try a more specific query to get fewer results.\n"
+                    )
+                    return
+
+            except Exception as e:
+                LOGGER.exception(
+                    f"[Continuation] invoke_agent failed at depth={depth}, "
+                    f"invocationId={invocation_id}: {type(e).__name__}: {e}"
+                )
+                yield (
+                    f"\n\nI encountered an error while processing the tool results "
+                    f"({type(e).__name__}). Please try your request again.\n"
+                )
+                return
 
         # Process continuation stream with error handling
         try:
@@ -1455,22 +1755,42 @@ Please integrate any relevant insights from the documents with your analysis of 
         except EventStreamError as e:
             # Bedrock raises EventStreamError (e.g. dependencyFailedException) when it
             # can't process the tool results - commonly when a tool returned a 500 error.
+            error_code = getattr(e, 'code', 'unknown')
             LOGGER.error(
-                f"[Continuation] EventStreamError at depth={depth}: {e}. "
+                f"[Continuation] EventStreamError at depth={depth}: {error_code} - {e}. "
                 f"Tool result status codes: {result_summary}. "
                 f"This typically means Bedrock rejected the tool result."
             )
-            yield f"\n\nThe agent encountered an error processing the tool results. Please try again.\n"
+            yield (
+                f"\n\nThe agent encountered an error processing the tool results "
+                f"(Bedrock error: {error_code}). This can happen when tool results "
+                f"are very large or in an unexpected format. "
+                f"Please try a more specific query.\n"
+            )
+        except (ReadTimeoutError, Urllib3ReadTimeoutError):
+            LOGGER.error(
+                f"[Continuation] Read timeout waiting for Bedrock continuation stream at depth={depth}. "
+                f"Tool result status codes: {result_summary}. "
+                f"The agent may need more time to process complex tool results. "
+                f"Consider increasing BEDROCK_AGENT_RUNTIME_READ_TIMEOUT (current default: 300s)."
+            )
+            yield (
+                f"\n\nThe request timed out while the agent was processing the tool results. "
+                f"This can happen with complex queries. Please try simplifying your request or try again.\n"
+            )
         except Exception as e:
-            LOGGER.exception(f"[Continuation] Error processing continuation stream at depth={depth}: {e}")
-            yield f"\n\nAn unexpected error occurred while processing the response. Please try again.\n"
+            error_type = type(e).__name__
+            LOGGER.exception(
+                f"[Continuation] {error_type} processing continuation stream at depth={depth}: {e}"
+            )
+            yield (
+                f"\n\nAn unexpected error occurred while processing the response "
+                f"({error_type}). Please try again.\n"
+            )
 
         # Yield the final session state so callers can capture it
-        # (return value from generators is not accessible via iteration)
         if new_session_state:
             yield {'session_state': new_session_state}
-
-        return {'full_content': full_content, 'session_state': new_session_state}
 
 
 class BedrockAgentProvider(AgentProvider):
