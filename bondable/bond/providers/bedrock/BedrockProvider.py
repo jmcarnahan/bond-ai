@@ -7,6 +7,7 @@ S3 for file storage, and Bedrock Knowledge Bases for vector stores.
 
 import os
 import boto3
+from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
 from sqlalchemy import text
 from bondable.bond.providers.provider import Provider
@@ -124,9 +125,19 @@ class BedrockProvider(Provider):
                 service_name='bedrock-agent',
                 region_name=self.aws_region
             )
+            # Agent runtime needs a longer read timeout because Bedrock may take
+            # significant time to process tool results before streaming a response
+            # (the default 60s is not enough for complex multi-tool prompts).
+            agent_runtime_read_timeout = int(os.environ.get('BEDROCK_AGENT_RUNTIME_READ_TIMEOUT', '300'))
+            agent_runtime_max_attempts = int(os.environ.get('BEDROCK_AGENT_RUNTIME_MAX_ATTEMPTS', '0'))
+            agent_runtime_config = BotoConfig(
+                read_timeout=agent_runtime_read_timeout,
+                retries={'max_attempts': agent_runtime_max_attempts}
+            )
             self.bedrock_agent_runtime_client = aws_session.client(
                 service_name='bedrock-agent-runtime',
-                region_name=self.aws_region
+                region_name=self.aws_region,
+                config=agent_runtime_config
             )
 
             # S3 client for file storage
