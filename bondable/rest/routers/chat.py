@@ -1,4 +1,5 @@
 from typing import Annotated
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 import logging
@@ -101,17 +102,142 @@ async def chat(
             LOGGER.warning(f"User {current_user.user_id} ({current_user.email}) attempted to access agent {request_body.agent_id} without permission for chat.")
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to this agent is forbidden.")
 
-        # Stream response generator
+        # Stream response generator with safety net to ensure frontend always gets a response
         def stream_response_generator():
-            for response_chunk in agent_instance.stream_response(
-                thread_id=thread_id,
-                prompt=request_body.prompt,
-                attachments=resolved_attachements,
-                override_role=request_body.override_role,
-                current_user=current_user,
-                jwt_token=jwt_token
-            ):
-                yield response_chunk
+            bond_message_open = False
+            has_yielded_bond_message = False
+            has_yielded_done = False
+            has_yielded_assistant_content = False
+            current_is_assistant = False
+            try:
+                for response_chunk in agent_instance.stream_response(
+                    thread_id=thread_id,
+                    prompt=request_body.prompt,
+                    attachments=resolved_attachements,
+                    override_role=request_body.override_role,
+                    current_user=current_user,
+                    jwt_token=jwt_token
+                ):
+                    # Track bond message state for safety net guarantees
+                    if isinstance(response_chunk, str):
+                        if response_chunk.startswith('<_bondmessage '):
+                            bond_message_open = True
+                            has_yielded_bond_message = True
+                            if 'is_done="true"' in response_chunk:
+                                has_yielded_done = True
+                            # Track if this is an assistant content message
+                            current_is_assistant = 'role="assistant"' in response_chunk
+                        elif response_chunk == '</_bondmessage>':
+                            bond_message_open = False
+                            current_is_assistant = False
+                        elif current_is_assistant and response_chunk.strip():
+                            has_yielded_assistant_content = True
+                    yield response_chunk
+
+                # --- Post-stream guarantees (only reached if no exception) ---
+
+                # Content guarantee: if bond messages were sent but no assistant
+                # text content was delivered, emit a fallback so the UI isn't empty
+                if has_yielded_bond_message and not has_yielded_assistant_content and not has_yielded_done:
+                    LOGGER.warning(
+                        f"Stream for thread {thread_id}, agent {request_body.agent_id} "
+                        f"completed with bond messages but no assistant content"
+                    )
+                    if bond_message_open:
+                        yield '</_bondmessage>'
+                        bond_message_open = False
+                    fallback_id = str(uuid.uuid4())
+                    yield (
+                        f'<_bondmessage '
+                        f'id="{fallback_id}" '
+                        f'thread_id="{thread_id}" '
+                        f'agent_id="{request_body.agent_id}" '
+                        f'type="error" '
+                        f'role="system" '
+                        f'is_error="true" '
+                        f'is_done="true">'
+                    )
+                    yield "The agent was unable to generate a response. Please try again."
+                    yield '</_bondmessage>'
+                    has_yielded_done = True
+
+                # Done guarantee: if bond messages were sent but no is_done="true"
+                # signal was emitted, add one so the frontend knows streaming is finished
+                if has_yielded_bond_message and not has_yielded_done:
+                    if bond_message_open:
+                        yield '</_bondmessage>'
+                        bond_message_open = False
+                    done_id = str(uuid.uuid4())
+                    yield (
+                        f'<_bondmessage '
+                        f'id="{done_id}" '
+                        f'thread_id="{thread_id}" '
+                        f'agent_id="{request_body.agent_id}" '
+                        f'type="text" '
+                        f'role="system" '
+                        f'is_error="false" '
+                        f'is_done="true">'
+                    )
+                    yield "Done."
+                    yield '</_bondmessage>'
+
+            except Exception as e:
+                LOGGER.exception(
+                    f"Error during chat streaming for thread {thread_id}, "
+                    f"agent {request_body.agent_id}: {e}"
+                )
+                try:
+                    # Close any open bond message tag before emitting the error message
+                    if bond_message_open:
+                        yield '</_bondmessage>'
+
+                    # Build a user-facing error message that includes exception details
+                    error_type = type(e).__name__
+                    error_detail = str(e)
+                    # Truncate very long error messages to avoid flooding the UI
+                    if len(error_detail) > 300:
+                        error_detail = error_detail[:300] + "..."
+                    user_error_msg = (
+                        f"An unexpected error occurred while processing your request "
+                        f"({error_type}: {error_detail}). Please try again."
+                    )
+
+                    # Emit a complete error bond message so the frontend always shows something
+                    error_id = str(uuid.uuid4())
+                    agent_id = request_body.agent_id
+                    yield (
+                        f'<_bondmessage '
+                        f'id="{error_id}" '
+                        f'thread_id="{thread_id}" '
+                        f'agent_id="{agent_id}" '
+                        f'type="error" '
+                        f'role="system" '
+                        f'is_error="true" '
+                        f'is_done="true">'
+                    )
+                    yield user_error_msg
+                    yield '</_bondmessage>'
+                except Exception as inner_e:
+                    # Fallback: if even the error handler fails, yield a minimal message
+                    LOGGER.critical(
+                        f"Error handler itself failed for thread {thread_id}: {inner_e}",
+                        exc_info=True
+                    )
+                    try:
+                        yield (
+                            '<_bondmessage '
+                            'id="error-fallback" '
+                            f'thread_id="{thread_id or "unknown"}" '
+                            f'agent_id="{request_body.agent_id or "unknown"}" '
+                            'type="error" '
+                            'role="system" '
+                            'is_error="true" '
+                            'is_done="true">'
+                        )
+                        yield "An internal error occurred. Please try again."
+                        yield '</_bondmessage>'
+                    except Exception:
+                        LOGGER.critical("All error handlers failed for chat stream")
 
         return StreamingResponse(stream_response_generator(), media_type="text/event-stream")
 
