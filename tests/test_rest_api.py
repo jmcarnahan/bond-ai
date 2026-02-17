@@ -1,7 +1,7 @@
 import pytest
 import os
 import tempfile
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, ANY
 from fastapi.testclient import TestClient
 from jose import jwt
 from datetime import timedelta, datetime, timezone
@@ -299,6 +299,54 @@ class TestAgents:
             assert response.status_code == 201
 
             mock_provider.files.get_file_details.assert_called_once_with(file_ids=["file_1", "file_2"])
+
+    def test_create_agent_without_code_interpreter(self, authenticated_client):
+        """Test creating agent with only file_search tool (no code_interpreter)."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_agent = MagicMock(spec=AgentABC)
+        mock_agent.get_agent_id.return_value = "agent_no_ci"
+        mock_agent.get_name.return_value = "Agent No CI"
+        mock_provider.agents.create_or_update_agent.return_value = mock_agent
+
+        agent_data = {
+            "name": "Agent No CI",
+            "description": "Agent without code interpreter",
+            "instructions": "Be helpful",
+            "model": "gpt-4.1-nano",
+            "tools": [{"type": "file_search"}],
+        }
+
+        response = client.post("/agents", headers=auth_headers, json=agent_data)
+
+        assert response.status_code == 201
+        result = response.json()
+        assert result["agent_id"] == "agent_no_ci"
+        mock_provider.agents.create_or_update_agent.assert_called_once()
+
+    def test_create_agent_with_code_interpreter_toggle_on(self, authenticated_client):
+        """Test creating agent with code_interpreter explicitly in tools list."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_agent = MagicMock(spec=AgentABC)
+        mock_agent.get_agent_id.return_value = "agent_with_ci"
+        mock_agent.get_name.return_value = "Agent With CI"
+        mock_provider.agents.create_or_update_agent.return_value = mock_agent
+
+        agent_data = {
+            "name": "Agent With CI",
+            "description": "Agent with code interpreter enabled",
+            "instructions": "Be helpful",
+            "model": "gpt-4.1-nano",
+            "tools": [{"type": "code_interpreter"}, {"type": "file_search"}],
+        }
+
+        response = client.post("/agents", headers=auth_headers, json=agent_data)
+
+        assert response.status_code == 201
+        result = response.json()
+        assert result["agent_id"] == "agent_with_ci"
+        mock_provider.agents.create_or_update_agent.assert_called_once()
 
     def test_create_agent_missing_name(self, authenticated_client):
         """Test creating agent without required name."""
@@ -669,7 +717,9 @@ class TestChat:
             thread_id="test_thread",
             prompt="Hello",
             attachments=[],
-            override_role="user"
+            override_role="user",
+            current_user=ANY,
+            jwt_token=ANY
         )
 
     def test_chat_agent_not_found(self, authenticated_client):
@@ -757,7 +807,9 @@ class TestChat:
             thread_id="test_thread",
             prompt="Analyze this data",
             attachments=expected_attachments,
-            override_role="user"
+            override_role="user",
+            current_user=ANY,
+            jwt_token=ANY
         )
 
     def test_chat_with_system_override_role(self, authenticated_client):
@@ -787,7 +839,9 @@ class TestChat:
             thread_id="test_thread",
             prompt="This is the agent introduction",
             attachments=[],
-            override_role="system"
+            override_role="system",
+            current_user=ANY,
+            jwt_token=ANY
         )
 
     def test_chat_with_null_thread_id(self, authenticated_client):
@@ -830,7 +884,9 @@ class TestChat:
             thread_id="new_thread_123",
             prompt="This is the agent introduction",
             attachments=[],
-            override_role="system"
+            override_role="system",
+            current_user=ANY,
+            jwt_token=ANY
         )
 
 # --- File Management Tests ---

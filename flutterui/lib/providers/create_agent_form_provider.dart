@@ -65,9 +65,11 @@ class CreateAgentFormState {
   final Set<String> selectedMcpResources;
   final Set<String> selectedGroupIds;
   final bool isLoading;
+  final bool enableCodeInterpreter;
   final bool isUploadingFile;
   final String? errorMessage;
   final String fileStorage; // 'direct' or 'knowledge_base'
+  final String? defaultGroupId;
 
   CreateAgentFormState({
     this.name = '',
@@ -81,9 +83,11 @@ class CreateAgentFormState {
     this.selectedMcpResources = const {},
     this.selectedGroupIds = const {},
     this.isLoading = false,
+    this.enableCodeInterpreter = true,
     this.isUploadingFile = false,
     this.errorMessage,
     this.fileStorage = 'direct',
+    this.defaultGroupId,
   });
 
   CreateAgentFormState copyWith({
@@ -99,10 +103,13 @@ class CreateAgentFormState {
     Set<String>? selectedMcpResources,
     Set<String>? selectedGroupIds,
     bool? isLoading,
+    bool? enableCodeInterpreter,
     bool? isUploadingFile,
     String? errorMessage,
     bool clearErrorMessage = false,
     String? fileStorage,
+    String? defaultGroupId,
+    bool clearDefaultGroupId = false,
   }) {
     return CreateAgentFormState(
       name: name ?? this.name,
@@ -116,10 +123,12 @@ class CreateAgentFormState {
       selectedMcpResources: selectedMcpResources ?? this.selectedMcpResources,
       selectedGroupIds: selectedGroupIds ?? this.selectedGroupIds,
       isLoading: isLoading ?? this.isLoading,
+      enableCodeInterpreter: enableCodeInterpreter ?? this.enableCodeInterpreter,
       isUploadingFile: isUploadingFile ?? this.isUploadingFile,
       errorMessage:
           clearErrorMessage ? null : errorMessage ?? this.errorMessage,
       fileStorage: fileStorage ?? this.fileStorage,
+      defaultGroupId: clearDefaultGroupId ? null : defaultGroupId ?? this.defaultGroupId,
     );
   }
 }
@@ -216,6 +225,23 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
     state = state.copyWith(fileStorage: fileStorage);
   }
 
+  void setEnableCodeInterpreter(bool enabled) {
+    if (!enabled) {
+      // When disabling code interpreter, reassign all code_interpreter files to file_search
+      // Must be a single atomic state update to avoid the dropdown seeing a mismatched
+      // availableTools vs file.selectedTool during rebuild
+      final updatedFiles = state.uploadedFiles.map((file) {
+        if (file.selectedTool == 'code_interpreter') {
+          return file.copyWith(selectedTool: 'file_search');
+        }
+        return file;
+      }).toList();
+      state = state.copyWith(enableCodeInterpreter: enabled, uploadedFiles: updatedFiles);
+    } else {
+      state = state.copyWith(enableCodeInterpreter: enabled);
+    }
+  }
+
   void setSelectedModel(String? model) {
     state = state.copyWith(
       selectedModel: model,
@@ -245,12 +271,18 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
             file.bytes!,
           );
 
+          // If code interpreter is disabled, override suggested tool to file_search
+          final effectiveTool = (!state.enableCodeInterpreter &&
+                  uploadResponse.suggestedTool == 'code_interpreter')
+              ? 'file_search'
+              : uploadResponse.suggestedTool;
+
           final fileInfo = UploadedFileInfo(
             fileId: uploadResponse.providerFileId,
             fileName: file.name,
             fileSize: file.size,
             mimeType: uploadResponse.mimeType,
-            selectedTool: uploadResponse.suggestedTool,
+            selectedTool: effectiveTool,
             uploadedAt: DateTime.now(),
           );
 
@@ -379,6 +411,11 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
         }
       }
 
+      // Detect code interpreter state from tools list
+      final bool hasCodeInterpreter = agentDetail.tools.any(
+        (tool) => tool['type'] == 'code_interpreter',
+      );
+
       state = state.copyWith(
         name: agentDetail.name,
         description: agentDetail.description ?? '',
@@ -387,6 +424,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
         reminder: agentDetail.reminder ?? '',
         selectedModel: agentDetail.model,
         uploadedFiles: uploadedFiles,
+        enableCodeInterpreter: hasCodeInterpreter,
         selectedMcpTools:
             agentDetail.mcpTools != null
                 ? Set<String>.from(agentDetail.mcpTools!)
@@ -400,6 +438,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
                 ? Set<String>.from(agentDetail.groupIds!)
                 : {},
         fileStorage: agentDetail.fileStorage ?? 'direct',
+        defaultGroupId: agentDetail.defaultGroupId,
         isLoading: false,
       );
 
@@ -439,9 +478,9 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       return false;
     }
 
-    // Always include both tools
+    // Include tools based on toggle state
     List<Map<String, dynamic>> tools = [
-      {"type": "code_interpreter"},
+      if (state.enableCodeInterpreter) {"type": "code_interpreter"},
       {"type": "file_search"},
     ];
 
@@ -458,11 +497,13 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
             .map((f) => f.fileId)
             .toList();
 
-    // Always set toolResources explicitly, even with empty lists
-    // This tells the backend exactly what files the agent should have
+    // Set toolResources explicitly for enabled tools
     // (empty list = clear all files, vs null = preserve existing files)
+    // Only include codeInterpreter resources when code interpreter is enabled
     AgentToolResourcesModel toolResources = AgentToolResourcesModel(
-      codeInterpreter: ToolResourceFilesListModel(fileIds: codeInterpreterFiles),
+      codeInterpreter: state.enableCodeInterpreter
+          ? ToolResourceFilesListModel(fileIds: codeInterpreterFiles)
+          : null,
       fileSearch: ToolResourceFilesListModel(fileIds: fileSearchFiles),
     );
 

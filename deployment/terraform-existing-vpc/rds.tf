@@ -33,7 +33,7 @@ resource "aws_db_instance" "main" {
 
   # Database
   db_name  = "bondai"
-  username = "bondadmin"
+  username = var.db_username
   password = random_password.db_password.result
   port     = 5432
 
