@@ -369,6 +369,19 @@ class AgentProvider(ABC):
         with self.metadata.get_db_session() as session:
             return session.query(AgentRecord).filter(AgentRecord.agent_id == agent_id).first()
 
+    def set_default_group_id(self, agent_id: str, default_group_id: str) -> None:
+        """Set the default_group_id on an agent record."""
+        with self.metadata.get_db_session() as session:
+            agent_record = session.query(AgentRecord).filter(
+                AgentRecord.agent_id == agent_id
+            ).first()
+            if agent_record:
+                agent_record.default_group_id = default_group_id
+                session.commit()
+                LOGGER.info(f"Set default_group_id='{default_group_id}' for agent '{agent_id}'")
+            else:
+                LOGGER.warning(f"Agent record not found for agent_id='{agent_id}' when setting default_group_id")
+
     def get_agent_records(self, user_id: str) -> List[Dict[str, str]]:
         with self.metadata.get_db_session() as session:
             agent_records = []

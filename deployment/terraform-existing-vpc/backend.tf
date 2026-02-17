@@ -103,7 +103,7 @@ resource "aws_apprunner_service" "backend" {
           BEDROCK_AGENT_ROLE_ARN = aws_iam_role.bedrock_agent.arn
           BEDROCK_DEFAULT_MODEL      = var.bedrock_default_model
           BEDROCK_SELECTABLE_MODELS  = var.bedrock_selectable_models
-          METADATA_DB_URL            = "postgresql://bondadmin:${random_password.db_password.result}@${local.database_endpoint}:5432/bondai?sslmode=require"
+          METADATA_DB_URL            = "postgresql://${var.db_username}:${random_password.db_password.result}@${local.database_endpoint}:5432/bondai?sslmode=require"
 
           # Okta OAuth Configuration
           OAUTH2_ENABLED_PROVIDERS = var.oauth2_providers
