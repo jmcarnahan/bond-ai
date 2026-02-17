@@ -83,6 +83,9 @@ class AgentFilesTable extends ConsumerWidget {
         BondAIFileUploader(
           files: files,
           isUploading: formState.isUploadingFile,
+          availableTools: formState.enableCodeInterpreter
+              ? const ['code_interpreter', 'file_search']
+              : const ['file_search'],
           onAddFile: () => formNotifier.uploadFile(),
           onRemoveFile: (fileId) => formNotifier.removeFile(fileId),
           onToolChanged:

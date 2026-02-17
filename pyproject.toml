@@ -24,7 +24,7 @@ openai = "^1.66.3"
 poetry-plugin-export = "^1.9.0"
 fastapi = {extras = ["standard"], version = "^0.121.3"}
 uvicorn = ">=0.35"
-python-jose = "^3.4.0"
+python-jose = {extras = ["cryptography"], version = "^3.4.0"}
 mcp = {extras = ["cli"], version = "^1.23.1"}
 fastmcp = ">=2.14.0"
 magika = "^0.6.2"

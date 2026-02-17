@@ -41,9 +41,10 @@ resource "null_resource" "build_backend_image" {
       ECR_REGISTRY="${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
       echo "Authenticating with ECR at $ECR_REGISTRY..."
 
-      # Clear any existing credentials to prevent Keychain conflicts on macOS
+      # Clear ALL existing credentials to prevent Keychain conflicts on macOS
+      # (docker login can leave multiple entries; security delete only removes one per call)
       if [[ "$OSTYPE" == "darwin"* ]]; then
-        security delete-internet-password -s "$ECR_REGISTRY" -a AWS 2>/dev/null || true
+        while security delete-internet-password -s "$ECR_REGISTRY" 2>/dev/null; do :; done
       fi
 
       aws ecr get-login-password --region ${var.aws_region} | \
@@ -141,9 +142,10 @@ resource "null_resource" "build_frontend_image" {
       ECR_REGISTRY="${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
       echo "Authenticating with ECR at $ECR_REGISTRY..."
 
-      # Clear any existing credentials to prevent Keychain conflicts on macOS
+      # Clear ALL existing credentials to prevent Keychain conflicts on macOS
+      # (docker login can leave multiple entries; security delete only removes one per call)
       if [[ "$OSTYPE" == "darwin"* ]]; then
-        security delete-internet-password -s "$ECR_REGISTRY" -a AWS 2>/dev/null || true
+        while security delete-internet-password -s "$ECR_REGISTRY" 2>/dev/null; do :; done
       fi
 
       aws ecr get-login-password --region ${var.aws_region} | \

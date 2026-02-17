@@ -4,12 +4,14 @@ import 'package:flutterui/presentation/screens/agents/widgets/additional_groups_
 
 class AgentSharingSection extends StatelessWidget {
   final String? agentName;
+  final String? defaultGroupId;
   final Set<String> selectedGroupIds;
   final Function(Set<String>) onGroupSelectionChanged;
 
   const AgentSharingSection({
     super.key,
     this.agentName,
+    this.defaultGroupId,
     required this.selectedGroupIds,
     required this.onGroupSelectionChanged,
   });
@@ -20,6 +22,7 @@ class AgentSharingSection extends StatelessWidget {
       children: [
         AgentMembersSection(
           agentName: agentName,
+          defaultGroupId: defaultGroupId,
         ),
         AdditionalGroupsSection(
           selectedGroupIds: selectedGroupIds,

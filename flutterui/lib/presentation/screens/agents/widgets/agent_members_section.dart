@@ -8,10 +8,12 @@ import 'package:flutterui/presentation/widgets/common/bondai_widgets.dart';
 
 class AgentMembersSection extends ConsumerStatefulWidget {
   final String? agentName;
+  final String? defaultGroupId;
 
   const AgentMembersSection({
     super.key,
     this.agentName,
+    this.defaultGroupId,
   });
 
   @override
@@ -76,30 +78,24 @@ class _AgentMembersSectionState extends ConsumerState<AgentMembersSection> {
             else
               Builder(builder: (context) {
                 final groups = _cachedGroups!;
-                  final agentName = widget.agentName!;
-                  final defaultGroupName = '$agentName Default Group';
 
-                  try {
-                    final defaultGroup = groups.firstWhere(
+                  // Primary: lookup by default group ID (reliable, handles special characters)
+                  Group? defaultGroup;
+                  if (widget.defaultGroupId != null) {
+                    defaultGroup = groups.where(
+                      (group) => group.id == widget.defaultGroupId,
+                    ).firstOrNull;
+                  }
+
+                  // Fallback: lookup by name pattern (for backward compatibility with old agents)
+                  if (defaultGroup == null && widget.agentName != null) {
+                    final defaultGroupName = '${widget.agentName} Default Group';
+                    defaultGroup = groups.where(
                       (group) => group.name == defaultGroupName,
-                    );
+                    ).firstOrNull;
+                  }
 
-                    if (_lastAgentName != agentName ||
-                        _cachedDefaultGroup?.id != defaultGroup.id ||
-                        _cachedDefaultGroup?.updatedAt != defaultGroup.updatedAt) {
-                      _cachedDefaultGroup = defaultGroup;
-                      _lastAgentName = agentName;
-                    }
-
-                    return SizedBox(
-                      height: 400,
-                      child: ManageMembersPanel(
-                        key: ValueKey(_cachedDefaultGroup!.id),
-                        group: _cachedDefaultGroup!,
-                        onChanged: null,
-                      ),
-                    );
-                  } catch (e) {
+                  if (defaultGroup == null) {
                     return BondAIResourceUnavailable(
                       message: 'Agent sharing group will be created when you save.',
                       icon: Icons.info_outline,
@@ -109,6 +105,22 @@ class _AgentMembersSectionState extends ConsumerState<AgentMembersSection> {
                       iconSize: AppSizes.iconEnormous / 2,
                     );
                   }
+
+                  if (_lastAgentName != widget.agentName ||
+                      _cachedDefaultGroup?.id != defaultGroup.id ||
+                      _cachedDefaultGroup?.updatedAt != defaultGroup.updatedAt) {
+                    _cachedDefaultGroup = defaultGroup;
+                    _lastAgentName = widget.agentName;
+                  }
+
+                  return SizedBox(
+                    height: 400,
+                    child: ManageMembersPanel(
+                      key: ValueKey(_cachedDefaultGroup!.id),
+                      group: _cachedDefaultGroup!,
+                      onChanged: null,
+                    ),
+                  );
                 }),
       ],
     );

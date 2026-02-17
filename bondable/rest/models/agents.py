@@ -75,6 +75,7 @@ class AgentDetailResponse(BaseModel):
     mcp_resources: Optional[List[str]] = None
     file_storage: Optional[str] = 'direct'  # 'direct' | 'knowledge_base'
     group_ids: Optional[List[str]] = None
+    default_group_id: Optional[str] = None
 
 
 class ModelInfo(BaseModel):
