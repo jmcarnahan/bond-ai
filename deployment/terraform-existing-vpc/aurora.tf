@@ -147,7 +147,7 @@ resource "aws_rds_cluster" "aurora" {
   engine_version = "15.12"
 
   database_name   = "bondai"
-  master_username = "bondadmin"
+  master_username = var.db_username
   master_password = random_password.db_password.result
   port            = 5432
 

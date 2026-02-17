@@ -179,6 +179,7 @@ class AgentDetailModel {
   final List<dynamic> files;
   final List<String>? groupIds;
   final String? fileStorage;
+  final String? defaultGroupId;
 
 
   const AgentDetailModel({
@@ -197,6 +198,7 @@ class AgentDetailModel {
     required this.files,
     this.groupIds,
     this.fileStorage,
+    this.defaultGroupId,
   });
 
   factory AgentDetailModel.fromJson(Map<String, dynamic> json) {
@@ -229,6 +231,7 @@ class AgentDetailModel {
           ? List<String>.from(json['group_ids'] as List<dynamic>)
           : null,
       fileStorage: json['file_storage'] as String?,
+      defaultGroupId: json['default_group_id'] as String?,
     );
   }
 

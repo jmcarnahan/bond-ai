@@ -111,7 +111,7 @@ class BedrockMetadata(Metadata):
 
     def create_all(self):
         """Create all tables including Bedrock-specific ones"""
-        Base.metadata.create_all(self.engine)
+        super().create_all()
         LOGGER.info("Created all Bedrock metadata tables")
 
 

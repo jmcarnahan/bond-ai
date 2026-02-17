@@ -33,6 +33,7 @@ class AgentRecord(Base):
     reminder = Column(String, nullable=True, default="")
     owner_user_id = Column(String, ForeignKey('users.id'), nullable=False)
     is_default = Column(Boolean, nullable=False, default=False)
+    default_group_id = Column(String, ForeignKey('groups.id'), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
 
 class FileRecord(Base):
@@ -161,7 +162,59 @@ class Metadata(ABC):
 
     def create_all(self):
         # This method should be overriden by subclasses to create all necessary tables
-        return Base.metadata.create_all(self.engine)
+        Base.metadata.create_all(self.engine)
+        self._migrate_add_default_group_id()
+        self._backfill_default_group_ids()
+
+    def _migrate_add_default_group_id(self):
+        """Add default_group_id column to agents table if it doesn't exist."""
+        from sqlalchemy import inspect
+        inspector = inspect(self.engine)
+        columns = [col['name'] for col in inspector.get_columns('agents')]
+        if 'default_group_id' not in columns:
+            with self.engine.connect() as conn:
+                conn.execute(text(
+                    "ALTER TABLE agents ADD COLUMN default_group_id VARCHAR REFERENCES groups(id)"
+                ))
+                conn.commit()
+            LOGGER.info("Migration: Added default_group_id column to agents table")
+
+    def _backfill_default_group_ids(self):
+        """Backfill default_group_id for existing agents that don't have it set."""
+        session = scoped_session(sessionmaker(bind=self.engine))()
+        try:
+            agents_without = session.query(AgentRecord).filter(
+                AgentRecord.default_group_id.is_(None),
+                AgentRecord.is_default == False
+            ).all()
+
+            if not agents_without:
+                return
+
+            LOGGER.info(f"Backfilling default_group_id for {len(agents_without)} agents")
+            count = 0
+
+            for agent in agents_without:
+                default_group = session.query(Group).join(
+                    AgentGroup, Group.id == AgentGroup.group_id
+                ).filter(
+                    AgentGroup.agent_id == agent.agent_id,
+                    Group.name.endswith(' Default Group'),
+                    Group.owner_user_id == agent.owner_user_id
+                ).first()
+
+                if default_group:
+                    agent.default_group_id = default_group.id
+                    count += 1
+                    LOGGER.info(f"Backfilled default_group_id='{default_group.id}' for agent '{agent.agent_id}' ({agent.name})")
+
+            session.commit()
+            LOGGER.info(f"Backfill complete: updated {count} of {len(agents_without)} agents")
+        except Exception as e:
+            session.rollback()
+            LOGGER.error(f"Error during backfill of default_group_ids: {e}")
+        finally:
+            session.close()
 
     def drop_and_recreate_all(self):
         """Drop all tables and recreate them. Use with caution - this deletes all data!"""
