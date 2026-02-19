@@ -356,6 +356,18 @@ class BedrockAgent(Agent):
             session_state = self.bond_provider.threads.get_thread_session_state(thread_id, user_id)
             LOGGER.info(f"Invoking Bedrock Agent {self.bedrock_agent_id} with session {session_id}")
 
+            # Pass cross-agent conversation history via sessionState
+            try:
+                cross_agent_history = self.bond_provider.threads.get_cross_agent_conversation_history(
+                    thread_id=thread_id,
+                    current_agent_id=self.agent_id
+                )
+                if cross_agent_history:
+                    session_state['conversationHistory'] = {'messages': cross_agent_history}
+                    LOGGER.info(f"Injected {len(cross_agent_history)} cross-agent messages into conversationHistory")
+            except Exception as e:
+                LOGGER.warning(f"Failed to build cross-agent conversation history: {e}")
+
             # Add user message if needed
             if prompt:
                 self.create_user_message(prompt, thread_id, attachments, override_role)
