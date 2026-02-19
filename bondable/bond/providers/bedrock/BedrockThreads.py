@@ -490,6 +490,127 @@ class BedrockThreadsProvider(ThreadsProvider):
             LOGGER.error(f"Error getting thread info: {e}")
             return None
 
+    def get_cross_agent_conversation_history(self, thread_id: str, current_agent_id: str,
+                                              max_messages: int = 20) -> Optional[List[Dict]]:
+        """
+        Build conversation history from prior messages in this thread for passing
+        via sessionState.conversationHistory to a Bedrock agent.
+
+        Returns None if no cross-agent messages exist (Bedrock native session has context).
+        Returns a list of message dicts in Bedrock's conversationHistory format:
+        [{"role": "user"|"assistant", "content": [{"text": "..."}]}]
+        """
+        try:
+            with self.metadata.get_db_session() as session:
+                # Query all messages for the thread, ordered by message_index
+                messages = session.query(BedrockMessage)\
+                    .filter_by(thread_id=thread_id)\
+                    .order_by(BedrockMessage.message_index.asc())\
+                    .all()
+
+                if not messages:
+                    return None
+
+                # Check if any messages are from a different agent
+                has_cross_agent = False
+                for msg in messages:
+                    msg_agent_id = None
+                    if msg.message_metadata and isinstance(msg.message_metadata, dict):
+                        msg_agent_id = msg.message_metadata.get('agent_id')
+                    if msg_agent_id and msg_agent_id != current_agent_id:
+                        has_cross_agent = True
+                        break
+
+                if not has_cross_agent:
+                    return None
+
+                # Build raw message list (text messages with user/assistant roles only)
+                raw_messages = []
+                for msg in messages:
+                    if msg.role not in ('user', 'assistant'):
+                        continue
+                    if msg.type in ('system', 'error', 'file_link', 'image_file'):
+                        continue
+
+                    # Extract text content
+                    text_content = ""
+                    if isinstance(msg.content, str):
+                        text_content = msg.content
+                    elif isinstance(msg.content, list):
+                        for item in msg.content:
+                            if isinstance(item, dict) and 'text' in item:
+                                text_content += item['text']
+                    else:
+                        text_content = str(msg.content)
+
+                    if not text_content.strip():
+                        continue
+
+                    # Truncate individual messages at 2000 chars
+                    if len(text_content) > 2000:
+                        text_content = text_content[:2000] + "..."
+
+                    raw_messages.append({'role': msg.role, 'text': text_content})
+
+                if not raw_messages:
+                    return None
+
+                # Bedrock requires conversationHistory to:
+                # 1. Start with a "user" message
+                # 2. Strictly alternate: user, assistant, user, assistant, ...
+                # Skip leading assistant messages (e.g. agent introductions)
+                while raw_messages and raw_messages[0]['role'] == 'assistant':
+                    raw_messages.pop(0)
+
+                if not raw_messages:
+                    return None
+
+                # Merge consecutive same-role messages to enforce alternation
+                history = []
+                for msg in raw_messages:
+                    if history and history[-1]['role'] == msg['role']:
+                        # Merge into previous message of same role
+                        prev_text = history[-1]['content'][0]['text']
+                        merged = prev_text + "\n\n" + msg['text']
+                        # Re-truncate after merging
+                        if len(merged) > 2000:
+                            merged = merged[:2000] + "..."
+                        history[-1]['content'][0]['text'] = merged
+                    else:
+                        history.append({
+                            'role': msg['role'],
+                            'content': [{'text': msg['text']}]
+                        })
+
+                if not history:
+                    return None
+
+                # Ensure the history ends with an assistant message (Bedrock may require this
+                # since the current user prompt is sent separately via inputText)
+                if history[-1]['role'] == 'user':
+                    history.pop()
+
+                if not history:
+                    return None
+
+                # Cap at max_messages (keep the last N, ensuring we start with user)
+                if len(history) > max_messages:
+                    history = history[-max_messages:]
+                    # If truncation leaves a leading assistant, drop it
+                    if history and history[0]['role'] == 'assistant':
+                        history.pop(0)
+
+                if not history:
+                    return None
+
+                LOGGER.info(f"Built cross-agent conversation history for thread {thread_id}: "
+                           f"{len(history)} messages (current_agent={current_agent_id})")
+                return history
+
+        except Exception as e:
+            LOGGER.warning(f"Failed to build cross-agent conversation history for thread {thread_id}: {e}")
+            return None
+
     def list_sessions(self, max_results=100):
         response = self.bedrock_agent_runtime_client.list_sessions(
             maxResults=max_results,
