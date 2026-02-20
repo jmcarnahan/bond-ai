@@ -26,7 +26,7 @@ from bondable.bond.auth.token_encryption import (
     decrypt_token_safe,
     TokenEncryptionError
 )
-from bondable.bond.auth.oauth_utils import safe_isoformat
+from bondable.bond.auth.oauth_utils import safe_isoformat, resolve_client_secret
 
 LOGGER = logging.getLogger(__name__)
 
@@ -399,7 +399,7 @@ class MCPTokenCache:
 
             token_url = oauth_config.get('token_url')
             client_id = oauth_config.get('client_id')
-            client_secret = oauth_config.get('client_secret')
+            client_secret = resolve_client_secret(oauth_config)
 
             if not all([token_url, client_id, client_secret]):
                 LOGGER.error(
