@@ -7,6 +7,8 @@ class AgentSharingSection extends StatelessWidget {
   final String? defaultGroupId;
   final Set<String> selectedGroupIds;
   final Function(Set<String>) onGroupSelectionChanged;
+  final Map<String, String> groupPermissions;
+  final Function(Map<String, String>)? onGroupPermissionsChanged;
 
   const AgentSharingSection({
     super.key,
@@ -14,6 +16,8 @@ class AgentSharingSection extends StatelessWidget {
     this.defaultGroupId,
     required this.selectedGroupIds,
     required this.onGroupSelectionChanged,
+    this.groupPermissions = const {},
+    this.onGroupPermissionsChanged,
   });
 
   @override
@@ -23,11 +27,23 @@ class AgentSharingSection extends StatelessWidget {
         AgentMembersSection(
           agentName: agentName,
           defaultGroupId: defaultGroupId,
+          defaultGroupPermission: defaultGroupId != null
+              ? (groupPermissions[defaultGroupId] ?? 'can_use')
+              : 'can_use',
+          onDefaultGroupPermissionChanged: defaultGroupId != null && onGroupPermissionsChanged != null
+              ? (permission) {
+                  final newPerms = Map<String, String>.from(groupPermissions);
+                  newPerms[defaultGroupId!] = permission;
+                  onGroupPermissionsChanged!(newPerms);
+                }
+              : null,
         ),
         AdditionalGroupsSection(
           selectedGroupIds: selectedGroupIds,
           onGroupSelectionChanged: onGroupSelectionChanged,
           agentName: agentName,
+          groupPermissions: groupPermissions,
+          onGroupPermissionsChanged: onGroupPermissionsChanged,
         ),
       ],
     );
