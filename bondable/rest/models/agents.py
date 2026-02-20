@@ -7,6 +7,7 @@ class AgentRef(BaseModel):
     name: str
     description: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    user_permission: Optional[str] = None
 
 
 class ToolResourceFilesList(BaseModel):
@@ -37,6 +38,7 @@ class AgentCreateRequest(BaseModel):
     mcp_resources: Optional[List[str]] = None
     group_ids: Optional[List[str]] = Field(default_factory=list)
     file_storage: Optional[str] = 'direct'  # 'direct' | 'knowledge_base'
+    group_permissions: Optional[Dict[str, str]] = None
 
 
 class AgentUpdateRequest(BaseModel):
@@ -53,6 +55,7 @@ class AgentUpdateRequest(BaseModel):
     mcp_resources: Optional[List[str]] = None
     file_storage: Optional[str] = None  # 'direct' | 'knowledge_base'
     group_ids: Optional[List[str]] = None
+    group_permissions: Optional[Dict[str, str]] = None
 
 
 class AgentResponse(BaseModel):
@@ -76,6 +79,8 @@ class AgentDetailResponse(BaseModel):
     file_storage: Optional[str] = 'direct'  # 'direct' | 'knowledge_base'
     group_ids: Optional[List[str]] = None
     default_group_id: Optional[str] = None
+    user_permission: Optional[str] = None
+    group_permissions: Optional[Dict[str, str]] = None
 
 
 class ModelInfo(BaseModel):
