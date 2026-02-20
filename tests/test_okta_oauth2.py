@@ -65,7 +65,7 @@ class TestOktaOAuth2Provider:
         parsed_url = urlparse(auth_url)
         expected_domain = urlparse(mock_okta_config["domain"]).hostname
         assert parsed_url.hostname == expected_domain
-        assert "oauth2/default/v1/authorize" in auth_url
+        assert "oauth2/v1/authorize" in auth_url
         assert f"client_id={mock_okta_config['client_id']}" in auth_url
         assert "response_type=code" in auth_url
         assert "scope=openid+profile+email" in auth_url
@@ -97,7 +97,7 @@ class TestOktaOAuth2Provider:
         user_info = provider.get_user_info_from_code("test_auth_code")
 
         assert user_info["email"] == "test@example.com"
-        assert user_info["name"] == "Test User"
+        assert user_info["name"] == "testuser"  # Okta maps name to preferred_username
         assert user_info["sub"] == "test_user_id"
 
         # Verify the correct API calls were made
@@ -202,18 +202,29 @@ class TestOktaAuthenticationRoutes:
 
     def test_okta_callback_success(self, test_client):
         """Test successful Okta OAuth callback."""
-        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
-            mock_provider = MagicMock()
-            mock_provider.get_user_info_from_code.return_value = {
-                "email": "test@example.com",
-                "name": "Test User"
-            }
-            mock_create.return_value = mock_provider
+        from bondable.rest.dependencies.providers import get_bond_provider
 
-            response = test_client.get("/auth/okta/callback?code=test_code", follow_redirects=False)
+        mock_bond_provider = MagicMock()
+        mock_bond_provider.users.get_or_create_user.return_value = ("test-user-id", False)
+        app.dependency_overrides[get_bond_provider] = lambda: mock_bond_provider
 
-            assert response.status_code == 307
-            assert "token=" in response.headers["location"]
+        try:
+            with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
+                mock_provider = MagicMock()
+                mock_provider.get_user_info_from_code.return_value = {
+                    "email": "test@example.com",
+                    "name": "Test User",
+                    "sub": "test-okta-sub"
+                }
+                mock_create.return_value = mock_provider
+
+                response = test_client.get("/auth/okta/callback?code=test_code", follow_redirects=False)
+
+                assert response.status_code == 307
+                assert "token=" in response.headers["location"]
+        finally:
+            if get_bond_provider in app.dependency_overrides:
+                del app.dependency_overrides[get_bond_provider]
 
     def test_okta_callback_invalid_code(self, test_client):
         """Test Okta callback with invalid code."""
