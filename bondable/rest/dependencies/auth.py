@@ -51,6 +51,7 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Use
             name=name,
             provider=provider,
             user_id=user_id,
+            is_admin=Config.config().is_admin_user(email),
             okta_sub=payload.get("okta_sub"),
             given_name=payload.get("given_name"),
             family_name=payload.get("family_name"),
