@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from bondable.bond.definition import AgentDefinition
 from bondable.bond.broker import Broker
 from bondable.bond.providers.metadata import Metadata, AgentRecord, AgentGroup, GroupUser, VectorStore
+from sqlalchemy import case, func
 from typing import List, Dict, Optional, Generator
 import logging
 import uuid
@@ -397,7 +398,9 @@ class AgentProvider(ABC):
                 agent_records.append({
                     "name": default_agent.name,
                     "agent_id": default_agent.agent_id,
-                    "owned": is_owned
+                    "owned": is_owned,
+                    "permission": "owner" if is_owned else "can_use",
+                    "is_default": True,
                 })
 
             # Get the agent records that are owned by the user (excluding default if already added)
@@ -407,7 +410,8 @@ class AgentProvider(ABC):
             results: List[AgentRecord] = query.all()
 
             owned_records = [
-                {"name": record.name, "agent_id": record.agent_id, "owned": True} for record in results
+                {"name": record.name, "agent_id": record.agent_id, "owned": True, "permission": "owner"}
+                for record in results
             ]
             agent_records.extend(owned_records)
 
@@ -417,24 +421,40 @@ class AgentProvider(ABC):
                 owned_agent_ids.add(default_agent_id)
 
             # Get the agent records that are shared with the user via groups
-            # exclude agents that the user already owns and the default agent
-            shared_results: List[AgentRecord] = (
-                session.query(AgentRecord)
+            # Include highest permission per agent
+            exclude_ids = owned_agent_ids
+            if default_agent_id:
+                exclude_ids = exclude_ids | {default_agent_id}
+
+            # Use numeric mapping: can_edit=2, can_use=1, then take max
+            # (string max would give wrong result: 'can_use' > 'can_edit' alphabetically)
+            shared_query = (
+                session.query(
+                    AgentRecord,
+                    func.max(
+                        case(
+                            (AgentGroup.permission == 'can_edit', 2),
+                            (AgentGroup.permission == 'can_use', 1),
+                            else_=0
+                        )
+                    ).label('max_permission_rank')
+                )
                 .join(AgentGroup, AgentRecord.agent_id == AgentGroup.agent_id)
                 .join(GroupUser, AgentGroup.group_id == GroupUser.group_id)
-                .filter(
-                    GroupUser.user_id == user_id,
-                    ~AgentRecord.agent_id.in_(owned_agent_ids)  # Exclude owned agents
-                )
-                .all()
+                .filter(GroupUser.user_id == user_id)
             )
-
-            # Filter out default agent from shared results if it exists
-            if default_agent_id:
-                shared_results = [agent for agent in shared_results if agent.agent_id != default_agent_id]
+            if exclude_ids:
+                shared_query = shared_query.filter(~AgentRecord.agent_id.in_(exclude_ids))
+            shared_query = shared_query.group_by(AgentRecord.agent_id).all()
 
             shared_agent_records = [
-                {"name": agent.name, "agent_id": agent.agent_id, "owned": False} for agent in shared_results
+                {
+                    "name": agent.name,
+                    "agent_id": agent.agent_id,
+                    "owned": False,
+                    "permission": "can_edit" if max_rank == 2 else "can_use"
+                }
+                for agent, max_rank in shared_query
             ]
             agent_records.extend(shared_agent_records)
 
@@ -478,6 +498,45 @@ class AgentProvider(ABC):
                 .exists()
             )
             return session.query(access_query).scalar()
+
+    def get_user_agent_permission(self, user_id: str, agent_id: str) -> Optional[str]:
+        """
+        Returns the effective permission for a user on an agent.
+        Returns 'owner', 'can_edit', 'can_use', or None (no access).
+        """
+        with self.metadata.get_db_session() as session:
+            # Check if user owns the agent
+            agent_record = session.query(AgentRecord).filter(
+                AgentRecord.agent_id == agent_id
+            ).first()
+            if not agent_record:
+                return None
+
+            if agent_record.owner_user_id == user_id:
+                return 'owner'
+
+            # Check shared access via groups
+            shared_permissions = (
+                session.query(AgentGroup.permission)
+                .join(GroupUser, AgentGroup.group_id == GroupUser.group_id)
+                .filter(
+                    AgentGroup.agent_id == agent_id,
+                    GroupUser.user_id == user_id
+                )
+                .all()
+            )
+
+            if not shared_permissions:
+                # Default agent is accessible to everyone as can_use
+                if agent_record.is_default:
+                    return 'can_use'
+                return None
+
+            # Return highest permission: can_edit > can_use
+            permissions = [p[0] for p in shared_permissions]
+            if 'can_edit' in permissions:
+                return 'can_edit'
+            return 'can_use'
 
     def get_default_agent(self) -> Optional[Agent]:
         """
