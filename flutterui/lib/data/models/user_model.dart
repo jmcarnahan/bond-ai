@@ -6,12 +6,14 @@ class User {
   final String? name;
   final String userId;
   final String provider;
+  final bool isAdmin;
 
   const User({
     required this.email,
     this.name,
     required this.userId,
     required this.provider,
+    this.isAdmin = false,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,7 @@ class User {
       name: json['name'] as String?,
       userId: json['user_id'] as String,
       provider: json['provider'] as String,
+      isAdmin: json['is_admin'] as bool? ?? false,
     );
   }
 
@@ -29,6 +32,7 @@ class User {
       'name': name,
       'user_id': userId,
       'provider': provider,
+      'is_admin': isAdmin,
     };
   }
 }
