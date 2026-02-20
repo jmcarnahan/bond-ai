@@ -239,7 +239,7 @@ class Groups:
         self.associate_agent_with_group(agent_id, group_id)
         return group_id
 
-    def associate_agent_with_group(self, agent_id: str, group_id: str) -> bool:
+    def associate_agent_with_group(self, agent_id: str, group_id: str, permission: str = 'can_use') -> bool:
         """Associate an agent with a group."""
         with self.metadata.get_db_session() as db_session:
             try:
@@ -250,13 +250,18 @@ class Groups:
                 ).first()
 
                 if existing:
+                    # Update permission if it changed
+                    if existing.permission != permission:
+                        existing.permission = permission
+                        db_session.commit()
+                        LOGGER.info(f"Updated permission for agent '{agent_id}' group '{group_id}' to '{permission}'")
                     return True
 
-                agent_group = AgentGroupModel(agent_id=agent_id, group_id=group_id)
+                agent_group = AgentGroupModel(agent_id=agent_id, group_id=group_id, permission=permission)
                 db_session.add(agent_group)
                 db_session.commit()
 
-                LOGGER.info(f"Associated agent '{agent_id}' with group '{group_id}'")
+                LOGGER.info(f"Associated agent '{agent_id}' with group '{group_id}' (permission: {permission})")
                 return True
             except Exception as e:
                 db_session.rollback()
@@ -272,11 +277,13 @@ class Groups:
             return [ag.group_id for ag in agent_groups]
 
     def sync_agent_groups(self, agent_id: str, desired_group_ids: List[str],
-                          preserve_group_ids: Optional[List[str]] = None) -> None:
+                          preserve_group_ids: Optional[List[str]] = None,
+                          group_permissions: Optional[Dict[str, str]] = None) -> None:
         """Synchronize agent-group associations to match the desired set.
 
         Groups in preserve_group_ids will not be removed even if not in desired_group_ids.
         This is used to protect the default group from accidental removal.
+        group_permissions is an optional {group_id: permission} dict to set permissions.
         """
         with self.metadata.get_db_session() as db_session:
             try:
@@ -288,18 +295,30 @@ class Groups:
                 )
                 desired = set(desired_group_ids)
                 protected = set(preserve_group_ids or [])
+                perms = group_permissions or {}
 
                 to_add = desired - current
                 to_remove = (current - desired) - protected
 
                 for group_id in to_add:
-                    db_session.add(AgentGroupModel(agent_id=agent_id, group_id=group_id))
+                    perm = perms.get(group_id, 'can_use')
+                    db_session.add(AgentGroupModel(agent_id=agent_id, group_id=group_id, permission=perm))
 
                 if to_remove:
                     db_session.query(AgentGroupModel).filter(
                         AgentGroupModel.agent_id == agent_id,
                         AgentGroupModel.group_id.in_(to_remove)
                     ).delete(synchronize_session='fetch')
+
+                # Update permissions for existing groups that are staying
+                for group_id in (desired & current):
+                    if group_id in perms:
+                        existing = db_session.query(AgentGroupModel).filter(
+                            AgentGroupModel.agent_id == agent_id,
+                            AgentGroupModel.group_id == group_id
+                        ).first()
+                        if existing and existing.permission != perms[group_id]:
+                            existing.permission = perms[group_id]
 
                 db_session.commit()
                 LOGGER.info(
@@ -310,6 +329,16 @@ class Groups:
                 db_session.rollback()
                 LOGGER.error(f"Error syncing groups for agent '{agent_id}': {e}")
                 raise e
+
+    def get_agent_group_permissions(self, agent_id: str) -> Dict[str, str]:
+        """Returns {group_id: permission} for all groups associated with agent."""
+        with self.metadata.get_db_session() as db_session:
+            agent_groups = db_session.query(
+                AgentGroupModel.group_id, AgentGroupModel.permission
+            ).filter(
+                AgentGroupModel.agent_id == agent_id
+            ).all()
+            return {ag.group_id: ag.permission for ag in agent_groups}
 
     def get_all_users(self) -> List[Dict]:
         """Get all users for group member selection. Excludes system users."""
