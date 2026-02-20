@@ -84,7 +84,7 @@ class BondMessage:
         return f"Message thread[{self.thread_id}] message[{self.message_id}]"
 
     def to_start_xml(self):
-        return f'<_bondmessage id="{self.message_id}" thread_id="{self.thread_id}" agent_id="{self.agent_name}" type="{self.type}" role="{self.role}" is_error="{self.is_error}" is_done="{self.is_done}">'
+        return f'<_bondmessage id="{self.message_id}" thread_id="{self.thread_id}" agent_id="{self.agent_id}" type="{self.type}" role="{self.role}" is_error="{self.is_error}" is_done="{self.is_done}">'
 
     def to_end_xml(self):
         return '</_bondmessage>'
