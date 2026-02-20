@@ -22,6 +22,7 @@ import os
 import sys
 import json
 import requests
+import urllib.parse
 from datetime import datetime, timezone, timedelta
 
 # Ensure project root is on path
@@ -51,6 +52,20 @@ def banner(msg: str):
     print(f"\n{'=' * 70}")
     print(f"  {msg}")
     print(f"{'=' * 70}")
+
+
+def sanitize_url(url: str) -> str:
+    """Remove any embedded credentials from a URL before logging."""
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        hostname = parsed.hostname or ""
+        port = f":{parsed.port}" if parsed.port else ""
+        netloc = f"{hostname}{port}"
+        return urllib.parse.urlunsplit(
+            (parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment)
+        )
+    except Exception:
+        return "<unparseable URL>"
 
 
 def step(n: int, msg: str):
@@ -191,7 +206,7 @@ def test_auto_refresh() -> bool:
             return False
 
         ok("get_token() returned a token")
-        info(f"  access_token: {token_data.access_token[:20]}...")
+        info("  access_token: <redacted>")
         info(f"  expires_at:   {token_data.expires_at}")
         info(f"  has refresh:  {token_data.refresh_token is not None}")
 
@@ -242,7 +257,7 @@ def test_auto_refresh() -> bool:
         # Call a simple endpoint on the OAuth server to verify the token works
         # The MCP server validates tokens via its in-memory store
         # We can't call MCP tools directly, but we can verify the token format is valid
-        ok(f"New access token obtained: {token_data.access_token[:20]}...")
+        ok("New access token obtained (value hidden)")
         ok("Token refresh flow completed successfully")
     except Exception as e:
         fail(f"Token validation failed: {e}")
@@ -289,7 +304,7 @@ def test_resolve_client_secret_arn_path() -> bool:
     if result == "direct-value":
         ok("Direct client_secret resolved correctly")
     else:
-        fail(f"Expected 'direct-value', got '{result}'")
+        fail("Direct client_secret did not resolve to expected value")
         return False
 
     # Step 2: Test client_secret_arn resolution (the bug fix)
@@ -308,7 +323,7 @@ def test_resolve_client_secret_arn_path() -> bool:
         if result == "secret-from-aws":
             ok("client_secret_arn resolved correctly from Secrets Manager")
         else:
-            fail(f"Expected 'secret-from-aws', got '{result}'")
+            fail("client_secret_arn did not resolve to expected secret value")
             return False
 
         # Verify correct region was extracted from ARN
@@ -377,7 +392,7 @@ def test_resolve_client_secret_arn_path() -> bool:
         if post_data["client_secret"] == "mocked-secret":
             ok("Resolved client_secret was used in the refresh HTTP request")
         else:
-            fail(f"Expected 'mocked-secret' in POST data, got '{post_data.get('client_secret')}'")
+            fail("Resolved client_secret was not correctly included in the refresh HTTP request")
             return False
 
     return True
@@ -390,8 +405,8 @@ def test_resolve_client_secret_arn_path() -> bool:
 def main():
     banner("MCP Token Auto-Refresh Integration Test")
     print(f"  Time: {datetime.now(timezone.utc).isoformat()}")
-    print(f"  DB:   {METADATA_DB_URL}")
-    print(f"  MCP:  {OAUTH_MCP_SERVER}")
+    print(f"  DB:   {sanitize_url(METADATA_DB_URL)}")
+    print(f"  MCP:  {sanitize_url(OAUTH_MCP_SERVER)}")
 
     if not check_prerequisites():
         print("\n❌ Pre-flight checks failed. Fix the issues above and re-run.")
