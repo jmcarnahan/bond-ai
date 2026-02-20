@@ -9,11 +9,15 @@ import 'package:flutterui/presentation/widgets/common/bondai_widgets.dart';
 class AgentMembersSection extends ConsumerStatefulWidget {
   final String? agentName;
   final String? defaultGroupId;
+  final String defaultGroupPermission;
+  final Function(String)? onDefaultGroupPermissionChanged;
 
   const AgentMembersSection({
     super.key,
     this.agentName,
     this.defaultGroupId,
+    this.defaultGroupPermission = 'can_use',
+    this.onDefaultGroupPermissionChanged,
   });
 
   @override
@@ -113,13 +117,55 @@ class _AgentMembersSectionState extends ConsumerState<AgentMembersSection> {
                     _lastAgentName = widget.agentName;
                   }
 
-                  return SizedBox(
-                    height: 400,
-                    child: ManageMembersPanel(
-                      key: ValueKey(_cachedDefaultGroup!.id),
-                      group: _cachedDefaultGroup!,
-                      onChanged: null,
-                    ),
+                  final theme = Theme.of(context);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Row(
+                          children: [
+                            Text(
+                              'Permission for shared users: ',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            SegmentedButton<String>(
+                              segments: const [
+                                ButtonSegment<String>(
+                                  value: 'can_use',
+                                  label: Text('Can Use'),
+                                  icon: Icon(Icons.visibility, size: 16),
+                                ),
+                                ButtonSegment<String>(
+                                  value: 'can_edit',
+                                  label: Text('Can Edit'),
+                                  icon: Icon(Icons.edit, size: 16),
+                                ),
+                              ],
+                              selected: {widget.defaultGroupPermission},
+                              onSelectionChanged: (Set<String> selected) {
+                                widget.onDefaultGroupPermissionChanged?.call(selected.first);
+                              },
+                              style: SegmentedButton.styleFrom(
+                                textStyle: theme.textTheme.labelSmall,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        height: 400,
+                        child: ManageMembersPanel(
+                          key: ValueKey(_cachedDefaultGroup!.id),
+                          group: _cachedDefaultGroup!,
+                          onChanged: null,
+                        ),
+                      ),
+                    ],
                   );
                 }),
       ],
