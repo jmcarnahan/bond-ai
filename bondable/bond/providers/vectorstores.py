@@ -96,6 +96,9 @@ class VectorStoresProvider(ABC):
                 try:
                     vector_store: VectorStore = session.query(VectorStore).filter_by(owner_user_id=user_id, default_for_agent_id=agent_id).first()
                     if vector_store is None:
+                        # Fallback: look up by agent_id alone (handles owner mismatch from shared edits)
+                        vector_store = session.query(VectorStore).filter_by(default_for_agent_id=agent_id).first()
+                    if vector_store is None:
                         raise ValueError(f"No default vector store found for user {user_id} and agent {agent_id}. Something went wrong")
                     return vector_store.vector_store_id
                 except Exception as e:
