@@ -234,7 +234,10 @@ class TestGetAgentDetailsReturnsDefaultGroupId:
         provider.agents.get_agent.return_value = mock_agent
         provider.agents.can_user_access_agent.return_value = True
         provider.agents.get_agent_record.return_value = mock_record
+        provider.agents.get_user_agent_permission.return_value = 'owner'
+        provider.agents.get_default_agent.return_value = None
         provider.groups.get_agent_group_ids.return_value = [group_id]
+        provider.groups.get_agent_group_permissions.return_value = {}
 
         response = client.get(f"/agents/{agent_id}", headers=headers)
 
@@ -262,7 +265,10 @@ class TestGetAgentDetailsReturnsDefaultGroupId:
         provider.agents.get_agent.return_value = mock_agent
         provider.agents.can_user_access_agent.return_value = True
         provider.agents.get_agent_record.return_value = mock_record
+        provider.agents.get_user_agent_permission.return_value = 'owner'
+        provider.agents.get_default_agent.return_value = None
         provider.groups.get_agent_group_ids.return_value = []
+        provider.groups.get_agent_group_permissions.return_value = {}
 
         response = client.get(f"/agents/{agent_id}", headers=headers)
 
@@ -303,7 +309,10 @@ class TestRenamedAgentStillShareable:
         provider.agents.get_agent.return_value = mock_agent
         provider.agents.can_user_access_agent.return_value = True
         provider.agents.get_agent_record.return_value = mock_record
+        provider.agents.get_user_agent_permission.return_value = 'owner'
+        provider.agents.get_default_agent.return_value = None
         provider.groups.get_agent_group_ids.return_value = [original_group_id]
+        provider.groups.get_agent_group_permissions.return_value = {}
 
         response = client.get(f"/agents/{agent_id}", headers=headers)
 
@@ -335,6 +344,7 @@ class TestUpdateAgentPreservesDefaultGroup:
         provider.agents.create_or_update_agent.return_value = mock_agent
         provider.agents.can_user_access_agent.return_value = True
         provider.agents.get_agent_record.return_value = mock_record
+        provider.agents.get_user_agent_permission.return_value = 'owner'
 
         response = client.put(
             f"/agents/{agent_id}",
@@ -351,7 +361,8 @@ class TestUpdateAgentPreservesDefaultGroup:
         provider.groups.sync_agent_groups.assert_called_once_with(
             agent_id=agent_id,
             desired_group_ids=[additional_group_id],
-            preserve_group_ids=[default_group_id]
+            preserve_group_ids=[default_group_id],
+            group_permissions=None
         )
 
     @patch('bondable.rest.routers.agents.AgentDefinition')
@@ -380,6 +391,7 @@ class TestUpdateAgentPreservesDefaultGroup:
         provider.agents.create_or_update_agent.return_value = mock_agent
         provider.agents.can_user_access_agent.return_value = True
         provider.agents.get_agent_record.return_value = mock_record
+        provider.agents.get_user_agent_permission.return_value = 'owner'
 
         response = client.put(
             f"/agents/{agent_id}",
@@ -397,7 +409,8 @@ class TestUpdateAgentPreservesDefaultGroup:
         provider.groups.sync_agent_groups.assert_called_once_with(
             agent_id=agent_id,
             desired_group_ids=[additional_group_id],
-            preserve_group_ids=[default_group_id]
+            preserve_group_ids=[default_group_id],
+            group_permissions=None
         )
 
     @patch('bondable.rest.routers.agents.AgentDefinition')
@@ -416,6 +429,7 @@ class TestUpdateAgentPreservesDefaultGroup:
         provider.agents.create_or_update_agent.return_value = mock_agent
         provider.agents.can_user_access_agent.return_value = True
         provider.agents.get_agent_record.return_value = mock_record
+        provider.agents.get_user_agent_permission.return_value = 'owner'
 
         response = client.put(
             f"/agents/{agent_id}",
@@ -432,7 +446,8 @@ class TestUpdateAgentPreservesDefaultGroup:
         provider.groups.sync_agent_groups.assert_called_once_with(
             agent_id=agent_id,
             desired_group_ids=["grp_some_group"],
-            preserve_group_ids=[]
+            preserve_group_ids=[],
+            group_permissions=None
         )
 
 

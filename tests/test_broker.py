@@ -51,7 +51,7 @@ class TestBroker:
     conn = broker.connect(thread_id=thread_id, subscriber_id='test_subscriber')
     assert conn is not None
 
-    message = BondMessage(thread_id=thread_id, message_id='test_message', type='test_type', role='test_role')
+    message = BondMessage(thread_id=thread_id, message_id='test_message', agent_id='test_agent', type='test_type', role='test_role')
     broker.publish(thread_id, message=message.to_start_xml())
     broker.publish(thread_id, 'hello world')
     broker.publish(thread_id, message=message.to_end_xml())
@@ -77,12 +77,12 @@ class TestBroker:
     conn = broker.connect(thread_id=thread_id, subscriber_id='test_subscriber')
     assert conn is not None
 
-    message = BondMessage(thread_id=thread_id, message_id='test_message', type='test_type', role='test_role')
+    message = BondMessage(thread_id=thread_id, message_id='test_message', agent_id='test_agent', type='test_type', role='test_role')
     broker.publish(thread_id, message=message.to_start_xml())
     broker.publish(thread_id, 'hello world')
     broker.publish(thread_id, message=message.to_end_xml())
 
-    message = BondMessage(thread_id=thread_id, message_id='test_message', type='test_type', role='test_role')
+    message = BondMessage(thread_id=thread_id, message_id='test_message', agent_id='test_agent', type='test_type', role='test_role')
     broker.publish(thread_id, message=message.to_start_xml())
     broker.publish(thread_id, 'goodbye jumbo')
     broker.publish(thread_id, message=message.to_end_xml())
@@ -107,12 +107,12 @@ class TestBroker:
     conn_2 = broker.connect(thread_id=thread_id, subscriber_id='test_subscriber_2')
     assert conn_2 is not None
 
-    message = BondMessage(thread_id=thread_id, message_id='test_message', type='test_type', role='test_role')
+    message = BondMessage(thread_id=thread_id, message_id='test_message', agent_id='test_agent', type='test_type', role='test_role')
     broker.publish(thread_id, message=message.to_start_xml())
     broker.publish(thread_id, 'hello world')
     broker.publish(thread_id, message=message.to_end_xml())
 
-    message = BondMessage(thread_id=thread_id, message_id='test_message', type='test_type', role='test_role')
+    message = BondMessage(thread_id=thread_id, message_id='test_message', agent_id='test_agent', type='test_type', role='test_role')
     broker.publish(thread_id, message=message.to_start_xml())
     broker.publish(thread_id, 'goodbye jumbo')
     broker.publish(thread_id, message=message.to_end_xml())
@@ -147,7 +147,7 @@ class TestBroker:
     listener = MessageListener(conn)
     listener.start()
 
-    message = BondMessage(thread_id=thread_id, message_id='test_message', type='test_type', role='test_role')
+    message = BondMessage(thread_id=thread_id, message_id='test_message', agent_id='test_agent', type='test_type', role='test_role')
     broker.publish(thread_id, message=message.to_start_xml())
     broker.publish(thread_id, 'hello world')
     broker.publish(thread_id, message=message.to_end_xml())
@@ -171,12 +171,12 @@ class TestBroker:
     listener = MessageListener(conn)
     listener.start()
 
-    message = BondMessage(thread_id=thread_id, message_id='test_message', type='test_type', role='test_role')
+    message = BondMessage(thread_id=thread_id, message_id='test_message', agent_id='test_agent', type='test_type', role='test_role')
     broker.publish(thread_id, message=message.to_start_xml())
     broker.publish(thread_id, 'hello world')
     broker.publish(thread_id, message=message.to_end_xml())
 
-    message = BondMessage(thread_id=thread_id, message_id='test_message', type='test_type', role='test_role')
+    message = BondMessage(thread_id=thread_id, message_id='test_message', agent_id='test_agent', type='test_type', role='test_role')
     broker.publish(thread_id, message=message.to_start_xml())
     broker.publish(thread_id, 'goodbye jumbo')
     broker.publish(thread_id, message=message.to_end_xml())
@@ -208,12 +208,12 @@ class TestBroker:
     listener_2 = MessageListener(conn_2)
     listener_2.start()
 
-    message = BondMessage(thread_id=thread_id, message_id='test_message', type='test_type', role='test_role')
+    message = BondMessage(thread_id=thread_id, message_id='test_message', agent_id='test_agent', type='test_type', role='test_role')
     broker.publish(thread_id, message=message.to_start_xml())
     broker.publish(thread_id, 'hello world')
     broker.publish(thread_id, message=message.to_end_xml())
 
-    message = BondMessage(thread_id=thread_id, message_id='test_message', type='test_type', role='test_role')
+    message = BondMessage(thread_id=thread_id, message_id='test_message', agent_id='test_agent', type='test_type', role='test_role')
     broker.publish(thread_id, message=message.to_start_xml())
     broker.publish(thread_id, 'goodbye jumbo')
     broker.publish(thread_id, message=message.to_end_xml())

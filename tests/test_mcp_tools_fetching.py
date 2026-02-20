@@ -28,6 +28,7 @@ Test Organization:
 """
 
 import pytest
+pytestmark = pytest.mark.skip(reason="Integration test: requires running backend and MCP servers")
 import requests
 import asyncio
 from datetime import datetime, timedelta, timezone

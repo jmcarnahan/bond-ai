@@ -6,6 +6,7 @@ This test actually calls AWS Bedrock to validate the streaming functionality.
 import os
 import json
 import pytest
+pytestmark = pytest.mark.skip(reason="Integration test: requires live AWS Bedrock streaming API")
 import logging
 import io
 from bondable.bond.config import Config
