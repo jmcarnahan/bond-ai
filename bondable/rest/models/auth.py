@@ -12,6 +12,7 @@ class User(BaseModel):
     name: Optional[str] = None
     provider: str
     user_id: str
+    is_admin: bool = False
     # Okta-specific metadata fields
     okta_sub: Optional[str] = None
     given_name: Optional[str] = None

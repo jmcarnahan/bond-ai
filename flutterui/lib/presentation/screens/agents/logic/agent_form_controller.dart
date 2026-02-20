@@ -96,6 +96,10 @@ class AgentFormController with ErrorHandlingMixin {
     _notifier.setSelectedGroupIds(groupIds);
   }
 
+  void onGroupPermissionsChanged(Map<String, String> permissions) {
+    _notifier.setGroupPermissions(permissions);
+  }
+
   bool get isFormValid {
     return nameController.text.isNotEmpty &&
            instructionsController.text.isNotEmpty;

@@ -70,6 +70,7 @@ class CreateAgentFormState {
   final String? errorMessage;
   final String fileStorage; // 'direct' or 'knowledge_base'
   final String? defaultGroupId;
+  final Map<String, String> groupPermissions;
 
   CreateAgentFormState({
     this.name = '',
@@ -88,6 +89,7 @@ class CreateAgentFormState {
     this.errorMessage,
     this.fileStorage = 'direct',
     this.defaultGroupId,
+    this.groupPermissions = const {},
   });
 
   CreateAgentFormState copyWith({
@@ -110,6 +112,7 @@ class CreateAgentFormState {
     String? fileStorage,
     String? defaultGroupId,
     bool clearDefaultGroupId = false,
+    Map<String, String>? groupPermissions,
   }) {
     return CreateAgentFormState(
       name: name ?? this.name,
@@ -129,6 +132,7 @@ class CreateAgentFormState {
           clearErrorMessage ? null : errorMessage ?? this.errorMessage,
       fileStorage: fileStorage ?? this.fileStorage,
       defaultGroupId: clearDefaultGroupId ? null : defaultGroupId ?? this.defaultGroupId,
+      groupPermissions: groupPermissions ?? this.groupPermissions,
     );
   }
 }
@@ -219,6 +223,10 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
 
   void setSelectedGroupIds(Set<String> groupIds) {
     state = state.copyWith(selectedGroupIds: groupIds);
+  }
+
+  void setGroupPermissions(Map<String, String> permissions) {
+    state = state.copyWith(groupPermissions: permissions);
   }
 
   void setFileStorage(String fileStorage) {
@@ -439,6 +447,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
                 : {},
         fileStorage: agentDetail.fileStorage ?? 'direct',
         defaultGroupId: agentDetail.defaultGroupId,
+        groupPermissions: agentDetail.groupPermissions ?? {},
         isLoading: false,
       );
 
@@ -566,6 +575,10 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
               ? state.selectedGroupIds.toList()
               : null,
       fileStorage: state.fileStorage,
+      groupPermissions:
+          state.groupPermissions.isNotEmpty
+              ? state.groupPermissions
+              : null,
     );
 
     logger.i(

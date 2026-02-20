@@ -11,6 +11,7 @@ class AgentListItemModel {
   final String? createdAtDisplay;
   final String? samplePrompt;
   final Map<String, dynamic>? metadata;
+  final String? userPermission;
 
   const AgentListItemModel({
     required this.id,
@@ -22,6 +23,7 @@ class AgentListItemModel {
     this.createdAtDisplay,
     this.samplePrompt,
     this.metadata,
+    this.userPermission,
   });
 
   factory AgentListItemModel.fromJson(Map<String, dynamic> json) {
@@ -36,6 +38,7 @@ class AgentListItemModel {
       createdAtDisplay: json['created_at_display'] as String?,
       samplePrompt: json['sample_prompt'] as String?,
       metadata: json['metadata'] as Map<String, dynamic>?,
+      userPermission: json['user_permission'] as String?,
     );
   }
 
@@ -49,6 +52,7 @@ class AgentListItemModel {
       'created_at_display': createdAtDisplay,
       'sample_prompt': samplePrompt,
       'metadata': metadata,
+      'user_permission': userPermission,
     };
   }
 
@@ -64,7 +68,8 @@ class AgentListItemModel {
         other.tool_types == tool_types &&
         other.createdAtDisplay == createdAtDisplay &&
         other.samplePrompt == samplePrompt &&
-        other.metadata == metadata;
+        other.metadata == metadata &&
+        other.userPermission == userPermission;
   }
 
   @override
@@ -76,7 +81,8 @@ class AgentListItemModel {
       tool_types.hashCode ^
       createdAtDisplay.hashCode ^
       samplePrompt.hashCode ^
-      metadata.hashCode;
+      metadata.hashCode ^
+      userPermission.hashCode;
 }
 
 @immutable
@@ -180,6 +186,8 @@ class AgentDetailModel {
   final List<String>? groupIds;
   final String? fileStorage;
   final String? defaultGroupId;
+  final String? userPermission;
+  final Map<String, String>? groupPermissions;
 
 
   const AgentDetailModel({
@@ -199,6 +207,8 @@ class AgentDetailModel {
     this.groupIds,
     this.fileStorage,
     this.defaultGroupId,
+    this.userPermission,
+    this.groupPermissions,
   });
 
   factory AgentDetailModel.fromJson(Map<String, dynamic> json) {
@@ -232,6 +242,10 @@ class AgentDetailModel {
           : null,
       fileStorage: json['file_storage'] as String?,
       defaultGroupId: json['default_group_id'] as String?,
+      userPermission: json['user_permission'] as String?,
+      groupPermissions: json['group_permissions'] != null
+          ? Map<String, String>.from(json['group_permissions'] as Map)
+          : null,
     );
   }
 
@@ -252,6 +266,7 @@ class AgentDetailModel {
       'files': files,
       if (groupIds != null) 'group_ids': groupIds,
       if (fileStorage != null) 'file_storage': fileStorage,
+      if (groupPermissions != null) 'group_permissions': groupPermissions,
     };
   }
 }
