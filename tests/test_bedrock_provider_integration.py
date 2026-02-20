@@ -5,6 +5,7 @@ Based on quick_provider_test.py and test_bedrock_agent_lifecycle.py functionalit
 
 import os
 import pytest
+pytestmark = pytest.mark.skip(reason="Integration test: requires live AWS Bedrock and agent creation permissions")
 import uuid
 from unittest.mock import patch
 from bondable.bond.config import Config

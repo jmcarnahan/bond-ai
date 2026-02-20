@@ -1,3 +1,6 @@
+import pytest
+pytest.skip("Imports removed module bondable.bond.builder", allow_module_level=True)
+
 import logging
 LOGGER = logging.getLogger(__name__)
 
