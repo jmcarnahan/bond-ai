@@ -1,11 +1,11 @@
 """
 Integration tests for token encryption functionality.
-Tests the encryption/decryption of OAuth tokens using JWT secret.
+Tests the encryption/decryption of OAuth tokens using AES-256-GCM with HKDF key derivation.
 """
 
+import base64
 import os
 import pytest
-import tempfile
 
 # Set up test environment before imports
 os.environ.setdefault('JWT_SECRET_KEY', 'test-secret-key-for-encryption-testing-12345')
@@ -36,7 +36,7 @@ class TestTokenEncryption:
         assert encrypted != original_token  # Should be different
 
     def test_encryption_produces_different_output(self):
-        """Test that same token encrypted twice produces different ciphertext (Fernet uses random IV)"""
+        """Test that same token encrypted twice produces different ciphertext (random nonce)"""
         token = "same-token-value"
 
         encrypted1 = encrypt_token(token)
@@ -46,7 +46,7 @@ class TestTokenEncryption:
         assert decrypt_token(encrypted1) == token
         assert decrypt_token(encrypted2) == token
 
-        # But ciphertext should be different due to random IV
+        # But ciphertext should be different due to random nonce
         assert encrypted1 != encrypted2
 
     def test_encrypt_empty_token_raises_error(self):
@@ -96,7 +96,7 @@ class TestTokenEncryption:
         assert result is True
 
     def test_encryption_key_derivation_is_deterministic(self):
-        """Test that same secret produces same key"""
+        """Test that same secret produces same key via HKDF"""
         key1 = _derive_encryption_key("same-secret")
         key2 = _derive_encryption_key("same-secret")
 
@@ -110,10 +110,22 @@ class TestTokenEncryption:
         assert key1 != key2
 
     def test_get_encryption_key_uses_env_variable(self):
-        """Test that get_encryption_key uses JWT_SECRET_KEY from environment"""
+        """Test that get_encryption_key returns a 32-byte raw key"""
         key = get_encryption_key()
         assert key is not None
-        assert len(key) == 44  # Base64 encoded 32-byte key
+        assert len(key) == 32  # Raw 256-bit key
+
+    def test_ciphertext_contains_nonce_prefix(self):
+        """Test that ciphertext is base64-decodable and starts with 12-byte nonce"""
+        token = "test-token-for-nonce-check"
+        encrypted = encrypt_token(token)
+
+        raw = base64.urlsafe_b64decode(encrypted.encode('utf-8'))
+        # Must be at least 12 (nonce) + 16 (GCM tag) + 1 (min ciphertext) bytes
+        assert len(raw) >= 29
+        # Nonce is the first 12 bytes
+        nonce = raw[:12]
+        assert len(nonce) == 12
 
     def test_long_token_encryption(self):
         """Test encryption of long tokens"""
