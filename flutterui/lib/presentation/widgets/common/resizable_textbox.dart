@@ -7,6 +7,7 @@ class ResizableTextBox extends StatefulWidget {
   final TextEditingController controller;
   final String labelText;
   final bool enabled;
+  final bool readOnly;
   final String? Function(String?)? validator;
   final void Function(String)? onChanged;
   final String? helpTooltip;
@@ -20,6 +21,7 @@ class ResizableTextBox extends StatefulWidget {
     required this.controller,
     required this.labelText,
     this.enabled = true,
+    this.readOnly = false,
     this.validator,
     this.onChanged,
     this.helpTooltip,
@@ -90,6 +92,7 @@ class _ResizableTextBoxState extends State<ResizableTextBox> {
               child: TextFormField(
                 controller: widget.controller,
                 enabled: widget.enabled,
+                readOnly: widget.readOnly,
                 maxLines: null,
                 expands: true,
                 textAlignVertical: TextAlignVertical.top,
@@ -137,7 +140,9 @@ class _ResizableTextBoxState extends State<ResizableTextBox> {
                   ),
                   filled: true,
                   fillColor: widget.enabled
-                      ? theme.colorScheme.surfaceContainerLow
+                      ? (widget.readOnly
+                          ? theme.colorScheme.surfaceContainerHighest
+                          : theme.colorScheme.surfaceContainerLow)
                       : theme.colorScheme.surfaceContainerHighest,
                   floatingLabelBehavior: FloatingLabelBehavior.auto,
                   contentPadding: EdgeInsets.symmetric(
