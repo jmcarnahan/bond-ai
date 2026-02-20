@@ -8,8 +8,8 @@ from bondable.bond.providers.metadata import Metadata, AgentRecord, User
 
 class MockAgentDefinition:
     """Simple mock of AgentDefinition to avoid provider dependencies."""
-    def __init__(self, user_id, id, name, description, instructions, model,
-                 introduction="", reminder="", tools=None, metadata=None, **kwargs):
+    def __init__(self, user_id, name, description, instructions, model,
+                 id=None, introduction="", reminder="", tools=None, metadata=None, **kwargs):
         self.user_id = user_id
         self.id = id
         self.name = name
@@ -69,8 +69,11 @@ class MockAgentProvider(AgentProvider):
         return False
 
     def create_or_update_agent_resource(self, agent_def, owner_user_id):
-        agent = MockAgent(agent_def.id, agent_def)
-        self.agents_db[agent_def.id] = agent
+        # Simulate provider assigning an ID when none is provided
+        agent_id = agent_def.id or f"default-home-agent"
+        agent_def.id = agent_id
+        agent = MockAgent(agent_id, agent_def)
+        self.agents_db[agent_id] = agent
         return agent
 
     def get_agent(self, agent_id):
