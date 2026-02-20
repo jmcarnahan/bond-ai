@@ -19,72 +19,13 @@ from pydantic import BaseModel
 
 from bondable.bond.config import Config
 from bondable.bond.auth.mcp_token_cache import get_mcp_token_cache, TokenExpiredError
-from bondable.bond.auth.oauth_utils import generate_pkce_pair, generate_oauth_state
+from bondable.bond.auth.oauth_utils import generate_pkce_pair, generate_oauth_state, resolve_client_secret
 from bondable.rest.models.auth import User
 from bondable.rest.dependencies.auth import get_current_user
 from bondable.utils.url_validation import is_safe_redirect_url
 
 router = APIRouter(prefix="/connections", tags=["Connections"])
 LOGGER = logging.getLogger(__name__)
-
-
-# =============================================================================
-# Helper Functions
-# =============================================================================
-
-def _resolve_secret_from_arn(secret_arn: str) -> Optional[str]:
-    """
-    Resolve a secret value from AWS Secrets Manager ARN or name.
-
-    Args:
-        secret_arn: Either a full ARN (arn:aws:secretsmanager:REGION:ACCOUNT:secret:NAME)
-                   or just the secret name (NAME)
-
-    Returns:
-        The client_secret value from the secret, or None if resolution fails.
-    """
-    try:
-        import boto3
-        import json
-        import os
-
-        # Check if it's an ARN or just a secret name
-        if secret_arn.startswith('arn:aws:secretsmanager:'):
-            # Extract region from ARN (format: arn:aws:secretsmanager:REGION:ACCOUNT:secret:NAME)
-            arn_parts = secret_arn.split(':')
-            if len(arn_parts) < 6:
-                LOGGER.error("Invalid ARN format for secret identifier")
-                return None
-            region = arn_parts[3]
-            secret_id = secret_arn
-        else:
-            # It's just a secret name, use default region
-            region = os.environ.get('AWS_REGION', 'us-west-2')
-            secret_id = secret_arn
-            LOGGER.debug("Using configured secret name for AWS Secrets Manager lookup")
-
-        # Create Secrets Manager client
-        client = boto3.client('secretsmanager', region_name=region)
-
-        # Get secret value
-        LOGGER.debug(f"Fetching secret from Secrets Manager")
-        response = client.get_secret_value(SecretId=secret_id)
-
-        # Parse JSON secret string
-        secret_data = json.loads(response['SecretString'])
-
-        # Return client_secret from the secret
-        client_secret = secret_data.get('client_secret')
-        if client_secret:
-            LOGGER.debug(f"Successfully resolved client_secret")
-            return client_secret
-        else:
-            LOGGER.error(f"Secret does not contain 'client_secret' key")
-            return None
-
-    except Exception as e:
-        LOGGER.error(f"Failed to resolve secret: {type(e).__name__}")
-        return None
 
 
 # =============================================================================
@@ -170,17 +111,12 @@ def _get_connection_configs() -> List[Dict[str, Any]]:
                 # Build extra_config with client_secret from oauth_config
                 extra_config = server_config.get('extra_config', {}).copy()
 
-                if 'client_secret' in oauth_config:
-                    extra_config['client_secret'] = oauth_config['client_secret']
-                elif 'client_secret_arn' in oauth_config:
-                    # Resolve client_secret from AWS Secrets Manager ARN or name
-                    client_secret_arn = oauth_config['client_secret_arn']
-                    client_secret = _resolve_secret_from_arn(client_secret_arn)
-                    if client_secret:
-                        extra_config['client_secret'] = client_secret
-                        LOGGER.debug("Successfully resolved client_secret from AWS Secrets Manager")
-                    else:
-                        LOGGER.error("Failed to resolve client_secret from AWS Secrets Manager")
+                client_secret = resolve_client_secret(oauth_config)
+                if client_secret:
+                    extra_config['client_secret'] = client_secret
+                elif 'client_secret' in oauth_config or 'client_secret_arn' in oauth_config:
+                    # Only warn if a secret was explicitly configured but failed to resolve
+                    LOGGER.warning(f"Could not resolve client_secret for connection '{name}'")
 
                 configs.append({
                     "name": name,
