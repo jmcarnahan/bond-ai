@@ -5,7 +5,9 @@ import 'package:flutterui/providers/create_agent_form_provider.dart';
 import 'package:flutterui/data/models/model_info.dart';
 
 class AgentModelSection extends ConsumerWidget {
-  const AgentModelSection({super.key});
+  final bool readOnly;
+
+  const AgentModelSection({super.key, this.readOnly = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -125,7 +127,7 @@ class AgentModelSection extends ConsumerWidget {
               isExpanded: true,
               style: theme.textTheme.bodyMedium,
               dropdownColor: theme.colorScheme.surfaceContainerHighest,
-              onChanged: (value) {
+              onChanged: readOnly ? null : (value) {
                 if (value != null) {
                   ref.read(createAgentFormProvider.notifier).setSelectedModel(value);
                 }
