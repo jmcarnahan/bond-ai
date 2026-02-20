@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/data/models/agent_model.dart';
 import 'package:flutterui/providers/core_providers.dart';
-import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/providers/config_provider.dart';
 import 'package:flutterui/providers/agent_provider.dart';
 import 'package:flutterui/presentation/widgets/agent_icon.dart';
@@ -20,16 +19,11 @@ class AgentCard extends ConsumerWidget {
     final themeData = appThemeInstance.themeData;
     final colorScheme = themeData.colorScheme;
     final textTheme = themeData.textTheme;
-    final authState = ref.watch(authNotifierProvider);
-    String? currentUserId;
-    if (authState is Authenticated) {
-      currentUserId = authState.user.userId;
-    }
 
-    final bool isOwner = currentUserId != null &&
-        agent.metadata != null &&
-        (agent.metadata!['owner_user_id'] == currentUserId ||
-         agent.metadata!['user_id'] == currentUserId);
+    final String? permission = agent.userPermission;
+    final bool isDefault = agent.metadata?['is_default'] == 'true';
+    final bool showEditIcon = permission == 'owner' || permission == 'can_edit' || permission == 'admin';
+    final bool showViewIcon = permission == 'can_use' && !isDefault;
 
     return Card(
       elevation: 2.0,
@@ -60,8 +54,8 @@ class AgentCard extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Edit button in top right corner
-              if (isOwner)
+              // Edit/View button in top right corner
+              if (showEditIcon)
                 Align(
                   alignment: Alignment.topRight,
                   child: InkWell(
@@ -87,8 +81,34 @@ class AgentCard extends ConsumerWidget {
                     ),
                   ),
                 )
+              else if (showViewIcon)
+                Align(
+                  alignment: Alignment.topRight,
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.pushNamed(
+                        context,
+                        '/view-agent/${agent.id}',
+                        arguments: agent,
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.visibility,
+                        size: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                )
               else
-                const SizedBox(height: 4), // Space when no edit button
+                const SizedBox(height: 4), // Space when no edit/view button
               // Agent icon
               AgentIcon(
                 agentName: agent.name,
