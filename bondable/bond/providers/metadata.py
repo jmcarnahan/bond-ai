@@ -65,6 +65,7 @@ class AgentGroup(Base):
     __tablename__ = "agent_groups"
     agent_id = Column(String, ForeignKey('agents.agent_id'), primary_key=True)
     group_id = Column(String, ForeignKey('groups.id'), primary_key=True)
+    permission = Column(String, nullable=False, default='can_use')  # 'can_use' or 'can_edit'
     created_at = Column(DateTime, default=datetime.datetime.now)
 class Group(Base):
     __tablename__ = "groups"

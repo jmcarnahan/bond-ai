@@ -251,6 +251,10 @@ class MobileApp extends ConsumerWidget {
               final agentId = effectivePath.replaceFirst('/edit-agent/', '');
               logger.i('[MobileApp] Edit agent route requested for: $agentId');
               pageWidget = CreateAgentScreen(agentId: agentId);
+            } else if (effectivePath.startsWith('/view-agent/')) {
+              final agentId = effectivePath.replaceFirst('/view-agent/', '');
+              logger.i('[MobileApp] View agent route requested for: $agentId');
+              pageWidget = CreateAgentScreen(agentId: agentId, viewOnly: true);
             }
             break;
         }

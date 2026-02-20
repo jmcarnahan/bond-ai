@@ -4,7 +4,9 @@ import 'package:flutterui/providers/create_agent_form_provider.dart';
 import 'package:flutterui/presentation/widgets/common/bondai_widgets.dart';
 
 class AgentFilesTable extends ConsumerWidget {
-  const AgentFilesTable({super.key});
+  final bool readOnly;
+
+  const AgentFilesTable({super.key, this.readOnly = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -30,7 +32,7 @@ class AgentFilesTable extends ConsumerWidget {
     return BondAIContainer(
       icon: Icons.folder_open,
       title: 'Uploaded Files ($maxFilesText)',
-      actionButton: BondAIUploadButton(
+      actionButton: readOnly ? null : BondAIUploadButton(
         onPressed: () => formNotifier.uploadFile(),
         isUploading: formState.isUploadingFile,
         enabled: !formState.isLoading,
@@ -55,7 +57,7 @@ class AgentFilesTable extends ConsumerWidget {
                     subtitle: const Text('5 files max'),
                     value: 'direct',
                     groupValue: formState.fileStorage,
-                    onChanged: formState.isLoading
+                    onChanged: (formState.isLoading || readOnly)
                         ? null
                         : (value) => formNotifier.setFileStorage(value!),
                     dense: true,
@@ -68,7 +70,7 @@ class AgentFilesTable extends ConsumerWidget {
                     subtitle: const Text('Unlimited files'),
                     value: 'knowledge_base',
                     groupValue: formState.fileStorage,
-                    onChanged: formState.isLoading
+                    onChanged: (formState.isLoading || readOnly)
                         ? null
                         : (value) => formNotifier.setFileStorage(value!),
                     dense: true,
@@ -86,12 +88,17 @@ class AgentFilesTable extends ConsumerWidget {
           availableTools: formState.enableCodeInterpreter
               ? const ['code_interpreter', 'file_search']
               : const ['file_search'],
-          onAddFile: () => formNotifier.uploadFile(),
-          onRemoveFile: (fileId) => formNotifier.removeFile(fileId),
-          onToolChanged:
-              (fileId, tool) =>
+          onAddFile: () {
+            if (!readOnly) formNotifier.uploadFile();
+          },
+          onRemoveFile: (fileId) {
+            if (!readOnly) formNotifier.removeFile(fileId);
+          },
+          onToolChanged: readOnly
+              ? null
+              : (fileId, tool) =>
                   formNotifier.updateFileSelectedTool(fileId, tool),
-          enabled: !formState.isLoading,
+          enabled: !formState.isLoading && !readOnly,
           emptyStateMessage: 'No files uploaded yet',
           emptyStateDescription: isKnowledgeBase
               ? 'Upload files for your agent (e.g. PDFs, CSVs, images, etc.). Knowledge Base mode supports unlimited files.'

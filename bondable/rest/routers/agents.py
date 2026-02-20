@@ -66,16 +66,26 @@ async def get_agents(
 ):
     """Get list of agents for the authenticated user."""
     try:
-        agent_instances = provider.agents.list_agents(user_id=current_user.user_id)
-        return [
-            AgentRef(
+        agent_records = provider.agents.get_agent_records(user_id=current_user.user_id)
+        result = []
+        for record in agent_records:
+            agent = provider.agents.get_agent(agent_id=record['agent_id'])
+            if not agent:
+                continue
+            # Compute effective permission
+            permission = record.get('permission', 'can_use')
+            # Check if this is the default agent and user is admin
+            if record.get('is_default') and current_user.is_admin:
+                permission = 'admin'
+            metadata = agent.get_metadata()
+            result.append(AgentRef(
                 id=agent.get_agent_id(),
                 name=agent.get_name(),
                 description=agent.get_description(),
-                metadata=agent.get_metadata(),
-            )
-            for agent in agent_instances
-        ]
+                metadata=metadata,
+                user_permission=permission,
+            ))
+        return result
     except Exception as e:
         LOGGER.error(f"Error fetching agents for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not fetch agents.")
@@ -220,10 +230,13 @@ async def create_agent(
         # Associate agent with additional selected groups
         if request_data.group_ids:
             try:
+                perms = request_data.group_permissions or {}
                 for group_id in request_data.group_ids:
+                    perm = perms.get(group_id, 'can_use')
                     provider.groups.associate_agent_with_group(
                         agent_id=agent_instance.get_agent_id(),
-                        group_id=group_id
+                        group_id=group_id,
+                        permission=perm
                     )
                 LOGGER.info(f"Associated agent '{agent_instance.get_agent_id()}' with {len(request_data.group_ids)} additional groups")
             except Exception as group_error:
@@ -252,17 +265,32 @@ async def update_agent(
     LOGGER.info(f"Update request - introduction: '{request_data.introduction[:50] if request_data.introduction else 'None'}'...")
     LOGGER.info(f"Update request - reminder: '{request_data.reminder[:50] if request_data.reminder else 'None'}'...")
 
+    # Authorization check
+    agent_record = provider.agents.get_agent_record(agent_id)
+    if not agent_record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found.")
+    if agent_record.is_default:
+        if not current_user.is_admin:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admin users can edit the Home agent.")
+    else:
+        user_perm = provider.agents.get_user_agent_permission(current_user.user_id, agent_id)
+        if user_perm not in ('owner', 'can_edit'):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to edit this agent.")
+
     # Log tool_resources for debugging
     LOGGER.debug(f"Update agent {agent_id} - tool_resources: {request_data.tool_resources}")
 
     try:
-        tool_resources_payload = _process_tool_resources(request_data, provider, current_user.user_id)
+        # Use agent owner's user_id for resource lookups (shared editors don't own files/vectors)
+        owner_user_id = agent_record.owner_user_id or current_user.user_id
+
+        tool_resources_payload = _process_tool_resources(request_data, provider, owner_user_id)
         LOGGER.debug(f"Processed tool_resources_payload: {tool_resources_payload}")
 
         # Log complete request data for debugging
         LOGGER.debug("=== AGENT UPDATE REQUEST DEBUG ===")
         LOGGER.debug(f"Agent ID: {agent_id}")
-        LOGGER.debug(f"User: {current_user.user_id} ({current_user.email})")
+        LOGGER.debug(f"User: {current_user.user_id} ({current_user.email}), owner: {owner_user_id}")
         LOGGER.debug(f"Request data:")
         LOGGER.debug(f"  - name: {request_data.name}")
         LOGGER.debug(f"  - description: {request_data.description}")
@@ -293,7 +321,7 @@ async def update_agent(
             tool_resources=tool_resources_payload,
             metadata=request_data.metadata,
             model=request_data.model or provider.get_default_model(),
-            user_id=current_user.user_id,
+            user_id=owner_user_id,
             mcp_tools=request_data.mcp_tools or [],
             mcp_resources=request_data.mcp_resources or [],
             file_storage=request_data.file_storage if request_data.file_storage else existing_file_storage
@@ -310,24 +338,40 @@ async def update_agent(
         LOGGER.debug(f"  - tools: {agent_def.tools}")
         LOGGER.debug("================================")
 
-        agent_instance = provider.agents.create_or_update_agent(agent_def=agent_def, user_id=current_user.user_id)
+        agent_instance = provider.agents.create_or_update_agent(agent_def=agent_def, user_id=owner_user_id)
 
         # Sync group associations if group_ids was provided
         if request_data.group_ids is not None:
             try:
                 # Look up default_group_id from agent record to preserve it
-                agent_record = provider.agents.get_agent_record(agent_instance.get_agent_id())
-                preserve_ids = [agent_record.default_group_id] if agent_record and agent_record.default_group_id else []
+                updated_agent_record = provider.agents.get_agent_record(agent_instance.get_agent_id())
+                preserve_ids = [updated_agent_record.default_group_id] if updated_agent_record and updated_agent_record.default_group_id else []
 
                 provider.groups.sync_agent_groups(
                     agent_id=agent_instance.get_agent_id(),
                     desired_group_ids=request_data.group_ids,
-                    preserve_group_ids=preserve_ids
+                    preserve_group_ids=preserve_ids,
+                    group_permissions=request_data.group_permissions
                 )
                 LOGGER.info(f"Synced agent '{agent_instance.get_agent_id()}' with {len(request_data.group_ids)} groups")
             except Exception as group_error:
                 LOGGER.error(f"Failed to sync agent group associations: {group_error}")
                 # Don't fail the agent update if group sync fails
+
+        # Update default group permission if provided
+        if request_data.group_permissions:
+            try:
+                agent_rec = provider.agents.get_agent_record(agent_instance.get_agent_id())
+                default_gid = agent_rec.default_group_id if agent_rec else None
+                if default_gid and default_gid in request_data.group_permissions:
+                    provider.groups.associate_agent_with_group(
+                        agent_id=agent_instance.get_agent_id(),
+                        group_id=default_gid,
+                        permission=request_data.group_permissions[default_gid]
+                    )
+                    LOGGER.info(f"Updated default group permission to '{request_data.group_permissions[default_gid]}'")
+            except Exception as perm_error:
+                LOGGER.error(f"Failed to update default group permission: {perm_error}")
 
         LOGGER.info(f"Updated agent '{agent_instance.get_name()}' with ID '{agent_instance.get_agent_id()}' for user {current_user.user_id} ({current_user.email}).")
         return AgentResponse(agent_id=agent_instance.get_agent_id(), name=agent_instance.get_name())
@@ -393,6 +437,14 @@ async def get_agent_details(
         agent_record = provider.agents.get_agent_record(agent_id)
         default_group_id = agent_record.default_group_id if agent_record else None
 
+        # Compute user permission
+        user_permission = provider.agents.get_user_agent_permission(current_user.user_id, agent_id)
+        if is_default_agent and current_user.is_admin:
+            user_permission = 'admin'
+
+        # Get group permissions
+        group_perms = provider.groups.get_agent_group_permissions(agent_id)
+
         return AgentDetailResponse(
             id=agent_instance.get_agent_id(),
             name=agent_def.name,
@@ -408,7 +460,9 @@ async def get_agent_details(
             mcp_resources=agent_def.mcp_resources if agent_def.mcp_resources else None,
             file_storage=getattr(agent_def, 'file_storage', 'direct'),
             group_ids=agent_group_ids if agent_group_ids else None,
-            default_group_id=default_group_id
+            default_group_id=default_group_id,
+            user_permission=user_permission,
+            group_permissions=group_perms if group_perms else None
         )
 
     except HTTPException:
@@ -426,13 +480,20 @@ async def delete_agent(
 ):
     """Delete an agent."""
     try:
-        # Check if agent exists and user has access
+        # Check if agent exists
         agent_instance = provider.agents.get_agent(agent_id=agent_id)
         if not agent_instance:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found.")
 
-        if not provider.agents.can_user_access_agent(user_id=current_user.user_id, agent_id=agent_id):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to this agent is forbidden.")
+        # Block deleting the default (Home) agent
+        agent_record = provider.agents.get_agent_record(agent_id)
+        if agent_record and agent_record.is_default:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="The Home agent cannot be deleted.")
+
+        # Only the owner can delete an agent
+        user_perm = provider.agents.get_user_agent_permission(current_user.user_id, agent_id)
+        if user_perm != 'owner':
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the agent owner can delete this agent.")
 
         # Delete the agent
         success = provider.agents.delete_agent(agent_id=agent_id)

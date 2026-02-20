@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutterui/data/models/message_model.dart';
 import 'package:flutterui/providers/cached_agent_details_provider.dart';
 import 'package:flutterui/presentation/widgets/agent_icon.dart';
@@ -431,6 +432,14 @@ class _ChatMessageItemState extends ConsumerState<ChatMessageItem> {
                 ),
               ),
             ),
+            onTapLink: (text, href, title) {
+              if (href != null && href.isNotEmpty) {
+                final uri = Uri.tryParse(href);
+                if (uri != null) {
+                  launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              }
+            },
           ),
         );
       },
