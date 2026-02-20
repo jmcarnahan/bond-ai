@@ -6,6 +6,7 @@ import time
 from typing import List, Dict, Any, Tuple, Optional
 
 import pytest
+pytestmark = pytest.mark.skip(reason="Integration test: requires live AWS Bedrock provider with full credentials")
 import pandas as pd
 from dotenv import load_dotenv
 
