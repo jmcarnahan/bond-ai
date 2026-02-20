@@ -598,4 +598,338 @@ class TestTokenCacheIntegration:
         assert retrieved.refresh_token == sensitive_refresh
 
 
+# --- resolve_client_secret Tests ---
+
+class TestResolveClientSecret:
+    """Test the resolve_client_secret utility function"""
+
+    def test_direct_client_secret(self):
+        """Returns client_secret directly when present in config"""
+        from bondable.bond.auth.oauth_utils import resolve_client_secret
+
+        config = {'client_secret': 'my-direct-secret', 'client_id': 'abc'}
+        result = resolve_client_secret(config)
+        assert result == 'my-direct-secret'
+
+    def test_client_secret_from_arn(self):
+        """Resolves client_secret from AWS Secrets Manager when client_secret_arn is present"""
+        from unittest.mock import patch, MagicMock
+        from bondable.bond.auth.oauth_utils import resolve_client_secret
+
+        mock_client = MagicMock()
+        mock_client.get_secret_value.return_value = {
+            'SecretString': '{"client_secret": "resolved-from-arn"}'
+        }
+
+        with patch('boto3.client', return_value=mock_client) as mock_boto:
+            config = {
+                'client_secret_arn': 'arn:aws:secretsmanager:us-east-1:123456789:secret:my-secret'
+            }
+            result = resolve_client_secret(config)
+
+            assert result == 'resolved-from-arn'
+            mock_boto.assert_called_once_with('secretsmanager', region_name='us-east-1')
+            mock_client.get_secret_value.assert_called_once_with(
+                SecretId='arn:aws:secretsmanager:us-east-1:123456789:secret:my-secret'
+            )
+
+    def test_client_secret_from_secret_name(self):
+        """Resolves client_secret using a plain secret name (not ARN)"""
+        from unittest.mock import patch, MagicMock
+        from bondable.bond.auth.oauth_utils import resolve_client_secret
+
+        mock_client = MagicMock()
+        mock_client.get_secret_value.return_value = {
+            'SecretString': '{"client_secret": "resolved-from-name"}'
+        }
+
+        with patch('boto3.client', return_value=mock_client) as mock_boto:
+            with patch.dict(os.environ, {'AWS_REGION': 'us-west-2'}):
+                config = {'client_secret_arn': 'my-secret-name'}
+                result = resolve_client_secret(config)
+
+                assert result == 'resolved-from-name'
+                mock_boto.assert_called_once_with('secretsmanager', region_name='us-west-2')
+
+    def test_returns_none_when_neither_key_present(self):
+        """Returns None when neither client_secret nor client_secret_arn is in config"""
+        from bondable.bond.auth.oauth_utils import resolve_client_secret
+
+        result = resolve_client_secret({'client_id': 'abc', 'token_url': 'https://example.com'})
+        assert result is None
+
+    def test_returns_none_on_secrets_manager_error(self):
+        """Returns None when AWS Secrets Manager call fails"""
+        from unittest.mock import patch, MagicMock
+        from bondable.bond.auth.oauth_utils import resolve_client_secret
+
+        with patch('boto3.client') as mock_boto:
+            mock_boto.side_effect = Exception("AWS connection error")
+            config = {
+                'client_secret_arn': 'arn:aws:secretsmanager:us-east-1:123456789:secret:my-secret'
+            }
+            result = resolve_client_secret(config)
+            assert result is None
+
+    def test_direct_secret_takes_precedence_over_arn(self):
+        """Direct client_secret is returned even when client_secret_arn is also present"""
+        from bondable.bond.auth.oauth_utils import resolve_client_secret
+
+        config = {
+            'client_secret': 'direct-value',
+            'client_secret_arn': 'arn:aws:secretsmanager:us-east-1:123456789:secret:my-secret'
+        }
+        result = resolve_client_secret(config)
+        assert result == 'direct-value'
+
+    def test_empty_string_client_secret_falls_through_to_arn(self):
+        """Empty string client_secret is treated as absent, falls through to ARN"""
+        from unittest.mock import patch, MagicMock
+        from bondable.bond.auth.oauth_utils import resolve_client_secret
+
+        mock_client = MagicMock()
+        mock_client.get_secret_value.return_value = {
+            'SecretString': '{"client_secret": "from-arn"}'
+        }
+
+        with patch('boto3.client', return_value=mock_client):
+            config = {
+                'client_secret': '',
+                'client_secret_arn': 'arn:aws:secretsmanager:us-east-1:123456789:secret:test'
+            }
+            result = resolve_client_secret(config)
+            assert result == 'from-arn'
+
+    def test_empty_string_client_secret_without_arn_returns_none(self):
+        """Empty string client_secret with no ARN returns None"""
+        from bondable.bond.auth.oauth_utils import resolve_client_secret
+
+        result = resolve_client_secret({'client_secret': ''})
+        assert result is None
+
+    def test_secret_json_missing_client_secret_key(self):
+        """Returns None when Secrets Manager JSON doesn't contain client_secret key"""
+        from unittest.mock import patch, MagicMock
+        from bondable.bond.auth.oauth_utils import resolve_client_secret
+
+        mock_client = MagicMock()
+        mock_client.get_secret_value.return_value = {
+            'SecretString': '{"api_key": "something-else"}'
+        }
+
+        with patch('boto3.client', return_value=mock_client):
+            config = {
+                'client_secret_arn': 'arn:aws:secretsmanager:us-east-1:123456789:secret:test'
+            }
+            result = resolve_client_secret(config)
+            assert result is None
+
+
+# --- Token Refresh Tests ---
+
+class TestTokenRefresh:
+    """Test token refresh with resolve_client_secret integration"""
+
+    def test_refresh_token_with_client_secret_arn(self, token_cache, test_user_id):
+        """_refresh_token resolves client_secret_arn via AWS Secrets Manager"""
+        from unittest.mock import patch, MagicMock
+
+        connection = f"refresh_arn_{uuid.uuid4().hex[:6]}"
+
+        # Create an expired token with a refresh token
+        expired_token = MCPTokenData(
+            access_token="old-access-token",
+            token_type="Bearer",
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            refresh_token="my-refresh-token",
+            scopes="read write",
+            provider=connection
+        )
+
+        # Mock Config to return oauth_config with client_secret_arn
+        mock_mcp_config = {
+            'mcpServers': {
+                connection: {
+                    'oauth_config': {
+                        'token_url': 'https://auth.example.com/token',
+                        'client_id': 'test-client-id',
+                        'client_secret_arn': 'arn:aws:secretsmanager:us-east-1:123456789:secret:test'
+                    }
+                }
+            }
+        }
+
+        # Mock the refresh HTTP response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'access_token': 'new-access-token',
+            'token_type': 'Bearer',
+            'expires_in': 3600,
+            'refresh_token': 'new-refresh-token',
+            'scope': 'read write'
+        }
+
+        # Mock Secrets Manager
+        mock_sm_client = MagicMock()
+        mock_sm_client.get_secret_value.return_value = {
+            'SecretString': '{"client_secret": "resolved-secret"}'
+        }
+
+        with patch('bondable.bond.config.Config') as mock_config_cls, \
+             patch('requests.post', return_value=mock_response) as mock_post, \
+             patch('boto3.client', return_value=mock_sm_client):
+
+            mock_config_cls.config.return_value.get_mcp_config.return_value = mock_mcp_config
+
+            result = token_cache._refresh_token(test_user_id, connection, expired_token)
+
+            assert result is not None
+            assert result.access_token == 'new-access-token'
+            assert result.refresh_token == 'new-refresh-token'
+
+            # Verify the refresh request included the resolved secret
+            call_data = mock_post.call_args[1]['data']
+            assert call_data['client_secret'] == 'resolved-secret'
+
+    def test_refresh_token_with_direct_client_secret(self, token_cache, test_user_id):
+        """_refresh_token works with direct client_secret (regression test)"""
+        from unittest.mock import patch, MagicMock
+
+        connection = f"refresh_direct_{uuid.uuid4().hex[:6]}"
+
+        expired_token = MCPTokenData(
+            access_token="old-token",
+            token_type="Bearer",
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            refresh_token="my-refresh-token",
+            provider=connection
+        )
+
+        mock_mcp_config = {
+            'mcpServers': {
+                connection: {
+                    'oauth_config': {
+                        'token_url': 'https://auth.example.com/token',
+                        'client_id': 'test-client-id',
+                        'client_secret': 'direct-secret-value'
+                    }
+                }
+            }
+        }
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'access_token': 'refreshed-token',
+            'token_type': 'Bearer',
+            'expires_in': 3600,
+        }
+
+        with patch('bondable.bond.config.Config') as mock_config_cls, \
+             patch('requests.post', return_value=mock_response) as mock_post:
+
+            mock_config_cls.config.return_value.get_mcp_config.return_value = mock_mcp_config
+
+            result = token_cache._refresh_token(test_user_id, connection, expired_token)
+
+            assert result is not None
+            assert result.access_token == 'refreshed-token'
+
+            call_data = mock_post.call_args[1]['data']
+            assert call_data['client_secret'] == 'direct-secret-value'
+
+    def test_refresh_fails_when_arn_resolution_fails(self, token_cache, test_user_id):
+        """_refresh_token returns None when client_secret_arn can't be resolved"""
+        from unittest.mock import patch, MagicMock
+
+        connection = f"refresh_fail_{uuid.uuid4().hex[:6]}"
+
+        expired_token = MCPTokenData(
+            access_token="old-token",
+            token_type="Bearer",
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            refresh_token="my-refresh-token",
+            provider=connection
+        )
+
+        mock_mcp_config = {
+            'mcpServers': {
+                connection: {
+                    'oauth_config': {
+                        'token_url': 'https://auth.example.com/token',
+                        'client_id': 'test-client-id',
+                        'client_secret_arn': 'arn:aws:secretsmanager:us-east-1:123456789:secret:test'
+                    }
+                }
+            }
+        }
+
+        with patch('bondable.bond.config.Config') as mock_config_cls, \
+             patch('boto3.client') as mock_boto:
+
+            mock_config_cls.config.return_value.get_mcp_config.return_value = mock_mcp_config
+            mock_boto.side_effect = Exception("AWS unavailable")
+
+            result = token_cache._refresh_token(test_user_id, connection, expired_token)
+
+            # Should fail gracefully — no requests.post call made
+            assert result is None
+
+    def test_get_token_auto_refreshes_on_expiry(self, token_cache, test_user_id):
+        """get_token() with an expired token auto-refreshes and returns the new token"""
+        from unittest.mock import patch, MagicMock
+        from bondable.bond.auth.token_encryption import encrypt_token
+
+        connection = f"auto_refresh_{uuid.uuid4().hex[:6]}"
+
+        # Write an expired token directly to DB so get_token finds it
+        session = TestSessionLocal()
+        expired_record = UserConnectionToken(
+            id=str(uuid.uuid4()),
+            user_id=test_user_id,
+            connection_name=connection,
+            access_token_encrypted=encrypt_token("expired-access"),
+            refresh_token_encrypted=encrypt_token("valid-refresh-token"),
+            token_type="Bearer",
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            scopes="read"
+        )
+        session.add(expired_record)
+        session.commit()
+        session.close()
+
+        mock_mcp_config = {
+            'mcpServers': {
+                connection: {
+                    'oauth_config': {
+                        'token_url': 'https://auth.example.com/token',
+                        'client_id': 'test-client-id',
+                        'client_secret': 'test-secret'
+                    }
+                }
+            }
+        }
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'access_token': 'fresh-access-token',
+            'token_type': 'Bearer',
+            'expires_in': 3600,
+            'refresh_token': 'new-refresh-token',
+        }
+
+        with patch('bondable.bond.config.Config') as mock_config_cls, \
+             patch('requests.post', return_value=mock_response):
+
+            mock_config_cls.config.return_value.get_mcp_config.return_value = mock_mcp_config
+
+            result = token_cache.get_token(test_user_id, connection, auto_refresh=True)
+
+            assert result is not None
+            assert result.access_token == 'fresh-access-token'
+            assert result.refresh_token == 'new-refresh-token'
+
+
 # Run with: poetry run pytest tests/test_mcp_token_cache.py -v
