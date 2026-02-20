@@ -10,12 +10,16 @@ class AdditionalGroupsSection extends ConsumerStatefulWidget {
   final Set<String> selectedGroupIds;
   final Function(Set<String>) onGroupSelectionChanged;
   final String? agentName;
+  final Map<String, String> groupPermissions;
+  final Function(Map<String, String>)? onGroupPermissionsChanged;
 
   const AdditionalGroupsSection({
     super.key,
     required this.selectedGroupIds,
     required this.onGroupSelectionChanged,
     this.agentName,
+    this.groupPermissions = const {},
+    this.onGroupPermissionsChanged,
   });
 
   @override
@@ -71,10 +75,30 @@ class _AdditionalGroupsSectionState extends ConsumerState<AdditionalGroupsSectio
     final newSelection = Set<String>.from(widget.selectedGroupIds);
     if (newSelection.contains(groupId)) {
       newSelection.remove(groupId);
+      // Also remove the permission entry
+      if (widget.onGroupPermissionsChanged != null) {
+        final newPerms = Map<String, String>.from(widget.groupPermissions);
+        newPerms.remove(groupId);
+        widget.onGroupPermissionsChanged!(newPerms);
+      }
     } else {
       newSelection.add(groupId);
+      // Set default permission for newly added group
+      if (widget.onGroupPermissionsChanged != null) {
+        final newPerms = Map<String, String>.from(widget.groupPermissions);
+        newPerms[groupId] = 'can_use';
+        widget.onGroupPermissionsChanged!(newPerms);
+      }
     }
     widget.onGroupSelectionChanged(newSelection);
+  }
+
+  void _onPermissionChanged(String groupId, String permission) {
+    if (widget.onGroupPermissionsChanged != null) {
+      final newPerms = Map<String, String>.from(widget.groupPermissions);
+      newPerms[groupId] = permission;
+      widget.onGroupPermissionsChanged!(newPerms);
+    }
   }
 
   @override
@@ -113,23 +137,65 @@ class _AdditionalGroupsSectionState extends ConsumerState<AdditionalGroupsSectio
           Column(
             children: _availableGroups!.map((group) {
               final isSelected = widget.selectedGroupIds.contains(group.id);
-              return BondAITile(
-                type: BondAITileType.checkbox,
-                title: group.name,
-                subtitle: group.description,
-                leading: group.isOwner
-                    ? Icon(
-                        Icons.admin_panel_settings,
-                        color: theme.colorScheme.primary,
-                      )
-                    : Icon(
-                        Icons.group,
-                        color: theme.colorScheme.secondary,
+              final permission = widget.groupPermissions[group.id] ?? 'can_use';
+              return Column(
+                children: [
+                  BondAITile(
+                    type: BondAITileType.checkbox,
+                    title: group.name,
+                    subtitle: group.description,
+                    leading: group.isOwner
+                        ? Icon(
+                            Icons.admin_panel_settings,
+                            color: theme.colorScheme.primary,
+                          )
+                        : Icon(
+                            Icons.group,
+                            color: theme.colorScheme.secondary,
+                          ),
+                    value: isSelected,
+                    onChanged: (bool? value) {
+                      _toggleGroupSelection(group.id);
+                    },
+                  ),
+                  if (isSelected)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 56, right: 16, bottom: 8),
+                      child: Row(
+                        children: [
+                          Text(
+                            'Permission: ',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SegmentedButton<String>(
+                            segments: const [
+                              ButtonSegment<String>(
+                                value: 'can_use',
+                                label: Text('Can Use'),
+                                icon: Icon(Icons.visibility, size: 16),
+                              ),
+                              ButtonSegment<String>(
+                                value: 'can_edit',
+                                label: Text('Can Edit'),
+                                icon: Icon(Icons.edit, size: 16),
+                              ),
+                            ],
+                            selected: {permission},
+                            onSelectionChanged: (Set<String> selected) {
+                              _onPermissionChanged(group.id, selected.first);
+                            },
+                            style: SegmentedButton.styleFrom(
+                              textStyle: theme.textTheme.labelSmall,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ),
+                        ],
                       ),
-                value: isSelected,
-                onChanged: (bool? value) {
-                  _toggleGroupSelection(group.id);
-                },
+                    ),
+                ],
               );
             }).toList(),
           ),
