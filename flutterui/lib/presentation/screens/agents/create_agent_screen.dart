@@ -17,8 +17,9 @@ class CreateAgentScreen extends ConsumerStatefulWidget {
   static const String editRouteNamePattern = '/edit-agent/:agentId';
 
   final String? agentId;
+  final bool viewOnly;
 
-  const CreateAgentScreen({super.key, this.agentId});
+  const CreateAgentScreen({super.key, this.agentId, this.viewOnly = false});
 
   @override
   ConsumerState<CreateAgentScreen> createState() => _CreateAgentScreenState();
@@ -158,14 +159,18 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _controller.isEditing ? 'Edit Agent' : 'Create Agent',
+                        widget.viewOnly
+                            ? 'View Agent'
+                            : (_controller.isEditing ? 'Edit Agent' : 'Create Agent'),
                         style: theme.textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        _controller.isEditing ? 'Update your AI assistant' : 'Configure a new AI assistant',
+                        widget.viewOnly
+                            ? 'Agent configuration (read-only)'
+                            : (_controller.isEditing ? 'Update your AI assistant' : 'Configure a new AI assistant'),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -173,7 +178,7 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
                     ],
                   ),
                 ),
-                if (_controller.isEditing)
+                if (_controller.isEditing && !widget.viewOnly)
                   IconButton(
                     icon: Icon(Icons.delete, color: theme.colorScheme.error),
                     onPressed: formState.isLoading ? null : _onDeletePressed,
@@ -205,6 +210,35 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   AgentErrorBanner(errorMessage: formState.errorMessage),
+                  if (widget.viewOnly)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline,
+                            size: 18,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'This agent is shared with you. You can view its configuration but cannot make changes.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   _buildSectionCard(
                     title: 'Basic Information',
                     child: AgentFormFields(
@@ -213,7 +247,8 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
                       instructionsController: _instructionsController,
                       introductionController: _introductionController,
                       reminderController: _reminderController,
-                      enabled: !formState.isLoading,
+                      enabled: !formState.isLoading && !widget.viewOnly,
+                      readOnly: widget.viewOnly,
                       onNameChanged: _controller.onNameChanged,
                       onDescriptionChanged: _controller.onDescriptionChanged,
                       onInstructionsChanged: _controller.onInstructionsChanged,
@@ -223,7 +258,7 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
                     theme: theme,
                   ),
                   const SizedBox(height: 16),
-                  const AgentModelSection(),
+                  AgentModelSection(readOnly: widget.viewOnly),
                   const SizedBox(height: 16),
                   _buildSectionCard(
                     title: 'Files & Resources',
@@ -232,7 +267,7 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
                       children: [
                         _buildCodeInterpreterToggle(formState, theme),
                         const SizedBox(height: 16),
-                        const AgentFilesTable(),
+                        AgentFilesTable(readOnly: widget.viewOnly),
                       ],
                     ),
                     theme: theme,
@@ -243,30 +278,35 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
                     child: McpSelectionSection(
                       selectedToolNames: formState.selectedMcpTools,
                       selectedResourceUris: formState.selectedMcpResources,
-                      enabled: !formState.isLoading,
+                      enabled: !formState.isLoading && !widget.viewOnly,
                       onToolsChanged: _controller.onMcpToolsChanged,
                       onResourcesChanged: _controller.onMcpResourcesChanged,
                     ),
                     theme: theme,
                   ),
-                  const SizedBox(height: 16),
-                  _buildSectionCard(
-                    title: 'Sharing',
-                    child: AgentSharingSection(
-                      agentName: _nameController.text.isNotEmpty ? _nameController.text : null,
-                      defaultGroupId: formState.defaultGroupId,
-                      selectedGroupIds: formState.selectedGroupIds,
-                      onGroupSelectionChanged: _controller.onGroupSelectionChanged,
+                  if (!widget.viewOnly) ...[
+                    const SizedBox(height: 16),
+                    _buildSectionCard(
+                      title: 'Sharing',
+                      child: AgentSharingSection(
+                        agentName: _nameController.text.isNotEmpty ? _nameController.text : null,
+                        defaultGroupId: formState.defaultGroupId,
+                        selectedGroupIds: formState.selectedGroupIds,
+                        onGroupSelectionChanged: _controller.onGroupSelectionChanged,
+                        groupPermissions: formState.groupPermissions,
+                        onGroupPermissionsChanged: _controller.onGroupPermissionsChanged,
+                      ),
+                      theme: theme,
                     ),
-                    theme: theme,
-                  ),
+                  ],
                   const SizedBox(height: 80), // Space for bottom button
                 ],
               ),
             ),
           ),
         ),
-        _buildBottomSaveButton(formState, theme),
+        if (!widget.viewOnly)
+          _buildBottomSaveButton(formState, theme),
       ],
     );
   }
@@ -332,7 +372,7 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
             ),
           ),
           value: formState.enableCodeInterpreter,
-          onChanged: formState.isLoading
+          onChanged: (formState.isLoading || widget.viewOnly)
               ? null
               : (value) => formNotifier.setEnableCodeInterpreter(value),
           activeColor: theme.colorScheme.primary,
