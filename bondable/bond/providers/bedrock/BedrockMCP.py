@@ -1105,14 +1105,14 @@ async def execute_mcp_tool(
                     return {"success": True, "result": str(result)}
 
         except AuthorizationRequiredError as e:
-            LOGGER.debug(f"[MCP Execute] Authorization required for server '{server_name}': {e.server_name}")
+            LOGGER.debug(f"[MCP Execute] Authorization required for server '{server_name}': {e.connection_name}")
             if target_server:
                 # Direct routing - return error immediately
                 return {
                     "success": False,
                     "error": e.message,
                     "authorization_required": True,
-                    "server_name": e.server_name
+                    "server_name": e.connection_name
                 }
             # Searching - continue to next server
             LOGGER.debug(f"[MCP Execute] Server '{server_name}' needs auth, trying next server...")
