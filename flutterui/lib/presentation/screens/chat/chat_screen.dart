@@ -292,6 +292,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     _onAttachmentsChanged(updated);
   }
 
+  void _handlePromptButtonTap(String prompt) {
+    _textController.text = prompt;
+    _sendMessage();
+  }
+
   void _sendMessage() {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
@@ -434,6 +439,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                         child: ChatMessagesList(
                           scrollController: _scrollController,
                           imageCache: _imageCache,
+                          onSendPrompt: _handlePromptButtonTap,
                         ),
                       ),
                       MessageInputBar(
