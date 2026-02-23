@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutterui/presentation/screens/chat/widgets/interactive_markdown/interactive_markdown_body.dart';
 import 'package:flutterui/data/models/message_model.dart';
 import 'package:flutterui/providers/cached_agent_details_provider.dart';
 import 'package:flutterui/presentation/widgets/agent_icon.dart';
@@ -20,6 +21,7 @@ class ChatMessageItem extends ConsumerStatefulWidget {
   final Map<String, Uint8List> imageCache;
   final String? threadId;
   final Function(String messageId, String? feedbackType, String? feedbackMessage)? onFeedbackChanged;
+  final void Function(String prompt)? onSendPrompt;
 
   const ChatMessageItem({
     super.key,
@@ -29,6 +31,7 @@ class ChatMessageItem extends ConsumerStatefulWidget {
     required this.imageCache,
     this.threadId,
     this.onFeedbackChanged,
+    this.onSendPrompt,
   });
 
   @override
@@ -406,41 +409,40 @@ class _ChatMessageItemState extends ConsumerState<ChatMessageItem> {
     return Builder(
       builder: (context) {
         final defaultStyle = DefaultTextStyle.of(context).style;
-        return SelectionArea(
-          child: MarkdownBody(
-            data: message.content,
-            styleSheet: MarkdownStyleSheet.fromTheme(
-              Theme.of(context),
-            ).copyWith(
-              p: defaultStyle,
-              h1: defaultStyle.copyWith(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-              h2: defaultStyle.copyWith(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-              h3: defaultStyle.copyWith(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-              code: defaultStyle.copyWith(
-                fontFamily: 'monospace',
-                backgroundColor: defaultStyle.color?.withValues(
-                  alpha: 0.08,
-                ),
+        return InteractiveMarkdownBody(
+          data: message.content,
+          styleSheet: MarkdownStyleSheet.fromTheme(
+            Theme.of(context),
+          ).copyWith(
+            p: defaultStyle,
+            h1: defaultStyle.copyWith(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+            h2: defaultStyle.copyWith(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+            h3: defaultStyle.copyWith(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+            code: defaultStyle.copyWith(
+              fontFamily: 'monospace',
+              backgroundColor: defaultStyle.color?.withValues(
+                alpha: 0.08,
               ),
             ),
-            onTapLink: (text, href, title) {
-              if (href != null && href.isNotEmpty) {
-                final uri = Uri.tryParse(href);
-                if (uri != null) {
-                  launchUrl(uri, mode: LaunchMode.externalApplication);
-                }
-              }
-            },
           ),
+          onTapLink: (text, href, title) {
+            if (href != null && href.isNotEmpty) {
+              final uri = Uri.tryParse(href);
+              if (uri != null) {
+                launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            }
+          },
+          onPromptButtonTap: widget.onSendPrompt,
         );
       },
     );
