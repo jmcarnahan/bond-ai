@@ -11,6 +11,7 @@ from botocore.exceptions import ClientError
 from bondable.bond.config import Config
 from bondable.bond.definition import AgentDefinition
 from bondable.bond.providers.bedrock.BedrockMCP import create_mcp_action_groups
+from bondable.bond.providers.bedrock.bond_interactive_registry import append_bond_definitions
 
 
 LOGGER = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ def create_bedrock_agent(agent_id: str, agent_def: AgentDefinition, owner_user_i
     instructions = DEFAULT_INSTRUCTION
     if agent_def.instructions:
         instructions = agent_def.instructions.ljust(MIN_INSTRUCTION_LENGTH)
+    instructions = append_bond_definitions(instructions)
 
     if agent_def.description is None or agent_def.description.strip() == "":
         agent_def.description = agent_def.name
@@ -170,6 +172,7 @@ def update_bedrock_agent(agent_def: AgentDefinition, bedrock_agent_id: str, bedr
     instructions = DEFAULT_INSTRUCTION
     if agent_def.instructions:
         instructions = agent_def.instructions.ljust(MIN_INSTRUCTION_LENGTH)
+    instructions = append_bond_definitions(instructions)
 
     bedrock_agent_name = agent_def.id.replace('-', '_')
     if agent_def.description is None or agent_def.description.strip() == "":
