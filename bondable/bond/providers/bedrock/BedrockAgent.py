@@ -40,6 +40,7 @@ from .AdminMCP import (
 from .BedrockMetadata import BedrockMetadata, BedrockAgentOptions
 from .BedrockProvider import BedrockProvider
 from .BedrockFiles import is_image_mime_type, get_converse_image_format
+from .bond_interactive_registry import strip_bond_definitions
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_TEMPERATURE = 0.0
@@ -79,7 +80,7 @@ class BedrockAgent(Agent):
         self.name = name
         self.description = bedrock_agent['agent']['description'] if 'description' in bedrock_agent['agent'] else ''
         self.model = bedrock_agent['agent']['foundationModel']
-        self.instructions = bedrock_agent['agent']['instruction']
+        self.instructions = strip_bond_definitions(bedrock_agent['agent']['instruction'])
         self.introduction = introduction
         self.reminder = reminder
         self.owner_user_id = owner_user_id

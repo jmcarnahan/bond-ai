@@ -7,11 +7,13 @@ import 'package:flutterui/presentation/screens/chat/widgets/chat_message_item.da
 class ChatMessagesList extends ConsumerStatefulWidget {
   final ScrollController scrollController;
   final Map<String, Uint8List> imageCache;
+  final void Function(String prompt)? onSendPrompt;
 
   const ChatMessagesList({
     super.key,
     required this.scrollController,
     required this.imageCache,
+    this.onSendPrompt,
   });
 
   @override
@@ -91,6 +93,7 @@ class _ChatMessagesListState extends ConsumerState<ChatMessagesList> {
           imageCache: widget.imageCache,
           threadId: chatState.currentThreadId,
           onFeedbackChanged: _handleFeedbackChanged,
+          onSendPrompt: widget.onSendPrompt,
         );
       },
     );
