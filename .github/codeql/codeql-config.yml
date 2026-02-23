@@ -1,0 +1,15 @@
+name: "Bond AI CodeQL Configuration"
+
+queries:
+  - uses: security-extended
+
+paths-ignore:
+  - ".venv"
+  - ".venv-3.13"
+  - "mcps/microsoft/.venv"
+  - "tests"
+  - "scripts/.archive"
+  - "flutterui"
+  - "deployment"
+  - "__pycache__"
+  - "dist"
