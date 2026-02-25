@@ -62,7 +62,13 @@ jobs:
           sudo mv gitleaks /usr/local/bin/gitleaks
 
       - name: Run Gitleaks
-        run: gitleaks detect --source . --config .gitleaks.toml --redact
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            LOG_OPTS="origin/${GITHUB_BASE_REF}..HEAD"
+          else
+            LOG_OPTS="${{ github.event.before }}..${GITHUB_SHA}"
+          fi
+          gitleaks detect --source . --config .gitleaks.toml --redact --log-opts="$LOG_OPTS"
 
   trivy-iac:
     name: Trivy (Terraform Security)
@@ -103,7 +109,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@v2.16.0
         with:
           channel: stable
 
