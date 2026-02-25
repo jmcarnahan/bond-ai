@@ -459,7 +459,10 @@ async def oauth_callback(
             response = await client.post(
                 token_url,
                 data=token_data,
-                headers={"Content-Type": "application/x-www-form-urlencoded"}
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Accept": "application/json",
+                }
             )
             LOGGER.info(f"Token exchange successful for {connection_name}")
             response.raise_for_status()
