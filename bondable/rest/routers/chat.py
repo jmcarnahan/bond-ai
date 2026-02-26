@@ -102,6 +102,12 @@ async def chat(
             LOGGER.warning(f"User {current_user.user_id} ({current_user.email}) attempted to access agent {request_body.agent_id} without permission for chat.")
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to this agent is forbidden.")
 
+        # Track the last agent used on this thread (non-blocking)
+        try:
+            provider.threads.update_thread_last_agent(thread_id, current_user.user_id, request_body.agent_id)
+        except Exception as e:
+            LOGGER.error(f"Failed to update last_agent_id: {e}", exc_info=True)
+
         # Stream response generator with safety net to ensure frontend always gets a response
         def stream_response_generator():
             bond_message_open = False
