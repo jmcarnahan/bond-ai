@@ -9,11 +9,11 @@ final allThreadsProvider = FutureProvider<List<Thread>>((ref) async {
   logger.i("[allThreadsProvider] Fetching all threads...");
   final threadService = ref.watch(threadServiceProvider);
   try {
-    final threads = await threadService.getThreads();
+    final result = await threadService.getThreads();
     logger.i(
-      "[allThreadsProvider] Successfully fetched ${threads.length} threads.",
+      "[allThreadsProvider] Successfully fetched ${result.threads.length} threads.",
     );
-    return threads;
+    return result.threads;
   } catch (e) {
     logger.i("[allThreadsProvider] Error fetching all threads: ${e.toString()}");
     rethrow;

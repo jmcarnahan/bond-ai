@@ -1,20 +1,98 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/core_providers.dart';
+import 'package:flutterui/providers/thread_provider.dart';
 import 'package:flutterui/presentation/widgets/connection_status_indicator.dart';
+import 'package:flutterui/core/utils/logger.dart';
 
-class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
+class ChatAppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
   final String agentName;
+  final String? threadName;
+  final String? threadId;
 
   const ChatAppBar({
     super.key,
     required this.agentName,
+    this.threadName,
+    this.threadId,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ChatAppBar> createState() => _ChatAppBarState();
+
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight + 8);
+}
+
+class _ChatAppBarState extends ConsumerState<ChatAppBar> {
+  bool _isEditing = false;
+  late TextEditingController _editController;
+  late FocusNode _editFocusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _editController = TextEditingController();
+    _editFocusNode = FocusNode();
+    _editFocusNode.addListener(_onFocusLost);
+  }
+
+  @override
+  void dispose() {
+    _editFocusNode.removeListener(_onFocusLost);
+    _editFocusNode.dispose();
+    _editController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatAppBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.threadId != widget.threadId && _isEditing) {
+      setState(() => _isEditing = false);
+    }
+  }
+
+  void _onFocusLost() {
+    if (!_editFocusNode.hasFocus && _isEditing) {
+      _submitRename();
+    }
+  }
+
+  void _startEditing() {
+    if (widget.threadId == null) return;
+    setState(() {
+      _isEditing = true;
+      _editController.text = widget.threadName ?? 'New Conversation';
+      _editController.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _editController.text.length,
+      );
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _editFocusNode.requestFocus();
+    });
+  }
+
+  void _submitRename() async {
+    if (!_isEditing || !mounted) return;
+    final newName = _editController.text.trim();
+    setState(() => _isEditing = false);
+    if (newName.isNotEmpty && newName != widget.threadName && widget.threadId != null) {
+      try {
+        await ref.read(threadsProvider.notifier).renameThread(widget.threadId!, newName);
+      } catch (e) {
+        logger.w('[ChatAppBar] Failed to rename thread: $e');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final appTheme = ref.watch(appThemeProvider);
     final theme = Theme.of(context);
+    final displayName = widget.threadName ?? 'New Conversation';
+    final canEdit = widget.threadId != null;
 
     return Container(
       decoration: BoxDecoration(
@@ -53,28 +131,71 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
               ),
             ),
             const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  "Conversation",
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurface,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_isEditing)
+                    SizedBox(
+                      height: 24,
+                      child: TextField(
+                        controller: _editController,
+                        focusNode: _editFocusNode,
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurface,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
+                        ),
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.zero,
+                          border: InputBorder.none,
+                        ),
+                        onSubmitted: (_) => _submitRename(),
+                      ),
+                    )
+                  else
+                    GestureDetector(
+                      onTap: canEdit ? _startEditing : null,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              displayName,
+                              style: TextStyle(
+                                color: theme.colorScheme.onSurface,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (canEdit) ...[
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.edit_outlined,
+                              size: 14,
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  Text(
+                    appTheme.brandingMessage,
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                    ),
                   ),
-                ),
-                Text(
-                  appTheme.brandingMessage,
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
@@ -85,7 +206,4 @@ class ChatAppBar extends ConsumerWidget implements PreferredSizeWidget {
       ),
     );
   }
-
-  @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight + 8);
 }
