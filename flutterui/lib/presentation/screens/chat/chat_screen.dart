@@ -360,11 +360,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   void didUpdateWidget(covariant ChatScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // Only re-initialize if we're actually changing to a different thread
-    if (widget.agentId != oldWidget.agentId ||
-        (widget.initialThreadId != oldWidget.initialThreadId &&
-            widget.initialThreadId !=
-                ref.read(chatSessionNotifierProvider).currentThreadId)) {
+    // Sync local agent state when the parent widget rebuilds with a new agent
+    if (widget.agentId != oldWidget.agentId) {
+      _currentAgentId = widget.agentId;
+      _currentAgentName = widget.agentName;
+    }
+
+    // Only re-initialize if we're actually changing to a different thread.
+    // Agent-only changes are handled by the local state sync above and
+    // do NOT require session reinitialization (which would cause cascading
+    // navigation via selectThread → selectedThreadProvider listener).
+    if (widget.initialThreadId != oldWidget.initialThreadId &&
+        widget.initialThreadId !=
+            ref.read(chatSessionNotifierProvider).currentThreadId) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _initializeChatSession();
       });
