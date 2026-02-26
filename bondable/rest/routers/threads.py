@@ -13,6 +13,16 @@ router = APIRouter(prefix="/threads", tags=["Thread"])
 LOGGER = logging.getLogger(__name__)
 
 
+def _resolve_agent_name(provider: Provider, agent_id: str) -> Optional[str]:
+    """Resolve an agent ID to its display name. Returns None if not found or on error."""
+    try:
+        agent = provider.agents.get_agent(agent_id=agent_id)
+        return agent.get_name() if agent else None
+    except Exception as e:
+        LOGGER.warning(f"Failed to resolve agent name for {agent_id}: {e}")
+        return None
+
+
 @router.get("", response_model=PaginatedThreadsResponse)
 async def get_threads(
     current_user: Annotated[User, Depends(get_current_user)],
@@ -35,13 +45,21 @@ async def get_threads(
             user_id=current_user.user_id,
             exclude_empty=exclude_empty,
         )
+        # Batch-resolve agent names for threads with last_agent_id
+        agent_name_cache: dict[str, str | None] = {}
+        agent_ids = {td['last_agent_id'] for td in thread_data_list if td.get('last_agent_id')}
+        for aid in agent_ids:
+            agent_name_cache[aid] = _resolve_agent_name(provider, aid)
+
         threads = [
             ThreadRef(
                 id=thread_data['thread_id'],
                 name=thread_data['name'],
                 description=thread_data.get('description'),
                 created_at=thread_data.get('created_at'),
-                updated_at=thread_data.get('updated_at')
+                updated_at=thread_data.get('updated_at'),
+                last_agent_id=thread_data.get('last_agent_id'),
+                last_agent_name=agent_name_cache.get(thread_data.get('last_agent_id')) if thread_data.get('last_agent_id') else None,
             )
             for thread_data in thread_data_list
         ]
@@ -147,12 +165,16 @@ async def update_thread(
             )
         thread = provider.threads.get_thread(thread_id=thread_id, user_id=current_user.user_id)
         LOGGER.info(f"User {current_user.user_id} ({current_user.email}) renamed thread {thread_id} to '{name}'")
+        # Resolve agent name if last_agent_id is set
+        last_agent_name = _resolve_agent_name(provider, thread.last_agent_id) if thread.last_agent_id else None
         return ThreadRef(
             id=thread.thread_id,
             name=thread.name,
             description=None,
             created_at=thread.created_at,
             updated_at=thread.updated_at,
+            last_agent_id=thread.last_agent_id,
+            last_agent_name=last_agent_name,
         )
     except HTTPException:
         raise
