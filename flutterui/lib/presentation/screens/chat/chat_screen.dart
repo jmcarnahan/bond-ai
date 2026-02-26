@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:flutterui/providers/thread_chat/thread_chat_providers.dart';
+import 'package:flutterui/providers/thread_chat/chat_session_state.dart';
 import 'package:flutterui/providers/thread_provider.dart';
 import 'package:flutterui/providers/services/service_providers.dart';
 import 'package:flutterui/data/models/agent_model.dart';
@@ -370,6 +371,33 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     }
   }
 
+  ChatAppBar _buildAppBar(ChatSessionState chatState) {
+    // Use selectedThreadProvider first; fall back to the chat session's thread ID
+    final selectedThread = ref.watch(selectedThreadProvider);
+    final selectedId = ref.watch(selectedThreadIdProvider);
+    final chatThreadId = chatState.currentThreadId;
+    final effectiveThreadId = selectedId ?? chatThreadId;
+
+    // If we have a thread ID from the chat session but not from the global
+    // selected provider, look it up in the threads list
+    String? threadName = selectedThread?.name;
+    if (threadName == null && chatThreadId != null) {
+      final threadsAsync = ref.watch(threadsProvider);
+      threadName = threadsAsync.whenOrNull(
+        data: (threads) {
+          final match = threads.where((t) => t.id == chatThreadId).toList();
+          return match.isNotEmpty ? match.first.name : null;
+        },
+      );
+    }
+
+    return ChatAppBar(
+      agentName: _currentAgentName,
+      threadName: threadName,
+      threadId: effectiveThreadId,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final chatState = ref.watch(chatSessionNotifierProvider);
@@ -384,6 +412,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             _initializeChatSession();
           }
         });
+      }
+    });
+
+    // Sync thread ID from chat session to global state. When the backend
+    // creates a thread during the introduction flow, the chat session learns
+    // the thread ID from the stream but it never gets added to the global
+    // threads provider. This listener ensures the two stay in sync.
+    ref.listen<ChatSessionState>(chatSessionNotifierProvider, (previous, next) {
+      final prevThreadId = previous?.currentThreadId;
+      final newThreadId = next.currentThreadId;
+      if (newThreadId != null && prevThreadId != newThreadId) {
+        final currentSelectedId = ref.read(selectedThreadIdProvider);
+        if (currentSelectedId != newThreadId) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              final threadsNotifier = ref.read(threadsProvider.notifier);
+              threadsNotifier.ensureThread(newThreadId);
+              threadsNotifier.selectThread(newThreadId);
+            }
+          });
+        }
       }
     });
 
@@ -418,7 +467,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       drawer: const AppDrawer(),
-      appBar: ChatAppBar(agentName: _currentAgentName),
+      appBar: _buildAppBar(chatState),
       body: DropTarget(
         enable: !kIsWeb,
         onDragDone: _handleFileDrop,
