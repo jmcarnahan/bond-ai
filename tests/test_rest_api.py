@@ -588,21 +588,213 @@ class TestAgents:
 class TestThreads:
 
     def test_get_threads_success(self, authenticated_client):
-        """Test listing threads successfully."""
+        """Test listing threads successfully with pagination."""
         client, auth_headers, mock_provider = authenticated_client
 
         mock_provider.threads.get_current_threads.return_value = [
             {"thread_id": "thread_1", "name": "Thread 1", "description": "Desc 1"},
             {"thread_id": "thread_2", "name": "Thread 2", "description": None}
         ]
+        mock_provider.threads.get_thread_count.return_value = 2
 
         response = client.get("/threads", headers=auth_headers)
 
         assert response.status_code == 200
-        threads = response.json()
-        assert len(threads) == 2
-        assert threads[0]["id"] == "thread_1"
-        assert threads[1]["description"] is None
+        data = response.json()
+        assert len(data["threads"]) == 2
+        assert data["threads"][0]["id"] == "thread_1"
+        assert data["threads"][1]["description"] is None
+        assert data["total"] == 2
+        assert data["has_more"] is False
+
+    def test_get_threads_pagination_params(self, authenticated_client):
+        """Test GET /threads respects offset, limit, exclude_empty params."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.get_current_threads.return_value = [
+            {"thread_id": "thread_3", "name": "Thread 3"}
+        ]
+        mock_provider.threads.get_thread_count.return_value = 50
+
+        response = client.get("/threads?offset=20&limit=10&exclude_empty=false", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["offset"] == 20
+        assert data["limit"] == 10
+        assert data["total"] == 50
+        assert data["has_more"] is True
+        mock_provider.threads.get_current_threads.assert_called_with(
+            user_id=TEST_USER_ID, count=10, offset=20, exclude_empty=False
+        )
+        mock_provider.threads.get_thread_count.assert_called_with(
+            user_id=TEST_USER_ID, exclude_empty=False
+        )
+
+    def test_get_threads_limit_capped_at_100(self, authenticated_client):
+        """Test that limit is capped at 100."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.get_current_threads.return_value = []
+        mock_provider.threads.get_thread_count.return_value = 0
+
+        response = client.get("/threads?limit=500", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["limit"] == 100
+        mock_provider.threads.get_current_threads.assert_called_with(
+            user_id=TEST_USER_ID, count=100, offset=0, exclude_empty=True
+        )
+
+    def test_get_threads_negative_offset_clamped(self, authenticated_client):
+        """Test that negative offset is clamped to 0."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.get_current_threads.return_value = []
+        mock_provider.threads.get_thread_count.return_value = 0
+
+        response = client.get("/threads?offset=-5", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["offset"] == 0
+        mock_provider.threads.get_current_threads.assert_called_with(
+            user_id=TEST_USER_ID, count=20, offset=0, exclude_empty=True
+        )
+
+    def test_get_threads_has_more_true(self, authenticated_client):
+        """Test has_more is true when there are more pages."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.get_current_threads.return_value = [
+            {"thread_id": f"thread_{i}", "name": f"Thread {i}"} for i in range(20)
+        ]
+        mock_provider.threads.get_thread_count.return_value = 50
+
+        response = client.get("/threads?offset=0&limit=20", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["has_more"] is True
+        assert data["total"] == 50
+
+    def test_update_thread_success(self, authenticated_client):
+        """Test renaming a thread successfully."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.update_thread.return_value = True
+        mock_thread = MagicMock()
+        mock_thread.thread_id = "thread_1"
+        mock_thread.name = "Renamed Thread"
+        mock_thread.created_at = None
+        mock_thread.updated_at = None
+        mock_provider.threads.get_thread.return_value = mock_thread
+
+        response = client.put("/threads/thread_1", headers=auth_headers, json={"name": "Renamed Thread"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == "thread_1"
+        assert data["name"] == "Renamed Thread"
+        mock_provider.threads.update_thread.assert_called_once_with(
+            thread_id="thread_1", user_id=TEST_USER_ID, name="Renamed Thread"
+        )
+
+    def test_update_thread_not_found(self, authenticated_client):
+        """Test renaming a non-existent thread returns 404."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.update_thread.return_value = False
+
+        response = client.put("/threads/nonexistent", headers=auth_headers, json={"name": "New Name"})
+
+        assert response.status_code == 404
+        assert "Thread not found" in response.json()["detail"]
+
+    def test_update_thread_empty_name(self, authenticated_client):
+        """Test renaming with empty name returns 400."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        response = client.put("/threads/thread_1", headers=auth_headers, json={"name": ""})
+
+        assert response.status_code == 400
+        assert "cannot be empty" in response.json()["detail"]
+
+    def test_update_thread_whitespace_only_name(self, authenticated_client):
+        """Test renaming with whitespace-only name returns 400."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        response = client.put("/threads/thread_1", headers=auth_headers, json={"name": "   "})
+
+        assert response.status_code == 400
+        assert "cannot be empty" in response.json()["detail"]
+
+    def test_update_thread_trims_whitespace(self, authenticated_client):
+        """Test that thread name is trimmed of leading/trailing whitespace."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.update_thread.return_value = True
+        mock_thread = MagicMock()
+        mock_thread.thread_id = "thread_1"
+        mock_thread.name = "Trimmed Name"
+        mock_thread.created_at = None
+        mock_thread.updated_at = None
+        mock_provider.threads.get_thread.return_value = mock_thread
+
+        response = client.put("/threads/thread_1", headers=auth_headers, json={"name": "  Trimmed Name  "})
+
+        assert response.status_code == 200
+        mock_provider.threads.update_thread.assert_called_once_with(
+            thread_id="thread_1", user_id=TEST_USER_ID, name="Trimmed Name"
+        )
+
+    def test_update_thread_provider_error(self, authenticated_client):
+        """Test renaming when provider raises an error."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.update_thread.side_effect = Exception("Database error")
+
+        response = client.put("/threads/thread_1", headers=auth_headers, json={"name": "New Name"})
+
+        assert response.status_code == 500
+        assert "Could not update thread" in response.json()["detail"]
+
+    def test_cleanup_empty_threads_success(self, authenticated_client):
+        """Test cleanup endpoint deletes empty threads."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.delete_empty_threads.return_value = 5
+
+        response = client.post("/threads/cleanup", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["deleted"] == 5
+        mock_provider.threads.delete_empty_threads.assert_called_once_with(user_id=TEST_USER_ID)
+
+    def test_cleanup_empty_threads_none_found(self, authenticated_client):
+        """Test cleanup endpoint when no empty threads exist."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.delete_empty_threads.return_value = 0
+
+        response = client.post("/threads/cleanup", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["deleted"] == 0
+
+    def test_cleanup_empty_threads_provider_error(self, authenticated_client):
+        """Test cleanup endpoint when provider raises an error."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.delete_empty_threads.side_effect = Exception("Database error")
+
+        response = client.post("/threads/cleanup", headers=auth_headers)
+
+        assert response.status_code == 500
+        assert "Could not cleanup empty threads" in response.json()["detail"]
 
     def test_create_thread_with_name(self, authenticated_client):
         """Test creating thread with name."""
