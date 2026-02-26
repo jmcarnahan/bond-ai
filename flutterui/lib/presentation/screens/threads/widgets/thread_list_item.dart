@@ -63,7 +63,8 @@ class ThreadListItem extends ConsumerWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 4),
+                _buildEditButton(context, ref, theme),
                 _buildDeleteButton(context, ref, theme),
               ],
             ),
@@ -130,6 +131,67 @@ class ThreadListItem extends ConsumerWidget {
         color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
       ),
     );
+  }
+
+  Widget _buildEditButton(BuildContext context, WidgetRef ref, ThemeData theme) {
+    return IconButton(
+      icon: Icon(
+        Icons.edit_outlined,
+        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+        size: 20,
+      ),
+      tooltip: 'Rename Conversation',
+      onPressed: () => _showRenameDialog(context, ref, theme),
+    );
+  }
+
+  Future<void> _showRenameDialog(
+    BuildContext context,
+    WidgetRef ref,
+    ThemeData theme,
+  ) async {
+    final controller = TextEditingController(text: thread.name);
+
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename Thread'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Thread name',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (newName != null && newName.isNotEmpty && newName != thread.name && context.mounted) {
+      try {
+        await ref.read(threadsProvider.notifier).renameThread(thread.id, newName);
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to rename thread: ${e.toString()}'),
+              backgroundColor: theme.colorScheme.error,
+            ),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildDeleteButton(BuildContext context, WidgetRef ref, ThemeData theme) {
