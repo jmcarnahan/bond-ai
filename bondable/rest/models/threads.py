@@ -9,6 +9,8 @@ class ThreadRef(BaseModel):
     description: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    last_agent_id: Optional[str] = None
+    last_agent_name: Optional[str] = None
 
 
 class CreateThreadRequest(BaseModel):

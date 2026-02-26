@@ -22,6 +22,7 @@ class Thread(Base):
     name = Column(String, default="New Thread")
     session_id = Column(String, nullable=True)  # remote session ID if any
     session_state = Column(JSON, default=dict)  # remote session state if any
+    last_agent_id = Column(String, nullable=True)  # Soft reference, no FK constraint
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     __table_args__ = (PrimaryKeyConstraint('thread_id', 'user_id'),)
@@ -166,6 +167,7 @@ class Metadata(ABC):
         Base.metadata.create_all(self.engine)
         self._migrate_add_default_group_id()
         self._backfill_default_group_ids()
+        self._migrate_add_last_agent_id()
 
     def _migrate_add_default_group_id(self):
         """Add default_group_id column to agents table if it doesn't exist."""
@@ -216,6 +218,19 @@ class Metadata(ABC):
             LOGGER.error(f"Error during backfill of default_group_ids: {e}")
         finally:
             session.close()
+
+    def _migrate_add_last_agent_id(self):
+        """Add last_agent_id column to threads table if it doesn't exist."""
+        from sqlalchemy import inspect
+        inspector = inspect(self.engine)
+        columns = [col['name'] for col in inspector.get_columns('threads')]
+        if 'last_agent_id' not in columns:
+            with self.engine.connect() as conn:
+                conn.execute(text(
+                    "ALTER TABLE threads ADD COLUMN last_agent_id VARCHAR"
+                ))
+                conn.commit()
+            LOGGER.info("Migration: Added last_agent_id column to threads table")
 
     def drop_and_recreate_all(self):
         """Drop all tables and recreate them. Use with caution - this deletes all data!"""

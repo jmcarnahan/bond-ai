@@ -113,6 +113,23 @@ class ThreadsProvider(ABC):
             session.close()
 
 
+    def update_thread_last_agent(self, thread_id: str, user_id: str, agent_id: str) -> None:
+        """Update the last_agent_id on a thread."""
+        session = self.metadata.get_db_session()
+        try:
+            thread = session.query(Thread).filter_by(thread_id=thread_id, user_id=user_id).first()
+            if thread:
+                thread.last_agent_id = agent_id
+                session.commit()
+                LOGGER.debug(f"Updated last_agent_id to '{agent_id}' for thread {thread_id}, user {user_id}")
+            else:
+                LOGGER.warning(f"Thread {thread_id} not found for user {user_id}. Cannot update last_agent_id.")
+        except Exception as e:
+            LOGGER.error(f"Error updating last_agent_id: {e}", exc_info=True)
+            session.rollback()
+        finally:
+            session.close()
+
     def _user_message_exists_clause(self):
         """Return an exists() clause checking for user messages in bedrock_messages."""
         bm = table('bedrock_messages', column('thread_id'), column('role'))
@@ -123,7 +140,7 @@ class ThreadsProvider(ABC):
 
     def _build_threads_query(self, session, user_id: str, exclude_empty: bool = False):
         """Build the base query for threads with optional empty filtering."""
-        query = (session.query(Thread.thread_id, Thread.name, Thread.created_at, Thread.updated_at)
+        query = (session.query(Thread.thread_id, Thread.name, Thread.created_at, Thread.updated_at, Thread.last_agent_id)
                     .filter_by(user_id=user_id))
         if exclude_empty:
             query = query.filter(self._user_message_exists_clause())
@@ -136,8 +153,8 @@ class ThreadsProvider(ABC):
                         .offset(offset)
                         .limit(count).all())
             threads = [
-                {"thread_id": thread_id, "name": name, "created_at": created_at, "updated_at": updated_at}
-                for thread_id, name, created_at, updated_at in results
+                {"thread_id": thread_id, "name": name, "created_at": created_at, "updated_at": updated_at, "last_agent_id": last_agent_id}
+                for thread_id, name, created_at, updated_at, last_agent_id in results
             ]
             LOGGER.debug(f"Retrieved {len(threads)} threads for user {user_id} (limit: {count}, offset: {offset}, exclude_empty: {exclude_empty}, sorted by updated_at desc)")
             return threads

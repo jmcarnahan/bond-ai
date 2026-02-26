@@ -7,6 +7,8 @@ class Thread {
   final String? description;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final String? lastAgentId;
+  final String? lastAgentName;
 
   const Thread({
     required this.id,
@@ -14,6 +16,8 @@ class Thread {
     this.description,
     this.createdAt,
     this.updatedAt,
+    this.lastAgentId,
+    this.lastAgentName,
   });
 
   factory Thread.fromJson(Map<String, dynamic> json) {
@@ -27,6 +31,8 @@ class Thread {
       updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'] as String).toLocal()
           : null,
+      lastAgentId: json['last_agent_id'] as String?,
+      lastAgentName: json['last_agent_name'] as String?,
     );
   }
 
@@ -36,6 +42,10 @@ class Thread {
     String? description,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? lastAgentId,
+    bool clearLastAgentId = false,
+    String? lastAgentName,
+    bool clearLastAgentName = false,
   }) {
     return Thread(
       id: id ?? this.id,
@@ -43,6 +53,8 @@ class Thread {
       description: description ?? this.description,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      lastAgentId: clearLastAgentId ? null : (lastAgentId ?? this.lastAgentId),
+      lastAgentName: clearLastAgentName ? null : (lastAgentName ?? this.lastAgentName),
     );
   }
 
@@ -53,6 +65,8 @@ class Thread {
       'description': description,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
+      'last_agent_id': lastAgentId,
+      'last_agent_name': lastAgentName,
     };
   }
 
@@ -65,7 +79,9 @@ class Thread {
         other.name == name &&
         other.description == description &&
         other.createdAt == createdAt &&
-        other.updatedAt == updatedAt;
+        other.updatedAt == updatedAt &&
+        other.lastAgentId == lastAgentId &&
+        other.lastAgentName == lastAgentName;
   }
 
   @override
@@ -74,5 +90,7 @@ class Thread {
       name.hashCode ^
       description.hashCode ^
       createdAt.hashCode ^
-      updatedAt.hashCode;
+      updatedAt.hashCode ^
+      lastAgentId.hashCode ^
+      lastAgentName.hashCode;
 }
