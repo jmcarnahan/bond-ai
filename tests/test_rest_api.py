@@ -689,6 +689,7 @@ class TestThreads:
         mock_thread.name = "Renamed Thread"
         mock_thread.created_at = None
         mock_thread.updated_at = None
+        mock_thread.last_agent_id = None
         mock_provider.threads.get_thread.return_value = mock_thread
 
         response = client.put("/threads/thread_1", headers=auth_headers, json={"name": "Renamed Thread"})
@@ -740,6 +741,7 @@ class TestThreads:
         mock_thread.name = "Trimmed Name"
         mock_thread.created_at = None
         mock_thread.updated_at = None
+        mock_thread.last_agent_id = None
         mock_provider.threads.get_thread.return_value = mock_thread
 
         response = client.put("/threads/thread_1", headers=auth_headers, json={"name": "  Trimmed Name  "})
@@ -921,6 +923,208 @@ class TestThreads:
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
+
+# --- Thread-Agent Association Tests ---
+
+class TestThreadAgentAssociation:
+
+    def test_get_threads_includes_last_agent_id_and_name(self, authenticated_client):
+        """Test that get_threads resolves last_agent_id to last_agent_name."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.get_current_threads.return_value = [
+            {"thread_id": "thread_1", "name": "Thread 1", "last_agent_id": "agent_abc"},
+            {"thread_id": "thread_2", "name": "Thread 2", "last_agent_id": None},
+        ]
+        mock_provider.threads.get_thread_count.return_value = 2
+
+        mock_agent = MagicMock()
+        mock_agent.get_name.return_value = "My Agent"
+        mock_provider.agents.get_agent.return_value = mock_agent
+
+        response = client.get("/threads", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["threads"][0]["last_agent_id"] == "agent_abc"
+        assert data["threads"][0]["last_agent_name"] == "My Agent"
+        assert data["threads"][1]["last_agent_id"] is None
+        assert data["threads"][1]["last_agent_name"] is None
+        mock_provider.agents.get_agent.assert_called_once_with(agent_id="agent_abc")
+
+    def test_get_threads_deleted_agent_returns_null_name(self, authenticated_client):
+        """Test that deleted agents resolve to null last_agent_name."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.get_current_threads.return_value = [
+            {"thread_id": "thread_1", "name": "Thread 1", "last_agent_id": "deleted_agent"},
+        ]
+        mock_provider.threads.get_thread_count.return_value = 1
+
+        mock_provider.agents.get_agent.return_value = None
+
+        response = client.get("/threads", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["threads"][0]["last_agent_id"] == "deleted_agent"
+        assert data["threads"][0]["last_agent_name"] is None
+
+    def test_get_threads_agent_resolution_exception_returns_null_name(self, authenticated_client):
+        """Test that agent resolution exceptions don't fail the request."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.get_current_threads.return_value = [
+            {"thread_id": "thread_1", "name": "Thread 1", "last_agent_id": "broken_agent"},
+        ]
+        mock_provider.threads.get_thread_count.return_value = 1
+
+        mock_provider.agents.get_agent.side_effect = Exception("Agent service unavailable")
+
+        response = client.get("/threads", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["threads"][0]["last_agent_id"] == "broken_agent"
+        assert data["threads"][0]["last_agent_name"] is None
+
+    def test_get_threads_deduplicates_agent_lookups(self, authenticated_client):
+        """Test that multiple threads with same agent only trigger one lookup."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.get_current_threads.return_value = [
+            {"thread_id": "thread_1", "name": "Thread 1", "last_agent_id": "agent_abc"},
+            {"thread_id": "thread_2", "name": "Thread 2", "last_agent_id": "agent_abc"},
+            {"thread_id": "thread_3", "name": "Thread 3", "last_agent_id": "agent_abc"},
+        ]
+        mock_provider.threads.get_thread_count.return_value = 3
+
+        mock_agent = MagicMock()
+        mock_agent.get_name.return_value = "Shared Agent"
+        mock_provider.agents.get_agent.return_value = mock_agent
+
+        response = client.get("/threads", headers=auth_headers)
+
+        assert response.status_code == 200
+        # Should only call get_agent once despite 3 threads using same agent
+        mock_provider.agents.get_agent.assert_called_once_with(agent_id="agent_abc")
+        data = response.json()
+        for thread in data["threads"]:
+            assert thread["last_agent_name"] == "Shared Agent"
+
+    def test_update_thread_includes_last_agent_id_and_name(self, authenticated_client):
+        """Test that update_thread response includes agent info."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.update_thread.return_value = True
+        mock_thread = MagicMock()
+        mock_thread.thread_id = "thread_1"
+        mock_thread.name = "Renamed"
+        mock_thread.created_at = None
+        mock_thread.updated_at = None
+        mock_thread.last_agent_id = "agent_xyz"
+        mock_provider.threads.get_thread.return_value = mock_thread
+
+        mock_agent = MagicMock()
+        mock_agent.get_name.return_value = "Agent XYZ"
+        mock_provider.agents.get_agent.return_value = mock_agent
+
+        response = client.put("/threads/thread_1", headers=auth_headers, json={"name": "Renamed"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["last_agent_id"] == "agent_xyz"
+        assert data["last_agent_name"] == "Agent XYZ"
+
+    def test_update_thread_no_agent_returns_null(self, authenticated_client):
+        """Test that update_thread with no last_agent_id returns null fields."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_provider.threads.update_thread.return_value = True
+        mock_thread = MagicMock()
+        mock_thread.thread_id = "thread_1"
+        mock_thread.name = "Renamed"
+        mock_thread.created_at = None
+        mock_thread.updated_at = None
+        mock_thread.last_agent_id = None
+        mock_provider.threads.get_thread.return_value = mock_thread
+
+        response = client.put("/threads/thread_1", headers=auth_headers, json={"name": "Renamed"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["last_agent_id"] is None
+        assert data["last_agent_name"] is None
+
+    def test_chat_updates_last_agent_id(self, authenticated_client):
+        """Test that sending a chat message updates last_agent_id on the thread."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_agent = MagicMock(spec=AgentABC)
+        mock_agent.stream_response.return_value = iter(["Hello"])
+        mock_provider.agents.get_agent.return_value = mock_agent
+        mock_provider.agents.can_user_access_agent.return_value = True
+
+        chat_data = {
+            "thread_id": "test_thread",
+            "agent_id": "agent_123",
+            "prompt": "Hello"
+        }
+
+        response = client.post("/chat", headers=auth_headers, json=chat_data)
+
+        assert response.status_code == 200
+        mock_provider.threads.update_thread_last_agent.assert_called_once_with(
+            "test_thread", TEST_USER_ID, "agent_123"
+        )
+
+    def test_chat_last_agent_update_failure_does_not_block_chat(self, authenticated_client):
+        """Test that chat still works if update_thread_last_agent fails."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_agent = MagicMock(spec=AgentABC)
+        mock_agent.stream_response.return_value = iter(["Hello"])
+        mock_provider.agents.get_agent.return_value = mock_agent
+        mock_provider.agents.can_user_access_agent.return_value = True
+        mock_provider.threads.update_thread_last_agent.side_effect = Exception("DB error")
+
+        chat_data = {
+            "thread_id": "test_thread",
+            "agent_id": "agent_123",
+            "prompt": "Hello"
+        }
+
+        response = client.post("/chat", headers=auth_headers, json=chat_data)
+
+        assert response.status_code == 200
+        assert response.text == "Hello"
+
+    def test_chat_null_thread_id_sets_last_agent_id(self, authenticated_client):
+        """Test that new threads created via chat also get last_agent_id set."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        mock_thread = MagicMock()
+        mock_thread.thread_id = "new_thread_456"
+        mock_provider.threads.create_thread.return_value = mock_thread
+
+        mock_agent = MagicMock(spec=AgentABC)
+        mock_agent.stream_response.return_value = iter(["Welcome"])
+        mock_provider.agents.get_agent.return_value = mock_agent
+        mock_provider.agents.can_user_access_agent.return_value = True
+
+        chat_data = {
+            "thread_id": None,
+            "agent_id": "agent_789",
+            "prompt": "Hello",
+            "override_role": "system"
+        }
+
+        response = client.post("/chat", headers=auth_headers, json=chat_data)
+
+        assert response.status_code == 200
+        mock_provider.threads.update_thread_last_agent.assert_called_once_with(
+            "new_thread_456", TEST_USER_ID, "agent_789"
+        )
 
 # --- Chat Tests ---
 
