@@ -31,7 +31,7 @@ from pathlib import Path
 
 import httpx
 
-from github.github_client import GitHubClient
+from github.github_client import GitHubClient, GitHubError
 from github import repos, issues, pulls, code
 
 TOKEN_CACHE_PATH = Path.home() / ".github_mcp_tokens.json"
@@ -53,10 +53,10 @@ def _get_token() -> str:
                     try:
                         client.get("/user")
                         return token
-                    except Exception:
-                        pass  # Token expired or revoked
-        except Exception:
-            pass
+                    except (httpx.HTTPError, GitHubError):
+                        pass  # Token expired or revoked, re-authenticate
+        except (json.JSONDecodeError, OSError):
+            pass  # Corrupt or unreadable cache file, re-authenticate
 
     client_id = os.environ.get("GH_CLIENT_ID")
     if not client_id:
@@ -64,7 +64,7 @@ def _get_token() -> str:
         sys.exit(1)
 
     # Step 1: Request device code
-    with httpx.Client() as http:
+    with httpx.Client(timeout=30.0) as http:
         resp = http.post(
             "https://github.com/login/device/code",
             data={"client_id": client_id, "scope": SCOPES},
@@ -85,7 +85,7 @@ def _get_token() -> str:
 
     # Step 2: Poll for access token
     deadline = time.time() + expires_in
-    with httpx.Client() as http:
+    with httpx.Client(timeout=30.0) as http:
         while time.time() < deadline:
             time.sleep(interval)
             resp = http.post(
