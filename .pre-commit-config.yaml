@@ -9,12 +9,12 @@ repos:
     hooks:
       - id: gitleaks
 
-  # Bandit - Python security linter (warn only, doesn't block commits)
+  # Bandit - Python security linter
   - repo: https://github.com/PyCQA/bandit
     rev: 1.7.10
     hooks:
       - id: bandit
-        args: ["-c", "pyproject.toml", "--exit-zero"]
+        args: ["-c", "pyproject.toml"]
         additional_dependencies: ["bandit[toml]"]
 
   # Basic file checks
