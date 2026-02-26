@@ -444,7 +444,7 @@ class TestSparseResponses:
 
         text = result.content[0].text
         assert "Binary file" in text
-        assert "raw.githubusercontent.com" in text
+        assert "Download:" in text
 
 
 # ---------------------------------------------------------------------------
