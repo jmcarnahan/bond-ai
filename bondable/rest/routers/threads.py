@@ -5,7 +5,7 @@ import logging
 
 from bondable.bond.providers.provider import Provider
 from bondable.rest.models.auth import User
-from bondable.rest.models.threads import ThreadRef, CreateThreadRequest, MessageRef, MessageFeedbackRequest, MessageFeedbackResponse
+from bondable.rest.models.threads import ThreadRef, CreateThreadRequest, UpdateThreadRequest, PaginatedThreadsResponse, MessageRef, MessageFeedbackRequest, MessageFeedbackResponse
 from bondable.rest.dependencies.auth import get_current_user
 from bondable.rest.dependencies.providers import get_bond_provider
 
@@ -13,15 +13,29 @@ router = APIRouter(prefix="/threads", tags=["Thread"])
 LOGGER = logging.getLogger(__name__)
 
 
-@router.get("", response_model=List[ThreadRef])
+@router.get("", response_model=PaginatedThreadsResponse)
 async def get_threads(
     current_user: Annotated[User, Depends(get_current_user)],
-    provider: Provider = Depends(get_bond_provider)
+    provider: Provider = Depends(get_bond_provider),
+    offset: int = 0,
+    limit: int = 20,
+    exclude_empty: bool = True
 ):
-    """Get list of threads for the authenticated user."""
+    """Get paginated list of threads for the authenticated user."""
     try:
-        thread_data_list = provider.threads.get_current_threads(user_id=current_user.user_id)
-        return [
+        offset = max(offset, 0)
+        limit = min(max(limit, 1), 100)
+        thread_data_list = provider.threads.get_current_threads(
+            user_id=current_user.user_id,
+            count=limit,
+            offset=offset,
+            exclude_empty=exclude_empty,
+        )
+        total = provider.threads.get_thread_count(
+            user_id=current_user.user_id,
+            exclude_empty=exclude_empty,
+        )
+        threads = [
             ThreadRef(
                 id=thread_data['thread_id'],
                 name=thread_data['name'],
@@ -31,6 +45,13 @@ async def get_threads(
             )
             for thread_data in thread_data_list
         ]
+        return PaginatedThreadsResponse(
+            threads=threads,
+            total=total,
+            offset=offset,
+            limit=limit,
+            has_more=(offset + limit) < total,
+        )
     except Exception as e:
         LOGGER.error(f"Error fetching threads for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not fetch threads.")
@@ -60,6 +81,21 @@ async def create_thread(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not create new thread.")
 
 
+@router.post("/cleanup", status_code=status.HTTP_200_OK)
+async def cleanup_empty_threads(
+    current_user: Annotated[User, Depends(get_current_user)],
+    provider: Provider = Depends(get_bond_provider)
+):
+    """Delete all empty threads (no user messages) for the authenticated user."""
+    try:
+        deleted_count = provider.threads.delete_empty_threads(user_id=current_user.user_id)
+        LOGGER.info(f"User {current_user.user_id} ({current_user.email}) cleaned up {deleted_count} empty threads")
+        return {"deleted": deleted_count}
+    except Exception as e:
+        LOGGER.error(f"Error cleaning up empty threads for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not cleanup empty threads.")
+
+
 @router.delete("/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_thread(
     thread_id: str,
@@ -82,6 +118,47 @@ async def delete_thread(
     except Exception as e:
         LOGGER.error(f"Error deleting thread {thread_id} for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not delete thread.")
+
+
+@router.put("/{thread_id}", response_model=ThreadRef)
+async def update_thread(
+    thread_id: str,
+    request_body: UpdateThreadRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    provider: Provider = Depends(get_bond_provider)
+):
+    """Update a thread's name for the authenticated user."""
+    try:
+        name = request_body.trimmed_name
+        if not name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Thread name cannot be empty."
+            )
+        updated = provider.threads.update_thread(
+            thread_id=thread_id,
+            user_id=current_user.user_id,
+            name=name,
+        )
+        if not updated:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Thread not found or not accessible by this user."
+            )
+        thread = provider.threads.get_thread(thread_id=thread_id, user_id=current_user.user_id)
+        LOGGER.info(f"User {current_user.user_id} ({current_user.email}) renamed thread {thread_id} to '{name}'")
+        return ThreadRef(
+            id=thread.thread_id,
+            name=thread.name,
+            description=None,
+            created_at=thread.created_at,
+            updated_at=thread.updated_at,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        LOGGER.error(f"Error updating thread {thread_id} for user {current_user.user_id} ({current_user.email}): {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not update thread.")
 
 
 @router.get("/{thread_id}/messages", response_model=List[MessageRef])

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 
@@ -13,6 +13,22 @@ class ThreadRef(BaseModel):
 
 class CreateThreadRequest(BaseModel):
     name: Optional[str] = None
+
+
+class UpdateThreadRequest(BaseModel):
+    name: str
+
+    @property
+    def trimmed_name(self) -> str:
+        return self.name.strip()
+
+
+class PaginatedThreadsResponse(BaseModel):
+    threads: List[ThreadRef]
+    total: int
+    offset: int
+    limit: int
+    has_more: bool
 
 
 class MessageRef(BaseModel):

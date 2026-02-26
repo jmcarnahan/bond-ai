@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
 from bondable.bond.providers.metadata import Metadata, Thread
 import logging
-from typing import Optional, Dict
+from datetime import datetime, timedelta
+from typing import Optional, Dict, List
+from sqlalchemy import exists, column, table
 from bondable.bond.broker import BondMessage
 
 LOGGER = logging.getLogger(__name__)
@@ -111,18 +113,76 @@ class ThreadsProvider(ABC):
             session.close()
 
 
-    def get_current_threads(self, user_id: str, count: int = 20) -> list:
+    def _user_message_exists_clause(self):
+        """Return an exists() clause checking for user messages in bedrock_messages."""
+        bm = table('bedrock_messages', column('thread_id'), column('role'))
+        return exists().where(
+            (bm.c.thread_id == Thread.thread_id) &
+            (bm.c.role == 'user')
+        )
+
+    def _build_threads_query(self, session, user_id: str, exclude_empty: bool = False):
+        """Build the base query for threads with optional empty filtering."""
+        query = (session.query(Thread.thread_id, Thread.name, Thread.created_at, Thread.updated_at)
+                    .filter_by(user_id=user_id))
+        if exclude_empty:
+            query = query.filter(self._user_message_exists_clause())
+        return query
+
+    def get_current_threads(self, user_id: str, count: int = 20, offset: int = 0, exclude_empty: bool = False) -> list:
         with self.metadata.get_db_session() as session:
-            results = (session.query(Thread.thread_id, Thread.name, Thread.created_at, Thread.updated_at)
-                        .filter_by(user_id=user_id)
-                        .order_by(Thread.updated_at.desc(), Thread.created_at.desc())
+            query = self._build_threads_query(session, user_id, exclude_empty)
+            results = (query.order_by(Thread.updated_at.desc(), Thread.created_at.desc())
+                        .offset(offset)
                         .limit(count).all())
             threads = [
                 {"thread_id": thread_id, "name": name, "created_at": created_at, "updated_at": updated_at}
                 for thread_id, name, created_at, updated_at in results
             ]
-            LOGGER.debug(f"Retrieved {len(threads)} threads for user {user_id} (limit: {count}, sorted by updated_at desc)")
+            LOGGER.debug(f"Retrieved {len(threads)} threads for user {user_id} (limit: {count}, offset: {offset}, exclude_empty: {exclude_empty}, sorted by updated_at desc)")
             return threads
+
+    def get_thread_count(self, user_id: str, exclude_empty: bool = False) -> int:
+        """Get the total count of threads for a user."""
+        with self.metadata.get_db_session() as session:
+            query = self._build_threads_query(session, user_id, exclude_empty)
+            return query.count()
+
+    def get_empty_thread_ids(self, user_id: str, min_age_minutes: int = 0) -> List[str]:
+        """Get IDs of threads that have no user messages.
+
+        Args:
+            user_id: The user whose threads to check.
+            min_age_minutes: Only include threads older than this many minutes.
+                Prevents race conditions with newly created threads that haven't
+                received user messages yet (e.g., during introduction flow).
+        """
+        with self.metadata.get_db_session() as session:
+            query = (session.query(Thread.thread_id)
+                        .filter_by(user_id=user_id)
+                        .filter(~self._user_message_exists_clause()))
+            if min_age_minutes > 0:
+                cutoff = datetime.utcnow() - timedelta(minutes=min_age_minutes)
+                query = query.filter(Thread.created_at < cutoff)
+            return [r[0] for r in query.all()]
+
+    def delete_empty_threads(self, user_id: str, min_age_minutes: int = 1440) -> int:
+        """Delete empty threads (no user messages) for a user. Returns count deleted.
+
+        Only deletes threads older than min_age_minutes (default 1 day) to avoid
+        race conditions with newly created threads. Recent empty threads are
+        already hidden from the history list via exclude_empty filtering.
+        """
+        empty_ids = self.get_empty_thread_ids(user_id, min_age_minutes=min_age_minutes)
+        deleted = 0
+        for thread_id in empty_ids:
+            try:
+                if self.delete_thread(thread_id=thread_id, user_id=user_id):
+                    deleted += 1
+            except Exception as e:
+                LOGGER.error(f"Error deleting empty thread {thread_id}: {e}")
+        LOGGER.info(f"Deleted {deleted} empty threads for user {user_id} (min_age: {min_age_minutes}m)")
+        return deleted
 
 
     def grant_thread(self, thread_id: str, user_id: str, name: Optional[str] = None, fail_if_missing: bool = False) -> Thread:
