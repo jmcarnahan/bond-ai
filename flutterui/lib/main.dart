@@ -334,6 +334,9 @@ class MobileNavigationShell extends ConsumerStatefulWidget {
 class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
   late PageController _pageController;
   DeepLinkService? _deepLinkService;
+  // Track the last thread ID we auto-navigated for, to prevent
+  // re-navigation when selectedThreadProvider re-emits after a refresh.
+  String? _lastAutoNavigatedThreadId;
 
   @override
   void initState() {
@@ -413,13 +416,49 @@ class _MobileNavigationShellState extends ConsumerState<MobileNavigationShell> {
         return;
       }
 
-      // Navigate to chat when a thread is selected from the threads tab
-      if (next != null && previous?.id != next.id) {
-        // Find the chat tab index (it might be 0 or 1 depending on agents)
-        final chatIndex = navItems.indexWhere((item) => item.label == 'Conversation');
-        if (chatIndex != -1 && currentIndex != chatIndex) {
-          ref.read(navigationIndexProvider.notifier).state = chatIndex;
-        }
+      // Reset tracking when thread is deselected
+      if (next == null) {
+        _lastAutoNavigatedThreadId = null;
+        return;
+      }
+
+      // Skip if this is the same thread we already navigated for.
+      // This prevents re-navigation when the provider re-emits the same
+      // thread after a refresh cycle (loading → data).
+      if (next.id == _lastAutoNavigatedThreadId) {
+        return;
+      }
+
+      // Genuine new thread selection — navigate to chat
+      _lastAutoNavigatedThreadId = next.id;
+
+      // Auto-select the agent that was last used in this thread
+      if (next.lastAgentId != null) {
+        final agentsAsync = ref.read(agentsProvider);
+        agentsAsync.whenData((agents) {
+          final match = agents.where((a) => a.id == next.lastAgentId).toList();
+          if (match.isNotEmpty) {
+            ref.read(selectedAgentProvider.notifier).selectAgent(match.first);
+          } else {
+            // Agent no longer available — fall back to Home agent
+            ref.read(selectedAgentProvider.notifier).clearAgent();
+            final agentLabel = next.lastAgentName ?? 'Unknown agent';
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'The agent "$agentLabel" previously used in this thread is no longer available. Using the Home agent instead.',
+                ),
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+        });
+      }
+
+      // Find the chat tab index (it might be 0 or 1 depending on agents)
+      final chatIndex = navItems.indexWhere((item) => item.label == 'Conversation');
+      if (chatIndex != -1 && currentIndex != chatIndex) {
+        ref.read(navigationIndexProvider.notifier).state = chatIndex;
       }
     });
 
