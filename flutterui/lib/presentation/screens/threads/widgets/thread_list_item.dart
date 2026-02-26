@@ -60,6 +60,10 @@ class ThreadListItem extends ConsumerWidget {
                       _buildTitle(theme, isSelected),
                       const SizedBox(height: 4),
                       _buildTimestamp(theme),
+                      if (thread.lastAgentName != null) ...[
+                        const SizedBox(height: 4),
+                        _buildAgentIndicator(theme),
+                      ],
                     ],
                   ),
                 ),
@@ -130,6 +134,31 @@ class ThreadListItem extends ConsumerWidget {
         fontSize: 13,
         color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
       ),
+    );
+  }
+
+  Widget _buildAgentIndicator(ThemeData theme) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.smart_toy_outlined,
+          size: 14,
+          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+        ),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            thread.lastAgentName!,
+            style: TextStyle(
+              fontSize: 12,
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 
