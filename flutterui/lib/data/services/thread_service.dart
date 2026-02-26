@@ -17,22 +17,30 @@ class ThreadService {
     : _httpClient = httpClient ?? http.Client(),
       _authService = authService;
 
-  Future<List<Thread>> getThreads() async {
+  Future<({List<Thread> threads, int total, bool hasMore})> getThreads({
+    int offset = 0,
+    int limit = 20,
+    bool excludeEmpty = true,
+  }) async {
     try {
       final headers = await _authService.authenticatedHeaders;
-      final response = await _httpClient.get(
-        Uri.parse(ApiConstants.baseUrl + ApiConstants.threadsEndpoint),
-        headers: headers,
+      final uri = Uri.parse(
+        '${ApiConstants.baseUrl}${ApiConstants.threadsEndpoint}?offset=$offset&limit=$limit&exclude_empty=$excludeEmpty',
       );
+      final response = await _httpClient.get(uri, headers: headers);
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
+        final Map<String, dynamic> data = json.decode(response.body);
+        final List<dynamic> threadsList = data['threads'];
         final List<Thread> threads =
-            data
+            threadsList
                 .map((item) => Thread.fromJson(item as Map<String, dynamic>))
                 .toList();
-        // logger.i("[ThreadService] Parsed ${threads.length} threads.");
-        return threads;
+        return (
+          threads: threads,
+          total: data['total'] as int,
+          hasMore: data['has_more'] as bool,
+        );
       } else {
         logger.i(
           "[ThreadService] Failed to load threads. Status: ${response.statusCode}, Body: ${response.body}",
@@ -42,6 +50,64 @@ class ThreadService {
     } catch (e) {
       logger.i("[ThreadService] Error in getThreads: ${e.toString()}");
       throw Exception('Failed to fetch threads: ${e.toString()}');
+    }
+  }
+
+  Future<Thread> updateThread(String threadId, String name) async {
+    logger.i("[ThreadService] updateThread called for threadId: $threadId, name: $name");
+    try {
+      final headers = await _authService.authenticatedHeaders;
+      final body = json.encode({'name': name});
+      final response = await _httpClient.put(
+        Uri.parse(
+          '${ApiConstants.baseUrl}${ApiConstants.threadsEndpoint}/$threadId',
+        ),
+        headers: headers,
+        body: body,
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        final Thread updated = Thread.fromJson(data);
+        logger.i("[ThreadService] Updated thread: ${updated.id} - ${updated.name}");
+        return updated;
+      } else {
+        logger.i(
+          "[ThreadService] Failed to update thread. Status: ${response.statusCode}, Body: ${response.body}",
+        );
+        throw Exception('Failed to update thread: ${response.statusCode}');
+      }
+    } catch (e) {
+      logger.i("[ThreadService] Error in updateThread: ${e.toString()}");
+      throw Exception('Failed to update thread: ${e.toString()}');
+    }
+  }
+
+  Future<int> cleanupEmptyThreads() async {
+    logger.i("[ThreadService] cleanupEmptyThreads called");
+    try {
+      final headers = await _authService.authenticatedHeaders;
+      final response = await _httpClient.post(
+        Uri.parse(
+          '${ApiConstants.baseUrl}${ApiConstants.threadsEndpoint}/cleanup',
+        ),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        final deleted = data['deleted'] as int;
+        logger.i("[ThreadService] Cleaned up $deleted empty threads");
+        return deleted;
+      } else {
+        logger.i(
+          "[ThreadService] Failed to cleanup threads. Status: ${response.statusCode}, Body: ${response.body}",
+        );
+        throw Exception('Failed to cleanup threads: ${response.statusCode}');
+      }
+    } catch (e) {
+      logger.i("[ThreadService] Error in cleanupEmptyThreads: ${e.toString()}");
+      throw Exception('Failed to cleanup threads: ${e.toString()}');
     }
   }
 
