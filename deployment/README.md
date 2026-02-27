@@ -285,7 +285,6 @@ terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars
 Theme configs are located in `flutterui/theme_configs/`:
 - `bondai_config.json` - Default Bond AI branding
 - `mydomain.json` - my domain branding
-- `mcafee_config.json` - McAfee branding
 
 ### How It Works
 

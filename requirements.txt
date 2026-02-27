@@ -11,7 +11,6 @@ attrs==25.3.0
 Authlib==1.6.6
 beartype==0.22.6
 blinker==1.9.0
--e git+ssh://git@github.com/mcafee-eng/bond-ai.git@2540ab23407a6e304a45965c132bf92834a0f3bd#egg=bondable
 boto3==1.38.39
 botocore==1.38.39
 brotli==1.2.0
