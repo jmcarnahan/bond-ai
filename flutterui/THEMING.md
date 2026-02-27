@@ -13,15 +13,6 @@ dart tool/generate_theme.dart
 flutter run -d chrome --web-port=5000 --target lib/main.dart
 ```
 
-### Use McAfee Theme
-```bash
-# From the flutterui directory
-dart tool/generate_theme.dart --config theme_configs/mcafee_config.json
-
-# Restart the Flutter app
-flutter run -d chrome --web-port=5000 --target lib/main.dart
-```
-
 That's it! The app will now use your selected theme.
 
 ## Theme System Overview
@@ -49,11 +40,6 @@ Switch to generic Bond AI theme:
 dart tool/generate_theme.dart
 ```
 
-Switch to McAfee theme:
-```bash
-dart tool/generate_theme.dart --config theme_configs/mcafee_config.json
-```
-
 Switch to any custom theme:
 ```bash
 dart tool/generate_theme.dart --config theme_configs/your_custom_theme.json
@@ -64,7 +50,7 @@ dart tool/generate_theme.dart --config theme_configs/your_custom_theme.json
 Create `switch_theme.sh` in the flutterui directory:
 ```bash
 #!/bin/bash
-# Usage: ./switch_theme.sh [generic|mcafee|custom_name]
+# Usage: ./switch_theme.sh [generic|custom_name]
 
 THEME=$1
 
@@ -72,10 +58,6 @@ case $THEME in
   generic)
     echo "Switching to generic Bond AI theme..."
     dart tool/generate_theme.dart
-    ;;
-  mcafee)
-    echo "Switching to McAfee theme..."
-    dart tool/generate_theme.dart --config theme_configs/mcafee_config.json
     ;;
   *)
     echo "Switching to $THEME theme..."
@@ -93,8 +75,8 @@ chmod +x switch_theme.sh
 
 Use it:
 ```bash
-./switch_theme.sh generic  # Switch to Bond AI theme
-./switch_theme.sh mcafee   # Switch to McAfee theme
+./switch_theme.sh generic     # Switch to Bond AI theme
+./switch_theme.sh mydomain    # Switch to custom theme
 ```
 
 ## Creating a Custom Theme
@@ -288,8 +270,6 @@ flutterui/
 │   ├── bond_logo.png           # Default Bond AI logo
 │   ├── bond_logo_icon.png      # Default Bond AI icon
 │   └── theme_specific/         # Theme-specific assets
-│       ├── mcafee_logo.png
-│       ├── mcafee_shield_logo.png
 │       └── your_company_logo.png
 ```
 
@@ -414,7 +394,7 @@ steps:
   - name: Generate theme
     run: |
       cd flutterui
-      dart tool/generate_theme.dart --config theme_configs/${THEME_CONFIG:-mcafee_config}.json
+      dart tool/generate_theme.dart --config theme_configs/${THEME_CONFIG:-bondai_config}.json
 ```
 
 ### Environment-based Themes

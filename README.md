@@ -112,9 +112,6 @@ ENABLE_AGENTS=true
 ```bash
 # Use generic Bond AI theme (default)
 dart tool/generate_theme.dart
-
-# OR use McAfee theme
-dart tool/generate_theme.dart --config theme_configs/mcafee_config.json
 ```
 
 For more theming options, see the [Flutter Theming Guide](flutterui/THEMING.md).
