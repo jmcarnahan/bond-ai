@@ -27,7 +27,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 
-def create_local_admin_token(admin_email: str = "john_carnahan@mcafee.com") -> str:
+def create_local_admin_token(admin_email: str = "admin@example.com") -> str:
     """Create a JWT token for local development."""
     try:
         from jose import jwt
@@ -63,7 +63,7 @@ def recreate_table(table_name: str, token: str, base_url: str = "http://localhos
         url = f"{base_url.rstrip('/')}/admin/recreate-table/{table_name}"
         print(f"📡 Calling: POST {url}")
 
-        response = requests.post(url, headers=headers)
+        response = requests.post(url, headers=headers, timeout=30)
         response.raise_for_status()
 
         result = response.json()
