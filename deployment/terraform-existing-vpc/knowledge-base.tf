@@ -207,7 +207,8 @@ resource "aws_rds_cluster_instance" "aurora_kb" {
   engine_version     = aws_rds_cluster.aurora_kb[0].engine_version
 
   # Performance Insights (optional, helpful for debugging)
-  performance_insights_enabled = var.environment == "prod"
+  performance_insights_enabled    = var.environment == "prod"
+  performance_insights_kms_key_id = var.environment == "prod" ? aws_kms_key.rds.arn : null
 
   tags = {
     Name = "${var.project_name}-${var.environment}-aurora-kb-instance"
