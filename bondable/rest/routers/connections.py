@@ -10,7 +10,7 @@ import secrets
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Annotated, List, Dict, Any, Optional
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -482,7 +482,7 @@ async def oauth_callback(
 
         # Redirect to frontend with success
         return RedirectResponse(
-            url=f"{frontend_url}/connections?connection_success={connection_name}",
+            url=f"{frontend_url}/connections?connection_success={quote(connection_name, safe='')}",
             status_code=status.HTTP_302_FOUND
         )
 
@@ -490,13 +490,13 @@ async def oauth_callback(
         LOGGER.error(f"Token exchange failed for {connection_name}: HTTP {e.response.status_code}")
         # Don't log full response as it may contain sensitive error details
         return RedirectResponse(
-            url=f"{frontend_url}/connections?connection_error={connection_name}&error=token_exchange_failed",
+            url=f"{frontend_url}/connections?connection_error={quote(connection_name, safe='')}&error=token_exchange_failed",
             status_code=status.HTTP_302_FOUND
         )
     except Exception as e:
         LOGGER.error(f"Unexpected error during OAuth callback for {connection_name}: {type(e).__name__}")
         return RedirectResponse(
-            url=f"{frontend_url}/connections?connection_error={connection_name}&error=unknown",
+            url=f"{frontend_url}/connections?connection_error={quote(connection_name, safe='')}&error=unknown",
             status_code=status.HTTP_302_FOUND
         )
 
