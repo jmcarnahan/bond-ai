@@ -443,6 +443,9 @@ async def oauth_callback(
     if client_secret:
         token_data["client_secret"] = client_secret
 
+    # Use the name from validated config (trusted) instead of path parameter (user input)
+    safe_name = config["name"]
+
     jwt_config = Config.config().get_jwt_config()
     frontend_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
 
@@ -464,7 +467,7 @@ async def oauth_callback(
                     "Accept": "application/json",
                 }
             )
-            LOGGER.info(f"Token exchange successful for {connection_name}")
+            LOGGER.info(f"Token exchange successful for {safe_name}")
             response.raise_for_status()
             token_response = response.json()
 
@@ -472,31 +475,31 @@ async def oauth_callback(
         token_cache = get_mcp_token_cache()
         token_cache.set_token_from_response(
             user_id=user_id,
-            connection_name=connection_name,
+            connection_name=safe_name,
             token_response=token_response,
-            provider=connection_name,
+            provider=safe_name,
             provider_metadata=config.get("extra_config", {})
         )
 
-        LOGGER.info(f"Token stored successfully for connection: {connection_name}")
+        LOGGER.info(f"Token stored successfully for connection: {safe_name}")
 
         # Redirect to frontend with success
         return RedirectResponse(
-            url=f"{frontend_url}/connections?connection_success={quote(connection_name, safe='')}",
+            url=f"{frontend_url}/connections?connection_success={quote(safe_name, safe='')}",
             status_code=status.HTTP_302_FOUND
         )
 
     except httpx.HTTPStatusError as e:
-        LOGGER.error(f"Token exchange failed for {connection_name}: HTTP {e.response.status_code}")
+        LOGGER.error(f"Token exchange failed for {safe_name}: HTTP {e.response.status_code}")
         # Don't log full response as it may contain sensitive error details
         return RedirectResponse(
-            url=f"{frontend_url}/connections?connection_error={quote(connection_name, safe='')}&error=token_exchange_failed",
+            url=f"{frontend_url}/connections?connection_error={quote(safe_name, safe='')}&error=token_exchange_failed",
             status_code=status.HTTP_302_FOUND
         )
     except Exception as e:
-        LOGGER.error(f"Unexpected error during OAuth callback for {connection_name}: {type(e).__name__}")
+        LOGGER.error(f"Unexpected error during OAuth callback for {safe_name}: {type(e).__name__}")
         return RedirectResponse(
-            url=f"{frontend_url}/connections?connection_error={quote(connection_name, safe='')}&error=unknown",
+            url=f"{frontend_url}/connections?connection_error={quote(safe_name, safe='')}&error=unknown",
             status_code=status.HTTP_302_FOUND
         )
 
