@@ -17,13 +17,13 @@ resource "aws_security_group" "rds" {
     description     = "PostgreSQL from App Runner"
   }
 
-  # Allow all outbound
+  # Allow outbound within VPC
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound"
+    cidr_blocks = [data.aws_vpc.existing.cidr_block]
+    description = "Allow outbound within VPC"
   }
 
   tags = {
@@ -41,13 +41,22 @@ resource "aws_security_group" "app_runner" {
   description = "Security group for App Runner VPC connector"
   vpc_id      = data.aws_vpc.existing.id
 
-  # Allow all outbound traffic
+  # PostgreSQL to databases within VPC
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = [data.aws_vpc.existing.cidr_block]
+    description = "PostgreSQL to databases within VPC"
+  }
+
+  # HTTPS for AWS APIs (Bedrock, S3, Secrets Manager), OAuth providers, MCP servers
+  egress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound"
+    description = "HTTPS for AWS APIs, OAuth, and MCP servers"
   }
 
   tags = {
@@ -59,7 +68,7 @@ resource "aws_security_group" "app_runner" {
   }
 }
 
-# Note: App Runner to RDS access is covered by the "allow all outbound" egress rule above.
+# Note: App Runner to RDS access is covered by the port 5432 egress rule above.
 # A separate aws_security_group_rule is not needed and causes drift.
 
 # Security Group for VPC Interface Endpoints
@@ -77,13 +86,13 @@ resource "aws_security_group" "vpc_endpoints" {
     description     = "HTTPS from App Runner"
   }
 
-  # Allow all outbound
+  # Allow outbound within VPC
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound"
+    cidr_blocks = [data.aws_vpc.existing.cidr_block]
+    description = "Allow outbound within VPC"
   }
 
   tags = {
