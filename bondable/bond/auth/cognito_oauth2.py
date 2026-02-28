@@ -88,7 +88,7 @@ class CognitoOAuth2Provider(OAuth2Provider):
         LOGGER.debug(f"Token exchange data: {log_token_data}")
         LOGGER.debug(f"Exchanging code for tokens at: {token_url}")
 
-        response = requests.post(token_url, data=token_data, headers=headers)
+        response = requests.post(token_url, data=token_data, headers=headers, timeout=30)
 
         if response.status_code != 200:
             error_msg = f"Token exchange failed: {response.status_code} - {response.text}"
@@ -107,7 +107,7 @@ class CognitoOAuth2Provider(OAuth2Provider):
         }
 
         LOGGER.debug(f"Fetching user info from: {userinfo_url}")
-        response = requests.get(userinfo_url, headers=headers)
+        response = requests.get(userinfo_url, headers=headers, timeout=30)
 
         if response.status_code != 200:
             error_msg = f"User info fetch failed: {response.status_code} - {response.text}"
