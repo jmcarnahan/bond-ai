@@ -132,6 +132,7 @@ resource "aws_secretsmanager_secret" "aurora_kb_credentials" {
 
   name_prefix = "${var.project_name}-${var.environment}-aurora-kb-"
   description = "Aurora KB credentials for Bedrock Knowledge Base"
+  kms_key_id  = aws_kms_key.secrets.arn
 
   tags = {
     Name = "${var.project_name}-${var.environment}-aurora-kb-secret"
@@ -411,6 +412,14 @@ resource "aws_iam_role_policy" "bedrock_kb_policy" {
           "kms:Decrypt"
         ]
         Resource = [aws_kms_key.s3.arn]
+      },
+      # KMS decrypt for Secrets Manager CMK-encrypted secrets
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt"
+        ]
+        Resource = [aws_kms_key.secrets.arn]
       }
     ]
   })
