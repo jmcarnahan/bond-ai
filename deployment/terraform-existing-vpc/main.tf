@@ -129,14 +129,23 @@ resource "aws_s3_bucket_public_access_block" "access_logs" {
   restrict_public_buckets = true
 }
 
-# Access log target buckets must use SSE-S3 (AES256), not SSE-KMS (AWS requirement)
 resource "aws_s3_bucket_server_side_encryption_configuration" "access_logs" {
   bucket = aws_s3_bucket.access_logs.id
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.s3.arn
     }
+    bucket_key_enabled = true
+  }
+}
+
+resource "aws_s3_bucket_versioning" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  versioning_configuration {
+    status = "Enabled"
   }
 }
 
@@ -168,11 +177,17 @@ resource "aws_s3_bucket_policy" "access_logs" {
         Principal = {
           Service = "logging.s3.amazonaws.com"
         }
-        Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.access_logs.arn}/uploads-access-logs/*"
+        Action = "s3:PutObject"
+        Resource = [
+          "${aws_s3_bucket.access_logs.arn}/uploads-access-logs/*",
+          "${aws_s3_bucket.access_logs.arn}/self-access-logs/*"
+        ]
         Condition = {
           ArnLike = {
-            "aws:SourceArn" = aws_s3_bucket.uploads.arn
+            "aws:SourceArn" = [
+              aws_s3_bucket.uploads.arn,
+              aws_s3_bucket.access_logs.arn
+            ]
           }
           StringEquals = {
             "aws:SourceAccount" = data.aws_caller_identity.current.account_id
@@ -204,6 +219,14 @@ resource "aws_s3_bucket_logging" "uploads" {
 
   target_bucket = aws_s3_bucket.access_logs.id
   target_prefix = "uploads-access-logs/"
+}
+
+# Enable self-logging on the access-logs bucket
+resource "aws_s3_bucket_logging" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  target_bucket = aws_s3_bucket.access_logs.id
+  target_prefix = "self-access-logs/"
 }
 
 # ECR Repositories
