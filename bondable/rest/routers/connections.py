@@ -408,25 +408,29 @@ async def oauth_callback(
     code_verifier = state_data["code_verifier"]
     redirect_uri = state_data["redirect_uri"]
 
+    # Connection name from our own database (stored during authorize step) —
+    # safe for logging since it's not tainted by the config dict that holds secrets.
+    log_name: str = re.sub(r"[^A-Za-z0-9_.-]", "_", state_data.get("connection_name", ""))
+
     # Get connection configuration
     config = _get_connection_config(connection_name)
     if config is None:
-        LOGGER.error(f"Connection config not found for: {connection_name}")
+        LOGGER.error("Connection config not found for: %s", log_name)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Connection '{connection_name}' not found"
         )
 
-    # Sanitize the connection name for use in redirects and logging.
+    # Sanitize the config name for use in redirects.
     # re.sub breaks CodeQL's taint chain from config (which also holds secrets).
     safe_name: str = re.sub(r"[^A-Za-z0-9_.-]", "_", config.get("name", ""))
 
     token_url = config.get("oauth_token_url")
     if not token_url:
-        LOGGER.error("No token URL configured for connection: %s", safe_name)
+        LOGGER.error("No token URL configured for connection: %s", log_name)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"No token URL configured for '{safe_name}'"
+            detail="No token URL configured for this connection"
         )
 
     # Exchange code for token
@@ -469,7 +473,7 @@ async def oauth_callback(
                     "Accept": "application/json",
                 }
             )
-            LOGGER.info("Token exchange successful for %s", safe_name)
+            LOGGER.info("Token exchange successful for %s", log_name)
             response.raise_for_status()
             token_response = response.json()
 
@@ -483,7 +487,7 @@ async def oauth_callback(
             provider_metadata=config.get("extra_config", {})
         )
 
-        LOGGER.info("Token stored successfully for connection: %s", safe_name)
+        LOGGER.info("Token stored successfully for connection: %s", log_name)
 
         # Redirect to frontend with success
         return RedirectResponse(
@@ -492,14 +496,14 @@ async def oauth_callback(
         )
 
     except httpx.HTTPStatusError as e:
-        LOGGER.error("Token exchange failed for %s: HTTP %s", safe_name, e.response.status_code)
+        LOGGER.error("Token exchange failed for %s: HTTP %s", log_name, e.response.status_code)
         # Don't log full response as it may contain sensitive error details
         return RedirectResponse(
             url=f"{frontend_url}/connections?connection_error={quote(safe_name, safe='')}&error=token_exchange_failed",
             status_code=status.HTTP_302_FOUND
         )
     except Exception as e:
-        LOGGER.error("Unexpected error during OAuth callback for %s: %s", safe_name, type(e).__name__)
+        LOGGER.error("Unexpected error during OAuth callback for %s: %s", log_name, type(e).__name__)
         return RedirectResponse(
             url=f"{frontend_url}/connections?connection_error={quote(safe_name, safe='')}&error=unknown",
             status_code=status.HTTP_302_FOUND
