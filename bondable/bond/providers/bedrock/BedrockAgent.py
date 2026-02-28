@@ -179,7 +179,7 @@ class BedrockAgent(Agent):
             file_data = file_data.encode('utf-8')
 
         # Compute MD5 hash
-        return hashlib.md5(file_data).hexdigest()
+        return hashlib.md5(file_data, usedforsecurity=False).hexdigest()
 
     def _handle_file_event(self, file_info: Dict[str, Any], thread_id: str,
                            user_id: str) -> Generator[str, None, None]:
