@@ -61,7 +61,7 @@ resource "aws_iam_role_policy" "app_runner_instance" {
             data.aws_secretsmanager_secret.mcp_atlassian_oauth_backend[0].arn
           ] : [],
           # Add Databricks secret access
-          ["arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:bond-ai-dev-databricks-secret-*"]
+          ["arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}-${var.environment}-databricks-secret-*"]
         )
       },
       {
@@ -112,7 +112,7 @@ resource "aws_iam_role_policy" "app_runner_instance" {
           "kms:Decrypt",
           "kms:GenerateDataKey"
         ]
-        Resource = [aws_kms_key.s3.arn]
+        Resource = [aws_kms_key.s3.arn, aws_kms_key.secrets.arn]
       }
     ]
   })
@@ -139,6 +139,23 @@ resource "aws_iam_role" "app_runner_ecr_access" {
 resource "aws_iam_role_policy_attachment" "app_runner_ecr_access" {
   role       = aws_iam_role.app_runner_ecr_access.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess"
+}
+
+# KMS decrypt for pulling images from CMK-encrypted ECR repos
+resource "aws_iam_role_policy" "app_runner_ecr_kms" {
+  name = "${var.project_name}-${var.environment}-apprunner-ecr-kms"
+  role = aws_iam_role.app_runner_ecr_access.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = [aws_kms_key.secrets.arn]
+      }
+    ]
+  })
 }
 
 # IAM Role for Frontend App Runner
