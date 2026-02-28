@@ -43,7 +43,7 @@ async def chat(
             LOGGER.error(f"Failed to create thread for user {current_user.user_id}: {e}", exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to create new thread: {str(e)}"
+                detail="Failed to create new thread. Please try again."
             )
     else:
         # Check if this is a user message and the thread name needs updating
