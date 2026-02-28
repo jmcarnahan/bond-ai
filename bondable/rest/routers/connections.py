@@ -398,7 +398,7 @@ async def oauth_callback(
     # Validate and retrieve state
     state_data = _get_and_delete_oauth_state(state)
     if state_data is None:
-        LOGGER.warning(f"Invalid OAuth state for {connection_name} - possible CSRF attack or expired state")
+        LOGGER.warning("Invalid OAuth state - possible CSRF attack or expired state")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid state parameter - possible CSRF attack or expired state"
@@ -408,26 +408,22 @@ async def oauth_callback(
     code_verifier = state_data["code_verifier"]
     redirect_uri = state_data["redirect_uri"]
 
-    # Connection name from our own database (stored during authorize step) —
-    # safe for logging since it's not tainted by the config dict that holds secrets.
-    log_name: str = re.sub(r"[^A-Za-z0-9_.-]", "_", state_data.get("connection_name", ""))
-
     # Get connection configuration
     config = _get_connection_config(connection_name)
     if config is None:
-        LOGGER.error("Connection config not found for: %s", log_name)
+        LOGGER.error("Connection config not found during OAuth callback")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Connection '{connection_name}' not found"
         )
 
-    # Sanitize the config name for use in redirects.
+    # Sanitize the config name for use in redirects only (not logging).
     # re.sub breaks CodeQL's taint chain from config (which also holds secrets).
     safe_name: str = re.sub(r"[^A-Za-z0-9_.-]", "_", config.get("name", ""))
 
     token_url = config.get("oauth_token_url")
     if not token_url:
-        LOGGER.error("No token URL configured for connection: %s", log_name)
+        LOGGER.error("No token URL configured for connection")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No token URL configured for this connection"
@@ -463,6 +459,9 @@ async def oauth_callback(
             detail="Server configuration error: invalid redirect URL"
         )
 
+    # Note: Connection name is intentionally omitted from log messages below
+    # to satisfy CodeQL's clear-text-logging rule. The connection name is
+    # visible in HTTP access logs via the request path.
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -473,7 +472,7 @@ async def oauth_callback(
                     "Accept": "application/json",
                 }
             )
-            LOGGER.info("Token exchange successful for %s", log_name)
+            LOGGER.info("OAuth token exchange successful")
             response.raise_for_status()
             token_response = response.json()
 
@@ -487,7 +486,7 @@ async def oauth_callback(
             provider_metadata=config.get("extra_config", {})
         )
 
-        LOGGER.info("Token stored successfully for connection: %s", log_name)
+        LOGGER.info("OAuth token stored successfully")
 
         # Redirect to frontend with success
         return RedirectResponse(
@@ -496,14 +495,14 @@ async def oauth_callback(
         )
 
     except httpx.HTTPStatusError as e:
-        LOGGER.error("Token exchange failed for %s: HTTP %s", log_name, e.response.status_code)
+        LOGGER.error("OAuth token exchange failed: HTTP %s", e.response.status_code)
         # Don't log full response as it may contain sensitive error details
         return RedirectResponse(
             url=f"{frontend_url}/connections?connection_error={quote(safe_name, safe='')}&error=token_exchange_failed",
             status_code=status.HTTP_302_FOUND
         )
     except Exception as e:
-        LOGGER.error("Unexpected error during OAuth callback for %s: %s", log_name, type(e).__name__)
+        LOGGER.error("Unexpected error during OAuth callback: %s", type(e).__name__)
         return RedirectResponse(
             url=f"{frontend_url}/connections?connection_error={quote(safe_name, safe='')}&error=unknown",
             status_code=status.HTTP_302_FOUND
