@@ -116,15 +116,15 @@ class TestIsSafeRedirectUrl:
 
     # --- Environment variable override ---
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "example.com,staging.example.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "myapp.internal,staging.myapp.internal"})
     def test_env_var_domain_allowed(self):
-        assert is_safe_redirect_url("https://example.com/callback") is True
+        assert is_safe_redirect_url("https://myapp.internal/callback") is True
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "example.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "myapp.internal"})
     def test_env_var_subdomain_allowed(self):
-        assert is_safe_redirect_url("https://api.example.com/callback") is True
+        assert is_safe_redirect_url("https://api.myapp.internal/callback") is True
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "example.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "myapp.internal"})
     def test_env_var_different_domain_rejected(self):
         assert is_safe_redirect_url("https://evil.com/callback") is False
 
@@ -157,10 +157,10 @@ class TestGetAllowedRedirectDomains:
         domains = get_allowed_redirect_domains()
         assert '0.0.0.0' not in domains
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": " Example.COM , foo.bar "})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": " MyApp.INTERNAL , foo.bar "})
     def test_env_var_trimmed_and_lowered(self):
         domains = get_allowed_redirect_domains()
-        assert 'example.com' in domains
+        assert 'myapp.internal' in domains
         assert 'foo.bar' in domains
 
     @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": ""})
