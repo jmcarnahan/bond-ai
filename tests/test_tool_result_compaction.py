@@ -16,8 +16,8 @@ from bondable.bond.providers.bedrock.BedrockAgent import (
     BedrockAgent,
     MAX_TOOL_RESULT_BYTES,
     MIN_RECORDS_FOR_CSV,
-    MAX_CONTINUATION_RETRIES,
-    CONTINUATION_RETRY_BASE_DELAY,
+    MAX_INVOKE_RETRIES,
+    INVOKE_RETRY_BASE_DELAY,
 )
 
 
