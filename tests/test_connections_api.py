@@ -305,9 +305,9 @@ class TestOAuthCallbackRedirects:
         mock_token_cache = MagicMock()
         mock_cache.return_value = mock_token_cache
 
-        # Use a different path param than config name to prove config name wins
+        # Use a DIFFERENT path param than config name to prove config name wins
         response = test_client.get(
-            "/connections/test_service/callback",
+            "/connections/INJECTED_VALUE/callback",
             params={"code": "auth-code", "state": "valid-state"},
             follow_redirects=False
         )
@@ -315,10 +315,12 @@ class TestOAuthCallbackRedirects:
         assert response.status_code == 302
         location = response.headers["location"]
         assert "connection_success=test_service" in location
-        # Verify token was stored with config name
+        assert "INJECTED_VALUE" not in location
+        # Verify token was stored with config name (not path param)
         mock_token_cache.set_token_from_response.assert_called_once()
         call_kwargs = mock_token_cache.set_token_from_response.call_args
-        assert call_kwargs.kwargs.get("connection_name") or call_kwargs[1].get("connection_name") == "test_service"
+        actual_name = call_kwargs.kwargs.get("connection_name")
+        assert actual_name == "test_service"
 
     @patch("bondable.rest.routers.connections._get_and_delete_oauth_state")
     @patch("bondable.rest.routers.connections._get_connection_config")
@@ -402,6 +404,90 @@ class TestOAuthCallbackRedirects:
         )
 
         assert response.status_code == 404
+
+    @patch("bondable.rest.routers.connections._get_and_delete_oauth_state")
+    @patch("bondable.rest.routers.connections._get_connection_config")
+    def test_callback_missing_token_url_returns_400(
+        self, mock_get_config, mock_get_state, test_client
+    ):
+        """Test that missing token_url in config returns 400."""
+        mock_get_state.return_value = _FAKE_STATE_DATA
+        config_no_token_url = _FAKE_CONNECTION_CONFIG.copy()
+        config_no_token_url["oauth_token_url"] = None
+        mock_get_config.return_value = config_no_token_url
+
+        response = test_client.get(
+            "/connections/test_service/callback",
+            params={"code": "auth-code", "state": "valid-state"},
+            follow_redirects=False
+        )
+
+        assert response.status_code == 400
+
+    @patch("bondable.rest.routers.connections._get_and_delete_oauth_state")
+    @patch("bondable.rest.routers.connections._get_connection_config")
+    @patch("bondable.rest.routers.connections.is_safe_redirect_url", return_value=False)
+    def test_callback_unsafe_redirect_url_returns_500(
+        self, mock_safe_url, mock_get_config, mock_get_state, test_client
+    ):
+        """Test that unsafe JWT_REDIRECT_URI returns 500."""
+        mock_get_state.return_value = _FAKE_STATE_DATA
+        mock_get_config.return_value = _FAKE_CONNECTION_CONFIG.copy()
+
+        response = test_client.get(
+            "/connections/test_service/callback",
+            params={"code": "auth-code", "state": "valid-state"},
+            follow_redirects=False
+        )
+
+        assert response.status_code == 500
+
+    @patch("bondable.rest.routers.connections._get_and_delete_oauth_state")
+    @patch("bondable.rest.routers.connections._get_connection_config")
+    @patch("bondable.rest.routers.connections.is_safe_redirect_url", return_value=True)
+    @patch("httpx.AsyncClient")
+    @patch("bondable.rest.routers.connections.get_mcp_token_cache")
+    def test_redirect_sanitizes_dangerous_config_name(
+        self, mock_cache, mock_http_cls, mock_safe_url,
+        mock_get_config, mock_get_state, test_client
+    ):
+        """Test that dangerous characters in config name are stripped from redirect URL."""
+        mock_get_state.return_value = _FAKE_STATE_DATA
+        dangerous_config = _FAKE_CONNECTION_CONFIG.copy()
+        dangerous_config["name"] = "evil<script>alert(1)</script>"
+        mock_get_config.return_value = dangerous_config
+
+        # Mock successful token exchange
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "access_token": "fake-token",
+            "token_type": "bearer",
+            "expires_in": 3600
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_http_cls.return_value = mock_client
+
+        mock_token_cache = MagicMock()
+        mock_cache.return_value = mock_token_cache
+
+        response = test_client.get(
+            "/connections/test_service/callback",
+            params={"code": "auth-code", "state": "valid-state"},
+            follow_redirects=False
+        )
+
+        assert response.status_code == 302
+        location = response.headers["location"]
+        # Verify dangerous characters are NOT in the redirect URL
+        assert "<script>" not in location
+        assert "alert(1)" not in location
+        # Verify sanitized name IS present
+        assert "evil_script_alert_1___script_" in location
 
 
 # --- Integration Tests ---
