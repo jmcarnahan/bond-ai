@@ -7,6 +7,8 @@ import os
 import pytest
 import tempfile
 from datetime import datetime, timezone, timedelta
+from unittest.mock import patch, AsyncMock, MagicMock
+from urllib.parse import urlparse, parse_qs
 from fastapi.testclient import TestClient
 from jose import jwt
 
@@ -236,6 +238,170 @@ class TestOAuthCallback:
 
         # Should return 422 (validation error) for missing required parameter
         assert response.status_code == 422
+
+
+# --- OAuth Callback Redirect Tests ---
+
+# Fake connection config used by redirect tests
+_FAKE_CONNECTION_CONFIG = {
+    "name": "test_service",
+    "display_name": "Test Service",
+    "description": "A test OAuth2 service",
+    "url": "https://test.example.com",
+    "transport": "sse",
+    "auth_type": "oauth2",
+    "oauth_client_id": "fake-client-id",
+    "oauth_authorize_url": "https://test.example.com/authorize",
+    "oauth_token_url": "https://test.example.com/token",
+    "oauth_scopes": "read write",
+    "oauth_redirect_uri": "http://localhost/callback",
+    "icon_url": None,
+    "extra_config": {}
+}
+
+_FAKE_STATE_DATA = {
+    "user_id": "test-user-123",
+    "connection_name": "test_service",
+    "code_verifier": "fake-verifier",
+    "redirect_uri": "http://localhost/callback"
+}
+
+
+class TestOAuthCallbackRedirects:
+    """Test that OAuth callback redirects use config name, not path parameter.
+
+    These tests verify the CodeQL fix: redirect URLs must use config['name']
+    (trusted server config) instead of the raw path parameter (user input).
+    """
+
+    @patch("bondable.rest.routers.connections._get_and_delete_oauth_state")
+    @patch("bondable.rest.routers.connections._get_connection_config")
+    @patch("bondable.rest.routers.connections.is_safe_redirect_url", return_value=True)
+    @patch("httpx.AsyncClient")
+    @patch("bondable.rest.routers.connections.get_mcp_token_cache")
+    def test_success_redirect_uses_config_name(
+        self, mock_cache, mock_http_cls, mock_safe_url,
+        mock_get_config, mock_get_state, test_client
+    ):
+        """Test that successful callback redirect uses config['name'], not path param."""
+        mock_get_state.return_value = _FAKE_STATE_DATA
+        mock_get_config.return_value = _FAKE_CONNECTION_CONFIG.copy()
+
+        # Mock successful token exchange
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "access_token": "fake-token",
+            "token_type": "bearer",
+            "expires_in": 3600
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_http_cls.return_value = mock_client
+
+        mock_token_cache = MagicMock()
+        mock_cache.return_value = mock_token_cache
+
+        # Use a different path param than config name to prove config name wins
+        response = test_client.get(
+            "/connections/test_service/callback",
+            params={"code": "auth-code", "state": "valid-state"},
+            follow_redirects=False
+        )
+
+        assert response.status_code == 302
+        location = response.headers["location"]
+        assert "connection_success=test_service" in location
+        # Verify token was stored with config name
+        mock_token_cache.set_token_from_response.assert_called_once()
+        call_kwargs = mock_token_cache.set_token_from_response.call_args
+        assert call_kwargs.kwargs.get("connection_name") or call_kwargs[1].get("connection_name") == "test_service"
+
+    @patch("bondable.rest.routers.connections._get_and_delete_oauth_state")
+    @patch("bondable.rest.routers.connections._get_connection_config")
+    @patch("bondable.rest.routers.connections.is_safe_redirect_url", return_value=True)
+    @patch("httpx.AsyncClient")
+    def test_token_error_redirect_uses_config_name(
+        self, mock_http_cls, mock_safe_url,
+        mock_get_config, mock_get_state, test_client
+    ):
+        """Test that token exchange error redirect uses config['name']."""
+        mock_get_state.return_value = _FAKE_STATE_DATA
+        mock_get_config.return_value = _FAKE_CONNECTION_CONFIG.copy()
+
+        # Mock failed token exchange (HTTP error)
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.raise_for_status.side_effect = __import__("httpx").HTTPStatusError(
+            "Unauthorized", request=MagicMock(), response=mock_response
+        )
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_http_cls.return_value = mock_client
+
+        response = test_client.get(
+            "/connections/test_service/callback",
+            params={"code": "auth-code", "state": "valid-state"},
+            follow_redirects=False
+        )
+
+        assert response.status_code == 302
+        location = response.headers["location"]
+        assert "connection_error=test_service" in location
+        assert "error=token_exchange_failed" in location
+
+    @patch("bondable.rest.routers.connections._get_and_delete_oauth_state")
+    @patch("bondable.rest.routers.connections._get_connection_config")
+    @patch("bondable.rest.routers.connections.is_safe_redirect_url", return_value=True)
+    @patch("httpx.AsyncClient")
+    def test_unexpected_error_redirect_uses_config_name(
+        self, mock_http_cls, mock_safe_url,
+        mock_get_config, mock_get_state, test_client
+    ):
+        """Test that unexpected error redirect uses config['name']."""
+        mock_get_state.return_value = _FAKE_STATE_DATA
+        mock_get_config.return_value = _FAKE_CONNECTION_CONFIG.copy()
+
+        # Mock unexpected error during token exchange
+        mock_client = AsyncMock()
+        mock_client.post.side_effect = ConnectionError("Network failure")
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_http_cls.return_value = mock_client
+
+        response = test_client.get(
+            "/connections/test_service/callback",
+            params={"code": "auth-code", "state": "valid-state"},
+            follow_redirects=False
+        )
+
+        assert response.status_code == 302
+        location = response.headers["location"]
+        assert "connection_error=test_service" in location
+        assert "error=unknown" in location
+
+    @patch("bondable.rest.routers.connections._get_and_delete_oauth_state")
+    @patch("bondable.rest.routers.connections._get_connection_config")
+    def test_callback_with_unknown_connection_returns_404(
+        self, mock_get_config, mock_get_state, test_client
+    ):
+        """Test that callback with unknown connection returns 404, not a redirect."""
+        mock_get_state.return_value = _FAKE_STATE_DATA
+        mock_get_config.return_value = None  # Connection not found
+
+        response = test_client.get(
+            "/connections/evil_injection/callback",
+            params={"code": "auth-code", "state": "valid-state"},
+            follow_redirects=False
+        )
+
+        assert response.status_code == 404
 
 
 # --- Integration Tests ---
