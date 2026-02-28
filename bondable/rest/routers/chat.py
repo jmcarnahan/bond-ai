@@ -198,6 +198,7 @@ async def chat(
                         yield '</_bondmessage>'
 
                     # Build a user-facing error message that includes exception details
+                    # so users can relay what they saw. Details are also logged above.
                     error_type = type(e).__name__
                     error_detail = str(e)
                     # Truncate very long error messages to avoid flooding the UI
