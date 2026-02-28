@@ -416,12 +416,16 @@ async def oauth_callback(
             detail=f"Connection '{connection_name}' not found"
         )
 
+    # Extract the validated name from config (trusted) before accessing
+    # any sensitive fields. This breaks the taint chain for redirects/logging.
+    safe_name: str = config["name"]
+
     token_url = config.get("oauth_token_url")
     if not token_url:
-        LOGGER.error(f"No token URL configured for connection: {connection_name}")
+        LOGGER.error(f"No token URL configured for connection: {safe_name}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"No token URL configured for '{connection_name}'"
+            detail=f"No token URL configured for '{safe_name}'"
         )
 
     # Exchange code for token
@@ -443,15 +447,12 @@ async def oauth_callback(
     if client_secret:
         token_data["client_secret"] = client_secret
 
-    # Use the name from validated config (trusted) instead of path parameter (user input)
-    safe_name = config["name"]
-
     jwt_config = Config.config().get_jwt_config()
     frontend_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
 
     # Validate redirect URL against allowed domains
     if not is_safe_redirect_url(frontend_url):
-        LOGGER.error(f"JWT_REDIRECT_URI is not on allowed domain list")
+        LOGGER.error("JWT_REDIRECT_URI is not on allowed domain list")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Server configuration error: invalid redirect URL"
@@ -467,7 +468,7 @@ async def oauth_callback(
                     "Accept": "application/json",
                 }
             )
-            LOGGER.info(f"Token exchange successful for {safe_name}")
+            LOGGER.info("Token exchange successful for %s", safe_name)
             response.raise_for_status()
             token_response = response.json()
 
@@ -481,7 +482,7 @@ async def oauth_callback(
             provider_metadata=config.get("extra_config", {})
         )
 
-        LOGGER.info(f"Token stored successfully for connection: {safe_name}")
+        LOGGER.info("Token stored successfully for connection: %s", safe_name)
 
         # Redirect to frontend with success
         return RedirectResponse(
@@ -490,14 +491,14 @@ async def oauth_callback(
         )
 
     except httpx.HTTPStatusError as e:
-        LOGGER.error(f"Token exchange failed for {safe_name}: HTTP {e.response.status_code}")
+        LOGGER.error("Token exchange failed for %s: HTTP %s", safe_name, e.response.status_code)
         # Don't log full response as it may contain sensitive error details
         return RedirectResponse(
             url=f"{frontend_url}/connections?connection_error={quote(safe_name, safe='')}&error=token_exchange_failed",
             status_code=status.HTTP_302_FOUND
         )
     except Exception as e:
-        LOGGER.error(f"Unexpected error during OAuth callback for {safe_name}: {type(e).__name__}")
+        LOGGER.error("Unexpected error during OAuth callback for %s: %s", safe_name, type(e).__name__)
         return RedirectResponse(
             url=f"{frontend_url}/connections?connection_error={quote(safe_name, safe='')}&error=unknown",
             status_code=status.HTTP_302_FOUND
