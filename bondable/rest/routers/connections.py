@@ -7,8 +7,6 @@ storing tokens encrypted in the database for use with MCP tools.
 
 import logging
 import re
-import secrets
-import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Annotated, List, Dict, Any, Optional
 from urllib.parse import urlencode, quote
@@ -19,7 +17,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from bondable.bond.config import Config
-from bondable.bond.auth.mcp_token_cache import get_mcp_token_cache, TokenExpiredError
+from bondable.bond.auth.mcp_token_cache import get_mcp_token_cache
 from bondable.bond.auth.oauth_utils import generate_pkce_pair, generate_oauth_state, resolve_client_secret
 from bondable.rest.models.auth import User
 from bondable.rest.dependencies.auth import get_current_user
@@ -82,8 +80,6 @@ def _get_db_session():
         return provider.metadata.get_db_session()
     return None
 
-
-# Token cache initialization no longer needed - it gets DB session automatically from Config
 
 
 # =============================================================================
@@ -254,7 +250,6 @@ async def list_connections(
     """
     LOGGER.debug(f"[Connections] Listing connections for user {current_user.email}")
 
-    # Initialize token cache with database
 
     # Get all connection configs
     configs = _get_connection_configs()
@@ -472,17 +467,20 @@ async def oauth_callback(
                     "Accept": "application/json",
                 }
             )
-            LOGGER.info("OAuth token exchange successful")
             response.raise_for_status()
+            LOGGER.info("OAuth token exchange successful")
             token_response = response.json()
 
-        # Store token in cache (which persists to database)
+        # Store token in cache (which persists to database).
+        # Use config["name"] directly (trusted server config) for storage,
+        # not safe_name which is sanitized for URL use only.
+        config_name = config["name"]
         token_cache = get_mcp_token_cache()
         token_cache.set_token_from_response(
             user_id=user_id,
-            connection_name=safe_name,
+            connection_name=config_name,
             token_response=token_response,
-            provider=safe_name,
+            provider=config_name,
             provider_metadata=config.get("extra_config", {})
         )
 
@@ -519,7 +517,6 @@ async def get_connection_status(
     """
     LOGGER.debug(f"[Connections] Checking status of {connection_name} for user {current_user.email}")
 
-    # Initialize token cache with database
 
     config = _get_connection_config(connection_name)
     if config is None:
@@ -559,7 +556,6 @@ async def disconnect(
     """
     LOGGER.info(f"User {current_user.email} disconnecting from {connection_name}")
 
-    # Initialize token cache with database
 
     token_cache = get_mcp_token_cache()
     removed = token_cache.clear_token(current_user.user_id, connection_name)
@@ -590,7 +586,6 @@ async def check_expired_connections(
     """
     LOGGER.debug(f"[Connections] Checking expired connections for user {current_user.email}")
 
-    # Initialize token cache with database
 
     token_cache = get_mcp_token_cache()
     expired = token_cache.get_expired_connections(current_user.user_id)
