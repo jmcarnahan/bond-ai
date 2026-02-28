@@ -75,7 +75,7 @@ resource "aws_apprunner_service" "frontend" {
     }
 
     image_repository {
-      image_identifier      = "${aws_ecr_repository.frontend.repository_url}:latest"
+      image_identifier      = "${aws_ecr_repository.frontend.repository_url}:${local.frontend_image_tag}"
       image_repository_type = "ECR"
 
       image_configuration {
