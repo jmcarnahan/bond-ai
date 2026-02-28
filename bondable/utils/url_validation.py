@@ -6,7 +6,7 @@ vulnerabilities. It uses a combination of default allowed domains and an
 optional environment variable for additional domains.
 
 Default Allowed Domains:
-- localhost, 127.0.0.1, 0.0.0.0 (development)
+- localhost, 127.0.0.1 (development)
 - *.awsapprunner.com (AWS App Runner deployments)
 
 Environment Variable:
@@ -35,8 +35,7 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_LOCALHOST_DOMAINS = frozenset({
     'localhost',
     '127.0.0.1',
-    '0.0.0.0',
-    '[::1]',  # IPv6 localhost
+    '::1',  # IPv6 localhost (urlparse strips brackets from [::1])
 })
 
 # Default domain suffixes always allowed
@@ -76,7 +75,7 @@ def is_safe_redirect_url(url: str) -> bool:
     A URL is considered safe if:
     - It's a relative URL starting with '/' (but not '//')
     - It has http/https scheme AND hostname matches one of:
-      - A localhost-like domain (localhost, 127.0.0.1, 0.0.0.0, [::1])
+      - A localhost-like domain (localhost, 127.0.0.1, ::1)
       - An AWS App Runner domain (*.awsapprunner.com)
       - A domain in ALLOWED_REDIRECT_DOMAINS environment variable
       - A subdomain of any allowed domain

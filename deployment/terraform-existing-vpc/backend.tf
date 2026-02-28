@@ -88,7 +88,7 @@ resource "aws_apprunner_service" "backend" {
     }
 
     image_repository {
-      image_identifier      = "${aws_ecr_repository.backend.repository_url}:latest"
+      image_identifier      = "${aws_ecr_repository.backend.repository_url}:${local.backend_image_tag}"
       image_repository_type = "ECR"
 
       image_configuration {

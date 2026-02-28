@@ -90,7 +90,7 @@ class OktaOAuth2Provider(OAuth2Provider):
         LOGGER.debug("Token exchange: grant_type=authorization_code, code=<masked>, client_id=<masked>")
         LOGGER.debug(f"Exchanging code for tokens at: {token_url}")
 
-        response = requests.post(token_url, data=token_data, headers=headers)
+        response = requests.post(token_url, data=token_data, headers=headers, timeout=30)
 
         if response.status_code != 200:
             error_msg = f"Token exchange failed: {response.status_code} - {response.text}"
@@ -109,7 +109,7 @@ class OktaOAuth2Provider(OAuth2Provider):
         }
 
         LOGGER.debug(f"Fetching user info from: {userinfo_url}")
-        response = requests.get(userinfo_url, headers=headers)
+        response = requests.get(userinfo_url, headers=headers, timeout=30)
 
         if response.status_code != 200:
             error_msg = f"User info fetch failed: {response.status_code} - {response.text}"

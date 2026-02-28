@@ -180,7 +180,7 @@ def verify_encryption_setup() -> bool:
     Raises:
         TokenEncryptionError: If encryption is not properly configured
     """
-    test_token = "test_token_for_verification_12345"
+    test_token = "test_token_for_verification_12345"  # nosec B105
     try:
         encrypted = encrypt_token(test_token)
         decrypted = decrypt_token(encrypted)

@@ -51,6 +51,9 @@ resource "aws_security_group" "app_runner" {
   }
 
   # HTTPS for AWS APIs (Bedrock, S3, Secrets Manager), OAuth providers, MCP servers
+  # Unrestricted 443 egress is intentional: App Runner must reach external OAuth
+  # providers (Okta, Cognito) and user-configured MCP servers with dynamic IPs.
+  #trivy:ignore:AVD-AWS-0104
   egress {
     from_port   = 443
     to_port     = 443

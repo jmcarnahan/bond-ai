@@ -458,7 +458,7 @@ async def oauth_callback(
     # to satisfy CodeQL's clear-text-logging rule. The connection name is
     # visible in HTTP access logs via the request path.
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 token_url,
                 data=token_data,

@@ -194,7 +194,8 @@ resource "aws_rds_cluster_instance" "aurora" {
   engine             = aws_rds_cluster.aurora[0].engine
   engine_version     = aws_rds_cluster.aurora[0].engine_version
 
-  performance_insights_enabled = var.environment == "prod"
+  performance_insights_enabled    = var.environment == "prod"
+  performance_insights_kms_key_id = var.environment == "prod" ? aws_kms_key.rds.arn : null
 
   tags = {
     Name = "${var.project_name}-${var.environment}-aurora-instance"

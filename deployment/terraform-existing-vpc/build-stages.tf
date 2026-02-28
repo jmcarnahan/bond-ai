@@ -4,6 +4,39 @@
 # This file defines the proper build order for Docker images to ensure
 # dependencies are met before services are deployed.
 
+# Content-hash image tags — deterministic from file hashes so immutable ECR repos
+# get a new tag only when source actually changes.
+locals {
+  # force_rebuild is folded into each tag so that a forced rebuild produces a
+  # distinct tag, avoiding ImageTagAlreadyExistsException on immutable repos.
+  backend_image_tag = substr(md5(join("", [
+    filemd5("${path.module}/../Dockerfile.backend"),
+    filemd5("${path.module}/../../requirements.txt"),
+    md5(join("", [
+      for f in fileset("${path.module}/../../bondable", "**/*.py") :
+      filemd5("${path.module}/../../bondable/${f}")
+    ])),
+    var.force_rebuild,
+  ])), 0, 12)
+
+  frontend_image_tag = substr(md5(join("", [
+    filemd5("${path.module}/../Dockerfile.frontend"),
+    filemd5("${path.module}/../../flutterui/pubspec.lock"),
+    filemd5("${path.module}/../../flutterui/web/index.html"),
+    md5(join("", [
+      for f in fileset("${path.module}/../../flutterui/lib", "**/*.dart") :
+      filemd5("${path.module}/../../flutterui/lib/${f}")
+    ])),
+    filemd5("${path.module}/../Dockerfile.maintenance"),
+    filemd5("${path.module}/../maintenance/index.html"),
+    var.maintenance_mode ? "maintenance" : "normal",
+    var.maintenance_message,
+    var.backend_service_url,
+    var.theme_config_path,
+    var.force_rebuild,
+  ])), 0, 12)
+}
+
 # Stage 1: Build backend Docker image (independent of other services)
 resource "null_resource" "build_backend_image" {
   depends_on = [
@@ -12,24 +45,14 @@ resource "null_resource" "build_backend_image" {
   ]
 
   triggers = {
-    # Force rebuild if explicitly requested
-    force_rebuild = var.force_rebuild
-
-    # Rebuild when Python code, dependencies, or Dockerfile changes
-    dockerfile_hash   = filemd5("${path.module}/../Dockerfile.backend")
-    requirements_hash = filemd5("${path.module}/../../requirements.txt")
-
-    # Hash of all Python files in bondable directory
-    bondable_hash = md5(join("", [
-      for f in fileset("${path.module}/../../bondable", "**/*.py") :
-      filemd5("${path.module}/../../bondable/${f}")
-    ]))
+    # Rebuild when content hash changes (covers code, deps, Dockerfile, force_rebuild)
+    image_tag = local.backend_image_tag
   }
 
   provisioner "local-exec" {
     command = <<-EOT
       set -e  # Exit on error
-      echo "Building backend Docker image..."
+      echo "Building backend Docker image (tag: ${local.backend_image_tag})..."
 
       # Verify Docker is running
       if ! docker info > /dev/null 2>&1; then
@@ -59,17 +82,17 @@ resource "null_resource" "build_backend_image" {
       # Build and push backend
       echo "Building and pushing backend image..."
       docker buildx build --platform linux/amd64 \
-        -t ${aws_ecr_repository.backend.repository_url}:latest \
+        -t ${aws_ecr_repository.backend.repository_url}:${local.backend_image_tag} \
         -f deployment/Dockerfile.backend --push .
 
       # Verify image was pushed
       aws ecr describe-images \
         --repository-name ${aws_ecr_repository.backend.name} \
         --region ${var.aws_region} \
-        --image-ids imageTag=latest > /dev/null 2>&1
+        --image-ids imageTag=${local.backend_image_tag} > /dev/null 2>&1
 
       if [ $? -eq 0 ]; then
-        echo "✓ Backend image built and pushed successfully"
+        echo "✓ Backend image built and pushed successfully (tag: ${local.backend_image_tag})"
       else
         echo "Error: Failed to verify backend image in ECR"
         exit 1
@@ -96,31 +119,8 @@ resource "null_resource" "build_frontend_image" {
   ]
 
   triggers = {
-    # Force rebuild if explicitly requested
-    force_rebuild = var.force_rebuild
-
-    # Maintenance mode triggers - rebuild when these change
-    maintenance_mode    = var.maintenance_mode
-    maintenance_message = var.maintenance_message
-    theme_config_path   = var.theme_config_path
-
-    # Rebuild when Flutter code, dependencies, or Dockerfile changes (only matters when not in maintenance mode)
-    dockerfile_hash  = filemd5("${path.module}/../Dockerfile.frontend")
-    pubspec_hash     = filemd5("${path.module}/../../flutterui/pubspec.lock")
-    index_html_hash  = filemd5("${path.module}/../../flutterui/web/index.html")
-
-    # Hash of all Dart source files
-    lib_hash = md5(join("", [
-      for f in fileset("${path.module}/../../flutterui/lib", "**/*.dart") :
-      filemd5("${path.module}/../../flutterui/lib/${f}")
-    ]))
-
-    # Backend URL from tfvars (triggers rebuild if config changes)
-    backend_url_config = var.backend_service_url
-
-    # Maintenance mode Dockerfile and HTML template hashes - rebuild if these change
-    maintenance_dockerfile_hash = filemd5("${path.module}/../Dockerfile.maintenance")
-    maintenance_html_hash       = filemd5("${path.module}/../maintenance/index.html")
+    # Rebuild when content hash changes (covers code, deps, Dockerfile, config, force_rebuild)
+    image_tag = local.frontend_image_tag
   }
 
   # Add lifecycle to ensure this completes before proceeding
@@ -205,7 +205,7 @@ resource "null_resource" "build_frontend_image" {
         docker buildx build --platform linux/amd64 \
           --build-arg "MAINTENANCE_MESSAGE=${var.maintenance_message}" \
           --build-arg "THEME_NAME=$THEME_NAME" \
-          -t ${aws_ecr_repository.frontend.repository_url}:latest \
+          -t ${aws_ecr_repository.frontend.repository_url}:${local.frontend_image_tag} \
           --push .
 
         cd - > /dev/null
@@ -215,7 +215,7 @@ resource "null_resource" "build_frontend_image" {
         aws ecr describe-images \
           --repository-name ${aws_ecr_repository.frontend.name} \
           --region ${var.aws_region} \
-          --image-ids imageTag=latest > /dev/null 2>&1
+          --image-ids imageTag=${local.frontend_image_tag} > /dev/null 2>&1
 
         if [ $? -eq 0 ]; then
           echo "========================================="
@@ -306,7 +306,7 @@ resource "null_resource" "build_frontend_image" {
         echo "Building Docker image with pre-built Flutter app..."
         cd "$TEMP_BUILD_DIR"
         docker buildx build --platform linux/amd64 \
-          -t ${aws_ecr_repository.frontend.repository_url}:latest \
+          -t ${aws_ecr_repository.frontend.repository_url}:${local.frontend_image_tag} \
           --push .
 
         # Go back to original directory
@@ -320,7 +320,7 @@ resource "null_resource" "build_frontend_image" {
         aws ecr describe-images \
           --repository-name ${aws_ecr_repository.frontend.name} \
           --region ${var.aws_region} \
-          --image-ids imageTag=latest > /dev/null 2>&1
+          --image-ids imageTag=${local.frontend_image_tag} > /dev/null 2>&1
 
         if [ $? -eq 0 ]; then
           echo "========================================="
