@@ -129,10 +129,12 @@ class BedrockProvider(Provider):
             # significant time to process tool results before streaming a response
             # (the default 60s is not enough for complex multi-tool prompts).
             agent_runtime_read_timeout = int(os.environ.get('BEDROCK_AGENT_RUNTIME_READ_TIMEOUT', '300'))
-            agent_runtime_max_attempts = int(os.environ.get('BEDROCK_AGENT_RUNTIME_MAX_ATTEMPTS', '0'))
+            agent_runtime_max_attempts = int(os.environ.get('BEDROCK_AGENT_RUNTIME_MAX_ATTEMPTS', '3'))
             agent_runtime_config = BotoConfig(
                 read_timeout=agent_runtime_read_timeout,
-                retries={'max_attempts': agent_runtime_max_attempts}
+                connect_timeout=10,
+                retries={'max_attempts': agent_runtime_max_attempts, 'mode': 'standard'},
+                tcp_keepalive=True
             )
             self.bedrock_agent_runtime_client = aws_session.client(
                 service_name='bedrock-agent-runtime',
