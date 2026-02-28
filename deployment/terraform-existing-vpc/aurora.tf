@@ -105,8 +105,8 @@ resource "aws_security_group" "aurora" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound"
+    cidr_blocks = [data.aws_vpc.existing.cidr_block]
+    description = "Allow outbound within VPC"
   }
 
   tags = {
@@ -146,6 +146,8 @@ resource "aws_rds_cluster" "aurora" {
   engine_mode    = "provisioned"
   engine_version = "15.12"
 
+  snapshot_identifier = var.aurora_main_snapshot_identifier != "" ? var.aurora_main_snapshot_identifier : null
+
   database_name   = "bondai"
   master_username = var.db_username
   master_password = random_password.db_password.result
@@ -161,17 +163,18 @@ resource "aws_rds_cluster" "aurora" {
   }
 
   storage_encrypted = true
+  kms_key_id        = aws_kms_key.rds.arn
 
   # Enable Data API for Query Editor access
   enable_http_endpoint = true
 
-  backup_retention_period = 7  # Enable backups in all environments
+  backup_retention_period = 7 # Enable backups in all environments
   preferred_backup_window = "03:00-04:00"
 
   skip_final_snapshot       = var.environment != "prod"
   final_snapshot_identifier = var.environment == "prod" ? "${var.project_name}-${var.environment}-aurora-final" : null
 
-  deletion_protection = var.environment == "prod"
+  deletion_protection = var.deletion_protection
 
   tags = {
     Name = "${var.project_name}-${var.environment}-aurora"
