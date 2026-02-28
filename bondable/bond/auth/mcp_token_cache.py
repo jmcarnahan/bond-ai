@@ -312,7 +312,7 @@ class MCPTokenCache:
                 session.add(new_token)
 
             session.commit()
-            LOGGER.debug(f"Token saved to database for connection={connection_name}")
+            LOGGER.debug("Token saved to database")
             return True
 
         except Exception as e:
@@ -573,7 +573,7 @@ class MCPTokenCache:
         # Save directly to database
         self._save_to_database(user_id, connection_name, token_data)
 
-        LOGGER.debug(f"Token stored for connection={connection_name}, expires_at={expires_at}")
+        LOGGER.debug(f"Token stored, expires_at={expires_at}")
         return token_data
 
     def set_token_from_response(
