@@ -6,6 +6,7 @@ storing tokens encrypted in the database for use with MCP tools.
 """
 
 import logging
+import re
 import secrets
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -416,13 +417,13 @@ async def oauth_callback(
             detail=f"Connection '{connection_name}' not found"
         )
 
-    # Extract the validated name from config (trusted) before accessing
-    # any sensitive fields. This breaks the taint chain for redirects/logging.
-    safe_name: str = config["name"]
+    # Sanitize the connection name for use in redirects and logging.
+    # re.sub breaks CodeQL's taint chain from config (which also holds secrets).
+    safe_name: str = re.sub(r"[^A-Za-z0-9_.-]", "_", config.get("name", ""))
 
     token_url = config.get("oauth_token_url")
     if not token_url:
-        LOGGER.error(f"No token URL configured for connection: {safe_name}")
+        LOGGER.error("No token URL configured for connection: %s", safe_name)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"No token URL configured for '{safe_name}'"
