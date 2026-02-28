@@ -71,6 +71,12 @@ variable "db_allocated_storage" {
 
 # Main Database Aurora Configuration
 # Separate from Knowledge Base Aurora (defined in knowledge-base.tf)
+variable "deletion_protection" {
+  description = "Enable deletion protection on databases. Set to false for teardown."
+  type        = bool
+  default     = true
+}
+
 variable "use_aurora" {
   description = "Use Aurora Serverless v2 instead of RDS for main database"
   type        = bool
@@ -282,4 +288,18 @@ variable "enable_www_subdomain" {
   description = "Also configure www subdomain (e.g., www.mydomain.cloud)"
   type        = bool
   default     = false
+}
+
+# CMK Migration Snapshot Identifiers
+# Set these during CMK migration to restore from snapshot, then clear after apply.
+variable "aurora_main_snapshot_identifier" {
+  description = "Snapshot identifier to restore main Aurora cluster from during CMK migration. Leave empty for normal operation."
+  type        = string
+  default     = ""
+}
+
+variable "aurora_kb_snapshot_identifier" {
+  description = "Snapshot identifier to restore KB Aurora cluster from during CMK migration. Leave empty for normal operation."
+  type        = string
+  default     = ""
 }

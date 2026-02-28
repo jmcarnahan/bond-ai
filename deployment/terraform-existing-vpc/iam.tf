@@ -105,6 +105,14 @@ resource "aws_iam_role_policy" "app_runner_instance" {
           "logs:PutLogEvents"
         ]
         Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey"
+        ]
+        Resource = [aws_kms_key.s3.arn]
       }
     ]
   })

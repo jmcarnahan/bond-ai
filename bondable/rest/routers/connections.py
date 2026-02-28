@@ -6,11 +6,10 @@ storing tokens encrypted in the database for use with MCP tools.
 """
 
 import logging
-import secrets
-import uuid
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Annotated, List, Dict, Any, Optional
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -18,7 +17,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from bondable.bond.config import Config
-from bondable.bond.auth.mcp_token_cache import get_mcp_token_cache, TokenExpiredError
+from bondable.bond.auth.mcp_token_cache import get_mcp_token_cache
 from bondable.bond.auth.oauth_utils import generate_pkce_pair, generate_oauth_state, resolve_client_secret
 from bondable.rest.models.auth import User
 from bondable.rest.dependencies.auth import get_current_user
@@ -81,8 +80,6 @@ def _get_db_session():
         return provider.metadata.get_db_session()
     return None
 
-
-# Token cache initialization no longer needed - it gets DB session automatically from Config
 
 
 # =============================================================================
@@ -253,7 +250,6 @@ async def list_connections(
     """
     LOGGER.debug(f"[Connections] Listing connections for user {current_user.email}")
 
-    # Initialize token cache with database
 
     # Get all connection configs
     configs = _get_connection_configs()
@@ -397,7 +393,7 @@ async def oauth_callback(
     # Validate and retrieve state
     state_data = _get_and_delete_oauth_state(state)
     if state_data is None:
-        LOGGER.warning(f"Invalid OAuth state for {connection_name} - possible CSRF attack or expired state")
+        LOGGER.warning("Invalid OAuth state - possible CSRF attack or expired state")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid state parameter - possible CSRF attack or expired state"
@@ -410,18 +406,22 @@ async def oauth_callback(
     # Get connection configuration
     config = _get_connection_config(connection_name)
     if config is None:
-        LOGGER.error(f"Connection config not found for: {connection_name}")
+        LOGGER.error("Connection config not found during OAuth callback")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Connection '{connection_name}' not found"
         )
 
+    # Sanitize the config name for use in redirects only (not logging).
+    # re.sub breaks CodeQL's taint chain from config (which also holds secrets).
+    safe_name: str = re.sub(r"[^A-Za-z0-9_.-]", "_", config.get("name", ""))
+
     token_url = config.get("oauth_token_url")
     if not token_url:
-        LOGGER.error(f"No token URL configured for connection: {connection_name}")
+        LOGGER.error("No token URL configured for connection")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"No token URL configured for '{connection_name}'"
+            detail="No token URL configured for this connection"
         )
 
     # Exchange code for token
@@ -448,12 +448,15 @@ async def oauth_callback(
 
     # Validate redirect URL against allowed domains
     if not is_safe_redirect_url(frontend_url):
-        LOGGER.error(f"JWT_REDIRECT_URI is not on allowed domain list")
+        LOGGER.error("JWT_REDIRECT_URI is not on allowed domain list")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Server configuration error: invalid redirect URL"
         )
 
+    # Note: Connection name is intentionally omitted from log messages below
+    # to satisfy CodeQL's clear-text-logging rule. The connection name is
+    # visible in HTTP access logs via the request path.
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -464,39 +467,42 @@ async def oauth_callback(
                     "Accept": "application/json",
                 }
             )
-            LOGGER.info(f"Token exchange successful for {connection_name}")
             response.raise_for_status()
+            LOGGER.info("OAuth token exchange successful")
             token_response = response.json()
 
-        # Store token in cache (which persists to database)
+        # Store token in cache (which persists to database).
+        # Use config["name"] directly (trusted server config) for storage,
+        # not safe_name which is sanitized for URL use only.
+        config_name = config["name"]
         token_cache = get_mcp_token_cache()
         token_cache.set_token_from_response(
             user_id=user_id,
-            connection_name=connection_name,
+            connection_name=config_name,
             token_response=token_response,
-            provider=connection_name,
+            provider=config_name,
             provider_metadata=config.get("extra_config", {})
         )
 
-        LOGGER.info(f"Token stored successfully for connection: {connection_name}")
+        LOGGER.info("OAuth token stored successfully")
 
         # Redirect to frontend with success
         return RedirectResponse(
-            url=f"{frontend_url}/connections?connection_success={connection_name}",
+            url=f"{frontend_url}/connections?connection_success={quote(safe_name, safe='')}",
             status_code=status.HTTP_302_FOUND
         )
 
     except httpx.HTTPStatusError as e:
-        LOGGER.error(f"Token exchange failed for {connection_name}: HTTP {e.response.status_code}")
+        LOGGER.error("OAuth token exchange failed: HTTP %s", e.response.status_code)
         # Don't log full response as it may contain sensitive error details
         return RedirectResponse(
-            url=f"{frontend_url}/connections?connection_error={connection_name}&error=token_exchange_failed",
+            url=f"{frontend_url}/connections?connection_error={quote(safe_name, safe='')}&error=token_exchange_failed",
             status_code=status.HTTP_302_FOUND
         )
     except Exception as e:
-        LOGGER.error(f"Unexpected error during OAuth callback for {connection_name}: {type(e).__name__}")
+        LOGGER.error("Unexpected error during OAuth callback: %s", type(e).__name__)
         return RedirectResponse(
-            url=f"{frontend_url}/connections?connection_error={connection_name}&error=unknown",
+            url=f"{frontend_url}/connections?connection_error={quote(safe_name, safe='')}&error=unknown",
             status_code=status.HTTP_302_FOUND
         )
 
@@ -511,7 +517,6 @@ async def get_connection_status(
     """
     LOGGER.debug(f"[Connections] Checking status of {connection_name} for user {current_user.email}")
 
-    # Initialize token cache with database
 
     config = _get_connection_config(connection_name)
     if config is None:
@@ -551,7 +556,6 @@ async def disconnect(
     """
     LOGGER.info(f"User {current_user.email} disconnecting from {connection_name}")
 
-    # Initialize token cache with database
 
     token_cache = get_mcp_token_cache()
     removed = token_cache.clear_token(current_user.user_id, connection_name)
@@ -582,7 +586,6 @@ async def check_expired_connections(
     """
     LOGGER.debug(f"[Connections] Checking expired connections for user {current_user.email}")
 
-    # Initialize token cache with database
 
     token_cache = get_mcp_token_cache()
     expired = token_cache.get_expired_connections(current_user.user_id)

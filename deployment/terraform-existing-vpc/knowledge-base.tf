@@ -83,13 +83,13 @@ resource "aws_security_group" "aurora_kb" {
     description = "PostgreSQL from VPC (for Bedrock Data API)"
   }
 
-  # Allow all outbound
+  # Allow outbound within VPC
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound"
+    cidr_blocks = [data.aws_vpc.existing.cidr_block]
+    description = "Allow outbound within VPC"
   }
 
   tags = {
@@ -172,8 +172,11 @@ resource "aws_rds_cluster" "aurora_kb" {
     max_capacity = var.aurora_max_capacity
   }
 
-  # Storage encryption
+  snapshot_identifier = var.aurora_kb_snapshot_identifier != "" ? var.aurora_kb_snapshot_identifier : null
+
+  # Storage encryption with CMK
   storage_encrypted = true
+  kms_key_id        = aws_kms_key.rds.arn
 
   # Backup settings
   backup_retention_period = 7
@@ -182,6 +185,8 @@ resource "aws_rds_cluster" "aurora_kb" {
   # Skip final snapshot for dev (change for prod)
   skip_final_snapshot       = var.environment != "prod"
   final_snapshot_identifier = var.environment == "prod" ? "${var.project_name}-${var.environment}-aurora-kb-final" : null
+
+  deletion_protection = var.deletion_protection
 
   # Enable IAM authentication
   iam_database_authentication_enabled = true
@@ -397,6 +402,14 @@ resource "aws_iam_role_policy" "bedrock_kb_policy" {
           "bedrock:InvokeModel"
         ]
         Resource = "arn:aws:bedrock:${var.aws_region}::foundation-model/${var.knowledge_base_embedding_model}"
+      },
+      # KMS decrypt for S3 CMK-encrypted objects
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt"
+        ]
+        Resource = [aws_kms_key.s3.arn]
       }
     ]
   })
