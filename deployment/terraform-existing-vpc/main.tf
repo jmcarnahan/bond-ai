@@ -42,6 +42,7 @@ data "aws_secretsmanager_secret_version" "okta_secret" {
 resource "aws_secretsmanager_secret" "db_credentials" {
   name_prefix = "${var.project_name}-${var.environment}-db-"
   description = "RDS credentials for ${var.project_name} ${var.environment}"
+  kms_key_id  = aws_kms_key.secrets.arn
 }
 
 resource "aws_secretsmanager_secret_version" "db_credentials" {
@@ -110,14 +111,115 @@ resource "aws_s3_bucket_cors_configuration" "uploads" {
   }
 }
 
+# S3 Access Logging Bucket
+resource "aws_s3_bucket" "access_logs" {
+  bucket = "${var.project_name}-${var.environment}-access-logs-${data.aws_caller_identity.current.account_id}"
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-access-logs"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# Access log target buckets must use SSE-S3 (AES256), not SSE-KMS (AWS requirement)
+resource "aws_s3_bucket_server_side_encryption_configuration" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  rule {
+    id     = "expire-old-logs"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = 90
+    }
+  }
+}
+
+# Bucket policy: allow S3 log delivery + deny non-SSL access
+resource "aws_s3_bucket_policy" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "S3ServerAccessLogsPolicy"
+        Effect = "Allow"
+        Principal = {
+          Service = "logging.s3.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.access_logs.arn}/uploads-access-logs/*"
+        Condition = {
+          ArnLike = {
+            "aws:SourceArn" = aws_s3_bucket.uploads.arn
+          }
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      },
+      {
+        Sid       = "DenyNonSSL"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "s3:*"
+        Resource = [
+          aws_s3_bucket.access_logs.arn,
+          "${aws_s3_bucket.access_logs.arn}/*"
+        ]
+        Condition = {
+          Bool = {
+            "aws:SecureTransport" = "false"
+          }
+        }
+      }
+    ]
+  })
+}
+
+# Enable access logging on the uploads bucket
+resource "aws_s3_bucket_logging" "uploads" {
+  bucket = aws_s3_bucket.uploads.id
+
+  target_bucket = aws_s3_bucket.access_logs.id
+  target_prefix = "uploads-access-logs/"
+}
+
 # ECR Repositories
 resource "aws_ecr_repository" "backend" {
   name = "${var.project_name}-${var.environment}-backend"
 
   image_tag_mutability = "IMMUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "KMS"
+    kms_key         = aws_kms_key.secrets.arn
   }
 
   tags = {
@@ -129,9 +231,15 @@ resource "aws_ecr_repository" "frontend" {
   name = "${var.project_name}-${var.environment}-frontend"
 
   image_tag_mutability = "IMMUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "KMS"
+    kms_key         = aws_kms_key.secrets.arn
   }
 
   tags = {

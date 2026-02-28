@@ -212,6 +212,7 @@ resource "aws_secretsmanager_secret" "aurora_replication_credentials" {
 
   name_prefix = "${var.project_name}-${var.environment}-aurora-replication-"
   description = "Aurora PostgreSQL replication credentials for Databricks CDC"
+  kms_key_id  = aws_kms_key.secrets.arn
 
   tags = {
     Name    = "${var.project_name}-${var.environment}-aurora-replication-creds"

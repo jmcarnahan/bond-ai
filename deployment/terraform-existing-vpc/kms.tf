@@ -1,5 +1,5 @@
 # KMS Keys for encryption at rest
-# Used by Aurora clusters and S3 buckets
+# Used by Aurora clusters, S3 buckets, Secrets Manager, and ECR
 
 # =============================================================================
 # KMS Key for RDS/Aurora Encryption
@@ -37,4 +37,23 @@ resource "aws_kms_key" "s3" {
 resource "aws_kms_alias" "s3" {
   name          = "alias/${var.project_name}-${var.environment}-s3"
   target_key_id = aws_kms_key.s3.key_id
+}
+
+# =============================================================================
+# KMS Key for Secrets Manager & ECR Encryption
+# =============================================================================
+
+resource "aws_kms_key" "secrets" {
+  description             = "KMS key for Secrets Manager and ECR encryption - ${var.project_name}-${var.environment}"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-secrets-kms"
+  }
+}
+
+resource "aws_kms_alias" "secrets" {
+  name          = "alias/${var.project_name}-${var.environment}-secrets"
+  target_key_id = aws_kms_key.secrets.key_id
 }
