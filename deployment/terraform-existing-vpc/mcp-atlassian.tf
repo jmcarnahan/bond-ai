@@ -112,9 +112,15 @@ resource "aws_ecr_repository" "mcp_atlassian" {
   name  = "${var.project_name}-${var.environment}-mcp-atlassian"
 
   image_tag_mutability = "MUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "KMS"
+    kms_key         = aws_kms_key.secrets.arn
   }
 
   tags = {
