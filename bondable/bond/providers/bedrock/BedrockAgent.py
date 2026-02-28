@@ -54,9 +54,9 @@ MAX_TOOL_RESULT_BYTES = 20_000
 # Even when results are under the byte limit, CSV uses ~50-70% fewer tokens than JSON,
 # which reduces LLM latency and cost on every continuation call.
 MIN_RECORDS_FOR_CSV = 5
-# Retry configuration for transient connection errors on continuation invoke_agent calls
-MAX_CONTINUATION_RETRIES = 2
-CONTINUATION_RETRY_BASE_DELAY = 1.0  # seconds; exponential backoff (1s, 2s)
+# Retry configuration for transient connection errors on invoke_agent calls
+MAX_INVOKE_RETRIES = 2
+INVOKE_RETRY_BASE_DELAY = 1.0  # seconds; exponential backoff (1s, 2s)
 
 
 class BedrockAgent(Agent):
@@ -556,6 +556,13 @@ Please integrate any relevant insights from the documents with your analysis of 
                 yield from self._yield_error_message(thread_id, user_message, error_code)
             else:
                 yield from self._yield_error_message(thread_id, error_message, error_code)
+
+        except (RemoteDisconnected, ConnectionClosedError, ConnectionError, OSError) as e:
+            LOGGER.error(f"Connection error in stream_response: {type(e).__name__}: {e}")
+            yield from self._yield_error_message(
+                thread_id,
+                "I'm having trouble connecting right now. Please try sending your message again."
+            )
 
         except Exception as e:
             LOGGER.exception(f"Unexpected error in stream_response: {e}")
@@ -1393,13 +1400,31 @@ Please integrate any relevant insights from the documents with your analysis of 
         LOGGER.debug(f"Invoking Bedrock Agent - ID: {self.bedrock_agent_id}, Alias: {self.bedrock_agent_alias_id}, Region: {self.bond_provider.aws_region}")
         LOGGER.debug(f"Session: {session_id}, Thread: {thread_id}, User: {user_id}")
 
-        # Invoke agent
+        # Invoke agent with retry for transient connection errors
         LOGGER.debug(f"Invoking Bedrock Agent {self.bedrock_agent_id}")
-        try:
-            response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**request)
-        except Exception as e:
-            LOGGER.error(f"Bedrock invocation failed - Agent: {self.bedrock_agent_id}, Error: {str(e)}")
-            raise
+        response = None
+        for attempt in range(MAX_INVOKE_RETRIES + 1):
+            try:
+                if attempt > 0:
+                    delay = INVOKE_RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                    LOGGER.warning(
+                        f"Transient connection error on invoke_agent "
+                        f"(attempt {attempt + 1}/{MAX_INVOKE_RETRIES + 1}), "
+                        f"retrying in {delay}s"
+                    )
+                    time.sleep(delay)
+                response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**request)
+                break
+            except (RemoteDisconnected, ConnectionClosedError, ConnectionError, OSError) as e:
+                if attempt == MAX_INVOKE_RETRIES:
+                    LOGGER.error(
+                        f"Bedrock invocation failed after {MAX_INVOKE_RETRIES + 1} attempts - "
+                        f"Agent: {self.bedrock_agent_id}, Error: {str(e)}"
+                    )
+                    raise
+            except Exception as e:
+                LOGGER.error(f"Bedrock invocation failed - Agent: {self.bedrock_agent_id}, Error: {str(e)}")
+                raise
 
         # Process streaming response
         event_stream = response.get('completion')
@@ -1645,13 +1670,13 @@ Please integrate any relevant insights from the documents with your analysis of 
         # Get continuation response with retry for transient connection errors.
         # Bedrock may close the connection if the payload is large or on transient network issues.
         continuation_stream = None
-        for attempt in range(MAX_CONTINUATION_RETRIES + 1):
+        for attempt in range(MAX_INVOKE_RETRIES + 1):
             invoke_start = time.monotonic()
             try:
                 if attempt > 0:
-                    delay = CONTINUATION_RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                    delay = INVOKE_RETRY_BASE_DELAY * (2 ** (attempt - 1))
                     LOGGER.warning(
-                        f"[Continuation] Retry {attempt}/{MAX_CONTINUATION_RETRIES} "
+                        f"[Continuation] Retry {attempt}/{MAX_INVOKE_RETRIES} "
                         f"after {delay}s delay (invocationId={invocation_id}, depth={depth})"
                     )
                     time.sleep(delay)
@@ -1676,15 +1701,15 @@ Please integrate any relevant insights from the documents with your analysis of 
                 invoke_elapsed = time.monotonic() - invoke_start
                 LOGGER.warning(
                     f"[Continuation] Connection error on attempt {attempt + 1}/"
-                    f"{MAX_CONTINUATION_RETRIES + 1} at depth={depth} after {invoke_elapsed:.3f}s: "
+                    f"{MAX_INVOKE_RETRIES + 1} at depth={depth} after {invoke_elapsed:.3f}s: "
                     f"{type(e).__name__}: {e}"
                 )
-                if attempt == MAX_CONTINUATION_RETRIES:
+                if attempt == MAX_INVOKE_RETRIES:
                     total_result_size = sum(
                         len(json.dumps(tr).encode('utf-8')) for tr in tool_results
                     )
                     LOGGER.error(
-                        f"[Continuation] All {MAX_CONTINUATION_RETRIES + 1} attempts failed. "
+                        f"[Continuation] All {MAX_INVOKE_RETRIES + 1} attempts failed. "
                         f"Tool result payload size: {total_result_size} bytes. "
                         f"This may indicate the payload exceeds Bedrock's size limit despite compaction."
                     )
