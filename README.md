@@ -82,7 +82,7 @@ BEDROCK_DEFAULT_MODEL="us.anthropic.claude-3-5-sonnet-20241022-v2:0"
 4. **Configure authentication** (optional but recommended):
 ```env
 JWT_SECRET_KEY="$(openssl rand -hex 32)"  # Generate a secure key
-OAUTH2_ENABLED_PROVIDERS=google
+OAUTH2_ENABLED_PROVIDERS=okta
 ```
 
 ### Frontend Setup
@@ -146,7 +146,7 @@ Access the application at: **http://localhost:5000**
 - **FastAPI REST API** - Main backend service
 - **Provider System** - Abstracts OpenAI and AWS Bedrock APIs
 - **MCP Integration** - Model Context Protocol for tool access
-- **Authentication** - OAuth2 support (Google, Okta)
+- **Authentication** - OAuth2 support (Okta, Cognito)
 
 ### Frontend (`flutterui/`)
 - **Flutter Web** - Cross-platform UI framework
@@ -216,8 +216,8 @@ poetry run pytest tests/test_bedrock_*.py  # Bedrock tests
 
 **OAuth2 Authentication:**
 - `OAUTH2_ENABLED_PROVIDERS` - Comma-separated providers
-- Google OAuth: `GOOGLE_AUTH_CREDS_JSON`
 - Okta OAuth: `OKTA_DOMAIN`, `OKTA_CLIENT_ID`, `OKTA_CLIENT_SECRET`
+- Cognito OAuth: `COGNITO_DOMAIN`, `COGNITO_CLIENT_ID`, `COGNITO_CLIENT_SECRET`
 
 **MCP Configuration:**
 - `BOND_MCP_CONFIG` - JSON configuration for MCP servers
