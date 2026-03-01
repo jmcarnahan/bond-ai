@@ -423,7 +423,7 @@ def my_tool(
 Potential improvements for future versions:
 
 1. **Custom Headers Support** - Pass auth in HTTP headers for HTTP-based MCP servers
-2. **Multiple Auth Providers** - Support for Google, GitHub, etc.
+2. **Multiple Auth Providers** - Support for GitHub, SAML, etc.
 3. **Token Refresh** - Automatic token refresh mechanism
 4. **Role-Based Access** - Include user roles in JWT for RBAC
 5. **Audit Logging** - Log all MCP tool calls with user context
