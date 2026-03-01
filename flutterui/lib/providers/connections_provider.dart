@@ -130,6 +130,7 @@ class ConnectionsNotifier extends StateNotifier<ConnectionsState> {
           scopes: c.scopes,
           expiresAt: c.expiresAt,
           requiresAuthorization: false,
+          hasRefreshToken: c.hasRefreshToken,
         );
       }
       return c;

@@ -10,6 +10,7 @@ class ConnectionStatus {
   final String? scopes;
   final String? expiresAt;
   final bool requiresAuthorization;
+  final bool hasRefreshToken;
 
   ConnectionStatus({
     required this.name,
@@ -22,6 +23,7 @@ class ConnectionStatus {
     this.scopes,
     this.expiresAt,
     this.requiresAuthorization = false,
+    this.hasRefreshToken = false,
   });
 
   factory ConnectionStatus.fromJson(Map<String, dynamic> json) {
@@ -36,6 +38,7 @@ class ConnectionStatus {
       scopes: json['scopes'] as String?,
       expiresAt: json['expires_at'] as String?,
       requiresAuthorization: json['requires_authorization'] as bool? ?? false,
+      hasRefreshToken: json['has_refresh_token'] as bool? ?? false,
     );
   }
 
@@ -50,15 +53,16 @@ class ConnectionStatus {
     'scopes': scopes,
     'expires_at': expiresAt,
     'requires_authorization': requiresAuthorization,
+    'has_refresh_token': hasRefreshToken,
   };
 
-  /// Returns true if the connection needs attention (expired or not connected)
-  bool get needsAttention => !connected || !valid;
+  /// Returns true if the connection needs attention (expired without refresh token, or not connected)
+  bool get needsAttention => !connected || (!valid && !hasRefreshToken);
 
   /// Human-readable status string
   String get statusText {
     if (!connected) return 'Not Connected';
-    if (!valid) return 'Expired';
+    if (!valid && !hasRefreshToken) return 'Expired';
     return 'Connected';
   }
 }

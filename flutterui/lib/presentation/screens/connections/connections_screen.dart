@@ -357,7 +357,7 @@ class _ConnectionRow extends StatelessWidget {
       statusColor = colorScheme.onSurfaceVariant;
       statusIcon = Icons.link_off;
       statusText = 'Not Connected';
-    } else if (!connection.valid) {
+    } else if (!connection.valid && !connection.hasRefreshToken) {
       statusColor = colorScheme.error;
       statusIcon = Icons.warning;
       statusText = 'Expired';
