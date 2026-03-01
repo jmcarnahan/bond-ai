@@ -931,5 +931,238 @@ class TestTokenRefresh:
             assert result.access_token == 'fresh-access-token'
             assert result.refresh_token == 'new-refresh-token'
 
+    def test_expired_token_not_deleted_when_auto_refresh_false(self, token_cache, test_user_id):
+        """Verify that auto_refresh=False preserves expired tokens with refresh_token in the DB."""
+        from bondable.bond.auth.token_encryption import encrypt_token
+
+        connection = f"no_delete_{uuid.uuid4().hex[:6]}"
+
+        # Write an expired token with a refresh_token directly to DB
+        session = TestSessionLocal()
+        expired_record = UserConnectionToken(
+            id=str(uuid.uuid4()),
+            user_id=test_user_id,
+            connection_name=connection,
+            access_token_encrypted=encrypt_token("expired-access"),
+            refresh_token_encrypted=encrypt_token("precious-refresh-token"),
+            token_type="Bearer",
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            scopes="read"
+        )
+        session.add(expired_record)
+        session.commit()
+        session.close()
+
+        # Call get_token with auto_refresh=False (read-only, like status checks)
+        result = token_cache.get_token(test_user_id, connection, auto_refresh=False)
+        assert result is None  # Should not return expired token
+
+        # But the token should still exist in the database (not deleted)
+        session = TestSessionLocal()
+        record = session.query(UserConnectionToken).filter(
+            UserConnectionToken.user_id == test_user_id,
+            UserConnectionToken.connection_name == connection
+        ).first()
+        session.close()
+
+        assert record is not None, "Token should NOT be deleted when auto_refresh=False"
+        assert decrypt_token(record.refresh_token_encrypted) == "precious-refresh-token"
+
+    def test_expired_token_deleted_after_failed_refresh(self, token_cache, test_user_id):
+        """Verify that auto_refresh=True deletes expired tokens when refresh fails."""
+        from unittest.mock import patch, MagicMock
+        from bondable.bond.auth.token_encryption import encrypt_token
+
+        connection = f"delete_fail_{uuid.uuid4().hex[:6]}"
+
+        # Write an expired token with a refresh_token directly to DB
+        session = TestSessionLocal()
+        expired_record = UserConnectionToken(
+            id=str(uuid.uuid4()),
+            user_id=test_user_id,
+            connection_name=connection,
+            access_token_encrypted=encrypt_token("expired-access"),
+            refresh_token_encrypted=encrypt_token("refresh-token"),
+            token_type="Bearer",
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            scopes="read"
+        )
+        session.add(expired_record)
+        session.commit()
+        session.close()
+
+        # Mock Config to return oauth_config so _refresh_token can attempt refresh
+        mock_mcp_config = {
+            'mcpServers': {
+                connection: {
+                    'oauth_config': {
+                        'token_url': 'https://auth.example.com/token',
+                        'client_id': 'test-client-id',
+                        'client_secret': 'test-secret'
+                    }
+                }
+            }
+        }
+
+        # Mock HTTP response as 400 (refresh failure)
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.json.return_value = {'error': 'invalid_grant'}
+
+        with patch('bondable.bond.config.Config') as mock_config_cls, \
+             patch('requests.post', return_value=mock_response):
+
+            mock_config_cls.config.return_value.get_mcp_config.return_value = mock_mcp_config
+
+            result = token_cache.get_token(test_user_id, connection, auto_refresh=True)
+            assert result is None  # Refresh failed, no token returned
+
+        # Token should be deleted from the database after failed refresh
+        session = TestSessionLocal()
+        record = session.query(UserConnectionToken).filter(
+            UserConnectionToken.user_id == test_user_id,
+            UserConnectionToken.connection_name == connection
+        ).first()
+        session.close()
+
+        assert record is None, "Token should be deleted after failed refresh with auto_refresh=True"
+
+    def test_status_check_then_refresh_works(self, token_cache, test_user_id):
+        """Verify status check (auto_refresh=False) followed by refresh (auto_refresh=True) works."""
+        from unittest.mock import patch, MagicMock
+        from bondable.bond.auth.token_encryption import encrypt_token
+
+        connection = f"status_refresh_{uuid.uuid4().hex[:6]}"
+
+        # Write an expired token with a refresh_token
+        session = TestSessionLocal()
+        expired_record = UserConnectionToken(
+            id=str(uuid.uuid4()),
+            user_id=test_user_id,
+            connection_name=connection,
+            access_token_encrypted=encrypt_token("expired-access"),
+            refresh_token_encrypted=encrypt_token("valid-refresh"),
+            token_type="Bearer",
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            scopes="read"
+        )
+        session.add(expired_record)
+        session.commit()
+        session.close()
+
+        # Step 1: Status check (auto_refresh=False) - should NOT delete the token
+        result = token_cache.get_token(test_user_id, connection, auto_refresh=False)
+        assert result is None
+
+        # Step 2: Now attempt auto_refresh=True - should succeed because token is preserved
+        mock_mcp_config = {
+            'mcpServers': {
+                connection: {
+                    'oauth_config': {
+                        'token_url': 'https://auth.example.com/token',
+                        'client_id': 'test-client-id',
+                        'client_secret': 'test-secret'
+                    }
+                }
+            }
+        }
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'access_token': 'fresh-token-after-status-check',
+            'token_type': 'Bearer',
+            'expires_in': 3600,
+            'refresh_token': 'new-refresh',
+        }
+
+        with patch('bondable.bond.config.Config') as mock_config_cls, \
+             patch('requests.post', return_value=mock_response):
+
+            mock_config_cls.config.return_value.get_mcp_config.return_value = mock_mcp_config
+
+            result = token_cache.get_token(test_user_id, connection, auto_refresh=True)
+
+            assert result is not None
+            assert result.access_token == 'fresh-token-after-status-check'
+            assert result.refresh_token == 'new-refresh'
+
+    def test_concurrent_refresh_does_not_delete_fresh_token(self, token_cache, test_user_id):
+        """Verify that a failed refresh does not delete a token that was refreshed by a concurrent request."""
+        from unittest.mock import patch, MagicMock
+        from bondable.bond.auth.token_encryption import encrypt_token
+
+        connection = f"concurrent_{uuid.uuid4().hex[:6]}"
+
+        # Write an expired token with a refresh_token
+        session = TestSessionLocal()
+        expired_record = UserConnectionToken(
+            id=str(uuid.uuid4()),
+            user_id=test_user_id,
+            connection_name=connection,
+            access_token_encrypted=encrypt_token("expired-access"),
+            refresh_token_encrypted=encrypt_token("old-refresh"),
+            token_type="Bearer",
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            scopes="read"
+        )
+        session.add(expired_record)
+        session.commit()
+        session.close()
+
+        mock_mcp_config = {
+            'mcpServers': {
+                connection: {
+                    'oauth_config': {
+                        'token_url': 'https://auth.example.com/token',
+                        'client_id': 'test-client-id',
+                        'client_secret': 'test-secret'
+                    }
+                }
+            }
+        }
+
+        # Mock HTTP response as 400 (refresh failure — simulates consumed rotating token)
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.json.return_value = {'error': 'invalid_grant'}
+
+        # Simulate: another request already refreshed the token and saved a fresh one.
+        # We do this by patching _refresh_token to fail, but beforehand writing a fresh
+        # token to the DB (as if Request A completed).
+        def simulate_concurrent_refresh(*args, **kwargs):
+            """Simulates Request A completing between our refresh attempt and delete."""
+            # Write a fresh token to DB (as if another request refreshed it)
+            s = TestSessionLocal()
+            record = s.query(UserConnectionToken).filter(
+                UserConnectionToken.user_id == test_user_id,
+                UserConnectionToken.connection_name == connection
+            ).first()
+            if record:
+                record.access_token_encrypted = encrypt_token("fresh-from-other-request")
+                record.refresh_token_encrypted = encrypt_token("new-rotating-refresh")
+                record.expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+                s.commit()
+            s.close()
+            return None  # Our refresh "failed"
+
+        with patch.object(token_cache, '_refresh_token', side_effect=simulate_concurrent_refresh):
+            result = token_cache.get_token(test_user_id, connection, auto_refresh=True)
+
+        # Should have found the fresh token written by the "concurrent request"
+        assert result is not None, "Should return the token refreshed by the concurrent request"
+        assert result.access_token == "fresh-from-other-request"
+        assert not result.is_expired()
+
+        # Token should still be in the database (not deleted)
+        session = TestSessionLocal()
+        record = session.query(UserConnectionToken).filter(
+            UserConnectionToken.user_id == test_user_id,
+            UserConnectionToken.connection_name == connection
+        ).first()
+        session.close()
+
+        assert record is not None, "Fresh token should NOT be deleted"
+
 
 # Run with: poetry run pytest tests/test_mcp_token_cache.py -v

@@ -315,11 +315,15 @@ def _get_connection_status_for_server(
             expires_at=None
         )
 
-    # Check OAuth token status
+    # Check OAuth token status using read-only method.
+    # IMPORTANT: Use get_user_connections() instead of get_token() here because
+    # get_user_connections() is purely read-only — it queries the DB and checks
+    # expiry in Python without any side effects (no token deletion, no refresh attempts).
     try:
-        token_data = token_cache.get_token(user_id, server_name, auto_refresh=False)
+        user_connections = token_cache.get_user_connections(user_id)
+        connection_info = user_connections.get(server_name)
 
-        if token_data is None:
+        if connection_info is None:
             return ConnectionStatusInfo(
                 connected=False,
                 valid=False,
@@ -327,14 +331,13 @@ def _get_connection_status_for_server(
                 expires_at=None
             )
 
-        # Check if token is expired
-        is_expired = token_data.is_expired()
+        is_valid = connection_info.get('valid', False)
 
         return ConnectionStatusInfo(
             connected=True,
-            valid=not is_expired,
-            requires_authorization=is_expired,
-            expires_at=token_data.get_expires_at_iso()
+            valid=is_valid,
+            requires_authorization=not is_valid,
+            expires_at=connection_info.get('expires_at')
         )
     except Exception as e:
         LOGGER.warning(f"[MCP Tools] Error checking token for {server_name}: {e}")

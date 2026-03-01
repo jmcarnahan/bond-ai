@@ -501,8 +501,21 @@ class MCPTokenCache:
                         f"auto_refresh={auto_refresh}"
                     )
 
-                # Delete expired token if refresh failed or not attempted
-                self._delete_from_database(user_id, connection_name)
+                # Only delete expired token when auto_refresh was attempted (refresh failed or no refresh_token).
+                # When auto_refresh=False (read-only callers like status checks), preserve the token
+                # so a future auto_refresh=True call can still use the refresh_token.
+                if auto_refresh:
+                    # Guard against concurrent refresh race condition:
+                    # Another request may have already refreshed the token while we were trying.
+                    # Re-check the DB before deleting to avoid destroying a freshly refreshed token.
+                    reloaded = self._load_from_database(user_id, connection_name)
+                    if reloaded is not None and not reloaded.is_expired():
+                        LOGGER.info(
+                            f"[GET_TOKEN] Token was refreshed by concurrent request for "
+                            f"user={user_id}, connection={connection_name}"
+                        )
+                        return reloaded
+                    self._delete_from_database(user_id, connection_name)
                 return None
 
             LOGGER.debug(
