@@ -71,6 +71,7 @@ resource "aws_secretsmanager_secret_version" "app_config" {
     okta_client_id     = var.okta_client_id
     okta_client_secret = jsondecode(data.aws_secretsmanager_secret_version.okta_secret.secret_string)["client_secret"]
     cognito_client_id  = var.cognito_client_id
+    bond_mcp_config    = var.bond_mcp_config != "" ? jsondecode(var.bond_mcp_config) : {}
   })
 }
 
