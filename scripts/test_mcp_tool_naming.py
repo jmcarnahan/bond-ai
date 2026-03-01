@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import requests
 from datetime import datetime, timedelta, timezone
-from jose import jwt
+import jwt
 
 
 BASE_URL = os.getenv("BOND_API_URL", "http://localhost:8000")

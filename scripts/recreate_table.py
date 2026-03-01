@@ -30,7 +30,7 @@ from datetime import datetime, timedelta, timezone
 def create_local_admin_token(admin_email: str = "admin@example.com") -> str:
     """Create a JWT token for local development."""
     try:
-        from jose import jwt
+        import jwt
         from bondable.bond.config import Config
         jwt_config = Config.config().get_jwt_config()
 

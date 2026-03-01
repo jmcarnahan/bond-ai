@@ -15,7 +15,7 @@ import requests
 import io
 import openpyxl
 from datetime import datetime, timedelta, timezone
-from jose import jwt
+import jwt
 from typing import Optional
 
 

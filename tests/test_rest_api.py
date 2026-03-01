@@ -3,7 +3,7 @@ import os
 import tempfile
 from unittest.mock import patch, MagicMock, ANY
 from fastapi.testclient import TestClient
-from jose import jwt
+import jwt
 from datetime import timedelta, datetime, timezone
 import io
 

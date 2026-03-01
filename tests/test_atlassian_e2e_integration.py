@@ -343,7 +343,7 @@ def create_test_auth_token(user_id: str = None, email: str = None) -> str:
         JWT token string
     """
     from datetime import datetime, timedelta, timezone
-    from jose import jwt
+    import jwt
     from bondable.bond.config import Config
 
     # Use module-level defaults if not provided

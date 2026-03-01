@@ -76,7 +76,8 @@ MCP Tool Executes with User Context
 ```python
 from fastmcp import FastMCP
 from typing import Optional, Dict, Any
-from jose import jwt, JWTError
+import jwt
+from jwt.exceptions import InvalidTokenError
 import logging
 
 logger = logging.getLogger(__name__)
@@ -91,7 +92,7 @@ def validate_jwt_token(token: str) -> Optional[Dict[str, Any]]:
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
         return payload
-    except JWTError as e:
+    except InvalidTokenError as e:
         logger.error(f"JWT validation failed: {e}")
         return None
 
@@ -303,7 +304,7 @@ def admin_only_tool(**kwargs) -> str:
 **Solutions**:
 - Verify JWT_SECRET_KEY matches between Bond AI and MCP server
 - Check JWT_ALGORITHM is consistent (default: HS256)
-- Ensure python-jose is installed: `pip install python-jose`
+- Ensure PyJWT is installed: `pip install PyJWT[crypto]`
 
 #### 2. No Authentication Info Received
 

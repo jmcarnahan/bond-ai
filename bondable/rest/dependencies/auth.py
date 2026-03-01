@@ -1,7 +1,8 @@
 from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import InvalidTokenError
 import logging
 
 from bondable.bond.config import Config
@@ -58,7 +59,7 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> Use
             locale=payload.get("locale")
         )
 
-    except JWTError as e:
+    except InvalidTokenError as e:
         LOGGER.error(f"JWT Error during token decode: {e}", exc_info=True)
         raise credentials_exception
     except Exception as e:

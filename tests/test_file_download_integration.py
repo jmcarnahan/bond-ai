@@ -14,7 +14,7 @@ import requests
 import re
 import json
 from datetime import datetime, timedelta, timezone
-from jose import jwt
+import jwt
 from typing import Optional, Dict
 from urllib.parse import quote
 

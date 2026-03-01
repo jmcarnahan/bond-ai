@@ -11,7 +11,7 @@ This script demonstrates the full lifecycle of working with the Bond AI REST API
 
 Prerequisites:
 - REST API server running: uvicorn bondable.rest.main:app --reload
-- python-jose package: pip install python-jose[cryptography]
+- PyJWT package: pip install PyJWT[crypto]
 """
 
 import requests
@@ -22,7 +22,7 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
-from jose import jwt
+import jwt
 from typing import Optional, Dict, List
 
 
