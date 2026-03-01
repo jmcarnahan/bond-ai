@@ -38,6 +38,17 @@ AUTH_TYPE_STATIC = "static"
 # Token cache initialization no longer needed - it gets DB session automatically from Config
 
 
+def _is_401_error(exc: Exception) -> bool:
+    """Check if an exception indicates an HTTP 401 Unauthorized response."""
+    error_str = str(exc).lower()
+    if '401' in error_str and ('unauthorized' in error_str or 'authentication' in error_str):
+        return True
+    # Check for httpx/requests HTTPStatusError with status_code attribute
+    if hasattr(exc, 'response') and hasattr(exc.response, 'status_code'):
+        return exc.response.status_code == 401
+    return False
+
+
 # =============================================================================
 # Tool Naming Utilities
 # =============================================================================
@@ -927,7 +938,7 @@ def _get_auth_headers_for_server(
 
         token_cache = get_mcp_token_cache()
 
-        # First check if token exists (including expired tokens for better error message)
+        # Read-only check: has the user ever connected?
         user_connections = token_cache.get_user_connections(user_id)
         connection_info = user_connections.get(server_name)
 
@@ -938,17 +949,19 @@ def _get_auth_headers_for_server(
                 f"Please authorize access to '{server_name}' before using its tools"
             )
 
-        # Check if token is expired (connection exists but not valid)
         LOGGER.debug(f"[MCP Auth] Connection info for {server_name}: connected={connection_info.get('connected')}, valid={connection_info.get('valid')}, expires_at={connection_info.get('expires_at')}")
-        if connection_info.get('connected') and not connection_info.get('valid'):
-            LOGGER.debug(f"[MCP Auth] OAuth token expired for user={user_email}, server={server_name}")
-            expires_at = connection_info.get('expires_at')
-            raise TokenExpiredError(server_name, expires_at)
 
-        # Get the actual token (will return None if expired due to 5-min buffer)
-        token_data = token_cache.get_token(user_id, server_name)
+        # Get the actual token with auto_refresh=True.
+        # If the token is expired but has a refresh_token, this will automatically
+        # refresh it via the OAuth provider and return the new token.
+        token_data = token_cache.get_token(user_id, server_name, auto_refresh=True)
 
         if token_data is None:
+            # Token missing, or expired and refresh failed (or no refresh_token)
+            expires_at = connection_info.get('expires_at')
+            if connection_info.get('connected') and not connection_info.get('valid'):
+                LOGGER.info(f"[MCP Auth] OAuth token expired and refresh failed for user={user_email}, server={server_name}")
+                raise TokenExpiredError(server_name, expires_at)
             LOGGER.debug(f"No valid OAuth token for user={user_email}, server={server_name}")
             raise AuthorizationRequiredError(
                 server_name,
@@ -1044,98 +1057,119 @@ async def execute_mcp_tool(
             LOGGER.warning(f"[MCP Execute] No URL configured for MCP server {server_name}")
             continue
 
-        try:
-            # Get authentication headers based on auth_type
-            headers = _get_auth_headers_for_server(
-                server_name=server_name,
-                server_config=server_config,
-                current_user=current_user,
-                jwt_token=jwt_token
-            )
-            headers['User-Agent'] = 'Bond-AI-MCP-Client/1.0'
+        # Retry loop: attempt once, and if we get a 401 on an oauth2 server,
+        # force-refresh the token and retry once.
+        auth_type = server_config.get('auth_type', AUTH_TYPE_BOND_JWT)
+        max_attempts = 2 if auth_type == AUTH_TYPE_OAUTH2 else 1
 
-            # Use appropriate transport based on config
-            transport_type = server_config.get('transport', 'streamable-http')
+        for attempt in range(max_attempts):
+            try:
+                # Get authentication headers based on auth_type
+                headers = _get_auth_headers_for_server(
+                    server_name=server_name,
+                    server_config=server_config,
+                    current_user=current_user,
+                    jwt_token=jwt_token
+                )
+                headers['User-Agent'] = 'Bond-AI-MCP-Client/1.0'
 
-            # Note: Don't override Accept/Content-Type headers for streamable-http
-            # The MCP SDK sets these by default with lowercase keys
+                # Use appropriate transport based on config
+                transport_type = server_config.get('transport', 'streamable-http')
 
-            if transport_type == 'sse':
-                transport = SSETransport(server_url, headers=headers)
-            else:
-                transport = StreamableHttpTransport(server_url, headers=headers)
+                # Note: Don't override Accept/Content-Type headers for streamable-http
+                # The MCP SDK sets these by default with lowercase keys
 
-            async with Client(transport) as client:
-                # Check if this server has the tool
-                all_tools = await client.list_tools()
-                tool_dict = {t.name: t for t in all_tools}
-
-                if tool_name not in tool_dict:
-                    LOGGER.debug(f"[MCP Execute] Tool '{tool_name}' not found on server '{server_name}'")
-                    continue
-
-                LOGGER.debug(f"[MCP Execute] Found tool '{tool_name}' on server '{server_name}'")
-
-                # Prepare parameters
-                tool_parameters = parameters.copy() if parameters else {}
-
-                # Coerce parameters to match MCP tool's expected types
-                # (reverses object/array -> string sanitization done for Bedrock)
-                tool = tool_dict[tool_name]
-                tool_schema = getattr(tool, 'inputSchema', None) or {}
-                tool_parameters = _coerce_parameters_for_mcp(tool_name, tool_parameters, tool_schema)
-
-                LOGGER.debug(f"[MCP Execute] Executing tool '{tool_name}' with parameters: {list(tool_parameters.keys())}")
-                result = await client.call_tool(tool_name, tool_parameters)
-
-                # Handle different result types (inside the async with block)
-                if hasattr(result, 'content') and isinstance(result.content, list):
-                    # Extract text from content list
-                    text_parts = []
-                    for content_item in result.content:
-                        if hasattr(content_item, 'text'):
-                            text_parts.append(content_item.text)
-                        elif hasattr(content_item, 'type') and content_item.type == 'text':
-                            text_parts.append(str(content_item))
-                    return {"success": True, "result": " ".join(text_parts)}
-                elif hasattr(result, 'text'):
-                    return {"success": True, "result": result.text}
+                if transport_type == 'sse':
+                    transport = SSETransport(server_url, headers=headers)
                 else:
-                    # Fallback to string representation
-                    return {"success": True, "result": str(result)}
+                    transport = StreamableHttpTransport(server_url, headers=headers)
 
-        except AuthorizationRequiredError as e:
-            LOGGER.debug(f"[MCP Execute] Authorization required for server '{server_name}': {e.connection_name}")
-            if target_server:
-                # Direct routing - return error immediately
-                return {
-                    "success": False,
-                    "error": e.message,
-                    "authorization_required": True,
-                    "server_name": e.connection_name
-                }
-            # Searching - continue to next server
-            LOGGER.debug(f"[MCP Execute] Server '{server_name}' needs auth, trying next server...")
-            continue
-        except TokenExpiredError as e:
-            LOGGER.debug(f"[MCP Execute] Token expired for server '{server_name}': {e.connection_name}")
-            if target_server:
-                # Direct routing - return error immediately
-                return {
-                    "success": False,
-                    "error": e.message,
-                    "token_expired": True,
-                    "connection_name": e.connection_name,
-                    "expired_at": safe_isoformat(e.expired_at)
-                }
-            # Searching - continue to next server
-            LOGGER.debug(f"[MCP Execute] Server '{server_name}' token expired, trying next server...")
-            continue
-        except Exception as e:
-            # Log full exception details including traceback for debugging
-            LOGGER.exception(f"[MCP Execute] Error on server '{server_name}' when executing tool '{tool_name}' with parameters {list(parameters.keys()) if parameters else []}: {e}")
-            last_execution_error = str(e)
-            continue  # Try next server
+                async with Client(transport) as client:
+                    # Check if this server has the tool
+                    all_tools = await client.list_tools()
+                    tool_dict = {t.name: t for t in all_tools}
+
+                    if tool_name not in tool_dict:
+                        LOGGER.debug(f"[MCP Execute] Tool '{tool_name}' not found on server '{server_name}'")
+                        break  # Break retry loop, continue to next server
+
+                    LOGGER.debug(f"[MCP Execute] Found tool '{tool_name}' on server '{server_name}'")
+
+                    # Prepare parameters
+                    tool_parameters = parameters.copy() if parameters else {}
+
+                    # Coerce parameters to match MCP tool's expected types
+                    # (reverses object/array -> string sanitization done for Bedrock)
+                    tool = tool_dict[tool_name]
+                    tool_schema = getattr(tool, 'inputSchema', None) or {}
+                    tool_parameters = _coerce_parameters_for_mcp(tool_name, tool_parameters, tool_schema)
+
+                    LOGGER.debug(f"[MCP Execute] Executing tool '{tool_name}' with parameters: {list(tool_parameters.keys())}")
+                    result = await client.call_tool(tool_name, tool_parameters)
+
+                    # Handle different result types (inside the async with block)
+                    if hasattr(result, 'content') and isinstance(result.content, list):
+                        # Extract text from content list
+                        text_parts = []
+                        for content_item in result.content:
+                            if hasattr(content_item, 'text'):
+                                text_parts.append(content_item.text)
+                            elif hasattr(content_item, 'type') and content_item.type == 'text':
+                                text_parts.append(str(content_item))
+                        return {"success": True, "result": " ".join(text_parts)}
+                    elif hasattr(result, 'text'):
+                        return {"success": True, "result": result.text}
+                    else:
+                        # Fallback to string representation
+                        return {"success": True, "result": str(result)}
+
+            except AuthorizationRequiredError as e:
+                LOGGER.debug(f"[MCP Execute] Authorization required for server '{server_name}': {e.connection_name}")
+                if target_server:
+                    # Direct routing - return error immediately
+                    return {
+                        "success": False,
+                        "error": e.message,
+                        "authorization_required": True,
+                        "server_name": e.connection_name
+                    }
+                # Searching - continue to next server
+                LOGGER.debug(f"[MCP Execute] Server '{server_name}' needs auth, trying next server...")
+                break  # Break retry loop, continue to next server
+            except TokenExpiredError as e:
+                LOGGER.debug(f"[MCP Execute] Token expired for server '{server_name}': {e.connection_name}")
+                if target_server:
+                    # Direct routing - return error immediately
+                    return {
+                        "success": False,
+                        "error": e.message,
+                        "token_expired": True,
+                        "connection_name": e.connection_name,
+                        "expired_at": safe_isoformat(e.expired_at)
+                    }
+                # Searching - continue to next server
+                LOGGER.debug(f"[MCP Execute] Server '{server_name}' token expired, trying next server...")
+                break  # Break retry loop, continue to next server
+            except Exception as e:
+                error_str = str(e)
+                # Retry on 401 for oauth2 servers: token may have expired between
+                # the 5-minute buffer check and the actual API call
+                if attempt == 0 and auth_type == AUTH_TYPE_OAUTH2 and _is_401_error(e):
+                    user_id = getattr(current_user, 'user_id', None) if current_user else None
+                    if user_id:
+                        LOGGER.info(
+                            f"[MCP Execute] Got 401 from server '{server_name}', "
+                            f"attempting token refresh and retry (attempt {attempt + 1})"
+                        )
+                        # Force refresh by calling get_token with auto_refresh=True
+                        token_cache = get_mcp_token_cache()
+                        token_cache.get_token(user_id, server_name, auto_refresh=True)
+                        continue  # Retry with refreshed token
+
+                # Log full exception details including traceback for debugging
+                LOGGER.exception(f"[MCP Execute] Error on server '{server_name}' when executing tool '{tool_name}' with parameters {list(parameters.keys()) if parameters else []}: {e}")
+                last_execution_error = error_str or f"{type(e).__name__} on server '{server_name}'"
+                break  # Break retry loop, continue to next server
 
     # Distinguish between "tool not found" and "tool found but execution failed"
     if last_execution_error:
