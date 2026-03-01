@@ -437,7 +437,10 @@ class Config:
 
     def get_mcp_config(self):
         """
-        Get MCP configuration in fastmcp format from environment variables.
+        Get MCP configuration in fastmcp format.
+
+        Tries app config secret first (bond_mcp_config key), then falls back
+        to BOND_MCP_CONFIG environment variable.
 
         Example:
         BOND_MCP_CONFIG='{
@@ -457,7 +460,15 @@ class Config:
         Returns:
             Dict in fastmcp config format
         """
-        # Default to local hello server in fastmcp config format
+        # Try app config secret first
+        app_config = self._load_app_config()
+        mcp_config = app_config.get('bond_mcp_config')
+        if mcp_config:
+            server_count = len(mcp_config.get("mcpServers", {}))
+            LOGGER.info(f"Loaded MCP config from app config secret with {server_count} servers")
+            return mcp_config
+
+        # Fall back to env var
         default_config = '''{
             "mcpServers": {
                 "hello": {
