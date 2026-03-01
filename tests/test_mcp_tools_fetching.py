@@ -54,7 +54,7 @@ TEST_USER_ID = os.environ.get("TEST_USER_ID", "00uxpu9a9teaAE5rn697")
 
 def create_test_jwt() -> str:
     """Create a test JWT token for authentication."""
-    from jose import jwt
+    import jwt
     from bondable.bond.config import Config
 
     jwt_config = Config.config().get_jwt_config()

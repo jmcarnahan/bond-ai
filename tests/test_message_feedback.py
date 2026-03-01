@@ -13,13 +13,13 @@ This test exercises the message feedback REST API endpoints:
 
 Prerequisites:
 - Backend server running: uvicorn bondable.rest.main:app --reload
-- python-jose package: pip install python-jose[cryptography]
+- PyJWT package: pip install PyJWT[crypto]
 """
 
 import requests
 import time
 from datetime import datetime, timedelta, timezone
-from jose import jwt
+import jwt
 from typing import Optional, Dict, List
 import sys
 

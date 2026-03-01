@@ -35,10 +35,10 @@ from typing import Optional, Dict, List, Tuple
 
 # For JWT token creation
 try:
-    from jose import jwt
+    import jwt
     from bondable.bond.config import Config
 except ImportError:
-    print("ERROR: Required packages not found. Install with: pip install python-jose[cryptography]")
+    print("ERROR: Required packages not found. Install with: pip install PyJWT[crypto]")
     sys.exit(1)
 
 

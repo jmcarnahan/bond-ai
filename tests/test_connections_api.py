@@ -10,7 +10,7 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import patch, AsyncMock, MagicMock
 from urllib.parse import urlparse, parse_qs
 from fastapi.testclient import TestClient
-from jose import jwt
+import jwt
 
 # --- Test Database Setup ---
 _test_db_file = tempfile.NamedTemporaryFile(suffix='_connections.db', delete=False)

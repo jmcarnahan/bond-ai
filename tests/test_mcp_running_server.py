@@ -13,7 +13,7 @@ Usage:
 import os
 import asyncio
 import json
-from jose import jwt
+import jwt
 from bondable.bond.config import Config
 from bondable.bond.providers.bedrock.BedrockMCP import execute_mcp_tool
 from bondable.rest.models.auth import User

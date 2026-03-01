@@ -22,7 +22,8 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 import os
 import logging
-from jose import jwt, JWTError
+import jwt
+from jwt.exceptions import InvalidTokenError
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -82,11 +83,10 @@ def get_user_from_token() -> Optional[Dict[str, Any]]:
                 issuer=JWT_ISSUER,
                 audience=JWT_AUDIENCE
             )
-        except JWTError as e:
+        except InvalidTokenError as e:
             # Try decoding without validation to see what's in the token
             try:
-                from jose import jwt as jwt_module
-                unverified_claims = jwt_module.get_unverified_claims(token)
+                unverified_claims = jwt.decode(token, options={"verify_signature": False}, algorithms=["HS256"])
                 logger.warning(f"JWT validation failed: {e}")
                 logger.warning(f"Token has: iss={unverified_claims.get('iss', 'NOT SET')}, aud={unverified_claims.get('aud', 'NOT SET')}")
                 logger.warning(f"Expected: iss={JWT_ISSUER}, aud={JWT_AUDIENCE}")
@@ -105,7 +105,7 @@ def get_user_from_token() -> Optional[Dict[str, Any]]:
             "provider": claims.get('provider'),
             "okta_sub": claims.get('okta_sub'),
         }
-    except JWTError as e:
+    except InvalidTokenError as e:
         logger.warning(f"JWT validation failed: {e}")
         return None
     except Exception as e:
