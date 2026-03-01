@@ -40,6 +40,7 @@ class ConnectionStatusInfo(BaseModel):
     valid: bool = True
     requires_authorization: bool = False
     expires_at: Optional[str] = None
+    has_refresh_token: bool = False
 
 
 class MCPServerWithTools(BaseModel):
@@ -201,7 +202,9 @@ async def list_mcp_tools(
                 )
             except TokenExpiredError as e:
                 LOGGER.info(f"[MCP Tools] Server '{server_name}' token expired: {e.message}")
-                # Update connection status to reflect expired token
+                # Update connection status to reflect expired token.
+                # has_refresh_token intentionally defaults to False here — TokenExpiredError
+                # is only raised when no refresh token exists or refresh has already failed.
                 connection_status = ConnectionStatusInfo(
                     connected=True,
                     valid=False,
@@ -332,12 +335,18 @@ def _get_connection_status_for_server(
             )
 
         is_valid = connection_info.get('valid', False)
+        has_refresh_token = connection_info.get('has_refresh_token', False)
+
+        # Treat connections with refresh tokens as valid for display purposes
+        # since they will auto-refresh on next use
+        display_valid = is_valid or has_refresh_token
 
         return ConnectionStatusInfo(
             connected=True,
-            valid=is_valid,
-            requires_authorization=not is_valid,
-            expires_at=connection_info.get('expires_at')
+            valid=display_valid,
+            requires_authorization=not display_valid,
+            expires_at=connection_info.get('expires_at'),
+            has_refresh_token=has_refresh_token
         )
     except Exception as e:
         LOGGER.warning(f"[MCP Tools] Error checking token for {server_name}: {e}")

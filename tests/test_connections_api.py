@@ -573,4 +573,201 @@ class TestErrorHandling:
         assert response.status_code == 401
 
 
+# --- Auto-Refreshable Connection Status Tests ---
+
+# Shared mock config for refresh token tests
+_REFRESHABLE_TEST_CONFIG = {
+    "name": "test_oauth_conn",
+    "display_name": "Test OAuth Connection",
+    "description": "A test OAuth2 connection",
+    "url": "https://test.example.com",
+    "transport": "sse",
+    "auth_type": "oauth2",
+    "oauth_client_id": "test-client-id",
+    "oauth_authorize_url": "https://test.example.com/authorize",
+    "oauth_token_url": "https://test.example.com/token",
+    "oauth_scopes": "read write",
+    "oauth_redirect_uri": "http://localhost/callback",
+    "icon_url": None,
+    "extra_config": {}
+}
+
+
+def _mock_user_connections(*, expired=False, has_refresh_token=True):
+    """Create a mock return value for get_user_connections()."""
+    if expired:
+        expires_at = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    else:
+        expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+
+    return {
+        "test_oauth_conn": {
+            "connected": True,
+            "valid": not expired,
+            "has_refresh_token": has_refresh_token,
+            "scopes": "read write",
+            "expires_at": expires_at,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "provider_metadata": {}
+        }
+    }
+
+
+class TestRefreshableConnectionStatus:
+    """Test that connections with refresh tokens show as 'Connected' even when expired."""
+
+    @patch("bondable.rest.routers.connections.get_mcp_token_cache")
+    @patch("bondable.rest.routers.connections._get_connection_configs")
+    def test_list_expired_with_refresh_token_shows_valid(self, mock_configs, mock_cache, authenticated_client):
+        """Expired connection with refresh token should show valid=true, has_refresh_token=true."""
+        mock_configs.return_value = [_REFRESHABLE_TEST_CONFIG]
+        mock_cache.return_value.get_user_connections.return_value = _mock_user_connections(
+            expired=True, has_refresh_token=True
+        )
+        client, headers = authenticated_client
+
+        response = client.get("/connections", headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+
+        conn = next(c for c in data["connections"] if c["name"] == "test_oauth_conn")
+        assert conn["connected"] is True
+        assert conn["valid"] is True  # Treated as valid because refresh token exists
+        assert conn["has_refresh_token"] is True
+
+        # Should NOT appear in expired list
+        expired_names = [e["name"] for e in data["expired"]]
+        assert "test_oauth_conn" not in expired_names
+
+    @patch("bondable.rest.routers.connections.get_mcp_token_cache")
+    @patch("bondable.rest.routers.connections._get_connection_configs")
+    def test_list_expired_without_refresh_token_shows_invalid(self, mock_configs, mock_cache, authenticated_client):
+        """Expired connection without refresh token should show valid=false, has_refresh_token=false."""
+        mock_configs.return_value = [_REFRESHABLE_TEST_CONFIG]
+        mock_cache.return_value.get_user_connections.return_value = _mock_user_connections(
+            expired=True, has_refresh_token=False
+        )
+        client, headers = authenticated_client
+
+        response = client.get("/connections", headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+
+        conn = next(c for c in data["connections"] if c["name"] == "test_oauth_conn")
+        assert conn["connected"] is True
+        assert conn["valid"] is False  # No refresh token, truly expired
+        assert conn["has_refresh_token"] is False
+
+        # SHOULD appear in expired list
+        expired_names = [e["name"] for e in data["expired"]]
+        assert "test_oauth_conn" in expired_names
+
+    @patch("bondable.rest.routers.connections.get_mcp_token_cache")
+    @patch("bondable.rest.routers.connections._get_connection_config")
+    def test_status_endpoint_expired_with_refresh_token(self, mock_config, mock_cache, authenticated_client):
+        """Individual status endpoint should also treat refreshable connections as valid."""
+        mock_config.return_value = _REFRESHABLE_TEST_CONFIG
+        mock_cache.return_value.get_user_connections.return_value = _mock_user_connections(
+            expired=True, has_refresh_token=True
+        )
+        client, headers = authenticated_client
+
+        response = client.get("/connections/test_oauth_conn/status", headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["connected"] is True
+        assert data["valid"] is True  # Refreshable = valid
+        assert data["has_refresh_token"] is True
+        assert data["requires_authorization"] is False
+
+    @patch("bondable.rest.routers.connections.get_mcp_token_cache")
+    @patch("bondable.rest.routers.connections._get_connection_config")
+    def test_status_endpoint_expired_without_refresh_token(self, mock_config, mock_cache, authenticated_client):
+        """Individual status endpoint should show expired when no refresh token."""
+        mock_config.return_value = _REFRESHABLE_TEST_CONFIG
+        mock_cache.return_value.get_user_connections.return_value = _mock_user_connections(
+            expired=True, has_refresh_token=False
+        )
+        client, headers = authenticated_client
+
+        response = client.get("/connections/test_oauth_conn/status", headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["connected"] is True
+        assert data["valid"] is False  # Truly expired
+        assert data["has_refresh_token"] is False
+
+    @patch("bondable.rest.routers.connections.get_mcp_token_cache")
+    @patch("bondable.rest.routers.connections._get_connection_configs")
+    def test_check_expired_excludes_refreshable(self, mock_configs, mock_cache, authenticated_client):
+        """check-expired endpoint should not list connections with refresh tokens."""
+        mock_configs.return_value = [_REFRESHABLE_TEST_CONFIG]
+        mock_token_cache = MagicMock()
+        mock_token_cache.get_user_connections.return_value = _mock_user_connections(
+            expired=True, has_refresh_token=True
+        )
+        mock_token_cache.get_expired_connections.return_value = []  # Refresh token excludes it
+        mock_cache.return_value = mock_token_cache
+        client, headers = authenticated_client
+
+        response = client.get("/connections/check-expired", headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["has_expired"] is False
+        expired_names = [e["name"] for e in data["expired_connections"]]
+        assert "test_oauth_conn" not in expired_names
+
+    @patch("bondable.rest.routers.connections.get_mcp_token_cache")
+    @patch("bondable.rest.routers.connections._get_connection_configs")
+    def test_valid_token_with_refresh_shows_connected(self, mock_configs, mock_cache, authenticated_client):
+        """Valid (non-expired) connection with refresh token should show connected normally."""
+        mock_configs.return_value = [_REFRESHABLE_TEST_CONFIG]
+        mock_cache.return_value.get_user_connections.return_value = _mock_user_connections(
+            expired=False, has_refresh_token=True
+        )
+        client, headers = authenticated_client
+
+        response = client.get("/connections", headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+
+        conn = next(c for c in data["connections"] if c["name"] == "test_oauth_conn")
+        assert conn["connected"] is True
+        assert conn["valid"] is True
+        assert conn["has_refresh_token"] is True
+
+        # Should NOT appear in expired list
+        assert len(data["expired"]) == 0
+
+    @patch("bondable.rest.routers.connections.get_mcp_token_cache")
+    @patch("bondable.rest.routers.connections._get_connection_configs")
+    def test_list_and_check_expired_consistent_with_refresh_tokens(self, mock_configs, mock_cache, authenticated_client):
+        """List and check-expired should agree on what's expired when refresh tokens exist."""
+        mock_configs.return_value = [_REFRESHABLE_TEST_CONFIG]
+        mock_token_cache = MagicMock()
+        mock_token_cache.get_user_connections.return_value = _mock_user_connections(
+            expired=True, has_refresh_token=True
+        )
+        mock_token_cache.get_expired_connections.return_value = []  # Refresh token excludes it
+        mock_cache.return_value = mock_token_cache
+        client, headers = authenticated_client
+
+        list_response = client.get("/connections", headers=headers)
+        expired_response = client.get("/connections/check-expired", headers=headers)
+
+        assert list_response.status_code == 200
+        assert expired_response.status_code == 200
+
+        list_expired = list_response.json()["expired"]
+        check_expired = expired_response.json()["expired_connections"]
+
+        # Both should agree: refreshable connections are NOT expired
+        assert len(list_expired) == len(check_expired)
+        assert all(e["name"] != "test_oauth_conn" for e in list_expired)
+        assert all(e["name"] != "test_oauth_conn" for e in check_expired)
+
+
 # Run with: poetry run pytest tests/test_connections_api.py -v

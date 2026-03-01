@@ -53,6 +53,7 @@ class ConnectionStatusResponse(BaseModel):
     scopes: Optional[str] = None
     expires_at: Optional[str] = None
     requires_authorization: bool = False
+    has_refresh_token: bool = False
 
 
 class ConnectionsListResponse(BaseModel):
@@ -267,23 +268,29 @@ async def list_connections(
 
         connected = user_conn.get("connected", False)
         valid = user_conn.get("valid", True) if connected else True
+        has_refresh_token = user_conn.get("has_refresh_token", False)
+
+        # Treat connections with refresh tokens as valid for display purposes
+        # since they will auto-refresh on next use
+        display_valid = valid or (connected and has_refresh_token)
 
         connection_status = ConnectionStatusResponse(
             name=name,
             display_name=config.get("display_name", name.title()),
             description=config.get("description"),
             connected=connected,
-            valid=valid,
+            valid=display_valid,
             auth_type=config.get("auth_type", "oauth2"),
             icon_url=config.get("icon_url"),
             scopes=user_conn.get("scopes"),
             expires_at=user_conn.get("expires_at"),
-            requires_authorization=not connected
+            requires_authorization=not connected,
+            has_refresh_token=has_refresh_token
         )
         connections.append(connection_status)
 
-        # Track expired connections
-        if connected and not valid:
+        # Track expired connections (only if no refresh token available)
+        if connected and not valid and not has_refresh_token:
             expired.append({
                 "name": name,
                 "display_name": config.get("display_name", name.title()),
@@ -531,18 +538,24 @@ async def get_connection_status(
 
     connected = user_conn.get("connected", False)
     valid = user_conn.get("valid", True) if connected else True
+    has_refresh_token = user_conn.get("has_refresh_token", False)
+
+    # Treat connections with refresh tokens as valid for display purposes
+    # since they will auto-refresh on next use
+    display_valid = valid or (connected and has_refresh_token)
 
     return ConnectionStatusResponse(
         name=connection_name,
         display_name=config.get("display_name", connection_name.title()),
         description=config.get("description"),
         connected=connected,
-        valid=valid,
+        valid=display_valid,
         auth_type=config.get("auth_type", "oauth2"),
         icon_url=config.get("icon_url"),
         scopes=user_conn.get("scopes"),
         expires_at=user_conn.get("expires_at"),
-        requires_authorization=not connected
+        requires_authorization=not connected,
+        has_refresh_token=has_refresh_token
     )
 
 

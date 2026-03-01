@@ -730,6 +730,7 @@ class MCPTokenCache:
                     connections[token_record.connection_name] = {
                         "connected": True,
                         "valid": not is_expired,
+                        "has_refresh_token": token_record.refresh_token_encrypted is not None,
                         "scopes": token_record.scopes,
                         "expires_at": safe_isoformat(expires_at),
                         "created_at": safe_isoformat(created_at),
@@ -756,7 +757,7 @@ class MCPTokenCache:
         connections = self.get_user_connections(user_id)
 
         for connection_name, info in connections.items():
-            if info.get("connected") and not info.get("valid"):
+            if info.get("connected") and not info.get("valid") and not info.get("has_refresh_token"):
                 expired.append({
                     "name": connection_name,
                     "expires_at": info.get("expires_at")

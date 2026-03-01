@@ -366,6 +366,41 @@ class TestUserConnections:
                 assert info["valid"] is True
                 assert info["scopes"] == "read write"
 
+    def test_get_user_connections_has_refresh_token(self, token_cache, test_user_id):
+        """Test that has_refresh_token is True when a refresh token is stored"""
+        from bondable.bond.auth.token_encryption import encrypt_token
+        conn_with_refresh = f"with_refresh_{uuid.uuid4().hex[:6]}"
+        conn_without_refresh = f"no_refresh_{uuid.uuid4().hex[:6]}"
+
+        session = TestSessionLocal()
+        # Connection WITH refresh token
+        session.add(UserConnectionToken(
+            id=str(uuid.uuid4()),
+            user_id=test_user_id,
+            connection_name=conn_with_refresh,
+            access_token_encrypted=encrypt_token("access-1"),
+            refresh_token_encrypted=encrypt_token("refresh-1"),
+            token_type="Bearer",
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1)
+        ))
+        # Connection WITHOUT refresh token
+        session.add(UserConnectionToken(
+            id=str(uuid.uuid4()),
+            user_id=test_user_id,
+            connection_name=conn_without_refresh,
+            access_token_encrypted=encrypt_token("access-2"),
+            refresh_token_encrypted=None,
+            token_type="Bearer",
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1)
+        ))
+        session.commit()
+        session.close()
+
+        connections = token_cache.get_user_connections(test_user_id)
+
+        assert connections[conn_with_refresh]["has_refresh_token"] is True
+        assert connections[conn_without_refresh]["has_refresh_token"] is False
+
     def test_get_expired_connections(self, token_cache, test_user_id):
         """Test getting expired connections"""
         valid_conn = f"valid_{uuid.uuid4().hex[:6]}"
@@ -401,6 +436,41 @@ class TestUserConnections:
         expired_names = [e["name"] for e in expired]
         assert expired_conn in expired_names
         assert valid_conn not in expired_names
+
+    def test_get_expired_connections_excludes_refreshable(self, token_cache, test_user_id):
+        """Test that expired connections with refresh tokens are excluded from expired list"""
+        from bondable.bond.auth.token_encryption import encrypt_token
+        expired_no_refresh = f"expired_no_ref_{uuid.uuid4().hex[:6]}"
+        expired_with_refresh = f"expired_with_ref_{uuid.uuid4().hex[:6]}"
+
+        session = TestSessionLocal()
+        # Expired WITHOUT refresh token — should appear in expired list
+        session.add(UserConnectionToken(
+            id=str(uuid.uuid4()),
+            user_id=test_user_id,
+            connection_name=expired_no_refresh,
+            access_token_encrypted=encrypt_token("expired-token"),
+            token_type="Bearer",
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1)
+        ))
+        # Expired WITH refresh token — should NOT appear in expired list
+        session.add(UserConnectionToken(
+            id=str(uuid.uuid4()),
+            user_id=test_user_id,
+            connection_name=expired_with_refresh,
+            access_token_encrypted=encrypt_token("expired-token"),
+            refresh_token_encrypted=encrypt_token("valid-refresh"),
+            token_type="Bearer",
+            expires_at=datetime.now(timezone.utc) - timedelta(hours=1)
+        ))
+        session.commit()
+        session.close()
+
+        expired = token_cache.get_expired_connections(test_user_id)
+        expired_names = [e["name"] for e in expired]
+
+        assert expired_no_refresh in expired_names
+        assert expired_with_refresh not in expired_names
 
     def test_clear_user_tokens(self, token_cache, test_user_id):
         """Test clearing all tokens for a user"""

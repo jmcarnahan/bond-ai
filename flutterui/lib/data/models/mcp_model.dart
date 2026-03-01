@@ -144,16 +144,19 @@ class McpConnectionStatusInfo {
   final bool valid;
   final bool requiresAuthorization;
   final String? expiresAt;
+  final bool hasRefreshToken;
 
   const McpConnectionStatusInfo({
     required this.connected,
     this.valid = true,
     this.requiresAuthorization = false,
     this.expiresAt,
+    this.hasRefreshToken = false,
   });
 
   /// Returns true if the connection is established but token is expired/invalid
-  bool get needsAttention => connected && !valid;
+  /// and cannot auto-refresh (no refresh token available)
+  bool get needsAttention => connected && !valid && !hasRefreshToken;
 
   /// Returns true if no connection exists
   bool get needsConnection => !connected;
@@ -161,14 +164,14 @@ class McpConnectionStatusInfo {
   /// Human-readable status text
   String get statusText {
     if (!connected) return 'Not Connected';
-    if (!valid) return 'Expired';
+    if (!valid && !hasRefreshToken) return 'Expired';
     return 'Connected';
   }
 
   /// Status indicator color
   Color get statusColor {
     if (!connected) return Colors.grey;
-    if (!valid) return Colors.red;
+    if (!valid && !hasRefreshToken) return Colors.red;
     return Colors.green;
   }
 
@@ -178,6 +181,7 @@ class McpConnectionStatusInfo {
       valid: json['valid'] as bool? ?? true,
       requiresAuthorization: json['requires_authorization'] as bool? ?? false,
       expiresAt: json['expires_at'] as String?,
+      hasRefreshToken: json['has_refresh_token'] as bool? ?? false,
     );
   }
 
@@ -187,6 +191,7 @@ class McpConnectionStatusInfo {
       'valid': valid,
       'requires_authorization': requiresAuthorization,
       'expires_at': expiresAt,
+      'has_refresh_token': hasRefreshToken,
     };
   }
 
@@ -197,7 +202,8 @@ class McpConnectionStatusInfo {
         other.connected == connected &&
         other.valid == valid &&
         other.requiresAuthorization == requiresAuthorization &&
-        other.expiresAt == expiresAt;
+        other.expiresAt == expiresAt &&
+        other.hasRefreshToken == hasRefreshToken;
   }
 
   @override
@@ -205,7 +211,8 @@ class McpConnectionStatusInfo {
       connected.hashCode ^
       valid.hashCode ^
       requiresAuthorization.hashCode ^
-      expiresAt.hashCode;
+      expiresAt.hashCode ^
+      hasRefreshToken.hashCode;
 }
 
 /// MCP server metadata (without tools)
