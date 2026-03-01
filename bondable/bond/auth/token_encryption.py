@@ -30,10 +30,18 @@ class TokenEncryptionError(Exception):
 
 
 def _get_jwt_secret() -> str:
-    """Get JWT secret from environment variable."""
+    """Get JWT secret from environment variable or app config secret."""
     jwt_secret = os.environ.get("JWT_SECRET_KEY")
     if not jwt_secret:
-        raise TokenEncryptionError("JWT_SECRET_KEY environment variable not set")
+        # Fall back to app config secret (AWS deployment)
+        try:
+            from bondable.bond.config import Config
+            app_config = Config.config()._load_app_config()
+            jwt_secret = app_config.get('jwt_secret_key', '')
+        except Exception as e:
+            LOGGER.debug(f"Could not load JWT secret from app config: {e}")
+    if not jwt_secret:
+        raise TokenEncryptionError("JWT secret not found in JWT_SECRET_KEY env var or app config secret")
     return jwt_secret
 
 
