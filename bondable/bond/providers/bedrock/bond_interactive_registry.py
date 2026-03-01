@@ -59,8 +59,8 @@ BOND_SCHEMES = ["bond://prompt"]
 
 _BOND_DEFINITIONS = (
     "Bond UI supports interactive markdown links. "
-    "Use [Label](bond://prompt) to render a clickable prompt button; "
-    "when tapped the label text is sent as a user message. "
+    "Use [Label](bond://prompt) when asked to use 'bond prompt'. "
+    "The frontend will render this as a clickable prompt button. "
     "Always use the simple form bond://prompt — the label is the prompt."
 )
 
