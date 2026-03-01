@@ -65,7 +65,8 @@ resource "null_resource" "build_backend_image" {
       echo "Authenticating with ECR at $ECR_REGISTRY..."
 
       # Clear ALL existing credentials to prevent Keychain conflicts on macOS
-      # (docker login can leave multiple entries; security delete only removes one per call)
+      # (docker logout + security delete ensures no stale Keychain entries)
+      docker logout $ECR_REGISTRY 2>/dev/null || true
       if [[ "$OSTYPE" == "darwin"* ]]; then
         while security delete-internet-password -s "$ECR_REGISTRY" 2>/dev/null; do :; done
       fi
@@ -143,7 +144,8 @@ resource "null_resource" "build_frontend_image" {
       echo "Authenticating with ECR at $ECR_REGISTRY..."
 
       # Clear ALL existing credentials to prevent Keychain conflicts on macOS
-      # (docker login can leave multiple entries; security delete only removes one per call)
+      # (docker logout + security delete ensures no stale Keychain entries)
+      docker logout $ECR_REGISTRY 2>/dev/null || true
       if [[ "$OSTYPE" == "darwin"* ]]; then
         while security delete-internet-password -s "$ECR_REGISTRY" 2>/dev/null; do :; done
       fi
