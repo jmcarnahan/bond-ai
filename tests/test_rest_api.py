@@ -11,6 +11,7 @@ import io
 _test_db_file = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
 TEST_METADATA_DB_URL = f"sqlite:///{_test_db_file.name}"
 os.environ['METADATA_DB_URL'] = TEST_METADATA_DB_URL
+os.environ['OAUTH2_ENABLED_PROVIDERS'] = 'cognito'
 
 # Import after setting environment
 from bondable.rest.main import app, create_access_token, get_bond_provider
@@ -68,7 +69,7 @@ def authenticated_client(test_client, mock_provider):
     token_data = {
         "sub": TEST_USER_EMAIL,
         "name": "Test User",
-        "provider": "google",
+        "provider": "cognito",
         "user_id": TEST_USER_ID
     }
     access_token = create_access_token(data=token_data, expires_delta=timedelta(minutes=15))
@@ -85,16 +86,16 @@ def authenticated_client(test_client, mock_provider):
 class TestAuthentication:
 
     def test_login_redirect(self, test_client):
-        """Test login redirects to Google OAuth."""
+        """Test login redirects to Cognito OAuth."""
         with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
             mock_provider = MagicMock()
-            mock_provider.get_auth_url.return_value = "https://accounts.google.com/oauth/authorize?..."
+            mock_provider.get_auth_url.return_value = "https://example.auth.us-west-2.amazoncognito.com/oauth2/authorize"
             mock_create.return_value = mock_provider
 
             response = test_client.get("/login", follow_redirects=False)
 
             assert response.status_code == 307
-            assert "google" in response.headers["location"].lower()
+            assert "cognito" in response.headers["location"].lower()
             mock_create.assert_called_once()
 
     def test_auth_callback_success(self, test_client):
@@ -108,14 +109,14 @@ class TestAuthentication:
             }
             mock_create.return_value = mock_provider
 
-            response = test_client.get("/auth/google/callback?code=test_code", follow_redirects=False)
+            response = test_client.get("/auth/cognito/callback?code=test_code", follow_redirects=False)
 
             assert response.status_code == 307
             assert "token=" in response.headers["location"]
 
     def test_auth_callback_missing_code(self, test_client):
         """Test OAuth callback without code."""
-        response = test_client.get("/auth/google/callback")
+        response = test_client.get("/auth/cognito/callback")
 
         assert response.status_code == 400
         assert "Authorization code missing" in response.json()["detail"]
@@ -127,7 +128,7 @@ class TestAuthentication:
             mock_provider.get_user_info_from_code.side_effect = ValueError("Invalid code")
             mock_create.return_value = mock_provider
 
-            response = test_client.get("/auth/google/callback?code=invalid")
+            response = test_client.get("/auth/cognito/callback?code=invalid")
 
             assert response.status_code == 401
             assert "Invalid code" in response.json()["detail"]
@@ -1717,7 +1718,7 @@ class TestAgentPermissions:
         token_data = {
             "sub": admin_email,
             "name": "Admin User",
-            "provider": "google",
+            "provider": "cognito",
             "user_id": "admin-user-id"
         }
         access_token = create_access_token(data=token_data, expires_delta=timedelta(minutes=15))
@@ -1737,7 +1738,7 @@ class TestAgentPermissions:
         token_data = {
             "sub": "user@example.com",
             "name": "Regular User",
-            "provider": "google",
+            "provider": "cognito",
             "user_id": "regular-user-id"
         }
         access_token = create_access_token(data=token_data, expires_delta=timedelta(minutes=15))

@@ -10,6 +10,7 @@ from datetime import timedelta, datetime, timezone
 _test_db_file = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
 TEST_METADATA_DB_URL = f"sqlite:///{_test_db_file.name}"
 os.environ['METADATA_DB_URL'] = TEST_METADATA_DB_URL
+os.environ['OAUTH2_ENABLED_PROVIDERS'] = 'cognito'
 
 # Import after setting environment
 from bondable.rest.main import app
@@ -228,36 +229,36 @@ class TestAuthenticationRoutes:
         data = response.json()
         assert "providers" in data
         assert "default" in data
-        assert data["default"] == "google"
+        assert data["default"] == "cognito"
 
-        # Check that google provider is listed
+        # Check that cognito provider is listed
         provider_names = [p["name"] for p in data["providers"]]
-        assert "google" in provider_names
+        assert "cognito" in provider_names
 
     def test_login_default_redirect(self, test_client):
-        """Test default login redirects to Google."""
+        """Test default login redirects to Cognito."""
         with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
             mock_provider = MagicMock()
-            mock_provider.get_auth_url.return_value = "https://accounts.google.com/oauth/authorize"
+            mock_provider.get_auth_url.return_value = "https://example.auth.us-west-2.amazoncognito.com/oauth2/authorize"
             mock_create.return_value = mock_provider
 
             response = test_client.get("/login", follow_redirects=False)
 
             assert response.status_code == 307
-            assert "google" in response.headers["location"].lower()
+            assert "cognito" in response.headers["location"].lower()
 
     def test_login_specific_provider(self, test_client):
         """Test login with specific provider."""
         with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
             mock_provider = MagicMock()
-            mock_provider.get_auth_url.return_value = "https://accounts.google.com/oauth/authorize"
+            mock_provider.get_auth_url.return_value = "https://example.auth.us-west-2.amazoncognito.com/oauth2/authorize"
             mock_create.return_value = mock_provider
 
-            response = test_client.get("/login/google", follow_redirects=False)
+            response = test_client.get("/login/cognito", follow_redirects=False)
 
             assert response.status_code == 307
-            assert "google" in response.headers["location"].lower()
-            mock_create.assert_called_once_with("google", mock_create.call_args[0][1])
+            assert "cognito" in response.headers["location"].lower()
+            mock_create.assert_called_once_with("cognito", mock_create.call_args[0][1])
 
     def test_login_invalid_provider(self, test_client):
         """Test login with invalid provider."""
@@ -277,7 +278,7 @@ class TestAuthenticationRoutes:
             }
             mock_create.return_value = mock_provider
 
-            response = test_client.get("/auth/google/callback?code=test_code", follow_redirects=False)
+            response = test_client.get("/auth/cognito/callback?code=test_code", follow_redirects=False)
 
             assert response.status_code == 307
             assert "token=" in response.headers["location"]
@@ -285,7 +286,7 @@ class TestAuthenticationRoutes:
 
     def test_auth_callback_missing_code(self, test_client):
         """Test OAuth callback without code."""
-        response = test_client.get("/auth/google/callback")
+        response = test_client.get("/auth/cognito/callback")
 
         assert response.status_code == 400
         assert "Authorization code missing" in response.json()["detail"]
@@ -297,7 +298,7 @@ class TestAuthenticationRoutes:
             mock_provider.get_user_info_from_code.side_effect = ValueError("Invalid code")
             mock_create.return_value = mock_provider
 
-            response = test_client.get("/auth/google/callback?code=invalid")
+            response = test_client.get("/auth/cognito/callback?code=invalid")
 
             assert response.status_code == 401
             assert "Invalid code" in response.json()["detail"]
@@ -310,7 +311,7 @@ class TestJWTWithProvider:
         token_data = {
             "sub": TEST_USER_EMAIL,
             "name": "Test User",
-            "provider": "google"
+            "provider": "cognito"
         }
 
         access_token = create_access_token(data=token_data, expires_delta=timedelta(minutes=15))
@@ -319,7 +320,7 @@ class TestJWTWithProvider:
         payload = jwt.decode(access_token, jwt_config.JWT_SECRET_KEY, algorithms=[jwt_config.JWT_ALGORITHM])
         assert payload["sub"] == TEST_USER_EMAIL
         assert payload["name"] == "Test User"
-        assert payload["provider"] == "google"
+        assert payload["provider"] == "cognito"
 
     def test_get_current_user_with_provider(self, test_client):
         """Test getting current user with provider information."""
@@ -327,7 +328,7 @@ class TestJWTWithProvider:
         token_data = {
             "sub": TEST_USER_EMAIL,
             "name": "Test User",
-            "provider": "google",
+            "provider": "cognito",
             "user_id": TEST_USER_ID
         }
         access_token = create_access_token(data=token_data, expires_delta=timedelta(minutes=15))
@@ -339,7 +340,7 @@ class TestJWTWithProvider:
         user_data = response.json()
         assert user_data["email"] == TEST_USER_EMAIL
         assert user_data["name"] == "Test User"
-        assert user_data["provider"] == "google"
+        assert user_data["provider"] == "cognito"
 
     def test_get_current_user_legacy_token(self, test_client):
         """Test getting current user with legacy token (no user_id field)."""
@@ -347,7 +348,7 @@ class TestJWTWithProvider:
         token_data = {
             "sub": TEST_USER_EMAIL,
             "name": "Test User",
-            "provider": "google"
+            "provider": "cognito"
         }
         access_token = create_access_token(data=token_data, expires_delta=timedelta(minutes=15))
         auth_headers = {"Authorization": f"Bearer {access_token}"}
@@ -373,13 +374,13 @@ class TestBackwardsCompatibility:
         # Test legacy /login endpoint
         with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
             mock_provider = MagicMock()
-            mock_provider.get_auth_url.return_value = "https://accounts.google.com/oauth/authorize"
+            mock_provider.get_auth_url.return_value = "https://example.auth.us-west-2.amazoncognito.com/oauth2/authorize"
             mock_create.return_value = mock_provider
 
             response = test_client.get("/login", follow_redirects=False)
             assert response.status_code == 307
 
-        # Test legacy /auth/google/callback endpoint
+        # Test /auth/cognito/callback endpoint
         with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
             mock_provider = MagicMock()
             mock_provider.get_user_info_from_code.return_value = {
@@ -389,5 +390,5 @@ class TestBackwardsCompatibility:
             }
             mock_create.return_value = mock_provider
 
-            response = test_client.get("/auth/google/callback?code=test", follow_redirects=False)
+            response = test_client.get("/auth/cognito/callback?code=test", follow_redirects=False)
             assert response.status_code == 307

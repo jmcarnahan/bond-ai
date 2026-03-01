@@ -20,8 +20,11 @@ jwt_config = Config.config().get_jwt_config()
 
 @router.get("/login")
 async def login(request: Request):
-    """Initiate Google OAuth2 login flow (legacy endpoint)."""
-    return await login_provider("google", request)
+    """Initiate OAuth2 login flow (legacy endpoint)."""
+    config = Config.config()
+    providers = config._get_enabled_oauth2_providers()
+    provider = providers[0] if providers else "cognito"
+    return await login_provider(provider, request)
 
 
 @router.get("/login/{provider}")
