@@ -324,6 +324,123 @@ class TestCognitoConfigFromAppConfig:
         assert result['client_id'] == 'cog-id-from-env'
 
 
+class TestGetMcpConfigFromAppConfig:
+    """Test get_mcp_config() sources from app config secret vs env var."""
+
+    def setup_method(self):
+        from bondable.bond.config import Config
+        Config._app_config_cache = None
+
+    def teardown_method(self):
+        from bondable.bond.config import Config
+        Config._app_config_cache = None
+
+    def test_uses_app_config_secret(self):
+        """MCP config from app config secret takes priority over env var."""
+        from bondable.bond.config import Config
+        mcp_data = {"mcpServers": {"weather": {"url": "https://weather.example.com/mcp"}}}
+        Config._app_config_cache = {'bond_mcp_config': mcp_data}
+        config = Config()
+        with patch.dict(os.environ, {'BOND_MCP_CONFIG': '{"mcpServers": {}}'}):
+            result = config.get_mcp_config()
+        assert result == mcp_data
+        assert "weather" in result["mcpServers"]
+
+    def test_falls_back_to_env_var(self):
+        """Falls back to BOND_MCP_CONFIG env var when app config has no bond_mcp_config."""
+        from bondable.bond.config import Config
+        Config._app_config_cache = {}
+        config = Config()
+        env_config = '{"mcpServers": {"assistant": {"command": "python", "args": ["server.py"]}}}'
+        with patch.dict(os.environ, {'BOND_MCP_CONFIG': env_config}):
+            result = config.get_mcp_config()
+        assert "assistant" in result["mcpServers"]
+
+    def test_falls_back_to_default_when_no_source(self):
+        """Falls back to default hello server when neither source has MCP config."""
+        from bondable.bond.config import Config
+        Config._app_config_cache = {}
+        config = Config()
+        env = os.environ.copy()
+        env.pop('BOND_MCP_CONFIG', None)
+        with patch.dict(os.environ, env, clear=True):
+            result = config.get_mcp_config()
+        assert "hello" in result["mcpServers"]
+
+    def test_handles_invalid_env_var_json(self):
+        """Returns empty config when BOND_MCP_CONFIG env var is invalid JSON."""
+        from bondable.bond.config import Config
+        Config._app_config_cache = {}
+        config = Config()
+        with patch.dict(os.environ, {'BOND_MCP_CONFIG': 'not-json{{{'}):
+            result = config.get_mcp_config()
+        assert result == {"mcpServers": {}}
+
+    def test_app_config_with_multiple_servers(self):
+        """App config with multiple MCP servers is returned correctly."""
+        from bondable.bond.config import Config
+        mcp_data = {
+            "mcpServers": {
+                "weather": {"url": "https://weather.example.com/mcp"},
+                "assistant": {"command": "python", "args": ["server.py"]}
+            }
+        }
+        Config._app_config_cache = {'bond_mcp_config': mcp_data}
+        config = Config()
+        result = config.get_mcp_config()
+        assert len(result["mcpServers"]) == 2
+
+    def test_empty_dict_bond_mcp_config_falls_through(self):
+        """Empty dict bond_mcp_config (Terraform default) falls through to env var."""
+        from bondable.bond.config import Config
+        Config._app_config_cache = {'bond_mcp_config': {}}
+        config = Config()
+        env_config = '{"mcpServers": {"from_env": {"url": "https://env.example.com/mcp"}}}'
+        with patch.dict(os.environ, {'BOND_MCP_CONFIG': env_config}):
+            result = config.get_mcp_config()
+        assert "from_env" in result["mcpServers"]
+
+    def test_empty_dict_bond_mcp_config_no_env_var_uses_default(self):
+        """Empty dict bond_mcp_config + no env var falls to default hello server."""
+        from bondable.bond.config import Config
+        Config._app_config_cache = {'bond_mcp_config': {}}
+        config = Config()
+        env = os.environ.copy()
+        env.pop('BOND_MCP_CONFIG', None)
+        with patch.dict(os.environ, env, clear=True):
+            result = config.get_mcp_config()
+        assert "hello" in result["mcpServers"]
+
+    def test_secrets_manager_failure_falls_back_to_env_var(self):
+        """When _load_app_config() fails, falls back to BOND_MCP_CONFIG env var."""
+        from bondable.bond.config import Config
+        config = Config()
+        env_config = '{"mcpServers": {"fallback": {"url": "https://fallback.example.com/mcp"}}}'
+        with patch.dict(os.environ, {'APP_CONFIG_SECRET_NAME': 'bad-secret', 'AWS_REGION': 'us-west-2', 'BOND_MCP_CONFIG': env_config}):
+            with patch.object(config, 'get_secret_value', side_effect=Exception("AccessDenied")):
+                result = config.get_mcp_config()
+        assert "fallback" in result["mcpServers"]
+
+    def test_production_shaped_config(self):
+        """Config matching real production shape (url, transport, display_name, description)."""
+        from bondable.bond.config import Config
+        mcp_data = {
+            "mcpServers": {
+                "sbel": {
+                    "url": "https://example.us-west-2.awsapprunner.com/mcp",
+                    "transport": "streamable-http",
+                    "display_name": "SBEL Lending Data",
+                    "description": "Query loan products across lenders"
+                }
+            }
+        }
+        Config._app_config_cache = {'bond_mcp_config': mcp_data}
+        config = Config()
+        result = config.get_mcp_config()
+        assert result["mcpServers"]["sbel"]["transport"] == "streamable-http"
+        assert result["mcpServers"]["sbel"]["display_name"] == "SBEL Lending Data"
+
+
 class TestTokenEncryptionJwtFallback:
     """Test _get_jwt_secret() in token_encryption.py falls back to app config."""
 
