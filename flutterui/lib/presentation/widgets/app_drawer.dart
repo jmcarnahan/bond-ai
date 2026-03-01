@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/auth_provider.dart';
 import 'package:flutterui/providers/core_providers.dart';
-import 'package:flutterui/main.dart' show navigationIndexProvider;
+import 'package:flutterui/main.dart' show navigationIndexProvider, isUserNavigatingProvider;
 import 'package:flutterui/presentation/screens/profile/profile_screen.dart';
 import 'package:flutterui/presentation/screens/connections/connections_screen.dart';
 import 'package:flutterui/providers/config_provider.dart';
@@ -196,6 +196,12 @@ class AppDrawer extends ConsumerWidget {
 
                     Navigator.pop(context); // Close drawer
 
+                    // Prevent selectedThreadProvider listener from overriding navigation
+                    ref.read(isUserNavigatingProvider.notifier).state = true;
+                    Future.delayed(const Duration(milliseconds: 500), () {
+                      ref.read(isUserNavigatingProvider.notifier).state = false;
+                    });
+
                     // Find the target index
                     final agentsIndex = navItems.indexWhere(
                       (item) => item.label == 'Agents',
@@ -236,6 +242,12 @@ class AppDrawer extends ConsumerWidget {
 
                   Navigator.pop(context); // Close drawer
 
+                  // Prevent selectedThreadProvider listener from overriding navigation
+                  ref.read(isUserNavigatingProvider.notifier).state = true;
+                  Future.delayed(const Duration(milliseconds: 500), () {
+                    ref.read(isUserNavigatingProvider.notifier).state = false;
+                  });
+
                   // Find the target index
                   final chatIndex = navItems.indexWhere(
                     (item) => item.label == 'Conversation',
@@ -275,6 +287,12 @@ class AppDrawer extends ConsumerWidget {
                       currentRoute == ConnectionsScreen.routeName;
 
                   Navigator.pop(context); // Close drawer
+
+                  // Prevent selectedThreadProvider listener from overriding navigation
+                  ref.read(isUserNavigatingProvider.notifier).state = true;
+                  Future.delayed(const Duration(milliseconds: 500), () {
+                    ref.read(isUserNavigatingProvider.notifier).state = false;
+                  });
 
                   // Find the target index
                   final threadsIndex = navItems.indexWhere(
