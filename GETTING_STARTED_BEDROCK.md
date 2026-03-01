@@ -213,15 +213,15 @@ cd ..
    # Configure other settings as needed...
    ```
 
-### 5. Set Up Google OAuth (Optional but Recommended)
+### 5. Set Up Okta OAuth (Optional but Recommended)
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Create a new project or select existing
-3. Enable Google OAuth2 API
-4. Create OAuth 2.0 credentials:
-   - Application type: Web application
-   - Authorized redirect URIs: `http://localhost:8000/auth/google/callback`
-5. Copy the client ID and secret to your `.env` file
+1. Log in to your [Okta Admin Console](https://login.okta.com)
+2. Go to **Applications** → **Create App Integration**
+3. Select **OIDC - OpenID Connect** and **Web Application**
+4. Configure the app:
+   - Sign-in redirect URI: `http://localhost:8000/auth/okta/callback`
+   - Sign-out redirect URI: `http://localhost:8000`
+5. Copy the Client ID, Client Secret, and Okta domain to your `.env` file
 
 ## Running the Application
 
@@ -275,7 +275,7 @@ You should see Flutter compile and launch Chrome with the Bond AI interface.
 
 Once all three components are running:
 1. Open your browser to `http://localhost:5000`
-2. Click on "Sign in with Google" (or your configured auth provider)
+2. Click "Sign in" with your configured auth provider
 3. After authentication, you'll be redirected to the main Bond AI interface
 4. Create a new agent and start chatting!
 
