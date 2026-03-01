@@ -55,7 +55,8 @@ resource "aws_iam_role_policy" "app_runner_instance" {
         Resource = concat(
           [
             aws_secretsmanager_secret.db_credentials.arn,
-            data.aws_secretsmanager_secret.okta_secret.arn
+            data.aws_secretsmanager_secret.okta_secret.arn,
+            aws_secretsmanager_secret.app_config.arn
           ],
           var.mcp_atlassian_enabled ? [
             data.aws_secretsmanager_secret.mcp_atlassian_oauth_backend[0].arn
