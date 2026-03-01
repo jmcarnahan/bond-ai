@@ -123,7 +123,7 @@ void main() {
       // Regular links are rendered as text with GestureRecognizer via onTapLink
       // Just verify no PromptButton was rendered
       expect(find.byType(PromptButton), findsNothing);
-      expect(find.text('Google'), findsOneWidget);
+      expect(find.text('Example'), findsOneWidget);
     });
 
     testWidgets(
