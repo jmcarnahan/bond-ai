@@ -99,26 +99,23 @@ resource "aws_apprunner_service" "backend" {
           BOND_PROVIDER_CLASS    = "bondable.bond.providers.bedrock.BedrockProvider.BedrockProvider"
           DATABASE_SECRET_ARN    = aws_secretsmanager_secret.db_credentials.arn
           S3_BUCKET_NAME         = aws_s3_bucket.uploads.id
-          JWT_SECRET_KEY         = random_password.jwt_secret.result
           BEDROCK_AGENT_ROLE_ARN = aws_iam_role.bedrock_agent.arn
           BEDROCK_DEFAULT_MODEL      = var.bedrock_default_model
           BEDROCK_SELECTABLE_MODELS  = var.bedrock_selectable_models
-          METADATA_DB_URL            = "postgresql://${var.db_username}:${random_password.db_password.result}@${local.database_endpoint}:5432/bondai?sslmode=require"
+
+          # App config secret (JWT key, OAuth client IDs/secrets read at runtime)
+          APP_CONFIG_SECRET_NAME = aws_secretsmanager_secret.app_config.name
 
           # Okta OAuth Configuration
           OAUTH2_ENABLED_PROVIDERS = var.oauth2_providers
           OKTA_DOMAIN              = var.okta_domain
-          OKTA_CLIENT_ID           = var.okta_client_id
-          OKTA_CLIENT_SECRET       = jsondecode(data.aws_secretsmanager_secret_version.okta_secret.secret_string)["client_secret"]
-          # Okta redirect URI - will be set to the actual backend URL after deployment
-          # We can't reference self here, so using a placeholder that you'll need to update in Okta
+          OKTA_SECRET_NAME         = var.okta_secret_name
           OKTA_REDIRECT_URI = var.okta_redirect_uri != "" ? var.okta_redirect_uri : "https://BACKEND_URL_PLACEHOLDER/auth/okta/callback"
           OKTA_SCOPES       = var.okta_scopes
 
           # AWS Cognito OAuth Configuration (only if configured)
           # Note: Add "cognito" to oauth2_providers variable to enable
           COGNITO_DOMAIN       = var.cognito_domain
-          COGNITO_CLIENT_ID    = var.cognito_client_id
           COGNITO_SECRET_NAME  = var.cognito_secret_name
           COGNITO_REDIRECT_URI = var.cognito_redirect_uri != "" ? var.cognito_redirect_uri : (var.cognito_domain != "" ? "https://BACKEND_URL_PLACEHOLDER/auth/cognito/callback" : "")
           COGNITO_SCOPES       = var.cognito_scopes

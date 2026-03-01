@@ -57,6 +57,23 @@ resource "aws_secretsmanager_secret_version" "db_credentials" {
   })
 }
 
+# Consolidated app config secret (sensitive values read at runtime by backend)
+resource "aws_secretsmanager_secret" "app_config" {
+  name_prefix = "${var.project_name}-${var.environment}-app-config-"
+  description = "Application config for ${var.project_name} ${var.environment} (JWT, OAuth client IDs/secrets)"
+  kms_key_id  = aws_kms_key.secrets.arn
+}
+
+resource "aws_secretsmanager_secret_version" "app_config" {
+  secret_id = aws_secretsmanager_secret.app_config.id
+  secret_string = jsonencode({
+    jwt_secret_key     = random_password.jwt_secret.result
+    okta_client_id     = var.okta_client_id
+    okta_client_secret = jsondecode(data.aws_secretsmanager_secret_version.okta_secret.secret_string)["client_secret"]
+    cognito_client_id  = var.cognito_client_id
+  })
+}
+
 # S3 Bucket for file uploads
 resource "aws_s3_bucket" "uploads" {
   bucket = "${var.project_name}-${var.environment}-uploads-${data.aws_caller_identity.current.account_id}"

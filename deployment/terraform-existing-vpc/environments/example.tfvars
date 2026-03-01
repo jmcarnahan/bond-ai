@@ -13,10 +13,13 @@ project_name = "bond-ai"     # Used for naming resources
 existing_vpc_id = "vpc-XXXXXXXXXXXXXXXXX"  # Replace with your VPC ID from Step 1
 
 # OAuth Configuration (REQUIRED - must be configured)
-# You need to set up an Okta application first
+# You need to set up an Okta application first.
+# Note: Sensitive values (JWT secret, OAuth client IDs/secrets) are stored in a
+# consolidated Secrets Manager secret (app-config) and read at runtime by the
+# backend. They are NOT passed as plaintext App Runner environment variables.
 okta_domain      = "https://your-domain.okta.com"  # Your Okta domain
-okta_client_id   = "0oaXXXXXXXXXXXXXX"            # Your Okta app client ID
-okta_secret_name = "bond-ai-dev-okta-secret"       # Name for AWS Secrets Manager secret
+okta_client_id   = "0oaXXXXXXXXXXXXXX"            # Your Okta app client ID (stored in app-config secret)
+okta_secret_name = "bond-ai-dev-okta-secret"       # Existing Okta secret in AWS Secrets Manager
 
 # ===== OPTIONAL: Can use defaults =====
 

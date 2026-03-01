@@ -7,6 +7,7 @@ import atexit
 import json
 import base64
 import importlib
+from urllib.parse import quote_plus
 from google.cloud import secretmanager
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
@@ -118,6 +119,34 @@ class Config:
                 LOGGER.error(f"Error getting GCP secret value")
                 return default
 
+    _app_config_cache = None
+
+    def _load_app_config(self) -> dict:
+        """
+        Load consolidated app config from AWS Secrets Manager (cached per process).
+
+        Reads the APP_CONFIG_SECRET_NAME env var. If not set (e.g. local dev),
+        returns an empty dict so callers fall back to env vars.
+        """
+        if Config._app_config_cache is not None:
+            return Config._app_config_cache
+
+        secret_name = os.getenv('APP_CONFIG_SECRET_NAME', '')
+        if not secret_name:
+            LOGGER.debug("APP_CONFIG_SECRET_NAME not set — using env var fallbacks")
+            Config._app_config_cache = {}
+            return Config._app_config_cache
+
+        try:
+            secret_json = self.get_secret_value(secret_name, '{}')
+            Config._app_config_cache = json.loads(secret_json)
+            LOGGER.info("Loaded app config from Secrets Manager")
+        except Exception as e:
+            LOGGER.error(f"Failed to load app config secret: {e}")
+            Config._app_config_cache = {}
+
+        return Config._app_config_cache
+
     @classmethod
     @bond_cache
     def config(cls):
@@ -144,13 +173,39 @@ class Config:
         return self.provider
 
     def get_metadata_db_url(self):
-        return os.getenv('METADATA_DB_URL', 'sqlite:////tmp/.metadata.db')
+        # 1. Explicit env var (local dev / override)
+        url = os.getenv('METADATA_DB_URL', '')
+        if url:
+            return url
+
+        # 2. Construct from DATABASE_SECRET_ARN (AWS deployment)
+        db_secret_arn = os.getenv('DATABASE_SECRET_ARN', '')
+        if db_secret_arn:
+            try:
+                secret_json = self.get_secret_value(db_secret_arn, '{}')
+                db = json.loads(secret_json)
+                username = db.get('username', '')
+                password = db.get('password', '')
+                host = db.get('host', '')
+                port = db.get('port', 5432)
+                dbname = db.get('dbname', 'bondai')
+                if username and password and host:
+                    return f"postgresql://{quote_plus(username)}:{quote_plus(password)}@{host}:{port}/{dbname}?sslmode=require"
+                else:
+                    LOGGER.error("DATABASE_SECRET_ARN secret missing required fields")
+            except Exception as e:
+                LOGGER.error(f"Failed to read database secret: {e}")
+
+        # 3. Fallback to SQLite
+        return 'sqlite:////tmp/.metadata.db'
 
     def get_jwt_config(self):
-        if 'JWT_SECRET_KEY' not in os.environ:
-            raise EnvironmentError("JWT_SECRET_KEY environment variable not set.")
+        app_config = self._load_app_config()
+        jwt_secret = app_config.get('jwt_secret_key') or os.environ.get("JWT_SECRET_KEY")
+        if not jwt_secret:
+            raise EnvironmentError("JWT secret not found in app config secret or JWT_SECRET_KEY env var.")
         jwt_config = {
-            'JWT_SECRET_KEY': os.environ.get("JWT_SECRET_KEY"),
+            'JWT_SECRET_KEY': jwt_secret,
             'JWT_ALGORITHM': os.environ.get("JWT_ALGORITHM", "HS256"),
             'ACCESS_TOKEN_EXPIRE_MINUTES': int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 1440)),  # Default to 24 hours
             'JWT_ISSUER': os.environ.get("JWT_ISSUER", "bondable"),
@@ -240,10 +295,11 @@ class Config:
                 LOGGER.warning("Google OAuth2 enabled but no credentials configured")
 
         # Check Okta
+        app_config = self._load_app_config()
         okta_enabled = os.getenv('OAUTH2_ENABLE_OKTA', 'true').lower() in ['true', '1', 'yes', 'on']
         if okta_enabled:
-            # Only enable if credentials are configured
-            if os.getenv('OKTA_DOMAIN') and os.getenv('OKTA_CLIENT_ID'):
+            # Only enable if credentials are configured (env var or app config secret)
+            if os.getenv('OKTA_DOMAIN') and (os.getenv('OKTA_CLIENT_ID') or app_config.get('okta_client_id')):
                 providers.append('okta')
             else:
                 LOGGER.warning("Okta OAuth2 enabled but not fully configured")
@@ -251,8 +307,8 @@ class Config:
         # Check Cognito
         cognito_enabled = os.getenv('OAUTH2_ENABLE_COGNITO', 'false').lower() in ['true', '1', 'yes', 'on']
         if cognito_enabled:
-            # Only enable if credentials are configured
-            if os.getenv('COGNITO_DOMAIN') and os.getenv('COGNITO_CLIENT_ID'):
+            # Only enable if credentials are configured (env var or app config secret)
+            if os.getenv('COGNITO_DOMAIN') and (os.getenv('COGNITO_CLIENT_ID') or app_config.get('cognito_client_id')):
                 providers.append('cognito')
             else:
                 LOGGER.warning("Cognito OAuth2 enabled but not fully configured")
@@ -295,11 +351,12 @@ class Config:
 
     def _get_okta_oauth2_config(self) -> dict:
         """Get Okta OAuth2 configuration."""
+        app_config = self._load_app_config()
         domain = os.getenv('OKTA_DOMAIN', '')
-        client_id = os.getenv('OKTA_CLIENT_ID', '')
+        client_id = app_config.get('okta_client_id') or os.getenv('OKTA_CLIENT_ID', '')
 
-        # Check if client secret is in environment variable or needs to be fetched from Secrets Manager
-        client_secret = os.getenv('OKTA_CLIENT_SECRET', '')
+        # Check app config secret first, then env var, then OKTA_SECRET_NAME fallback
+        client_secret = app_config.get('okta_client_secret') or os.getenv('OKTA_CLIENT_SECRET', '')
         if not client_secret:
             # Try to get from Secrets Manager
             secret_name = os.getenv('OKTA_SECRET_NAME', '')
@@ -314,7 +371,7 @@ class Config:
                 except Exception as e:
                     LOGGER.error("Failed to get Okta client secret from Secrets Manager")
             else:
-                LOGGER.warning("No OKTA_CLIENT_SECRET or OKTA_SECRET_NAME configured")
+                LOGGER.warning("No Okta client secret found in app config, env var, or OKTA_SECRET_NAME")
 
         redirect_uri = os.getenv('OKTA_REDIRECT_URI', 'http://localhost:8000/auth/okta/callback')
         scopes_str = os.getenv('OKTA_SCOPES', 'openid, profile, email')
@@ -340,8 +397,9 @@ class Config:
 
     def _get_cognito_oauth2_config(self) -> dict:
         """Get AWS Cognito OAuth2 configuration."""
+        app_config = self._load_app_config()
         domain = os.getenv('COGNITO_DOMAIN', '')
-        client_id = os.getenv('COGNITO_CLIENT_ID', '')
+        client_id = app_config.get('cognito_client_id') or os.getenv('COGNITO_CLIENT_ID', '')
         region = os.getenv('COGNITO_REGION', 'us-east-1')
 
         # Client secret is optional for public clients (SPAs)

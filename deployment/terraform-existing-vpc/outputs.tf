@@ -73,6 +73,16 @@ output "jwt_secret" {
   description = "JWT secret key for authentication"
 }
 
+output "app_config_secret_name" {
+  value       = aws_secretsmanager_secret.app_config.name
+  description = "Name of the app config secret in Secrets Manager"
+}
+
+output "app_config_secret_arn" {
+  value       = aws_secretsmanager_secret.app_config.arn
+  description = "ARN of the app config secret in Secrets Manager"
+}
+
 # Outputs for reuse by other projects (e.g., sbel)
 output "private_subnet_ids" {
   value       = data.aws_subnets.private.ids
