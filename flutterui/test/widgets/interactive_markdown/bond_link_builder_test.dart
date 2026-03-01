@@ -176,7 +176,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: MarkdownBody(
-              data: '[Google](https://google.com)',
+              data: '[Example](https://example.com)',
               builders: {
                 'a': BondLinkBuilder(
                   onPromptButtonTap: (_) {},

@@ -20,7 +20,7 @@ import tempfile
 import csv
 import os
 import re
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # nosec B405 - parsing own API responses only
 from datetime import datetime, timedelta, timezone
 import jwt
 from typing import Optional, Dict, List
@@ -37,7 +37,7 @@ def create_auth_token(user_email: str = "demo@example.com") -> str:
             "sub": user_email,
             "name": "Demo User",
             "user_id": f"test_user_{user_email.split('@')[0]}",
-            "provider": "google",
+            "provider": "cognito",
             "exp": datetime.now(timezone.utc) + timedelta(minutes=jwt_config.ACCESS_TOKEN_EXPIRE_MINUTES)
         }
 
@@ -62,7 +62,7 @@ class BondAPIDemo:
     def test_health(self) -> bool:
         """Test API health endpoint."""
         try:
-            response = requests.get(f"{self.base_url}/health")
+            response = requests.get(f"{self.base_url}/health", timeout=30)
             response.raise_for_status()
             return True
         except Exception:
@@ -70,13 +70,13 @@ class BondAPIDemo:
 
     def get_user_info(self) -> dict:
         """Get current user information."""
-        response = requests.get(f"{self.base_url}/users/me", headers=self.headers)
+        response = requests.get(f"{self.base_url}/users/me", headers=self.headers, timeout=30)
         response.raise_for_status()
         return response.json()
 
     def get_available_models(self) -> tuple[list, str]:
         """Get available models and identify the default model."""
-        response = requests.get(f"{self.base_url}/agents/models", headers=self.headers)
+        response = requests.get(f"{self.base_url}/agents/models", headers=self.headers, timeout=30)
         response.raise_for_status()
         models = response.json()
 
@@ -130,7 +130,7 @@ class BondAPIDemo:
 
         with open(file_path, 'rb') as f:
             files = {"file": (filename, f, "text/csv")}
-            response = requests.post(f"{self.base_url}/files", headers=self.headers, files=files)
+            response = requests.post(f"{self.base_url}/files", headers=self.headers, files=files, timeout=60)
             response.raise_for_status()
 
         result = response.json()
@@ -162,7 +162,7 @@ class BondAPIDemo:
                 }
             }
 
-        response = requests.post(f"{self.base_url}/agents", headers=self.headers, json=payload)
+        response = requests.post(f"{self.base_url}/agents", headers=self.headers, json=payload, timeout=30)
         response.raise_for_status()
         agent = response.json()
 
@@ -172,13 +172,13 @@ class BondAPIDemo:
 
     def get_default_agent(self) -> dict:
         """Get the default agent."""
-        response = requests.get(f"{self.base_url}/agents/default", headers=self.headers)
+        response = requests.get(f"{self.base_url}/agents/default", headers=self.headers, timeout=30)
         response.raise_for_status()
         return response.json()
 
     def get_agent_details(self, agent_id: str) -> dict:
         """Get detailed information about an agent."""
-        response = requests.get(f"{self.base_url}/agents/{agent_id}", headers=self.headers)
+        response = requests.get(f"{self.base_url}/agents/{agent_id}", headers=self.headers, timeout=30)
         response.raise_for_status()
         return response.json()
 
@@ -186,7 +186,7 @@ class BondAPIDemo:
         """Create a new thread."""
         payload = {"name": name} if name else {}
 
-        response = requests.post(f"{self.base_url}/threads", headers=self.headers, json=payload)
+        response = requests.post(f"{self.base_url}/threads", headers=self.headers, json=payload, timeout=30)
         response.raise_for_status()
         thread = response.json()
 
@@ -200,7 +200,7 @@ class BondAPIDemo:
         try:
             # Wrap in root element to handle multiple messages
             wrapped_xml = f"<root>{xml_string}</root>"
-            root = ET.fromstring(wrapped_xml)
+            root = ET.fromstring(wrapped_xml)  # nosec B314 - parsing own API responses only
 
             for bond_msg in root.findall('.//bond_message'):
                 msg_data = {
@@ -225,7 +225,7 @@ class BondAPIDemo:
             "prompt": prompt
         }
 
-        response = requests.post(f"{self.base_url}/chat", headers=self.headers, json=payload, stream=True)
+        response = requests.post(f"{self.base_url}/chat", headers=self.headers, json=payload, stream=True, timeout=120)
         response.raise_for_status()
 
         # Collect streaming response
@@ -256,7 +256,7 @@ class BondAPIDemo:
 
     def get_thread_messages(self, thread_id: str, limit: int = 100) -> list:
         """Get messages from a thread with detailed information."""
-        response = requests.get(f"{self.base_url}/threads/{thread_id}/messages?limit={limit}", headers=self.headers)
+        response = requests.get(f"{self.base_url}/threads/{thread_id}/messages?limit={limit}", headers=self.headers, timeout=30)
         response.raise_for_status()
         messages = response.json()
 
@@ -275,7 +275,7 @@ class BondAPIDemo:
 
     def delete_thread(self, thread_id: str) -> bool:
         """Delete a thread."""
-        response = requests.delete(f"{self.base_url}/threads/{thread_id}", headers=self.headers)
+        response = requests.delete(f"{self.base_url}/threads/{thread_id}", headers=self.headers, timeout=30)
         success = response.status_code == 204
         if success and thread_id in self.created_resources["threads"]:
             self.created_resources["threads"].remove(thread_id)
@@ -283,7 +283,7 @@ class BondAPIDemo:
 
     def delete_agent(self, agent_id: str) -> bool:
         """Delete an agent."""
-        response = requests.delete(f"{self.base_url}/agents/{agent_id}", headers=self.headers)
+        response = requests.delete(f"{self.base_url}/agents/{agent_id}", headers=self.headers, timeout=30)
         success = response.status_code == 204
         if success and agent_id in self.created_resources["agents"]:
             self.created_resources["agents"].remove(agent_id)
@@ -291,7 +291,7 @@ class BondAPIDemo:
 
     def delete_file(self, file_id: str) -> bool:
         """Delete a file."""
-        response = requests.delete(f"{self.base_url}/files/{file_id}", headers=self.headers)
+        response = requests.delete(f"{self.base_url}/files/{file_id}", headers=self.headers, timeout=30)
         success = response.status_code == 200  # Files return 200, not 204
         if success and file_id in self.created_resources["files"]:
             self.created_resources["files"].remove(file_id)

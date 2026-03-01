@@ -57,7 +57,7 @@ variable "db_allocated_storage" {
 
 # OAuth Configuration Variables
 variable "oauth2_providers" {
-  description = "Comma-separated list of enabled OAuth2 providers (e.g., 'okta', 'google,okta')"
+  description = "Comma-separated list of enabled OAuth2 providers (e.g., 'okta', 'okta,cognito')"
   type        = string
   default     = "okta"
 }

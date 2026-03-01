@@ -65,7 +65,7 @@ class KnowledgeBaseTest:
                 "sub": user_email,
                 "name": "KB Test User",
                 "user_id": f"kb_test_{user_email.split('@')[0]}",
-                "provider": "google",
+                "provider": "cognito",
                 "exp": datetime.now(timezone.utc) + timedelta(minutes=jwt_config.ACCESS_TOKEN_EXPIRE_MINUTES)
             }
 
