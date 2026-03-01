@@ -5,23 +5,23 @@ All examples use `curl` and assume the API is running at `http://localhost:8000`
 
 ## Authentication (Obtaining a JWT Token)
 
-This API uses JWT Bearer tokens for authenticating protected endpoints. The tokens are obtained via a Google OAuth2 flow.
+This API uses JWT Bearer tokens for authenticating protected endpoints. The tokens are obtained via an OAuth2 flow (Okta, Cognito, or other configured provider).
 
 **Steps to obtain a JWT token:**
 
 1.  **Initiate Login Flow**:
     *   Open your web browser and navigate to: `http://localhost:8000/login`
-    *   This will redirect you to Google's authentication page.
-    *   Log in with your Google account and grant the necessary permissions if prompted.
+    *   This will redirect you to your OAuth2 provider's login page.
+    *   Log in with your account and grant the necessary permissions if prompted.
 
 2.  **Handle the Callback**:
-    *   After successful authentication with Google, Google will redirect your browser to the callback URL:
-        `http://localhost:8000/auth/google/callback?code=<AUTHORIZATION_CODE>&scope=<SCOPES_GRANTED>`
+    *   After successful authentication, the provider will redirect your browser to the callback URL:
+        `http://localhost:8000/auth/{provider}/callback?code=<AUTHORIZATION_CODE>&scope=<SCOPES_GRANTED>`
     *   Your browser will make a GET request to this callback URL.
-    *   The API server will exchange the `AUTHORIZATION_CODE` with Google for user information and then generate a JWT.
+    *   The API server will exchange the `AUTHORIZATION_CODE` with the provider for user information and then generate a JWT.
     *   The server will respond to this callback request with a JSON containing the access token.
 
-    **Example Response from `/auth/google/callback`**:
+    **Example Response from `/auth/{provider}/callback`**:
     ```json
     {
         "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJyour_email@example.comIiwibmFtZSI6IkpvaG4gRG9lIiwiZXhwIjoxNjc4ODg2NDAwfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
@@ -35,7 +35,7 @@ This API uses JWT Bearer tokens for authenticating protected endpoints. The toke
         `Authorization: Bearer <YOUR_JWT_TOKEN>`
     *   Replace `<YOUR_JWT_TOKEN>` with the actual token you copied.
 
-**Note**: You will need to have your Google OAuth 2.0 credentials (client ID, client secret) correctly configured in your application's environment variables (e.g., in your `.env` file, used by `bondable/bond/auth.py`) for this flow to work. The `redirect_uris` in your Google Cloud Console project must also include `http://localhost:8000/auth/google/callback`.
+**Note**: You will need to have your OAuth2 credentials (client ID, client secret) correctly configured in your application's environment variables (e.g., in your `.env` file, used by `bondable/bond/auth.py`) for this flow to work. The redirect URI in your provider's configuration must match the callback URL (e.g., `http://localhost:8000/auth/okta/callback`). See [OAuth2 Configuration](../docs/oauth2-configuration.md) for details.
 
 ---
 
