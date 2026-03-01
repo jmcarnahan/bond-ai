@@ -98,7 +98,7 @@ def authenticated_client(test_client, mock_provider):
     token_data = {
         "sub": TEST_USER_EMAIL,
         "name": "Test User",
-        "provider": "google",
+        "provider": "cognito",
         "user_id": TEST_USER_ID
     }
     access_token = create_access_token(data=token_data, expires_delta=timedelta(minutes=15))
