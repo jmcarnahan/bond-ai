@@ -24,7 +24,7 @@ void main() {
     });
 
     test('does not affect regular URLs', () {
-      const input = '[Google](https://google.com/search?q=hello world)';
+      const input = '[Example](https://example.com/search?q=hello world)';
       expect(sanitizeBondLinks(input), equals(input));
     });
 
@@ -56,7 +56,7 @@ void main() {
           home: Scaffold(
             body: InteractiveMarkdownBody(
               data:
-                  'Hello world\n\n[Click me](bond://prompt)\n\n[Google](https://google.com)',
+                  'Hello world\n\n[Click me](bond://prompt)\n\n[Example](https://example.com)',
               onTapLink: (_, __, ___) {},
               onPromptButtonTap: (_) {},
             ),
@@ -112,7 +112,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: InteractiveMarkdownBody(
-              data: '[Google](https://google.com)',
+              data: '[Example](https://example.com)',
               onTapLink: (_, href, __) => capturedHref = href,
               onPromptButtonTap: (_) {},
             ),
