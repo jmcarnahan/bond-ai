@@ -270,10 +270,11 @@ class TestStatusCheckSafety:
             server_name, server_config, test_user_id, token_cache
         )
 
-        # Status should show connected but not valid
+        # Status should show connected and valid (auto-refreshable via refresh token)
         assert status.connected is True
-        assert status.valid is False
-        assert status.requires_authorization is True
+        assert status.valid is True
+        assert status.has_refresh_token is True
+        assert status.requires_authorization is False
 
         # Token should still exist in database
         record = _get_token_from_db(test_user_id, server_name)
@@ -289,11 +290,12 @@ class TestStatusCheckSafety:
 
         from bondable.rest.routers.mcp import _get_connection_status_for_server
 
-        # Step 1: Status check (read-only)
+        # Step 1: Status check (read-only) — shows valid because refresh token exists
         status = _get_connection_status_for_server(
             server_name, server_config, test_user_id, token_cache
         )
-        assert status.valid is False
+        assert status.valid is True
+        assert status.has_refresh_token is True
 
         # Step 2: Now do a refresh via get_token
         mock_response = _mock_refresh_response(access_token='fresh-after-status')
@@ -402,13 +404,14 @@ class TestEndToEndRefreshFlow:
 
         from bondable.rest.routers.mcp import _get_connection_status_for_server
 
-        # Simulate multiple UI polls
+        # Simulate multiple UI polls — shows valid because refresh token exists
         for _ in range(5):
             status = _get_connection_status_for_server(
                 server_name, server_config, test_user_id, token_cache
             )
             assert status.connected is True
-            assert status.valid is False
+            assert status.valid is True
+            assert status.has_refresh_token is True
 
         # Token should still be intact after all those checks
         record = _get_token_from_db(test_user_id, server_name)
