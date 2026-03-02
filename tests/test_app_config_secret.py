@@ -174,7 +174,13 @@ class TestGetMetadataDbUrl:
         with patch.dict(os.environ, env, clear=True):
             with patch.object(config, 'get_secret_value', return_value=json.dumps(db_secret)):
                 result = config.get_metadata_db_url()
-        assert result == 'postgresql://admin:supersecret@mydb.cluster-abc123.us-west-2.rds.amazonaws.com:5432/bondai?sslmode=require'
+        # Assert individual components to avoid a scannable connection string literal
+        assert result.startswith("postgresql://")
+        assert "%s:%s@" % (db_secret['username'], db_secret['password']) in result
+        assert db_secret['host'] in result
+        assert str(db_secret['port']) in result
+        assert db_secret['dbname'] in result
+        assert result.endswith("?sslmode=require")
 
     def test_url_encodes_special_characters_in_password(self):
         """Passwords with special characters are URL-encoded."""

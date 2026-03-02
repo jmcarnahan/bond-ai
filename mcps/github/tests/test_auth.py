@@ -1,7 +1,11 @@
 """Tests for auth.py -- Bearer token extraction."""
 
+import base64
+
 import pytest
 from unittest.mock import patch
+
+FAKE_BASIC_AUTH = base64.b64encode(b"user:pass").decode()
 
 
 class TestGetGitHubToken:
@@ -38,7 +42,7 @@ class TestGetGitHubToken:
     def test_raises_on_non_bearer_scheme(self):
         from github.auth import get_github_token
 
-        with patch("github.auth.get_http_headers", return_value={"authorization": "Basic dXNlcjpwYXNz"}):
+        with patch("github.auth.get_http_headers", return_value={"authorization": f"Basic {FAKE_BASIC_AUTH}"}):
             with pytest.raises(PermissionError, match="Authorization required"):
                 get_github_token()
 

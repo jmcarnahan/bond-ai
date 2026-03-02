@@ -130,8 +130,8 @@ db_allocated_storage = 20
 
 # Okta OAuth
 oauth2_providers = "okta"
-okta_domain      = "https://trial-9457917.okta.com"
-okta_client_id   = "0oas1uz67oWaTK8iP697"
+okta_domain      = "https://YOUR_OKTA_DOMAIN.okta.com"
+okta_client_id   = "YOUR_OKTA_CLIENT_ID"
 okta_scopes      = "openid,profile,email"
 okta_secret_name = "bond-ai-dev-okta-secret"
 
@@ -160,7 +160,7 @@ After deployment completes, you need to add the backend callback URL to your Okt
    ```
    https://YOUR_OKTA_DOMAIN/admin/app/oidc_client/instance/YOUR_CLIENT_ID#tab-general
    ```
-   (For this deployment: https://trial-9457917.okta.com/admin/app/oidc_client/instance/0oas1uz67oWaTK8iP697#tab-general)
+   (For this deployment: https://YOUR_OKTA_DOMAIN.okta.com/admin/app/oidc_client/instance/YOUR_OKTA_CLIENT_ID#tab-general)
 
 4. Add to "Sign-in redirect URIs":
    ```
