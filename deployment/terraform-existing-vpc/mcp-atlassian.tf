@@ -90,17 +90,12 @@ locals {
 }
 
 # -----------------------------------------------------------------------------
-# Data Source: Retrieve OAuth Secret from AWS Secrets Manager
+# Data Source: OAuth Secret ARN (value injected at runtime by App Runner)
 # -----------------------------------------------------------------------------
 
 data "aws_secretsmanager_secret" "mcp_atlassian_oauth" {
   count = local.mcp_atlassian_can_deploy ? 1 : 0
   name  = var.mcp_atlassian_oauth_secret_name
-}
-
-data "aws_secretsmanager_secret_version" "mcp_atlassian_oauth" {
-  count     = local.mcp_atlassian_can_deploy ? 1 : 0
-  secret_id = data.aws_secretsmanager_secret.mcp_atlassian_oauth[0].id
 }
 
 # -----------------------------------------------------------------------------
@@ -343,10 +338,6 @@ resource "aws_apprunner_service" "mcp_atlassian" {
           CONFLUENCE_URL = local.mcp_atlassian_confluence_url
 
           # OAuth Configuration
-          ATLASSIAN_OAUTH_CLIENT_ID = var.mcp_atlassian_oauth_client_id
-          ATLASSIAN_OAUTH_CLIENT_SECRET = jsondecode(
-            data.aws_secretsmanager_secret_version.mcp_atlassian_oauth[0].secret_string
-          )["client_secret"]
           ATLASSIAN_OAUTH_REDIRECT_URI = "https://${aws_apprunner_service.backend.service_url}/connections/atlassian/callback"
           ATLASSIAN_OAUTH_SCOPE        = var.mcp_atlassian_oauth_scopes
           ATLASSIAN_OAUTH_CLOUD_ID     = var.mcp_atlassian_oauth_cloud_id
@@ -357,6 +348,12 @@ resource "aws_apprunner_service" "mcp_atlassian" {
 
           # Logging
           MCP_LOGGING_LEVEL = var.mcp_atlassian_logging_level
+        }
+
+        # OAuth credentials injected from Secrets Manager at container startup
+        runtime_environment_secrets = {
+          ATLASSIAN_OAUTH_CLIENT_ID     = "${data.aws_secretsmanager_secret.mcp_atlassian_oauth[0].arn}:client_id::"
+          ATLASSIAN_OAUTH_CLIENT_SECRET = "${data.aws_secretsmanager_secret.mcp_atlassian_oauth[0].arn}:client_secret::"
         }
       }
     }
