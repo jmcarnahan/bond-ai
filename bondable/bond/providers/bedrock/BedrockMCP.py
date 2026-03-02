@@ -573,7 +573,7 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
         mcp_resources: List of MCP resource names (for future use)
         user_id: User ID for OAuth token lookup (required for oauth2 servers)
     """
-    LOGGER.debug(f"[MCP Action Groups] Creating action groups for agent {bedrock_agent_id}, tools={mcp_tools}, user_id={user_id}")
+    LOGGER.debug("[MCP Action Groups] Creating action groups for agent %s with %d tools", bedrock_agent_id, len(mcp_tools))
 
     if not mcp_tools:
         LOGGER.debug("[MCP Action Groups] No MCP tools specified, skipping action group creation")
@@ -590,7 +590,7 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
             return
 
         # Get tool definitions from MCP (with OAuth support)
-        LOGGER.debug(f"[MCP Action Groups] Fetching tool definitions for {len(mcp_tools)} tools with user_id={user_id}")
+        LOGGER.debug("[MCP Action Groups] Fetching tool definitions for %d tools", len(mcp_tools))
         mcp_tool_definitions = _get_mcp_tool_definitions_sync(mcp_config, mcp_tools, user_id=user_id)
 
         if not mcp_tool_definitions:
@@ -944,7 +944,7 @@ def _get_auth_headers_for_server(
         connection_info = user_connections.get(server_name)
 
         if connection_info is None:
-            LOGGER.debug("[MCP Auth] No OAuth token found for user=%s, server=%s", safe_id(user_email), safe_id(server_name))
+            LOGGER.debug("[MCP Auth] No OAuth token found for server=%s", safe_id(server_name))
             raise AuthorizationRequiredError(
                 server_name,
                 f"Please authorize access to '{server_name}' before using its tools"
@@ -961,9 +961,9 @@ def _get_auth_headers_for_server(
             # Token missing, or expired and refresh failed (or no refresh_token)
             expires_at = connection_info.get('expires_at')
             if connection_info.get('connected') and not connection_info.get('valid'):
-                LOGGER.info("[MCP Auth] OAuth token expired and refresh failed for user=%s, server=%s", safe_id(user_email), safe_id(server_name))
+                LOGGER.info("[MCP Auth] OAuth token expired and refresh failed for server=%s", safe_id(server_name))
                 raise TokenExpiredError(server_name, expires_at)
-            LOGGER.debug("No valid OAuth token for user=%s, server=%s", safe_id(user_email), safe_id(server_name))
+            LOGGER.debug("No valid OAuth token for server=%s", safe_id(server_name))
             raise AuthorizationRequiredError(
                 server_name,
                 f"Please authorize access to '{server_name}' before using its tools"
@@ -982,13 +982,13 @@ def _get_auth_headers_for_server(
         else:
             LOGGER.warning("[MCP Auth] No cloud_id found in config for OAuth2 server '%s'. Some MCP servers (like Atlassian) may require this.", safe_id(server_name))
 
-        LOGGER.debug("Using OAuth2 token for MCP server %s (user: %s)", safe_id(server_name), safe_id(user_email))
+        LOGGER.debug("Using OAuth2 token for MCP server %s", safe_id(server_name))
 
     elif auth_type == AUTH_TYPE_BOND_JWT:
         # Bond JWT: Use the passed JWT token
         if jwt_token:
             headers['Authorization'] = f'Bearer {jwt_token}'
-            LOGGER.debug("Using Bond JWT for MCP server %s (user: %s)", safe_id(server_name), safe_id(user_email))
+            LOGGER.debug("Using Bond JWT for MCP server %s", safe_id(server_name))
         else:
             LOGGER.debug("No JWT token provided for bond_jwt auth on server %s", safe_id(server_name))
 
