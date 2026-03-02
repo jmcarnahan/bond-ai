@@ -9,6 +9,7 @@ from bondable.rest.models.auth import User
 from bondable.rest.models.chat import ChatRequest
 from bondable.rest.dependencies.auth import get_current_user_with_token
 from bondable.rest.dependencies.providers import get_bond_provider
+from bondable.utils.logging_utils import safe_id
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 LOGGER = logging.getLogger(__name__)
@@ -251,5 +252,5 @@ async def chat(
     except HTTPException:
         raise
     except Exception as e:
-        LOGGER.error(f"Error during chat streaming for thread {thread_id}, agent {request_body.agent_id}: {e}", exc_info=True)
+        LOGGER.error("Error during chat streaming for thread %s, agent %s: %s", safe_id(thread_id), safe_id(request_body.agent_id), e, exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not stream chat responses.")

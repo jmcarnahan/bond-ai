@@ -28,6 +28,7 @@ from bondable.bond.providers.threads import ThreadsProvider
 from bondable.bond.providers.files import FilesProvider
 from bondable.bond.providers.metadata import AgentRecord
 from .BedrockCRUD import create_bedrock_agent, update_bedrock_agent, delete_bedrock_agent, get_bedrock_agent
+from bondable.utils.logging_utils import safe_id
 from .BedrockMCP import (
     execute_mcp_tool_sync,
     _parse_tool_path,
@@ -920,7 +921,7 @@ Please integrate any relevant insights from the documents with your analysis of 
                     mcp_config = Config.config().get_mcp_config()
                     target_server = _resolve_server_from_hash(server_hash, mcp_config) if mcp_config else None
 
-                    LOGGER.info(f"Executing MCP tool: {tool_name} (server: {target_server or 'unknown'}, hash: {server_hash})")
+                    LOGGER.info("Executing MCP tool: %s (server: %s, hash: %s)", safe_id(tool_name), safe_id(target_server or 'unknown'), safe_id(server_hash))
                     LOGGER.debug(f"Tool name: {tool_name}, action input: {action_input}")
 
                     # Get parameters

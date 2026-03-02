@@ -13,8 +13,11 @@ Usage:
 import os
 import asyncio
 import json
+import logging
 import jwt
 from bondable.bond.config import Config
+
+logger = logging.getLogger(__name__)
 from bondable.bond.providers.bedrock.BedrockMCP import execute_mcp_tool
 from bondable.rest.models.auth import User
 
@@ -72,7 +75,7 @@ async def test_mcp_auth():
     config = Config.config()
     mcp_config = config.get_mcp_config()
 
-    print(f"MCP Config: {json.dumps(mcp_config, indent=2)}")
+    logger.debug("MCP Config: %s", json.dumps(mcp_config, indent=2))
     print()
 
     # Test 1: greet (protected tool - requires auth)
@@ -87,7 +90,7 @@ async def test_mcp_auth():
             current_user=test_user,
             jwt_token=test_jwt_token
         )
-        print(f"✅ SUCCESS: {json.dumps(result, indent=2)}")
+        logger.debug("SUCCESS: %s", json.dumps(result, indent=2))
 
         # Check if greeting contains user info
         result_text = result.get('result', '')
@@ -113,7 +116,7 @@ async def test_mcp_auth():
             current_user=test_user,
             jwt_token=test_jwt_token
         )
-        print(f"✅ SUCCESS: {json.dumps(result, indent=2)}")
+        logger.debug("SUCCESS: %s", json.dumps(result, indent=2))
     except Exception as e:
         print(f"❌ FAILED: {e}")
 
@@ -131,7 +134,7 @@ async def test_mcp_auth():
             current_user=test_user,
             jwt_token=test_jwt_token
         )
-        print(f"✅ SUCCESS: {json.dumps(result, indent=2)}")
+        logger.debug("SUCCESS: %s", json.dumps(result, indent=2))
 
         # Verify user profile data
         if test_user.email in result.get('result', ''):
@@ -160,7 +163,7 @@ async def test_mcp_auth():
         )
         if result.get('success'):
             print(f"❌ UNEXPECTED: Protected tool succeeded without auth!")
-            print(f"   Result: {json.dumps(result, indent=2)}")
+            logger.debug("Result: %s", json.dumps(result, indent=2))
         else:
             print(f"✅ CORRECT: Protected tool rejected unauthenticated request")
             print(f"   Error: {result.get('error')}")
@@ -182,7 +185,7 @@ async def test_mcp_auth():
             current_user=test_user,
             jwt_token=test_jwt_token
         )
-        print(f"✅ SUCCESS: {json.dumps(result, indent=2)}")
+        logger.debug("SUCCESS: %s", json.dumps(result, indent=2))
 
         # Check for user-specific data
         if test_user.email in result.get('result', ''):
@@ -205,7 +208,7 @@ async def test_mcp_auth():
             current_user=test_user,
             jwt_token=test_jwt_token
         )
-        print(f"✅ SUCCESS: {json.dumps(result, indent=2)}")
+        logger.debug("SUCCESS: %s", json.dumps(result, indent=2))
 
         # Check JWT validation result
         result_data = result.get('result', '')

@@ -22,6 +22,7 @@ from bondable.bond.auth.oauth_utils import generate_pkce_pair, generate_oauth_st
 from bondable.rest.models.auth import User
 from bondable.rest.dependencies.auth import get_current_user
 from bondable.utils.url_validation import is_safe_redirect_url
+from bondable.utils.logging_utils import safe_id
 
 router = APIRouter(prefix="/connections", tags=["Connections"])
 LOGGER = logging.getLogger(__name__)
@@ -114,7 +115,7 @@ def _get_connection_configs() -> List[Dict[str, Any]]:
                     extra_config['client_secret'] = client_secret
                 elif 'client_secret' in oauth_config or 'client_secret_arn' in oauth_config:
                     # Only warn if a secret was explicitly configured but failed to resolve
-                    LOGGER.warning(f"Could not resolve client_secret for connection '{name}'")
+                    LOGGER.warning("Could not resolve client_secret for connection '%s'", safe_id(name))
 
                 configs.append({
                     "name": name,

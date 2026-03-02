@@ -21,10 +21,13 @@ Test Classes:
 - TestAgentWithAtlassianTools: Agent creation and invocation with MCP tools
 """
 
+import logging
 import pytest
 import asyncio
 import os
 import requests
+
+logger = logging.getLogger(__name__)
 from datetime import datetime, timezone
 from typing import Optional
 from unittest.mock import MagicMock, patch
@@ -589,7 +592,7 @@ class TestAgentWithAtlassianTools:
         servers = mcp_config.get('mcpServers', {})
         print(f"\n[Step 1] Found {len(servers)} MCP server(s) configured:")
         for name, config in servers.items():
-            print(f"  - {name}: {config.get('url', 'no url')}")
+            logger.debug("  - %s: %s", name, config.get('url', 'no url'))
 
         if len(servers) < 2:
             print("\n  ⚠️  Only one server configured, skipping multi-server test")
@@ -609,7 +612,7 @@ class TestAgentWithAtlassianTools:
 
             # This would need async execution
             # For now, we verify the configuration is correct
-            print(f"  Server '{server_name}' has tools configured: {bool(servers[server_name])}")
+            logger.debug("  Server '%s' has tools configured: %s", server_name, bool(servers[server_name]))
 
         print("\n" + "=" * 60)
         print("✅ TEST PASSED - Multi-server configuration verified!")
