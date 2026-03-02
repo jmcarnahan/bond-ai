@@ -3,9 +3,12 @@ Integration tests for the Connections OAuth flow.
 Tests the authorization URL generation and configuration loading.
 """
 
+import logging
 import os
 import pytest
 import tempfile
+
+logger = logging.getLogger(__name__)
 from datetime import timedelta
 from urllib.parse import urlparse, parse_qs
 
@@ -73,7 +76,7 @@ class TestConnectionConfigLoading:
         assert 'mcpServers' in mcp_config
 
         servers = mcp_config.get('mcpServers', {})
-        print(f"\n[DEBUG] MCP Servers found: {list(servers.keys())}")
+        logger.debug("MCP Servers found: %s", list(servers.keys()))
 
     def test_atlassian_config_structure(self):
         """Test that Atlassian config has expected structure"""
@@ -85,14 +88,14 @@ class TestConnectionConfigLoading:
             pytest.skip("Atlassian not configured in MCP servers")
 
         atlassian = servers['atlassian']
-        print(f"\n[DEBUG] Atlassian config: {atlassian}")
+        logger.debug("Atlassian config: %s", atlassian)
 
         # Check required fields
         assert 'url' in atlassian, "Missing 'url' in Atlassian config"
 
         # Check auth_type
         auth_type = atlassian.get('auth_type')
-        print(f"[DEBUG] auth_type: {auth_type}")
+        logger.debug("auth_type: %s", auth_type)
 
         if auth_type == 'oauth2':
             oauth_config = atlassian.get('oauth_config', {})
@@ -217,10 +220,10 @@ class TestConfigurationDiagnostics:
 
         servers = mcp_config.get('mcpServers', {})
         for name, server_config in servers.items():
-            print(f"\n[{name}]")
-            print(f"  url: {server_config.get('url')}")
-            print(f"  transport: {server_config.get('transport')}")
-            print(f"  auth_type: {server_config.get('auth_type')}")
+            logger.debug("[%s]", name)
+            logger.debug("  url: %s", server_config.get('url'))
+            logger.debug("  transport: %s", server_config.get('transport'))
+            logger.debug("  auth_type: %s", server_config.get('auth_type'))
 
             if server_config.get('auth_type') == 'oauth2':
                 oauth = server_config.get('oauth_config', {})

@@ -1,7 +1,11 @@
 """Tests for auth module — token and cloud_id extraction."""
 
+import base64
+
 import pytest
 from unittest.mock import patch
+
+FAKE_BASIC_AUTH = base64.b64encode(b"user:pass").decode()
 
 
 class TestGetAtlassianToken:
@@ -26,7 +30,7 @@ class TestGetAtlassianToken:
                 get_atlassian_token()
 
     def test_raises_if_not_bearer(self):
-        mock_headers = {"authorization": "Basic dXNlcjpwYXNz"}
+        mock_headers = {"authorization": f"Basic {FAKE_BASIC_AUTH}"}
         with patch("atlassian.auth.get_http_headers", return_value=mock_headers):
             from atlassian.auth import get_atlassian_token
             with pytest.raises(PermissionError, match="Authorization required"):

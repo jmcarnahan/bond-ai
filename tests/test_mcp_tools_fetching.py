@@ -27,9 +27,12 @@ Test Organization:
 - TestMultiServerDiscovery: Test both servers together
 """
 
+import logging
 import pytest
 pytestmark = pytest.mark.skip(reason="Integration test: requires running backend and MCP servers")
 import requests
+
+logger = logging.getLogger(__name__)
 import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List
@@ -147,7 +150,7 @@ class TestMcpConfiguration:
         servers = mcp_config["mcpServers"]
         print(f"\n  Found {len(servers)} MCP server(s) configured:")
         for name, cfg in servers.items():
-            print(f"    - {name}: {cfg.get('url', 'NO URL')}")
+            logger.debug("    - %s: %s", name, cfg.get('url', 'NO URL'))
 
         assert len(servers) > 0, "Should have at least one MCP server"
 
@@ -161,8 +164,8 @@ class TestMcpConfiguration:
         assert "my_client" in servers, "Should have my_client configured"
 
         my_client = servers["my_client"]
-        print(f"\n  my_client configuration:")
-        print(f"    URL: {my_client.get('url')}")
+        logger.debug("my_client configuration:")
+        logger.debug("    URL: %s", my_client.get('url'))
         print(f"    Transport: {my_client.get('transport')}")
 
         assert my_client.get("url") == MY_CLIENT_URL
@@ -178,10 +181,10 @@ class TestMcpConfiguration:
         assert "atlassian" in servers, "Should have atlassian configured"
 
         atlassian = servers["atlassian"]
-        print(f"\n  atlassian configuration:")
-        print(f"    URL: {atlassian.get('url')}")
-        print(f"    Transport: {atlassian.get('transport')}")
-        print(f"    Auth type: {atlassian.get('auth_type')}")
+        logger.debug("atlassian configuration:")
+        logger.debug("    URL: %s", atlassian.get('url'))
+        logger.debug("    Transport: %s", atlassian.get('transport'))
+        logger.debug("    Auth type: %s", atlassian.get('auth_type'))
 
         assert atlassian.get("url") == ATLASSIAN_URL
         assert atlassian.get("transport") == "streamable-http"

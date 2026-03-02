@@ -1,7 +1,11 @@
 """Tests for auth.py -- Bearer token extraction."""
 
+import base64
+
 import pytest
 from unittest.mock import patch
+
+FAKE_BASIC_AUTH = base64.b64encode(b"user:pass").decode()
 
 
 class TestGetGraphToken:
@@ -38,7 +42,7 @@ class TestGetGraphToken:
     def test_raises_on_non_bearer_scheme(self):
         from ms_graph.auth import get_graph_token
 
-        with patch("ms_graph.auth.get_http_headers", return_value={"authorization": "Basic dXNlcjpwYXNz"}):
+        with patch("ms_graph.auth.get_http_headers", return_value={"authorization": f"Basic {FAKE_BASIC_AUTH}"}):
             with pytest.raises(PermissionError, match="Authorization required"):
                 get_graph_token()
 

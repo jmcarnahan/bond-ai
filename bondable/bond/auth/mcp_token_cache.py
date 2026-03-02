@@ -27,6 +27,7 @@ from bondable.bond.auth.token_encryption import (
     TokenEncryptionError
 )
 from bondable.bond.auth.oauth_utils import safe_isoformat, resolve_client_secret
+from bondable.utils.logging_utils import safe_id
 
 LOGGER = logging.getLogger(__name__)
 
@@ -218,7 +219,7 @@ class MCPTokenCache:
                 access_token = decrypt_token(token_record.access_token_encrypted)
                 refresh_token = decrypt_token_safe(token_record.refresh_token_encrypted)
             except TokenEncryptionError as e:
-                LOGGER.error(f"Failed to decrypt token for user={user_id}, connection={connection_name}: {e}")
+                LOGGER.error("Failed to decrypt token for user=%s, connection=%s: %s", safe_id(user_id), safe_id(connection_name), e)
                 return None
 
             # Handle datetime fields that might be strings (SQLite returns strings)
@@ -243,7 +244,7 @@ class MCPTokenCache:
                 created_at=created_at
             )
 
-            LOGGER.debug(f"Loaded token from database for user={user_id}, connection={connection_name}")
+            LOGGER.debug("Loaded token from database for user=%s, connection=%s", safe_id(user_id), safe_id(connection_name))
             return token_data
 
         except Exception as e:
@@ -347,7 +348,7 @@ class MCPTokenCache:
 
             session.commit()
             if deleted:
-                LOGGER.debug(f"Token deleted from database for user={user_id}, connection={connection_name}")
+                LOGGER.debug("Token deleted from database for user=%s, connection=%s", safe_id(user_id), safe_id(connection_name))
             return deleted > 0
 
         except Exception as e:
@@ -375,7 +376,7 @@ class MCPTokenCache:
             New MCPTokenData if refresh successful, None otherwise
         """
         if not token_data.refresh_token:
-            LOGGER.warning(f"[REFRESH_TOKEN] No refresh token available for user={user_id}, connection={connection_name}")
+            LOGGER.warning("[REFRESH_TOKEN] No refresh token available for user=%s, connection=%s", safe_id(user_id), safe_id(connection_name))
             return None
 
         # Get OAuth config for this connection
@@ -389,12 +390,12 @@ class MCPTokenCache:
             servers = mcp_config.get('mcpServers', {})
             server_config = servers.get(connection_name)
             if not server_config:
-                LOGGER.error(f"[REFRESH_TOKEN] No server config found for connection={connection_name}")
+                LOGGER.error("[REFRESH_TOKEN] No server config found for connection=%s", safe_id(connection_name))
                 return None
 
             oauth_config = server_config.get('oauth_config', {})
             if not oauth_config:
-                LOGGER.error(f"[REFRESH_TOKEN] No OAuth config found for connection={connection_name}")
+                LOGGER.error("[REFRESH_TOKEN] No OAuth config found for connection=%s", safe_id(connection_name))
                 return None
 
             token_url = oauth_config.get('token_url')
@@ -403,8 +404,9 @@ class MCPTokenCache:
 
             if not all([token_url, client_id, client_secret]):
                 LOGGER.error(
-                    f"[REFRESH_TOKEN] Missing OAuth credentials for connection={connection_name}: "
-                    f"token_url={bool(token_url)}, client_id={bool(client_id)}, client_secret={bool(client_secret)}"
+                    "[REFRESH_TOKEN] Missing OAuth credentials for connection=%s: "
+                    "token_url=%s, client_id=%s, client_secret=%s",
+                    safe_id(connection_name), bool(token_url), bool(client_id), bool(client_secret)
                 )
                 return None
 
@@ -453,8 +455,9 @@ class MCPTokenCache:
             # Save to database
             if self._save_to_database(user_id, connection_name, new_token_data):
                 LOGGER.info(
-                    f"[REFRESH_TOKEN] Successfully refreshed token for user={user_id}, connection={connection_name}, "
-                    f"new_expires_at={expires_at}"
+                    "[REFRESH_TOKEN] Successfully refreshed token for user=%s, connection=%s, "
+                    "new_expires_at=%s",
+                    safe_id(user_id), safe_id(connection_name), expires_at
                 )
                 return new_token_data
             else:
@@ -485,20 +488,24 @@ class MCPTokenCache:
                 # Try to refresh if we have a refresh token and auto_refresh is enabled
                 if auto_refresh and token_data.refresh_token:
                     LOGGER.info(
-                        f"[GET_TOKEN] Token expired for user={user_id}, connection={connection_name}, "
-                        f"attempting automatic refresh"
+                        "[GET_TOKEN] Token expired for user=%s, connection=%s, "
+                        "attempting automatic refresh",
+                        safe_id(user_id), safe_id(connection_name)
                     )
                     refreshed_token = self._refresh_token(user_id, connection_name, token_data)
                     if refreshed_token:
-                        LOGGER.info(f"[GET_TOKEN] Token successfully refreshed for user={user_id}, connection={connection_name}")
+                        LOGGER.info("[GET_TOKEN] Token successfully refreshed for user=%s, connection=%s", safe_id(user_id), safe_id(connection_name))
                         return refreshed_token
                     else:
-                        LOGGER.warning(f"[GET_TOKEN] Token refresh failed for user={user_id}, connection={connection_name}")
+                        LOGGER.warning("[GET_TOKEN] Token refresh failed for user=%s, connection=%s", safe_id(user_id), safe_id(connection_name))
                 else:
                     LOGGER.debug(
-                        f"[GET_TOKEN] Token EXPIRED for user={user_id}, connection={connection_name}, "
-                        f"expires_at={token_data.expires_at}, has_refresh_token={token_data.refresh_token is not None}, "
-                        f"auto_refresh={auto_refresh}"
+                        "[GET_TOKEN] Token EXPIRED for user=%s, connection=%s, "
+                        "expires_at=%s, has_refresh_token=%s, "
+                        "auto_refresh=%s",
+                        safe_id(user_id), safe_id(connection_name),
+                        token_data.expires_at, token_data.refresh_token is not None,
+                        auto_refresh
                     )
 
                 # Only delete expired token when auto_refresh was attempted (refresh failed or no refresh_token).
@@ -511,20 +518,22 @@ class MCPTokenCache:
                     reloaded = self._load_from_database(user_id, connection_name)
                     if reloaded is not None and not reloaded.is_expired():
                         LOGGER.info(
-                            f"[GET_TOKEN] Token was refreshed by concurrent request for "
-                            f"user={user_id}, connection={connection_name}"
+                            "[GET_TOKEN] Token was refreshed by concurrent request for "
+                            "user=%s, connection=%s",
+                            safe_id(user_id), safe_id(connection_name)
                         )
                         return reloaded
                     self._delete_from_database(user_id, connection_name)
                 return None
 
             LOGGER.debug(
-                f"[GET_TOKEN] Retrieved token for user={user_id}, connection={connection_name}, "
-                f"expires_at={token_data.expires_at}"
+                "[GET_TOKEN] Retrieved token for user=%s, connection=%s, "
+                "expires_at=%s",
+                safe_id(user_id), safe_id(connection_name), token_data.expires_at
             )
             return token_data
 
-        LOGGER.debug(f"[GET_TOKEN] No token found for user={user_id}, connection={connection_name}")
+        LOGGER.debug("[GET_TOKEN] No token found for user=%s, connection=%s", safe_id(user_id), safe_id(connection_name))
         return None
 
     def set_token(
@@ -658,7 +667,7 @@ class MCPTokenCache:
             ).delete()
             session.commit()
             if count:
-                LOGGER.info(f"Cleared {count} tokens for user={user_id}")
+                LOGGER.info("Cleared %d tokens for user=%s", count, safe_id(user_id))
             return count
         except Exception as e:
             LOGGER.error(f"Error clearing user tokens from database: {e}")

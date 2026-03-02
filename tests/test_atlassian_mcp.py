@@ -8,7 +8,10 @@ Usage:
 
 import asyncio
 import json
+import logging
 from bondable.bond.config import Config
+
+logger = logging.getLogger(__name__)
 from bondable.bond.providers.bedrock.BedrockMCP import _get_mcp_tool_definitions
 
 print("=" * 70)
@@ -32,7 +35,7 @@ async def test_atlassian_mcp():
                 auth = safe_config['mcpServers']['atlassian']['headers']['Authorization']
                 safe_config['mcpServers']['atlassian']['headers']['Authorization'] = auth[:20] + "..." if len(auth) > 20 else auth
 
-    print(json.dumps(safe_config, indent=2))
+    logger.debug("Config: %s", json.dumps(safe_config, indent=2))
     print()
 
     # Check if Atlassian server is configured
@@ -41,7 +44,7 @@ async def test_atlassian_mcp():
         return
 
     atlassian_config = mcp_config['mcpServers']['atlassian']
-    print(f"Atlassian MCP URL: {atlassian_config.get('url')}")
+    logger.debug("Atlassian MCP URL: %s", atlassian_config.get('url'))
     print()
 
     # Try to connect and list tools
@@ -59,8 +62,8 @@ async def test_atlassian_mcp():
         url = atlassian_config.get('url')
         headers = atlassian_config.get('headers', {})
 
-        print(f"Connecting to: {url}")
-        print(f"With headers: {list(headers.keys())}")
+        logger.debug("Connecting to: %s", url)
+        logger.debug("With headers: %s", list(headers.keys()))
         print()
 
         # Try to connect with HTTP client

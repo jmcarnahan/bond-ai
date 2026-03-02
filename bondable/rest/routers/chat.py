@@ -9,6 +9,7 @@ from bondable.rest.models.auth import User
 from bondable.rest.models.chat import ChatRequest
 from bondable.rest.dependencies.auth import get_current_user_with_token
 from bondable.rest.dependencies.providers import get_bond_provider
+from bondable.utils.logging_utils import safe_id
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 LOGGER = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ async def chat(
     # Handle thread creation if thread_id is None
     thread_id = request_body.thread_id
     if thread_id is None:
-        LOGGER.info(f"No thread_id provided, creating new thread for user {current_user.user_id} ({current_user.email})")
+        LOGGER.info("No thread_id provided, creating new thread")
 
         # Use prompt for thread name only if it's a user message, otherwise use generic name
         if request_body.override_role == "user":
@@ -40,7 +41,7 @@ async def chat(
             thread_id = new_thread.thread_id
             LOGGER.info(f"Created new thread: {thread_id} with name: {thread_name}")
         except Exception as e:
-            LOGGER.error(f"Failed to create thread for user {current_user.user_id}: {e}", exc_info=True)
+            LOGGER.error("Failed to create thread: %s", type(e).__name__, exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create new thread. Please try again."
@@ -99,7 +100,7 @@ async def chat(
 
         # Validate user access to agent (skip validation for default agents)
         if not is_default_agent and not provider.agents.can_user_access_agent(user_id=current_user.user_id, agent_id=request_body.agent_id):
-            LOGGER.warning(f"User {current_user.user_id} ({current_user.email}) attempted to access agent {request_body.agent_id} without permission for chat.")
+            LOGGER.warning("Unauthorized access attempt on agent %s", safe_id(request_body.agent_id))
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to this agent is forbidden.")
 
         # Track the last agent used on this thread (non-blocking)
@@ -251,5 +252,5 @@ async def chat(
     except HTTPException:
         raise
     except Exception as e:
-        LOGGER.error(f"Error during chat streaming for thread {thread_id}, agent {request_body.agent_id}: {e}", exc_info=True)
+        LOGGER.error("Error during chat streaming for thread %s, agent %s: %s", safe_id(thread_id), safe_id(request_body.agent_id), type(e).__name__)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not stream chat responses.")

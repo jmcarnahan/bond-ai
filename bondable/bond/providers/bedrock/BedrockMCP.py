@@ -27,6 +27,7 @@ from bondable.bond.auth.mcp_token_cache import (
     TokenExpiredError
 )
 from bondable.bond.auth.oauth_utils import safe_isoformat
+from bondable.utils.logging_utils import safe_id
 
 LOGGER = logging.getLogger(__name__)
 
@@ -572,7 +573,7 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
         mcp_resources: List of MCP resource names (for future use)
         user_id: User ID for OAuth token lookup (required for oauth2 servers)
     """
-    LOGGER.debug(f"[MCP Action Groups] Creating action groups for agent {bedrock_agent_id}, tools={mcp_tools}, user_id={user_id}")
+    LOGGER.debug("[MCP Action Groups] Creating action groups for agent %s with %d tools", bedrock_agent_id, len(mcp_tools))
 
     if not mcp_tools:
         LOGGER.debug("[MCP Action Groups] No MCP tools specified, skipping action group creation")
@@ -589,7 +590,7 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
             return
 
         # Get tool definitions from MCP (with OAuth support)
-        LOGGER.debug(f"[MCP Action Groups] Fetching tool definitions for {len(mcp_tools)} tools with user_id={user_id}")
+        LOGGER.debug("[MCP Action Groups] Fetching tool definitions for %d tools", len(mcp_tools))
         mcp_tool_definitions = _get_mcp_tool_definitions_sync(mcp_config, mcp_tools, user_id=user_id)
 
         if not mcp_tool_definitions:
@@ -798,7 +799,7 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
 
         server_url = server_config.get('url')
         if not server_url:
-            LOGGER.warning(f"[MCP Tool Defs] No URL configured for MCP server {server_name}")
+            LOGGER.warning("[MCP Tool Defs] No URL configured for MCP server %s", safe_id(server_name))
             continue
 
         try:
@@ -806,9 +807,9 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
             try:
                 headers = _get_auth_headers_for_server(server_name, server_config, current_user)
                 headers['User-Agent'] = 'Bond-AI-MCP-Client/1.0'
-                LOGGER.debug(f"[MCP Tool Defs] Server '{server_name}': authenticated successfully")
+                LOGGER.debug("[MCP Tool Defs] Server '%s': authenticated successfully", safe_id(server_name))
             except (AuthorizationRequiredError, TokenExpiredError) as e:
-                LOGGER.warning(f"[MCP Tool Defs] Server '{server_name}': OAuth not available - {e}")
+                LOGGER.warning("[MCP Tool Defs] Server '%s': OAuth not available - %s", safe_id(server_name), e)
                 # Fall back to static headers only
                 headers = server_config.get('headers', {})
                 headers['User-Agent'] = 'Bond-AI-MCP-Client/1.0'
@@ -829,7 +830,7 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
                 all_tools = await client.list_tools()
                 tool_dict = {tool.name: tool for tool in all_tools}
                 server_tool_names = list(tool_dict.keys())
-                LOGGER.debug(f"[MCP Tool Defs] Server '{server_name}': {len(all_tools)} tools available")
+                LOGGER.debug("[MCP Tool Defs] Server '%s': %d tools available", safe_id(server_name), len(all_tools))
 
                 # Check which requested tools are on this server
                 for tool_name in list(remaining_tools):
@@ -869,10 +870,10 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
 
                         tool_definitions.append(tool_def)
                         remaining_tools.remove(tool_name)
-                        LOGGER.debug(f"[MCP Tool Defs] Found tool '{tool_name}' on server '{server_name}'")
+                        LOGGER.debug("[MCP Tool Defs] Found tool '%s' on server '%s'", safe_id(tool_name), safe_id(server_name))
 
         except Exception as e:
-            LOGGER.error(f"[MCP Tool Defs] Error fetching tools from server '{server_name}': {e}")
+            LOGGER.error("[MCP Tool Defs] Error fetching tools from server '%s': %s", safe_id(server_name), e)
             continue
 
     if remaining_tools:
@@ -943,13 +944,13 @@ def _get_auth_headers_for_server(
         connection_info = user_connections.get(server_name)
 
         if connection_info is None:
-            LOGGER.debug(f"[MCP Auth] No OAuth token found for user={user_email}, server={server_name}")
+            LOGGER.debug("[MCP Auth] No OAuth token found for server=%s", safe_id(server_name))
             raise AuthorizationRequiredError(
                 server_name,
                 f"Please authorize access to '{server_name}' before using its tools"
             )
 
-        LOGGER.debug(f"[MCP Auth] Connection info for {server_name}: connected={connection_info.get('connected')}, valid={connection_info.get('valid')}, expires_at={connection_info.get('expires_at')}")
+        LOGGER.debug("[MCP Auth] Connection info for %s: connected=%s, valid=%s, expires_at=%s", safe_id(server_name), connection_info.get('connected'), connection_info.get('valid'), connection_info.get('expires_at'))
 
         # Get the actual token with auto_refresh=True.
         # If the token is expired but has a refresh_token, this will automatically
@@ -960,9 +961,9 @@ def _get_auth_headers_for_server(
             # Token missing, or expired and refresh failed (or no refresh_token)
             expires_at = connection_info.get('expires_at')
             if connection_info.get('connected') and not connection_info.get('valid'):
-                LOGGER.info(f"[MCP Auth] OAuth token expired and refresh failed for user={user_email}, server={server_name}")
+                LOGGER.info("[MCP Auth] OAuth token expired and refresh failed for server=%s", safe_id(server_name))
                 raise TokenExpiredError(server_name, expires_at)
-            LOGGER.debug(f"No valid OAuth token for user={user_email}, server={server_name}")
+            LOGGER.debug("No valid OAuth token for server=%s", safe_id(server_name))
             raise AuthorizationRequiredError(
                 server_name,
                 f"Please authorize access to '{server_name}' before using its tools"
@@ -977,26 +978,26 @@ def _get_auth_headers_for_server(
         cloud_id = server_config.get('cloud_id')
         if cloud_id:
             headers['X-Atlassian-Cloud-Id'] = cloud_id
-            LOGGER.debug(f"[MCP Auth] Added X-Atlassian-Cloud-Id header: {cloud_id}")
+            LOGGER.debug("[MCP Auth] Added X-Atlassian-Cloud-Id header: %s", safe_id(cloud_id))
         else:
-            LOGGER.warning(f"[MCP Auth] No cloud_id found in config for OAuth2 server '{server_name}'. Some MCP servers (like Atlassian) may require this.")
+            LOGGER.warning("[MCP Auth] No cloud_id found in config for OAuth2 server '%s'. Some MCP servers (like Atlassian) may require this.", safe_id(server_name))
 
-        LOGGER.debug(f"Using OAuth2 token for MCP server {server_name} (user: {user_email})")
+        LOGGER.debug("Using OAuth2 token for MCP server %s", safe_id(server_name))
 
     elif auth_type == AUTH_TYPE_BOND_JWT:
         # Bond JWT: Use the passed JWT token
         if jwt_token:
             headers['Authorization'] = f'Bearer {jwt_token}'
-            LOGGER.debug(f"Using Bond JWT for MCP server {server_name} (user: {user_email})")
+            LOGGER.debug("Using Bond JWT for MCP server %s", safe_id(server_name))
         else:
-            LOGGER.debug(f"No JWT token provided for bond_jwt auth on server {server_name}")
+            LOGGER.debug("No JWT token provided for bond_jwt auth on server %s", safe_id(server_name))
 
     elif auth_type == AUTH_TYPE_STATIC:
         # Static: Only use headers from config (already set above)
-        LOGGER.debug(f"Using static headers for MCP server {server_name}")
+        LOGGER.debug("Using static headers for MCP server %s", safe_id(server_name))
 
     else:
-        LOGGER.warning(f"Unknown auth_type '{auth_type}' for server {server_name}, using static headers")
+        LOGGER.warning("Unknown auth_type '%s' for server %s, using static headers", auth_type, safe_id(server_name))
 
     return headers
 
@@ -1039,13 +1040,13 @@ async def execute_mcp_tool(
     if target_server:
         if target_server in servers:
             servers_to_check = {target_server: servers[target_server]}
-            LOGGER.debug(f"[MCP Execute] Direct routing to server '{target_server}' for tool '{tool_name}'")
+            LOGGER.debug("[MCP Execute] Direct routing to server '%s' for tool '%s'", safe_id(target_server), safe_id(tool_name))
         else:
-            LOGGER.error(f"[MCP Execute] Target server '{target_server}' not found in config")
+            LOGGER.error("[MCP Execute] Target server '%s' not found in config", safe_id(target_server))
             return {"success": False, "error": f"Target server '{target_server}' not found in MCP configuration"}
     else:
         servers_to_check = servers
-        LOGGER.debug(f"[MCP Execute] Searching {len(servers)} servers for tool '{tool_name}'")
+        LOGGER.debug("[MCP Execute] Searching %d servers for tool '%s'", len(servers), safe_id(tool_name))
 
     # Track whether the tool was found (vs execution failed) for better error messages
     last_execution_error = None
@@ -1054,7 +1055,7 @@ async def execute_mcp_tool(
     for server_name, server_config in servers_to_check.items():
         server_url = server_config.get('url')
         if not server_url:
-            LOGGER.warning(f"[MCP Execute] No URL configured for MCP server {server_name}")
+            LOGGER.warning("[MCP Execute] No URL configured for MCP server %s", safe_id(server_name))
             continue
 
         # Retry loop: attempt once, and if we get a 401 on an oauth2 server,
@@ -1090,10 +1091,10 @@ async def execute_mcp_tool(
                     tool_dict = {t.name: t for t in all_tools}
 
                     if tool_name not in tool_dict:
-                        LOGGER.debug(f"[MCP Execute] Tool '{tool_name}' not found on server '{server_name}'")
+                        LOGGER.debug("[MCP Execute] Tool '%s' not found on server '%s'", safe_id(tool_name), safe_id(server_name))
                         break  # Break retry loop, continue to next server
 
-                    LOGGER.debug(f"[MCP Execute] Found tool '{tool_name}' on server '{server_name}'")
+                    LOGGER.debug("[MCP Execute] Found tool '%s' on server '%s'", safe_id(tool_name), safe_id(server_name))
 
                     # Prepare parameters
                     tool_parameters = parameters.copy() if parameters else {}
@@ -1104,7 +1105,7 @@ async def execute_mcp_tool(
                     tool_schema = getattr(tool, 'inputSchema', None) or {}
                     tool_parameters = _coerce_parameters_for_mcp(tool_name, tool_parameters, tool_schema)
 
-                    LOGGER.debug(f"[MCP Execute] Executing tool '{tool_name}' with parameters: {list(tool_parameters.keys())}")
+                    LOGGER.debug("[MCP Execute] Executing tool '%s' with parameters: %s", safe_id(tool_name), list(tool_parameters.keys()))
                     result = await client.call_tool(tool_name, tool_parameters)
 
                     # Handle different result types (inside the async with block)
@@ -1124,7 +1125,7 @@ async def execute_mcp_tool(
                         return {"success": True, "result": str(result)}
 
             except AuthorizationRequiredError as e:
-                LOGGER.debug(f"[MCP Execute] Authorization required for server '{server_name}': {e.connection_name}")
+                LOGGER.debug("[MCP Execute] Authorization required for server '%s': %s", safe_id(server_name), safe_id(e.connection_name))
                 if target_server:
                     # Direct routing - return error immediately
                     return {
@@ -1134,10 +1135,10 @@ async def execute_mcp_tool(
                         "server_name": e.connection_name
                     }
                 # Searching - continue to next server
-                LOGGER.debug(f"[MCP Execute] Server '{server_name}' needs auth, trying next server...")
+                LOGGER.debug("[MCP Execute] Server '%s' needs auth, trying next server...", safe_id(server_name))
                 break  # Break retry loop, continue to next server
             except TokenExpiredError as e:
-                LOGGER.debug(f"[MCP Execute] Token expired for server '{server_name}': {e.connection_name}")
+                LOGGER.debug("[MCP Execute] Token expired for server '%s': %s", safe_id(server_name), safe_id(e.connection_name))
                 if target_server:
                     # Direct routing - return error immediately
                     return {
@@ -1148,7 +1149,7 @@ async def execute_mcp_tool(
                         "expired_at": safe_isoformat(e.expired_at)
                     }
                 # Searching - continue to next server
-                LOGGER.debug(f"[MCP Execute] Server '{server_name}' token expired, trying next server...")
+                LOGGER.debug("[MCP Execute] Server '%s' token expired, trying next server...", safe_id(server_name))
                 break  # Break retry loop, continue to next server
             except Exception as e:
                 error_str = str(e)
@@ -1158,8 +1159,9 @@ async def execute_mcp_tool(
                     user_id = getattr(current_user, 'user_id', None) if current_user else None
                     if user_id:
                         LOGGER.info(
-                            f"[MCP Execute] Got 401 from server '{server_name}', "
-                            f"attempting token refresh and retry (attempt {attempt + 1})"
+                            "[MCP Execute] Got 401 from server '%s', "
+                            "attempting token refresh and retry (attempt %d)",
+                            safe_id(server_name), attempt + 1
                         )
                         # Force refresh by calling get_token with auto_refresh=True
                         token_cache = get_mcp_token_cache()
@@ -1167,16 +1169,16 @@ async def execute_mcp_tool(
                         continue  # Retry with refreshed token
 
                 # Log full exception details including traceback for debugging
-                LOGGER.exception(f"[MCP Execute] Error on server '{server_name}' when executing tool '{tool_name}' with parameters {list(parameters.keys()) if parameters else []}: {e}")
+                LOGGER.exception("[MCP Execute] Error on server '%s' when executing tool '%s' with parameters %s: %s", safe_id(server_name), safe_id(tool_name), list(parameters.keys()) if parameters else [], e)
                 last_execution_error = error_str or f"{type(e).__name__} on server '{server_name}'"
                 break  # Break retry loop, continue to next server
 
     # Distinguish between "tool not found" and "tool found but execution failed"
     if last_execution_error:
-        LOGGER.error(f"[MCP Execute] Tool '{tool_name}' execution failed: {last_execution_error}")
+        LOGGER.error("[MCP Execute] Tool '%s' execution failed: %s", safe_id(tool_name), last_execution_error)
         return {"success": False, "error": f"Tool '{tool_name}' execution failed: {last_execution_error}"}
     else:
-        LOGGER.error(f"[MCP Execute] Tool '{tool_name}' not found on any configured MCP server")
+        LOGGER.error("[MCP Execute] Tool '%s' not found on any configured MCP server", safe_id(tool_name))
         return {"success": False, "error": f"Tool '{tool_name}' not found on any configured MCP server"}
 
 

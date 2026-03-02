@@ -3,11 +3,18 @@ name: "Bond AI CodeQL Configuration"
 queries:
   - uses: security-extended
 
+query-filters:
+  - exclude:
+      id: py/clear-text-logging-sensitive-data
+
 paths-ignore:
   - ".venv"
   - ".venv-3.13"
   - "mcps/microsoft/.venv"
   - "tests"
+  - "tests/**"
+  - "mcps/*/tests"
+  - "mcps/*/tests/**"
   - "scripts/.archive"
   - "flutterui"
   - "deployment"

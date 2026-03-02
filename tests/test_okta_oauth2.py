@@ -10,9 +10,19 @@ _test_db_file = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
 TEST_METADATA_DB_URL = f"sqlite:///{_test_db_file.name}"
 os.environ['METADATA_DB_URL'] = TEST_METADATA_DB_URL
 
+# Fake Okta env vars — must be set before importing app so the Config
+# singleton picks up okta as an enabled provider.
+TEST_OKTA_DOMAIN = "https://test-org.okta.com"
+os.environ['OAUTH2_ENABLED_PROVIDERS'] = 'cognito,okta'
+os.environ['OKTA_DOMAIN'] = TEST_OKTA_DOMAIN
+os.environ['OKTA_CLIENT_ID'] = 'test_client_id'
+os.environ['OKTA_CLIENT_SECRET'] = 'test_client_secret'  # nosec — synthetic test value
+
 # Import after setting environment
 from bondable.rest.main import app
 from bondable.bond.auth import OAuth2ProviderFactory
+from bondable.bond.cache import bond_cache_clear
+from bondable.bond.config import Config
 
 @pytest.fixture(scope="session", autouse=True)
 def cleanup_test_db():
@@ -34,9 +44,9 @@ def test_client():
 def mock_okta_config():
     """Mock Okta OAuth2 configuration."""
     return {
-        "domain": "https://trial-9457917.okta.com",
+        "domain": TEST_OKTA_DOMAIN,
         "client_id": "test_client_id",
-        "client_secret": "test_client_secret",
+        "client_secret": "test_client_secret",  # nosec — synthetic test value
         "redirect_uri": "http://localhost:8080/auth/okta/callback",
         "scopes": ["openid", "profile", "email"],
         "valid_emails": ["test@example.com"]
@@ -168,6 +178,19 @@ class TestOktaOAuth2Provider:
 class TestOktaAuthenticationRoutes:
     """Test Okta authentication routes."""
 
+    @pytest.fixture(autouse=True)
+    def reset_config_cache(self):
+        """Reset Config singleton so it picks up OAUTH2_ENABLED_PROVIDERS with okta."""
+        os.environ['OAUTH2_ENABLED_PROVIDERS'] = 'cognito,okta'
+        os.environ['OKTA_DOMAIN'] = TEST_OKTA_DOMAIN
+        os.environ['OKTA_CLIENT_ID'] = 'test_client_id'
+        os.environ['OKTA_CLIENT_SECRET'] = 'test_client_secret'  # nosec — synthetic test value
+        bond_cache_clear()
+        Config._app_config_cache = None
+        yield
+        bond_cache_clear()
+        Config._app_config_cache = None
+
     def test_providers_endpoint_includes_okta(self, test_client):
         """Test that providers endpoint includes Okta."""
         response = test_client.get("/providers")
@@ -228,15 +251,24 @@ class TestOktaAuthenticationRoutes:
 
     def test_okta_callback_invalid_code(self, test_client):
         """Test Okta callback with invalid code."""
-        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
-            mock_provider = MagicMock()
-            mock_provider.get_user_info_from_code.side_effect = Exception("Invalid authorization code")
-            mock_create.return_value = mock_provider
+        from bondable.rest.dependencies.providers import get_bond_provider
 
-            response = test_client.get("/auth/okta/callback?code=invalid")
+        mock_bond_provider = MagicMock()
+        app.dependency_overrides[get_bond_provider] = lambda: mock_bond_provider
 
-            assert response.status_code == 500
-            assert "Authentication failed" in response.json()["detail"]
+        try:
+            with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
+                mock_provider = MagicMock()
+                mock_provider.get_user_info_from_code.side_effect = Exception("Invalid authorization code")
+                mock_create.return_value = mock_provider
+
+                response = test_client.get("/auth/okta/callback?code=invalid")
+
+                assert response.status_code == 500
+                assert "Authentication failed" in response.json()["detail"]
+        finally:
+            if get_bond_provider in app.dependency_overrides:
+                del app.dependency_overrides[get_bond_provider]
 
 class TestOktaIntegration:
     """Test Okta provider integration with existing system."""
