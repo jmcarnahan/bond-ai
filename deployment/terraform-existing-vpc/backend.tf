@@ -1,5 +1,10 @@
 # App Runner Backend Service
 
+locals {
+  # When private, service_url is null — use VPC Ingress Connection domain instead
+  backend_url = var.backend_is_private ? aws_apprunner_vpc_ingress_connection.backend[0].domain_name : aws_apprunner_service.backend.service_url
+}
+
 # App Runner VPC Connector for database access
 resource "aws_apprunner_vpc_connector" "backend" {
   vpc_connector_name = "${var.project_name}-${var.environment}-connector"
@@ -146,6 +151,10 @@ resource "aws_apprunner_service" "backend" {
 
   # Network configuration with VPC connector
   network_configuration {
+    ingress_configuration {
+      is_publicly_accessible = var.backend_is_private ? false : true
+    }
+
     egress_configuration {
       egress_type       = "VPC"
       vpc_connector_arn = aws_apprunner_vpc_connector.backend.arn
@@ -175,7 +184,8 @@ resource "aws_apprunner_service" "backend" {
 
   depends_on = [
     null_resource.wait_for_backend_auto_deploy,
-    aws_secretsmanager_secret_version.db_credentials
+    aws_secretsmanager_secret_version.db_credentials,
+    null_resource.private_ingress_ready  # VPC endpoint must exist before going private
   ]
   # Note: Database dependency handled via local.database_endpoint
 }
