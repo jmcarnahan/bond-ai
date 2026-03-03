@@ -6,6 +6,8 @@ This directory contains MCP (Model Context Protocol) servers that extend Bond AI
 
 | MCP | Directory | Port | Description |
 |-----|-----------|------|-------------|
+| **Atlassian** | [`atlassian/`](atlassian/) | 9001 | Jira and Confluence via Atlassian REST API |
+| **GitHub** | [`github/`](github/) | 5558 | Repositories, issues, PRs, and code via GitHub REST API |
 | **Microsoft** | [`microsoft/`](microsoft/) | 5557 | Email, Teams, OneDrive, and SharePoint via Microsoft Graph API |
 
 ## Architecture
@@ -19,8 +21,9 @@ Bond AI Backend (FastAPI)
     |-- Routes tool calls to the correct MCP server
     |-- Passes user's service token as Authorization: Bearer header
     |
-    +---> Microsoft MCP (port 5557) ---> Microsoft Graph API
-    +---> [future MCPs]
+    +---> Atlassian MCP (port 9001)  ---> Atlassian REST API
+    +---> GitHub MCP (port 5558)     ---> GitHub REST API
+    +---> Microsoft MCP (port 5557)  ---> Microsoft Graph API
 ```
 
 Each MCP server:
@@ -69,14 +72,21 @@ poetry run fastmcp run <server>.py --transport streamable-http --port <port>
 
 ## Production Deployment
 
-Each MCP has its own `deployment/` directory with a standalone Terraform module that deploys it as an AWS App Runner service:
+Each MCP has its own `deployment/` directory with a standalone Terraform module that deploys it as an AWS App Runner service. Services can be deployed as **public** (default) or **private** (VPC-only, requires the main deployment's `apprunner.requests` VPC endpoint).
 
 ```bash
 cd mcps/<mcp_name>/deployment
 terraform init
-terraform apply \
-  -var-file=../../../deployment/terraform-existing-vpc/environments/us-west-2-existing-vpc.tfvars
+
+# Public deployment (default)
+terraform apply -var-file=<mcp_name>.tfvars
+
+# Private deployment (VPC-only access)
+# Set mcp_<name>_is_private = true in your tfvars
+terraform apply -var-file=<mcp_name>.tfvars
 ```
+
+**Important**: The Dockerfile CMD must include `--host 0.0.0.0` to bind to all interfaces. Without this, App Runner health checks will fail because FastMCP defaults to binding on `127.0.0.1` (localhost only).
 
 ## Adding a New MCP
 
