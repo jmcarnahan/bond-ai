@@ -61,6 +61,12 @@ variable "mcp_github_max_instances" {
   default     = 2
 }
 
+variable "mcp_github_is_private" {
+  description = "Deploy as private App Runner service (VPC-only). Requires apprunner.requests VPC endpoint to exist."
+  type        = bool
+  default     = false
+}
+
 variable "force_rebuild" {
   description = "Set to a timestamp or unique string to force Docker image rebuild"
   type        = string
