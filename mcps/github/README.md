@@ -105,6 +105,31 @@ GitHub OAuth tokens are long-lived (no refresh token, no expiry). Once authorize
 3. Copy Client ID and generate a Client Secret
 4. Store the secret in AWS Secrets Manager for production
 
-## Deployment
+## Deployment (AWS)
 
-See `deployment/` directory for Terraform configuration (ECR + App Runner).
+Create a tfvars file (e.g., `mcps/github/deployment/github-mcp.tfvars`):
+```hcl
+aws_region              = "us-west-2"
+environment             = "dev"
+project_name            = "bond-ai"
+existing_vpc_id         = "vpc-XXXXXXXXX"
+mcp_github_is_private   = true   # Set to false for public access
+```
+
+Deploy:
+```bash
+cd mcps/github/deployment
+terraform init
+terraform apply -var-file=github-mcp.tfvars
+```
+
+Creates:
+- ECR repository for Docker image
+- App Runner service with VPC egress
+- VPC ingress connection (if `mcp_github_is_private = true`)
+- IAM roles for ECR access and CloudWatch logs
+- Auto-scaling (min 1, max 2 instances)
+
+**Private deployment** requires the main Bond AI deployment to have `has_private_mcp_services = true` (or `backend_is_private`/`frontend_is_private` set to `true`), which creates the shared `apprunner.requests` VPC endpoint.
+
+> **Note**: If the main deployment's VPC endpoint is ever destroyed and recreated (e.g., toggling all private flags off then back on), you must re-apply this MCP deployment to update the ingress connection with the new endpoint ID.
