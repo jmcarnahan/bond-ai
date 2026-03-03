@@ -7,7 +7,7 @@
 #   - Leave custom_domain_name = "" (default) to skip custom domain setup
 
 locals {
-  custom_domain_enabled = var.custom_domain_name != ""
+  custom_domain_enabled = var.custom_domain_name != "" && !var.frontend_is_private
   # Use hosted_zone_name if provided, otherwise fall back to custom_domain_name (for root domains)
   hosted_zone_name = var.hosted_zone_name != "" ? var.hosted_zone_name : var.custom_domain_name
 }

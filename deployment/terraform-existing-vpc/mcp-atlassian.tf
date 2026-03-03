@@ -338,7 +338,7 @@ resource "aws_apprunner_service" "mcp_atlassian" {
           CONFLUENCE_URL = local.mcp_atlassian_confluence_url
 
           # OAuth Configuration
-          ATLASSIAN_OAUTH_REDIRECT_URI = "https://${aws_apprunner_service.backend.service_url}/connections/atlassian/callback"
+          ATLASSIAN_OAUTH_REDIRECT_URI = "https://${local.backend_url}/connections/atlassian/callback"
           ATLASSIAN_OAUTH_SCOPE        = var.mcp_atlassian_oauth_scopes
           ATLASSIAN_OAUTH_CLOUD_ID     = var.mcp_atlassian_oauth_cloud_id
 

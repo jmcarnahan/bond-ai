@@ -72,6 +72,12 @@ bedrock_default_model = "us.anthropic.claude-sonnet-4-20250514-v1:0"
 # us-east-1: Can use Haiku 3
 # bedrock_default_model = "us.anthropic.claude-3-5-haiku-20241022-v1:0"
 
+# Private App Runner Services (optional)
+# When true, services are only accessible via VPN/Direct Connect through the VPC.
+# See PRIVATE_APPRUNNER.md for full setup guide including VPN, DNS, and tfvars checklist.
+# backend_is_private  = true
+# frontend_is_private = true
+
 # ===== BEFORE DEPLOYING =====
 #
 # 1. Create Okta Application:
