@@ -6,7 +6,9 @@
 # all private services; each service gets its own ingress connection resource.
 #
 # Controlled by `local.any_service_private` (shared infra) and per-service
-# variables like `var.backend_is_private`.
+# variables like `var.backend_is_private`. The VPC endpoint also stays alive
+# when `var.has_private_mcp_services = true` (standalone private MCP services
+# that the backend reaches through its VPC connector).
 # ============================================================================
 
 # -----------------------------------------------------------------------------
