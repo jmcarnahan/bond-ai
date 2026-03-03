@@ -58,13 +58,13 @@ output "app_runner_vpc_connector_arn" {
 }
 
 output "app_runner_service_url" {
-  value       = "https://${aws_apprunner_service.backend.service_url}"
+  value       = "https://${local.backend_url}"
   description = "Backend App Runner service URL"
 }
 
 output "frontend_app_runner_service_url" {
-  value       = "https://${aws_apprunner_service.frontend.service_url}"
-  description = "Frontend App Runner service URL (auto-generated)"
+  value       = "https://${local.frontend_url}"
+  description = "Frontend App Runner service URL (auto-generated or private domain)"
 }
 
 output "jwt_secret" {
@@ -104,18 +104,18 @@ output "deployment_instructions" {
 
     Deployment Complete!
 
-    Backend URL: https://${aws_apprunner_service.backend.service_url}
-    Frontend URL: https://${aws_apprunner_service.frontend.service_url}
+    Backend URL: https://${local.backend_url}${var.backend_is_private ? " (PRIVATE — VPN required)" : ""}
+    Frontend URL: https://${local.frontend_url}${var.frontend_is_private ? " (PRIVATE — VPN required)" : ""}
 
     Next Steps:
     1. Update Okta application with callback URL:
-       https://${aws_apprunner_service.backend.service_url}/auth/okta/callback
+       https://${local.backend_url}/auth/okta/callback
 
     2. Test the deployment:
-       curl https://${aws_apprunner_service.backend.service_url}/health
+       curl https://${local.backend_url}/health
 
     3. Access the application:
-       https://${aws_apprunner_service.frontend.service_url}
+       https://${local.frontend_url}
   EOT
   description = "Post-deployment instructions"
 }
@@ -138,16 +138,42 @@ output "aurora_cluster_resource_id" {
 
 # Custom Domain Outputs
 output "custom_domain_url" {
-  description = "Custom domain URL for frontend (null if not configured)"
-  value       = var.custom_domain_name != "" ? "https://${var.custom_domain_name}" : null
+  description = "Custom domain URL for frontend (null if not configured or frontend is private)"
+  value       = local.custom_domain_enabled ? "https://${var.custom_domain_name}" : null
 }
 
 output "custom_domain_status" {
-  description = "Custom domain certificate status (null if not configured)"
-  value       = var.custom_domain_name != "" ? aws_apprunner_custom_domain_association.frontend[0].status : null
+  description = "Custom domain certificate status (null if not configured or frontend is private)"
+  value       = local.custom_domain_enabled ? aws_apprunner_custom_domain_association.frontend[0].status : null
 }
 
 output "custom_domain_nameservers" {
-  description = "Route 53 nameservers for custom domain (null if not configured)"
-  value       = var.custom_domain_name != "" ? data.aws_route53_zone.frontend[0].name_servers : null
+  description = "Route 53 nameservers for custom domain (null if not configured or frontend is private)"
+  value       = local.custom_domain_enabled ? data.aws_route53_zone.frontend[0].name_servers : null
+}
+
+# Private App Runner Outputs
+output "backend_is_private" {
+  description = "Whether the backend App Runner service is private (VPC-only access)"
+  value       = var.backend_is_private
+}
+
+output "backend_private_domain" {
+  description = "Private domain name for the backend (via VPC Ingress Connection). Null if public."
+  value       = var.backend_is_private ? aws_apprunner_vpc_ingress_connection.backend[0].domain_name : null
+}
+
+output "frontend_is_private" {
+  description = "Whether the frontend App Runner service is private (VPC-only access)"
+  value       = var.frontend_is_private
+}
+
+output "frontend_private_domain" {
+  description = "Private domain name for the frontend (via VPC Ingress Connection). Null if public."
+  value       = var.frontend_is_private ? aws_apprunner_vpc_ingress_connection.frontend[0].domain_name : null
+}
+
+output "apprunner_requests_vpc_endpoint_id" {
+  description = "VPC endpoint ID for App Runner requests (shared by all private services). Null if no private services."
+  value       = local.any_service_private ? aws_vpc_endpoint.apprunner_requests[0].id : null
 }
