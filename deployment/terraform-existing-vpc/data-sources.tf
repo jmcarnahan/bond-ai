@@ -63,6 +63,9 @@ locals {
     for az in slice(local.availability_zones, 0, min(2, length(local.availability_zones))) :
     [for s in data.aws_subnet.private : s.id if s.availability_zone == az][0]
   ]
+
+  # True if ANY App Runner service is private — drives shared infra (VPC endpoint)
+  any_service_private = var.backend_is_private || var.frontend_is_private
 }
 
 # Note: These data sources are informational only - not used in resource creation
