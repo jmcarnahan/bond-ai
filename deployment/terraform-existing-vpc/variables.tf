@@ -303,3 +303,16 @@ variable "aurora_kb_snapshot_identifier" {
   type        = string
   default     = ""
 }
+
+# Private App Runner Configuration
+variable "backend_is_private" {
+  description = "Make the backend App Runner service private (VPC-only access via VPN)."
+  type        = bool
+  default     = false
+}
+
+variable "frontend_is_private" {
+  description = "Make the frontend App Runner service private (VPC-only access via VPN)."
+  type        = bool
+  default     = false
+}
