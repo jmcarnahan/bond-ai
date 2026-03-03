@@ -1,5 +1,9 @@
 # App Runner Frontend Service
 
+locals {
+  frontend_url = var.frontend_is_private ? aws_apprunner_vpc_ingress_connection.frontend[0].domain_name : aws_apprunner_service.frontend.service_url
+}
+
 # App Runner Auto Scaling Configuration for Frontend
 resource "aws_apprunner_auto_scaling_configuration_version" "frontend" {
   auto_scaling_configuration_name = "${var.project_name}-${var.environment}-frontend-autoscaling"
@@ -93,6 +97,12 @@ resource "aws_apprunner_service" "frontend" {
     auto_deployments_enabled = true
   }
 
+  network_configuration {
+    ingress_configuration {
+      is_publicly_accessible = var.frontend_is_private ? false : true
+    }
+  }
+
   instance_configuration {
     cpu               = "0.25 vCPU"
     memory            = "0.5 GB"
@@ -115,8 +125,8 @@ resource "aws_apprunner_service" "frontend" {
   }
 
   depends_on = [
-    null_resource.wait_for_frontend_auto_deploy
-    # Backend dependency removed - using var.backend_service_url from tfvars
+    null_resource.wait_for_frontend_auto_deploy,
+    null_resource.private_ingress_ready  # VPC endpoint must exist before going private
   ]
 
   # Lifecycle rules to prevent accidental recreation
