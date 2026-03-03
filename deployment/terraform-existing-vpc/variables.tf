@@ -316,3 +316,9 @@ variable "frontend_is_private" {
   type        = bool
   default     = false
 }
+
+variable "has_private_mcp_services" {
+  description = "Set to true if any standalone MCP services are deployed as private App Runner services. Keeps the shared apprunner.requests VPC endpoint alive even when backend/frontend are public."
+  type        = bool
+  default     = false
+}

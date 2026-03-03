@@ -233,20 +233,32 @@ The Microsoft MCP server has its own Terraform module in `mcps/microsoft/deploym
 
 #### Step 1: Deploy the MCP Server
 
+Create a tfvars file (e.g., `mcps/microsoft/deployment/microsoft-mcp.tfvars`):
+```hcl
+aws_region                 = "us-west-2"
+environment                = "dev"
+project_name               = "bond-ai"
+existing_vpc_id            = "vpc-XXXXXXXXX"
+mcp_microsoft_is_private   = true   # Set to false for public access
+```
+
+Deploy:
 ```bash
 cd mcps/microsoft/deployment
 terraform init
-terraform apply \
-  -var-file=../../../deployment/terraform-existing-vpc/environments/us-west-2-existing-vpc.tfvars
+terraform apply -var-file=microsoft-mcp.tfvars
 ```
-
-The shared tfvars provides `aws_region`, `environment`, `project_name`, and `existing_vpc_id`. Warnings about unused variables from the shared file are harmless.
 
 After deployment, get the MCP endpoint:
 ```bash
 terraform output mcp_microsoft_mcp_endpoint
-# Example: https://abc123xyz.us-west-2.awsapprunner.com/mcp
+# Public:  https://abc123xyz.us-west-2.awsapprunner.com/mcp
+# Private: https://xyz789abc.us-west-2.awsapprunner.com/mcp (VPC ingress domain)
 ```
+
+**Private deployment** (`mcp_microsoft_is_private = true`) requires the main Bond AI deployment to have `has_private_mcp_services = true` (or `backend_is_private`/`frontend_is_private` set to `true`), which creates the shared `apprunner.requests` VPC endpoint. The MCP service looks up this existing endpoint and creates its own VPC ingress connection.
+
+> **Note**: If the main deployment's VPC endpoint is ever destroyed and recreated (e.g., toggling all private flags off then back on), you must re-apply this MCP deployment to update the ingress connection with the new endpoint ID.
 
 #### Step 2: Configure the Azure App Redirect URI
 
@@ -322,28 +334,24 @@ terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars
 To rebuild and redeploy after code changes:
 ```bash
 cd mcps/microsoft/deployment
-terraform apply \
-  -var-file=../../../deployment/terraform-existing-vpc/environments/us-west-2-existing-vpc.tfvars
+terraform apply -var-file=microsoft-mcp.tfvars
 ```
 
 Terraform detects code changes via file hashes and rebuilds the Docker image automatically.
 
 To force a rebuild without code changes:
 ```bash
-terraform apply \
-  -var-file=../../../deployment/terraform-existing-vpc/environments/us-west-2-existing-vpc.tfvars \
-  -var="force_rebuild=$(date +%s)"
+terraform apply -var-file=microsoft-mcp.tfvars -var="force_rebuild=$(date +%s)"
 ```
 
 #### Tearing Down
 
 ```bash
 cd mcps/microsoft/deployment
-terraform destroy \
-  -var-file=../../../deployment/terraform-existing-vpc/environments/us-west-2-existing-vpc.tfvars
+terraform destroy -var-file=microsoft-mcp.tfvars
 ```
 
-This removes the App Runner service, ECR repository, IAM roles, VPC connector, and security group. It does not affect the Bond AI backend or any other infrastructure.
+This removes the App Runner service, ECR repository, IAM roles, VPC connector, VPC ingress connection (if private), and security group. It does not affect the Bond AI backend or any other infrastructure.
 
 ## For IT / Azure AD Administrators
 

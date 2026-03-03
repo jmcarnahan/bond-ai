@@ -19,11 +19,33 @@ data "aws_subnets" "private" {
   }
 }
 
+# -----------------------------------------------------------------------------
+# VPC Endpoint Lookup (for private deployment)
+# -----------------------------------------------------------------------------
+# Looks up the existing apprunner.requests VPC endpoint created by the main
+# deployment. Required when mcp_github_is_private = true.
+
+data "aws_vpc_endpoint" "apprunner_requests" {
+  count        = var.mcp_github_is_private && var.mcp_github_enabled ? 1 : 0
+  vpc_id       = data.aws_vpc.existing.id
+  service_name = "com.amazonaws.${var.aws_region}.apprunner.requests"
+  state        = "available"
+}
+
 locals {
   # Select up to 3 private subnets for App Runner VPC connector
   app_runner_subnet_ids = slice(
     data.aws_subnets.private.ids,
     0,
     min(3, length(data.aws_subnets.private.ids))
+  )
+
+  # Private-aware service URL
+  mcp_github_url = (
+    var.mcp_github_enabled
+    ? (var.mcp_github_is_private
+      ? aws_apprunner_vpc_ingress_connection.mcp_github[0].domain_name
+      : aws_apprunner_service.mcp_github[0].service_url)
+    : ""
   )
 }

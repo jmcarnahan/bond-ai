@@ -75,8 +75,9 @@ bedrock_default_model = "us.anthropic.claude-sonnet-4-20250514-v1:0"
 # Private App Runner Services (optional)
 # When true, services are only accessible via VPN/Direct Connect through the VPC.
 # See PRIVATE_APPRUNNER.md for full setup guide including VPN, DNS, and tfvars checklist.
-# backend_is_private  = true
-# frontend_is_private = true
+# backend_is_private       = true
+# frontend_is_private      = true
+# has_private_mcp_services = true  # Set when standalone MCPs (mcps/*/deployment/) are deployed as private
 
 # ===== BEFORE DEPLOYING =====
 #

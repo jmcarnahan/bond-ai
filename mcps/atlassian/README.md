@@ -152,18 +152,32 @@ Jira v3 requires descriptions and comments in ADF. Plain text is auto-wrapped:
 
 ## Deployment (AWS)
 
+Create a tfvars file (e.g., `mcps/atlassian/deployment/atlassian-mcp.tfvars`):
+```hcl
+aws_region                 = "us-west-2"
+environment                = "dev"
+project_name               = "bond-ai"
+existing_vpc_id            = "vpc-XXXXXXXXX"
+mcp_atlassian_is_private   = true   # Set to false for public access
+```
+
+Deploy:
 ```bash
 cd mcps/atlassian/deployment
 terraform init
-terraform plan -var-file=../../deployment/terraform-existing-vpc/environments/dev.tfvars
-terraform apply -var-file=../../deployment/terraform-existing-vpc/environments/dev.tfvars
+terraform apply -var-file=atlassian-mcp.tfvars
 ```
 
 Creates:
 - ECR repository for Docker image
 - App Runner service with VPC egress
+- VPC ingress connection (if `mcp_atlassian_is_private = true`)
 - IAM roles for ECR access and CloudWatch logs
 - Auto-scaling (min 1, max 2 instances)
+
+**Private deployment** requires the main Bond AI deployment to have `has_private_mcp_services = true` (or `backend_is_private`/`frontend_is_private` set to `true`), which creates the shared `apprunner.requests` VPC endpoint.
+
+> **Note**: If the main deployment's VPC endpoint is ever destroyed and recreated (e.g., toggling all private flags off then back on), you must re-apply this MCP deployment to update the ingress connection with the new endpoint ID.
 
 ## Troubleshooting
 

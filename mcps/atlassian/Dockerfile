@@ -21,4 +21,4 @@ ENV PYTHONUNBUFFERED=1
 ENV PORT=8000
 
 # Run the MCP server
-CMD ["fastmcp", "run", "atlassian_mcp.py", "--transport", "streamable-http", "--port", "8000"]
+CMD ["fastmcp", "run", "atlassian_mcp.py", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]

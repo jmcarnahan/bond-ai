@@ -92,10 +92,10 @@ resource "aws_apprunner_service" "mcp_microsoft" {
     auto_deployments_enabled = false
   }
 
-  # Network configuration - Public ingress, VPC egress
+  # Network configuration - Conditional ingress (public or private), VPC egress
   network_configuration {
     ingress_configuration {
-      is_publicly_accessible = true
+      is_publicly_accessible = !var.mcp_microsoft_is_private
     }
 
     egress_configuration {
@@ -128,4 +128,26 @@ resource "aws_apprunner_service" "mcp_microsoft" {
   depends_on = [
     null_resource.build_mcp_microsoft_image
   ]
+}
+
+# -----------------------------------------------------------------------------
+# VPC Ingress Connection (Private Deployment)
+# -----------------------------------------------------------------------------
+# Links this private App Runner service to the shared VPC endpoint created by
+# the main deployment. Provides a private domain name for VPC-internal access.
+
+resource "aws_apprunner_vpc_ingress_connection" "mcp_microsoft" {
+  count = var.mcp_microsoft_is_private && var.mcp_microsoft_enabled ? 1 : 0
+
+  name        = "${var.project_name}-${var.environment}-mcp-ms-ingress"
+  service_arn = aws_apprunner_service.mcp_microsoft[0].arn
+
+  ingress_vpc_configuration {
+    vpc_id          = data.aws_vpc.existing.id
+    vpc_endpoint_id = data.aws_vpc_endpoint.apprunner_requests[0].id
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-mcp-ms-ingress"
+  }
 }
