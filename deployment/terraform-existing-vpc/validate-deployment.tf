@@ -1,8 +1,8 @@
 # Validation resource to ensure both services are created and running
 resource "null_resource" "validate_deployment" {
   triggers = {
-    backend_url  = aws_apprunner_service.backend.service_url
-    frontend_url = aws_apprunner_service.frontend.service_url
+    backend_url  = local.backend_url
+    frontend_url = local.frontend_url
   }
 
   provisioner "local-exec" {
@@ -13,33 +13,49 @@ resource "null_resource" "validate_deployment" {
       echo "Validating Deployment"
       echo "========================================="
 
-      BACKEND_URL="${aws_apprunner_service.backend.service_url}"
-      FRONTEND_URL="${aws_apprunner_service.frontend.service_url}"
+      BACKEND_URL="${local.backend_url}"
+      FRONTEND_URL="${local.frontend_url}"
+      BACKEND_IS_PRIVATE="${var.backend_is_private}"
+      FRONTEND_IS_PRIVATE="${var.frontend_is_private}"
 
       echo "Backend URL: https://$BACKEND_URL"
       echo "Frontend URL: https://$FRONTEND_URL"
+      if [ "$BACKEND_IS_PRIVATE" = "true" ]; then
+        echo "Backend access: PRIVATE (VPN required)"
+      fi
+      if [ "$FRONTEND_IS_PRIVATE" = "true" ]; then
+        echo "Frontend access: PRIVATE (VPN required)"
+      fi
       echo ""
 
-      # Check backend health
-      echo "Checking backend health..."
-      BACKEND_RESPONSE=$(curl -s -o /dev/null -w "%%{http_code}" "https://$BACKEND_URL/health" || echo "000")
-
-      if [ "$BACKEND_RESPONSE" = "200" ] || [ "$BACKEND_RESPONSE" = "503" ]; then
-        echo "✓ Backend is accessible (HTTP $BACKEND_RESPONSE)"
+      # Check backend health (skip if private — not reachable from this machine without VPN)
+      if [ "$BACKEND_IS_PRIVATE" = "true" ]; then
+        echo "Skipping backend health check (private service — use VPN to test)"
       else
-        echo "⚠️ Backend returned HTTP $BACKEND_RESPONSE"
-        echo "  This may be normal during initial deployment"
+        echo "Checking backend health..."
+        BACKEND_RESPONSE=$(curl -s -o /dev/null -w "%%{http_code}" "https://$BACKEND_URL/health" || echo "000")
+
+        if [ "$BACKEND_RESPONSE" = "200" ] || [ "$BACKEND_RESPONSE" = "503" ]; then
+          echo "✓ Backend is accessible (HTTP $BACKEND_RESPONSE)"
+        else
+          echo "⚠️ Backend returned HTTP $BACKEND_RESPONSE"
+          echo "  This may be normal during initial deployment"
+        fi
       fi
 
-      # Check frontend
-      echo "Checking frontend..."
-      FRONTEND_RESPONSE=$(curl -s -o /dev/null -w "%%{http_code}" "https://$FRONTEND_URL/" || echo "000")
-
-      if [ "$FRONTEND_RESPONSE" = "200" ]; then
-        echo "✓ Frontend is accessible (HTTP $FRONTEND_RESPONSE)"
+      # Check frontend (skip if private — not reachable from this machine without VPN)
+      if [ "$FRONTEND_IS_PRIVATE" = "true" ]; then
+        echo "Skipping frontend health check (private service — use VPN to test)"
       else
-        echo "⚠️ Frontend returned HTTP $FRONTEND_RESPONSE"
-        echo "  This may be normal during initial deployment"
+        echo "Checking frontend..."
+        FRONTEND_RESPONSE=$(curl -s -o /dev/null -w "%%{http_code}" "https://$FRONTEND_URL/" || echo "000")
+
+        if [ "$FRONTEND_RESPONSE" = "200" ]; then
+          echo "✓ Frontend is accessible (HTTP $FRONTEND_RESPONSE)"
+        else
+          echo "⚠️ Frontend returned HTTP $FRONTEND_RESPONSE"
+          echo "  This may be normal during initial deployment"
+        fi
       fi
 
       # List App Runner services to confirm
@@ -57,8 +73,16 @@ resource "null_resource" "validate_deployment" {
       echo ""
       echo "Next steps:"
       echo "1. Wait 2-3 minutes for services to fully stabilize"
-      echo "2. Test backend: curl https://$BACKEND_URL/health"
-      echo "3. Access frontend: https://$FRONTEND_URL"
+      if [ "$BACKEND_IS_PRIVATE" = "true" ]; then
+        echo "2. Connect to VPN, then test backend: curl https://$BACKEND_URL/health"
+      else
+        echo "2. Test backend: curl https://$BACKEND_URL/health"
+      fi
+      if [ "$FRONTEND_IS_PRIVATE" = "true" ]; then
+        echo "3. Connect to VPN, then access frontend: https://$FRONTEND_URL"
+      else
+        echo "3. Access frontend: https://$FRONTEND_URL"
+      fi
       echo "4. Check Okta callback URL is set to: https://$BACKEND_URL/auth/okta/callback"
       echo ""
     EOT
