@@ -1549,6 +1549,86 @@ class TestFiles:
         assert result[0]["file_id"] == "file_1"
         assert result[0]["owner_user_id"] == TEST_USER_ID
 
+    def test_upload_same_content_different_filename(self):
+        """Regression test: uploading identical content with a different filename
+        must succeed and return a distinct file_id (not trigger IntegrityError)."""
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+        from bondable.bond.providers.metadata import Base, User as DBUser, Metadata
+        import uuid
+
+        # In-memory SQLite database
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+
+        # Insert a test user (needed for FK on files.owner_user_id)
+        test_user_id = "test-dedup-user"
+        with Session(engine) as session:
+            session.add(DBUser(id=test_user_id, email="dedup@test.com", sign_in_method="test"))
+            session.commit()
+
+        # Concrete subclass of FilesProvider with stub resource methods
+        class StubFilesProvider(FilesProvider):
+            def create_file_resource(self, file_path, file_bytes):
+                return str(uuid.uuid4())
+
+            def delete_file_resource(self, file_id):
+                return True
+
+        # Build a Metadata mock whose get_db_session yields real SQLite sessions
+        from contextlib import contextmanager
+
+        metadata = MagicMock(spec=Metadata)
+
+        @contextmanager
+        def _db_session():
+            session = Session(engine)
+            try:
+                yield session
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+
+        metadata.get_db_session = _db_session
+
+        provider = StubFilesProvider(metadata)
+        csv_content = b"col1,col2\nval1,val2"
+
+        # Mock Magika so it doesn't need model files
+        with patch("bondable.bond.providers.files.Magika") as MockMagika:
+            mock_result = MagicMock()
+            mock_result.output.mime_type = "text/csv"
+            MockMagika.return_value.identify_bytes.return_value = mock_result
+
+            # Upload A — new file (Tier 3 path)
+            result_a = provider.get_or_create_file_id(
+                user_id=test_user_id,
+                file_tuple=("file_A.csv", csv_content),
+            )
+
+            # Upload B — same content, different name (previously hit Tier 2 → IntegrityError)
+            result_b = provider.get_or_create_file_id(
+                user_id=test_user_id,
+                file_tuple=("file_B.csv", csv_content),
+            )
+
+            # Upload A again — exact same path + content (Tier 1: must reuse existing record)
+            result_a2 = provider.get_or_create_file_id(
+                user_id=test_user_id,
+                file_tuple=("file_A.csv", csv_content),
+            )
+
+        # Different filenames must get distinct file_ids
+        assert result_a.file_id != result_b.file_id
+        assert result_a.file_hash == result_b.file_hash
+        assert result_a.file_path == "file_A.csv"
+        assert result_b.file_path == "file_B.csv"
+
+        # Re-uploading same filename + content must reuse the original file_id (Tier 1)
+        assert result_a2.file_id == result_a.file_id
+
 # --- Integration Tests ---
 
 class TestIntegration:

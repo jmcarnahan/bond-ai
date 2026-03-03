@@ -175,28 +175,7 @@ class FilesProvider(ABC):
                     session.commit()
                 return FileDetails.from_file_record(exact_match)
 
-            # Check if same content (hash) exists for this user with different path
-            content_match = session.query(FileRecord).filter_by(
-                file_hash=file_hash,
-                owner_user_id=user_id
-            ).first()
-
-            if content_match:
-                # Same content exists with different path - reuse file_id but create new record
-                LOGGER.info(f"Content hash for '{file_path}' matches existing record '{content_match.file_path}' (file_id: {content_match.file_id}). Creating new path record with existing file_id.")
-                new_record = FileRecord(
-                    file_path=file_path,
-                    file_hash=file_hash,
-                    file_id=content_match.file_id,  # Reuse existing file_id
-                    mime_type=mime_type,
-                    file_size=file_size,
-                    owner_user_id=user_id
-                )
-                session.add(new_record)
-                session.commit()
-                return FileDetails.from_file_record(new_record)
-
-            # No existing content found - create new file
+            # No exact match found - create new file
             file_bytes.seek(0)
             file_id = self.create_file_resource(file_path, file_bytes)
             file_record = FileRecord(
