@@ -17,11 +17,17 @@ class TestGetAtlassianToken:
             from atlassian.auth import get_atlassian_token
             assert get_atlassian_token() == "test-token-123"
 
-    def test_extracts_token_from_titlecase_header(self):
-        mock_headers = {"Authorization": "Bearer my-oauth-token"}
-        with patch("atlassian.auth.get_http_headers", return_value=mock_headers):
+    def test_calls_get_http_headers_with_authorization_include(self):
+        """Verify get_http_headers is called with include={'authorization'}.
+
+        FastMCP v3 strips the authorization header by default.
+        Without include={'authorization'}, auth will silently fail.
+        """
+        mock_headers = {"authorization": "Bearer tok"}
+        with patch("atlassian.auth.get_http_headers", return_value=mock_headers) as mock_fn:
             from atlassian.auth import get_atlassian_token
-            assert get_atlassian_token() == "my-oauth-token"
+            get_atlassian_token()
+        mock_fn.assert_called_once_with(include={"authorization"})
 
     def test_raises_if_no_auth_header(self):
         with patch("atlassian.auth.get_http_headers", return_value={}):
@@ -46,11 +52,17 @@ class TestGetCloudId:
             from atlassian.auth import get_cloud_id
             assert get_cloud_id() == "abc-123-cloud"
 
-    def test_extracts_cloud_id_titlecase(self):
-        mock_headers = {"X-Atlassian-Cloud-Id": "def-456-cloud"}
-        with patch("atlassian.auth.get_http_headers", return_value=mock_headers):
+    def test_calls_get_http_headers_with_cloud_id_include(self):
+        """Verify get_http_headers is called with include={'x-atlassian-cloud-id'}.
+
+        The x-atlassian-cloud-id header is not in v3's default exclude list today,
+        but this include= ensures it survives any future exclude list expansion.
+        """
+        mock_headers = {"x-atlassian-cloud-id": "abc-123"}
+        with patch("atlassian.auth.get_http_headers", return_value=mock_headers) as mock_fn:
             from atlassian.auth import get_cloud_id
-            assert get_cloud_id() == "def-456-cloud"
+            get_cloud_id()
+        mock_fn.assert_called_once_with(include={"x-atlassian-cloud-id"})
 
     def test_raises_if_no_cloud_id_header(self):
         with patch("atlassian.auth.get_http_headers", return_value={}):

@@ -18,12 +18,17 @@ class TestGetGraphToken:
             token = get_graph_token()
         assert token == "my-token-123"
 
-    def test_extracts_token_case_insensitive_header(self):
+    def test_calls_get_http_headers_with_authorization_include(self):
+        """Verify get_http_headers is called with include={'authorization'}.
+
+        FastMCP v3 strips the authorization header by default.
+        Without include={'authorization'}, auth will silently fail.
+        """
         from ms_graph.auth import get_graph_token
 
-        with patch("ms_graph.auth.get_http_headers", return_value={"Authorization": "Bearer upper-case-tok"}):
-            token = get_graph_token()
-        assert token == "upper-case-tok"
+        with patch("ms_graph.auth.get_http_headers", return_value={"authorization": "Bearer tok"}) as mock_headers:
+            get_graph_token()
+        mock_headers.assert_called_once_with(include={"authorization"})
 
     def test_raises_on_missing_header(self):
         from ms_graph.auth import get_graph_token

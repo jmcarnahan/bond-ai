@@ -18,12 +18,17 @@ class TestGetGitHubToken:
             token = get_github_token()
         assert token == "ghp_abc123"
 
-    def test_extracts_token_case_insensitive_header(self):
+    def test_calls_get_http_headers_with_authorization_include(self):
+        """Verify get_http_headers is called with include={'authorization'}.
+
+        FastMCP v3 strips the authorization header by default.
+        Without include={'authorization'}, auth will silently fail.
+        """
         from github.auth import get_github_token
 
-        with patch("github.auth.get_http_headers", return_value={"Authorization": "Bearer ghp_upper"}):
-            token = get_github_token()
-        assert token == "ghp_upper"
+        with patch("github.auth.get_http_headers", return_value={"authorization": "Bearer tok"}) as mock_headers:
+            get_github_token()
+        mock_headers.assert_called_once_with(include={"authorization"})
 
     def test_raises_on_missing_header(self):
         from github.auth import get_github_token
