@@ -27,6 +27,40 @@ mcp = FastMCP("Microsoft Graph MCP Server")
 
 
 # ---------------------------------------------------------------------------
+# User profile tools
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def get_user_profile() -> str:
+    """
+    Get the authenticated user's profile information.
+
+    Returns the user's display name, email addresses, and account identifiers.
+    Useful for discovering who you are sending email as.
+
+    IMPORTANT: If a "Mailbox Address" is shown, use that as the from_address
+    when sending email. This is the address that the mail server is authorized
+    to send from, and avoids "via" warnings and spam filtering.
+    """
+    token = get_graph_token()
+    async with AsyncGraphClient(token) as client:
+        profile = await mail_ops.aget_profile(client)
+
+    lines = [
+        f"**Display Name:** {profile.get('displayName', '?')}",
+        f"**Mail:** {profile.get('mail', '(not set)')}",
+        f"**User Principal Name:** {profile.get('userPrincipalName', '?')}",
+    ]
+    mailbox_addr = profile.get("mailboxAddress")
+    if mailbox_addr:
+        lines.append(f"**Mailbox Address:** {mailbox_addr}")
+    if profile.get("jobTitle"):
+        lines.append(f"**Job Title:** {profile['jobTitle']}")
+    lines.append(f"**ID:** `{profile.get('id', '?')}`")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Email tools
 # ---------------------------------------------------------------------------
 
@@ -90,7 +124,7 @@ async def read_email(message_id: str) -> str:
 
 
 @mcp.tool()
-async def send_email(to: str, subject: str, body: str, cc: str = "") -> str:
+async def send_email(to: str, subject: str, body: str, cc: str = "", from_address: str = "") -> str:
     """
     Send an email message.
 
@@ -99,13 +133,18 @@ async def send_email(to: str, subject: str, body: str, cc: str = "") -> str:
         subject: Email subject line.
         body: Plain text email body.
         cc: CC recipients (comma-separated, optional).
+        from_address: Sender email address (optional). Use to send from a specific
+            alias (e.g., your Outlook address instead of the account login address).
     """
     token = get_graph_token()
     to_list = [addr.strip() for addr in to.split(",") if addr.strip()]
     cc_list = [addr.strip() for addr in cc.split(",") if addr.strip()] if cc else None
 
     async with AsyncGraphClient(token) as client:
-        await mail_ops.asend_message(client, to=to_list, subject=subject, body=body, cc=cc_list)
+        await mail_ops.asend_message(
+            client, to=to_list, subject=subject, body=body,
+            cc=cc_list, from_address=from_address or None,
+        )
 
     cc_note = f" (CC: {cc})" if cc else ""
     return f"Email sent to {to}{cc_note}."

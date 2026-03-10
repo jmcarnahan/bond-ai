@@ -11,6 +11,8 @@ from unittest.mock import patch
 
 from ms_graph.graph_client import GRAPH_BASE_URL
 from .conftest import (
+    SAMPLE_USER_PROFILE,
+    SAMPLE_MAILBOX_SETTINGS,
     SAMPLE_MESSAGE,
     SAMPLE_MESSAGE_2,
     SAMPLE_MESSAGES_RESPONSE,
@@ -45,6 +47,50 @@ def mcp_server():
     """Import and return the MCP server instance."""
     from ms_graph_mcp import mcp
     return mcp
+
+
+class TestMCPProfileTools:
+    """Test user profile MCP tools via in-process FastMCP client."""
+
+    @respx.mock
+    async def test_get_user_profile_with_mailbox_address(self, mcp_server):
+        respx.get(f"{GRAPH_BASE_URL}/me").mock(
+            return_value=httpx.Response(200, json=SAMPLE_USER_PROFILE)
+        )
+        respx.get(f"{GRAPH_BASE_URL}/me/mailboxSettings").mock(
+            return_value=httpx.Response(200, json=SAMPLE_MAILBOX_SETTINGS)
+        )
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool("get_user_profile", {})
+
+        text = _get_text(result)
+        assert "John Carnahan" in text
+        assert "jmcarny@gmail.com" in text
+        assert "Mailbox Address" in text
+        assert "jmcarny.sbel@outlook.com" in text
+
+    @respx.mock
+    async def test_get_user_profile_without_mailbox_scope(self, mcp_server):
+        """When MailboxSettings.Read is not granted, profile still works without mailbox address."""
+        respx.get(f"{GRAPH_BASE_URL}/me").mock(
+            return_value=httpx.Response(200, json=SAMPLE_USER_PROFILE)
+        )
+        respx.get(f"{GRAPH_BASE_URL}/me/mailboxSettings").mock(
+            return_value=httpx.Response(403, json={
+                "error": {"code": "ErrorAccessDenied", "message": "Access denied"}
+            })
+        )
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool("get_user_profile", {})
+
+        text = _get_text(result)
+        assert "John Carnahan" in text
+        assert "jmcarny@gmail.com" in text
+        assert "Mailbox Address" not in text
 
 
 class TestMCPEmailTools:
@@ -184,6 +230,48 @@ class TestMCPEmailTools:
         body = json.loads(route.calls[0].request.content)
         assert len(body["message"]["ccRecipients"]) == 1
         assert body["message"]["ccRecipients"][0]["emailAddress"]["address"] == "bob@example.com"
+
+    @respx.mock
+    async def test_send_email_no_from_by_default(self, mcp_server):
+        """Without from_address, no from field in payload (uses account default)."""
+        route = respx.post(f"{GRAPH_BASE_URL}/me/sendMail").mock(
+            return_value=httpx.Response(202)
+        )
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool(
+                    "send_email",
+                    {"to": "alice@example.com", "subject": "Hi", "body": "Hello!"},
+                )
+
+        import json
+        body = json.loads(route.calls[0].request.content)
+        assert "from" not in body["message"]
+
+    @respx.mock
+    async def test_send_email_with_from_address(self, mcp_server):
+        route = respx.post(f"{GRAPH_BASE_URL}/me/sendMail").mock(
+            return_value=httpx.Response(202)
+        )
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool(
+                    "send_email",
+                    {
+                        "to": "alice@example.com",
+                        "subject": "Hi",
+                        "body": "Hello!",
+                        "from_address": "jmcarny.sbel@outlook.com",
+                    },
+                )
+
+        text = _get_text(result)
+        assert "sent" in text.lower()
+        import json
+        body = json.loads(route.calls[0].request.content)
+        assert body["message"]["from"]["emailAddress"]["address"] == "jmcarny.sbel@outlook.com"
 
     @respx.mock
     async def test_send_email_multiple_recipients(self, mcp_server):
@@ -562,6 +650,7 @@ class TestMCPAuth:
         from fastmcp.exceptions import ToolError
 
         tool_calls = [
+            ("get_user_profile", {}),
             ("list_emails", {}),
             ("read_email", {"message_id": "fake-id"}),
             ("send_email", {"to": "a@b.com", "subject": "S", "body": "B"}),
