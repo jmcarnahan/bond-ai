@@ -6,7 +6,81 @@ import respx
 
 from ms_graph.graph_client import GRAPH_BASE_URL, AsyncGraphClient, GraphClient
 from ms_graph import mail
-from .conftest import SAMPLE_MESSAGE, SAMPLE_MESSAGES_RESPONSE
+from .conftest import (
+    SAMPLE_MESSAGE, SAMPLE_MESSAGES_RESPONSE, SAMPLE_USER_PROFILE,
+    SAMPLE_MAILBOX_SETTINGS,
+)
+
+
+class TestProfileSync:
+    """Synchronous profile operation tests."""
+
+    @respx.mock
+    def test_get_profile_with_mailbox_settings(self):
+        respx.get(f"{GRAPH_BASE_URL}/me").mock(
+            return_value=httpx.Response(200, json=SAMPLE_USER_PROFILE)
+        )
+        respx.get(f"{GRAPH_BASE_URL}/me/mailboxSettings").mock(
+            return_value=httpx.Response(200, json=SAMPLE_MAILBOX_SETTINGS)
+        )
+        with GraphClient("tok") as client:
+            profile = mail.get_profile(client)
+
+        assert profile["displayName"] == "John Carnahan"
+        assert profile["mail"] == "jmcarny@gmail.com"
+        assert profile["mailboxAddress"] == "jmcarny.sbel@outlook.com"
+
+    @respx.mock
+    def test_get_profile_without_mailbox_settings_scope(self):
+        """When MailboxSettings.Read scope is not granted, mailboxAddress is absent."""
+        respx.get(f"{GRAPH_BASE_URL}/me").mock(
+            return_value=httpx.Response(200, json=SAMPLE_USER_PROFILE)
+        )
+        respx.get(f"{GRAPH_BASE_URL}/me/mailboxSettings").mock(
+            return_value=httpx.Response(403, json={
+                "error": {"code": "ErrorAccessDenied", "message": "Access denied"}
+            })
+        )
+        with GraphClient("tok") as client:
+            profile = mail.get_profile(client)
+
+        assert profile["displayName"] == "John Carnahan"
+        assert "mailboxAddress" not in profile
+
+
+class TestProfileAsync:
+    """Async profile operation tests."""
+
+    @respx.mock
+    async def test_aget_profile_with_mailbox_settings(self):
+        respx.get(f"{GRAPH_BASE_URL}/me").mock(
+            return_value=httpx.Response(200, json=SAMPLE_USER_PROFILE)
+        )
+        respx.get(f"{GRAPH_BASE_URL}/me/mailboxSettings").mock(
+            return_value=httpx.Response(200, json=SAMPLE_MAILBOX_SETTINGS)
+        )
+        async with AsyncGraphClient("tok") as client:
+            profile = await mail.aget_profile(client)
+
+        assert profile["displayName"] == "John Carnahan"
+        assert profile["mailboxAddress"] == "jmcarny.sbel@outlook.com"
+
+    @respx.mock
+    async def test_aget_profile_without_mailbox_settings_scope(self):
+        """When MailboxSettings.Read scope is not granted, mailboxAddress is absent."""
+        respx.get(f"{GRAPH_BASE_URL}/me").mock(
+            return_value=httpx.Response(200, json=SAMPLE_USER_PROFILE)
+        )
+        respx.get(f"{GRAPH_BASE_URL}/me/mailboxSettings").mock(
+            return_value=httpx.Response(403, json={
+                "error": {"code": "ErrorAccessDenied", "message": "Access denied"}
+            })
+        )
+        async with AsyncGraphClient("tok") as client:
+            profile = await mail.aget_profile(client)
+
+        assert profile["displayName"] == "John Carnahan"
+        assert "mailboxAddress" not in profile
 
 
 class TestMailSync:
@@ -86,6 +160,41 @@ class TestMailSync:
         assert body["message"]["ccRecipients"][0]["emailAddress"]["address"] == "bob@example.com"
 
     @respx.mock
+    def test_send_message_with_from_address(self):
+        route = respx.post(f"{GRAPH_BASE_URL}/me/sendMail").mock(
+            return_value=httpx.Response(202)
+        )
+        with GraphClient("tok") as client:
+            mail.send_message(
+                client,
+                to=["alice@example.com"],
+                subject="Hello",
+                body="Hi!",
+                from_address="jmcarny.sbel@outlook.com",
+            )
+
+        import json
+        body = json.loads(route.calls[0].request.content)
+        assert body["message"]["from"]["emailAddress"]["address"] == "jmcarny.sbel@outlook.com"
+
+    @respx.mock
+    def test_send_message_without_from_address(self):
+        route = respx.post(f"{GRAPH_BASE_URL}/me/sendMail").mock(
+            return_value=httpx.Response(202)
+        )
+        with GraphClient("tok") as client:
+            mail.send_message(
+                client,
+                to=["alice@example.com"],
+                subject="Hello",
+                body="Hi!",
+            )
+
+        import json
+        body = json.loads(route.calls[0].request.content)
+        assert "from" not in body["message"]
+
+    @respx.mock
     def test_search_messages(self):
         respx.get(f"{GRAPH_BASE_URL}/me/messages").mock(
             return_value=httpx.Response(200, json=SAMPLE_MESSAGES_RESPONSE)
@@ -134,6 +243,24 @@ class TestMailAsync:
             )
 
         assert route.called
+
+    @respx.mock
+    async def test_asend_message_with_from_address(self):
+        route = respx.post(f"{GRAPH_BASE_URL}/me/sendMail").mock(
+            return_value=httpx.Response(202)
+        )
+        async with AsyncGraphClient("tok") as client:
+            await mail.asend_message(
+                client,
+                to=["alice@example.com"],
+                subject="Async Hello",
+                body="Async body",
+                from_address="jmcarny.sbel@outlook.com",
+            )
+
+        import json
+        body = json.loads(route.calls[0].request.content)
+        assert body["message"]["from"]["emailAddress"]["address"] == "jmcarny.sbel@outlook.com"
 
     @respx.mock
     async def test_asearch_messages(self):
