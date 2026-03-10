@@ -21,7 +21,10 @@ import os
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
 import msal
+
+load_dotenv()
 
 from ms_graph.graph_client import GraphClient
 from ms_graph import mail, teams, files
@@ -32,6 +35,7 @@ MAIL_SCOPES = [
     "Mail.Read",
     "Mail.ReadWrite",
     "Mail.Send",
+    "MailboxSettings.Read",
     "User.Read",
 ]
 
@@ -170,10 +174,30 @@ def cmd_read(args: argparse.Namespace) -> None:
         print(body.get("content", "")[:2000])
 
 
-def cmd_send(args: argparse.Namespace) -> None:
+def cmd_whoami(args: argparse.Namespace) -> None:
     token = _get_token()
     with GraphClient(token) as client:
-        mail.send_message(client, to=[args.to], subject=args.subject, body=args.body)
+        profile = mail.get_profile(client)
+
+    print(f"Display Name: {profile.get('displayName', '?')}")
+    print(f"Mail: {profile.get('mail', '(not set)')}")
+    print(f"User Principal Name: {profile.get('userPrincipalName', '?')}")
+    mailbox_addr = profile.get("mailboxAddress")
+    if mailbox_addr:
+        print(f"Mailbox Address: {mailbox_addr}")
+    if profile.get("jobTitle"):
+        print(f"Job Title: {profile['jobTitle']}")
+    print(f"ID: {profile.get('id', '?')}")
+
+
+def cmd_send(args: argparse.Namespace) -> None:
+    token = _get_token()
+    from_addr = getattr(args, "from_address", None) or os.environ.get("MS_DEFAULT_FROM_ADDRESS") or None
+    with GraphClient(token) as client:
+        mail.send_message(
+            client, to=[args.to], subject=args.subject, body=args.body,
+            from_address=from_addr,
+        )
     print(f"Email sent to {args.to}.")
 
 
@@ -364,6 +388,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Microsoft Graph CLI")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    # whoami
+    p_whoami = sub.add_parser("whoami", help="Show authenticated user profile")
+    p_whoami.set_defaults(func=cmd_whoami)
+
     # list
     p_list = sub.add_parser("list", help="List recent emails")
     p_list.add_argument("--folder", default="inbox")
@@ -380,6 +408,8 @@ def main() -> None:
     p_send.add_argument("to")
     p_send.add_argument("subject")
     p_send.add_argument("body")
+    p_send.add_argument("--from", dest="from_address", default=None,
+                         help="Sender email address (alias to send from)")
     p_send.set_defaults(func=cmd_send)
 
     # search
