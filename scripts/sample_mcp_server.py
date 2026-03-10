@@ -37,7 +37,7 @@ JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "mcp-server")  # Audience claim
 print("=" * 70)
 print("Sample MCP Server - JWT Authentication")
 print("=" * 70)
-print(f"JWT Secret Key: {'✅ Set' if JWT_SECRET_KEY != 'your-secret-key-here' else '❌ NOT SET'}")
+print(f"JWT Secret Key: {'✅ Set' if JWT_SECRET_KEY != 'your-secret-key-here' else '❌ NOT SET'}")  # nosec B105
 print(f"JWT Issuer: {JWT_ISSUER}")
 print(f"JWT Audience: {JWT_AUDIENCE}")
 print("=" * 70)
@@ -60,8 +60,8 @@ def get_user_from_token() -> Optional[Dict[str, Any]]:
     """
     try:
         # Get HTTP headers
-        headers = get_http_headers()
-        auth_header = headers.get('authorization') or headers.get('Authorization')
+        headers = get_http_headers(include={"authorization"})
+        auth_header = headers.get('authorization')
 
         if not auth_header:
             logger.debug("No Authorization header found")

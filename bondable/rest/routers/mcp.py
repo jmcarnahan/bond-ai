@@ -78,7 +78,7 @@ async def list_mcp_tools(
         List of available MCP tools with their schemas, or grouped response if grouped=True
     """
     from fastmcp.client.transports import SSETransport
-    from fastmcp.client import StreamableHttpTransport  # Use fastmcp's wrapper which works with fastmcp.Client
+    from fastmcp.client.transports import StreamableHttpTransport  # Use fastmcp's wrapper which works with fastmcp.Client
 
     LOGGER.info(f"[MCP Tools] Request received from user: {current_user.user_id} ({current_user.email}), grouped={grouped}")
 

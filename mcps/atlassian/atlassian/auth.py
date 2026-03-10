@@ -20,8 +20,8 @@ def get_atlassian_token() -> str:
     Raises:
         PermissionError: If no valid Bearer token is present.
     """
-    headers = get_http_headers()
-    auth = headers.get("authorization") or headers.get("Authorization")
+    headers = get_http_headers(include={"authorization"})
+    auth = headers.get("authorization")
     if not auth or not auth.startswith("Bearer "):
         raise PermissionError(
             "Authorization required. Please connect your Atlassian account in Bond AI Settings -> Connections."
@@ -39,11 +39,8 @@ def get_cloud_id() -> str:
     Raises:
         PermissionError: If no cloud ID header is present.
     """
-    headers = get_http_headers()
-    cloud_id = (
-        headers.get("x-atlassian-cloud-id")
-        or headers.get("X-Atlassian-Cloud-Id")
-    )
+    headers = get_http_headers(include={"x-atlassian-cloud-id"})
+    cloud_id = headers.get("x-atlassian-cloud-id")
     if not cloud_id:
         raise PermissionError(
             "Atlassian Cloud ID required. Please ensure your Atlassian connection "

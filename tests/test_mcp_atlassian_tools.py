@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastmcp import Client
 from fastmcp.client.transports import SSETransport
-from fastmcp.client import StreamableHttpTransport
+from fastmcp.client.transports import StreamableHttpTransport
 
 
 async def main():

@@ -19,8 +19,8 @@ def get_graph_token() -> str:
     Raises:
         PermissionError: If no valid Bearer token is present.
     """
-    headers = get_http_headers()
-    auth = headers.get("authorization") or headers.get("Authorization")
+    headers = get_http_headers(include={"authorization"})
+    auth = headers.get("authorization")
     if not auth or not auth.startswith("Bearer "):
         raise PermissionError(
             "Authorization required. Please connect your Microsoft account in Bond AI Settings -> Connections."

@@ -17,7 +17,7 @@ import hashlib
 import re
 from typing import List, Dict, Any, Optional, Tuple
 from fastmcp import Client
-from fastmcp.client import StreamableHttpTransport  # Use fastmcp's transport wrapper
+from fastmcp.client.transports import StreamableHttpTransport  # Use fastmcp's transport wrapper
 from fastmcp.client.transports import SSETransport
 import asyncio
 from bondable.bond.config import Config
