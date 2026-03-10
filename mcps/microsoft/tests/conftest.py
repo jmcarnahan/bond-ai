@@ -6,6 +6,20 @@ import pytest
 # Sample Graph API response payloads
 # ---------------------------------------------------------------------------
 
+SAMPLE_USER_PROFILE = {
+    "id": "user-id-001",
+    "displayName": "John Carnahan",
+    "mail": "jmcarny@gmail.com",
+    "userPrincipalName": "jmcarny@gmail.com",
+    "jobTitle": None,
+}
+
+SAMPLE_MAILBOX_SETTINGS = {
+    "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('jmcarny.sbel%40outlook.com')/mailboxSettings",
+    "timeZone": "Pacific Standard Time",
+    "automaticRepliesSetting": {"status": "disabled"},
+}
+
 SAMPLE_MESSAGE = {
     "id": "AAMkAGI2TG93AAA=",
     "subject": "Weekly Report",
