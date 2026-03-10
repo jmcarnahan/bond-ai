@@ -34,6 +34,7 @@ poetry run pytest tests/ -v
    - `Mail.Read` -- Read user mail
    - `Mail.ReadWrite` -- Read and write access to user mail
    - `Mail.Send` -- Send mail as a user
+   - `MailboxSettings.Read` -- Read mailbox settings (needed to discover the correct sending address for consumer accounts)
    - `User.Read` -- Sign in and read user profile
    - `offline_access` -- Maintain access to data (enables refresh tokens)
 3. Add file/SharePoint permissions:
@@ -102,12 +103,16 @@ The CLI uses MSAL device code flow for authentication. Tokens are cached locally
 ```bash
 export MS_CLIENT_ID=<your-application-client-id>
 
+# User profile
+poetry run python ms_graph_cli.py whoami                         # Show authenticated user info
+
 # Email
 poetry run python ms_graph_cli.py list                           # List inbox
 poetry run python ms_graph_cli.py list --folder sentitems        # List sent items
 poetry run python ms_graph_cli.py list --top 20                  # More results
 poetry run python ms_graph_cli.py read <message_id>              # Read a single email
 poetry run python ms_graph_cli.py send user@example.com "Subject" "Body"
+poetry run python ms_graph_cli.py send user@example.com "Subject" "Body" --from alias@outlook.com
 poetry run python ms_graph_cli.py search "budget report"
 
 # Teams (requires M365 license -- set MS_TENANT_ID to your org tenant)
@@ -152,6 +157,7 @@ poetry run fastmcp run ms_graph_mcp.py --transport streamable-http --port 5557
 
 | Tool | Description |
 |------|-------------|
+| `get_user_profile` | Get the authenticated user's profile (name, email addresses, mailbox address) |
 | `list_emails` | List recent emails from a mailbox folder |
 | `read_email` | Read a single email by ID |
 | `send_email` | Send an email message |
@@ -300,7 +306,7 @@ Example `bond_mcp_config` entry (add alongside existing entries like `sbel`):
         "client_secret": "<AZURE_APP_CLIENT_SECRET>",
         "authorize_url": "https://login.microsoftonline.com/<AUTHORITY>/oauth2/v2.0/authorize",
         "token_url": "https://login.microsoftonline.com/<AUTHORITY>/oauth2/v2.0/token",
-        "scopes": "Mail.Read Mail.ReadWrite Mail.Send User.Read offline_access Files.Read.All Sites.Read.All Team.ReadBasic.All Channel.ReadBasic.All ChannelMessage.Send",
+        "scopes": "Mail.Read Mail.ReadWrite Mail.Send MailboxSettings.Read User.Read offline_access Files.Read.All Sites.Read.All Team.ReadBasic.All Channel.ReadBasic.All ChannelMessage.Send",
         "redirect_uri": "https://<YOUR_BACKEND_URL>/connections/microsoft/callback"
     }
 }
@@ -381,6 +387,7 @@ Go to **API permissions** -> **Add a permission** -> **Microsoft Graph** -> **De
 | `Mail.Read` | List and read emails |
 | `Mail.ReadWrite` | Manage email (move, mark as read) |
 | `Mail.Send` | Send email on behalf of the user |
+| `MailboxSettings.Read` | Read mailbox settings (discovers correct sending address for consumer accounts) |
 | `offline_access` | Refresh tokens (keeps sessions alive without re-login) |
 | `Files.Read.All` | Read files the user can access (OneDrive + SharePoint) |
 | `Sites.Read.All` | Read SharePoint sites the user can access |
