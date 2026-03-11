@@ -1,6 +1,7 @@
 import logging.config
 import yaml
 import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -9,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import routers
-from bondable.rest.routers import auth, agents, threads, chat, files, mcp, groups, connections
+from bondable.rest.routers import auth, agents, threads, chat, files, mcp, groups, connections, scheduled_jobs
 
 # Configure logging from YAML file
 def setup_logging():
@@ -37,11 +38,29 @@ def setup_logging():
 setup_logging()
 LOGGER = logging.getLogger(__name__)
 
+# Lifespan for scheduler
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler = None
+    if os.getenv("SCHEDULED_JOBS_ENABLED", "false").lower() == "true":
+        from bondable.bond.scheduler import JobScheduler
+        from bondable.bond.config import Config
+        provider = Config.config().get_provider()
+        scheduler = JobScheduler(metadata=provider.metadata, provider=provider)
+        scheduler.start()
+        LOGGER.info("Scheduled jobs scheduler started")
+    yield
+    if scheduler:
+        scheduler.stop()
+        LOGGER.info("Scheduled jobs scheduler stopped")
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Bond AI REST API",
     description="REST API for Bond AI platform",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -73,6 +92,7 @@ app.include_router(files.router)
 app.include_router(mcp.router)
 app.include_router(groups.router)
 app.include_router(connections.router)
+app.include_router(scheduled_jobs.router)
 
 # Health check endpoint
 @app.get("/health")
