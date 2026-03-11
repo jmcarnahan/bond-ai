@@ -7,6 +7,7 @@ import 'package:flutterui/data/services/chat_service.dart';
 import 'package:flutterui/data/services/mcp_service.dart';
 import 'package:flutterui/data/services/file_service.dart';
 import 'package:flutterui/data/services/connections_service.dart';
+import 'package:flutterui/data/services/scheduled_job_service.dart';
 import 'package:flutterui/providers/core_providers.dart' show sharedPreferencesProvider;
 
 final authServiceProvider = Provider<AuthService>((ref) {
@@ -42,4 +43,9 @@ final fileServiceProvider = Provider<FileService>((ref) {
 final connectionsServiceProvider = Provider<ConnectionsService>((ref) {
   final authService = ref.watch(authServiceProvider);
   return ConnectionsService(authService: authService);
+});
+
+final scheduledJobServiceProvider = Provider<ScheduledJobService>((ref) {
+  final authService = ref.watch(authServiceProvider);
+  return ScheduledJobService(authService: authService);
 });

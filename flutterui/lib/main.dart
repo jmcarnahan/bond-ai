@@ -30,6 +30,10 @@ import 'package:flutterui/presentation/screens/agents/agents_screen.dart';
 import 'package:flutterui/providers/agent_provider.dart';
 import 'package:flutterui/core/services/deep_link_service.dart';
 import 'package:flutterui/presentation/screens/connections/connections_screen.dart';
+import 'package:flutterui/presentation/screens/scheduled_jobs/scheduled_jobs_screen.dart';
+import 'package:flutterui/presentation/screens/scheduled_jobs/scheduled_job_runs_screen.dart';
+import 'package:flutterui/presentation/screens/scheduled_jobs/create_scheduled_job_screen.dart';
+import 'package:flutterui/data/models/scheduled_job_model.dart';
 
 // Provider to control the bottom navigation index
 final navigationIndexProvider = StateProvider<int>((ref) {
@@ -211,6 +215,12 @@ class MobileApp extends ConsumerWidget {
           case ConnectionsScreen.routeName:
             pageWidget = const ConnectionsScreen();
             break;
+          case ScheduledJobsScreen.routeName:
+            pageWidget = const ScheduledJobsScreen();
+            break;
+          case CreateScheduledJobScreen.routeName:
+            pageWidget = const CreateScheduledJobScreen();
+            break;
           default:
             if (effectivePath.startsWith('/groups/') &&
                 effectivePath.endsWith('/edit')) {
@@ -223,6 +233,28 @@ class MobileApp extends ConsumerWidget {
                   '[onGenerateRoute] Error: EditGroupScreen called without Group argument',
                 );
                 pageWidget = const GroupsScreen();
+              }
+            } else if (effectivePath.startsWith('/scheduled-jobs/') &&
+                effectivePath.endsWith('/runs')) {
+              final parts = effectivePath.split('/');
+              // /scheduled-jobs/{id}/runs → parts: ['', 'scheduled-jobs', '{id}', 'runs']
+              if (parts.length >= 4) {
+                final jobId = parts[2];
+                final job = settings.arguments is ScheduledJob
+                    ? settings.arguments as ScheduledJob
+                    : null;
+                pageWidget = ScheduledJobRunsScreen(jobId: jobId, job: job);
+              }
+            } else if (effectivePath.startsWith('/edit-scheduled-job/')) {
+              final jobId = effectivePath.replaceFirst('/edit-scheduled-job/', '');
+              final job = settings.arguments is ScheduledJob
+                  ? settings.arguments as ScheduledJob
+                  : null;
+              if (job != null) {
+                pageWidget = CreateScheduledJobScreen(existingJob: job);
+              } else {
+                logger.e('[onGenerateRoute] Edit scheduled job route called without ScheduledJob argument (jobId=$jobId)');
+                pageWidget = const ScheduledJobsScreen();
               }
             } else if (effectivePath.startsWith('/chat/')) {
               final parts = effectivePath.split('/');

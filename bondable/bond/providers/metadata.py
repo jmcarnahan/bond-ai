@@ -23,6 +23,7 @@ class Thread(Base):
     session_id = Column(String, nullable=True)  # remote session ID if any
     session_state = Column(JSON, default=dict)  # remote session state if any
     last_agent_id = Column(String, nullable=True)  # Soft reference, no FK constraint
+    scheduled_job_id = Column(String, ForeignKey('scheduled_jobs.id', ondelete='SET NULL'), nullable=True, index=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     __table_args__ = (PrimaryKeyConstraint('thread_id', 'user_id'),)
@@ -148,6 +149,29 @@ class ConnectionOAuthState(Base):
     code_verifier = Column(String, nullable=True)  # For PKCE
     redirect_uri = Column(String, nullable=True)  # Where to redirect after OAuth
     created_at = Column(DateTime, default=datetime.datetime.now)
+
+
+class ScheduledJob(Base):
+    __tablename__ = "scheduled_jobs"
+    id = Column(String, primary_key=True, nullable=False)
+    user_id = Column(String, ForeignKey('users.id'), nullable=False, index=True)
+    agent_id = Column(String, nullable=False)
+    name = Column(String, nullable=False)
+    prompt = Column(String, nullable=False)
+    schedule = Column(String, nullable=False)  # Cron expression
+    timezone = Column(String, default="UTC")
+    is_enabled = Column(Boolean, default=True, nullable=False)
+    status = Column(String, default="pending", nullable=False)  # pending | running | completed | failed
+    locked_by = Column(String, nullable=True)
+    locked_at = Column(DateTime, nullable=True)
+    timeout_seconds = Column(Integer, default=300)
+    last_run_at = Column(DateTime, nullable=True)
+    last_run_status = Column(String, nullable=True)  # completed | failed | timed_out
+    last_run_error = Column(String, nullable=True)
+    last_thread_id = Column(String, nullable=True)
+    next_run_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
 
 class Metadata(ABC):

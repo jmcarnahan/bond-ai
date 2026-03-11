@@ -129,10 +129,11 @@ void main() {
       expect(find.text('History'), findsOneWidget);
     });
 
-    testWidgets('always shows Connections, Profile, Logout', (tester) async {
+    testWidgets('always shows Connections, Scheduled Jobs, Profile, Logout', (tester) async {
       await _pumpDrawer(tester);
 
       expect(find.text('Connections'), findsOneWidget);
+      expect(find.text('Scheduled Jobs'), findsOneWidget);
       expect(find.text('Profile'), findsOneWidget);
       expect(find.text('Logout'), findsOneWidget);
     });
