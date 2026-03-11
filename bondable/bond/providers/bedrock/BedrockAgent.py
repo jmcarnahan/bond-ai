@@ -45,6 +45,22 @@ from .bond_interactive_registry import strip_bond_definitions
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_TEMPERATURE = 0.0
+
+# Context window sizes by model prefix (tokens)
+MODEL_CONTEXT_WINDOWS = {
+    'claude-3-5': 200_000,
+    'claude-3': 200_000,
+    'claude-v2': 100_000,
+    'claude-instant': 100_000,
+}
+DEFAULT_CONTEXT_WINDOW = 200_000
+CHARS_PER_TOKEN_ESTIMATE = 4
+MAX_SUMMARY_TOKENS = 2048
+
+# Configurable compaction threshold (fraction of context window).
+# Override via BEDROCK_COMPACTION_THRESHOLD env var (0.0-1.0).
+COMPACTION_THRESHOLD_RATIO = float(os.environ.get('BEDROCK_COMPACTION_THRESHOLD', '0.6'))
+
 # Ensure instructions meet minimum length requirement (40 chars for Bedrock)
 MIN_INSTRUCTION_LENGTH = 40
 DEFAULT_INSTRUCTION = "You are a helpful AI assistant. Be helpful, accurate, and concise in your responses."
@@ -96,6 +112,13 @@ class BedrockAgent(Agent):
         LOGGER.debug(f"Initialized BedrockAgent {self.agent_id} with model {self.model}")
         LOGGER.debug(f"  Bedrock Agent ID: {self.bedrock_agent_id}")
         LOGGER.debug(f"  Bedrock Alias ID: {self.bedrock_agent_alias_id}")
+
+    def _get_context_window_size(self) -> int:
+        """Get the context window size for the current model."""
+        for prefix, size in MODEL_CONTEXT_WINDOWS.items():
+            if prefix in self.model:
+                return size
+        return DEFAULT_CONTEXT_WINDOW
 
     def get_agent_id(self) -> str:
         """Get the agent's ID"""
@@ -355,8 +378,46 @@ class BedrockAgent(Agent):
         try:
             # Get session ID and state from thread
             session_id = self.bond_provider.threads.get_thread_session_id(thread_id)
-            session_state = self.bond_provider.threads.get_thread_session_state(thread_id, user_id)
+            session_state = self.bond_provider.threads.get_thread_session_state(thread_id, user_id) or {}
             LOGGER.info(f"Invoking Bedrock Agent {self.bedrock_agent_id} with session {session_id}")
+
+            # Check for concurrent compaction
+            compaction_ts = session_state.get('compaction_in_progress')
+            if compaction_ts:
+                from datetime import datetime, timedelta, timezone
+                try:
+                    started = datetime.fromisoformat(compaction_ts)
+                    if datetime.now(timezone.utc) - started < timedelta(seconds=60):
+                        LOGGER.warning(f"Compaction in progress for thread {thread_id}, proceeding with existing session")
+                    else:
+                        LOGGER.warning(f"Stale compaction flag for thread {thread_id}, clearing")
+                        session_state.pop('compaction_in_progress', None)
+                        self.bond_provider.threads.update_thread_session(
+                            thread_id=thread_id, user_id=user_id,
+                            session_id=session_id, session_state=session_state
+                        )
+                except (ValueError, TypeError):
+                    session_state.pop('compaction_in_progress', None)
+                    self.bond_provider.threads.update_thread_session(
+                        thread_id=thread_id, user_id=user_id,
+                        session_id=session_id, session_state=session_state
+                    )
+
+            # Check if a prior compaction prepared a summary for this session
+            pending_summary = session_state.get('pending_compaction_summary')
+            if pending_summary:
+                session_state['conversationHistory'] = {'messages': pending_summary}
+                session_state.pop('pending_compaction_summary', None)
+                # Persist immediately so downstream read-modify-write cycles
+                # (e.g. _update_context_usage) don't resurrect the consumed summary.
+                # Note: This is the first of up to 3 DB writes per request on the
+                # summary-consumption path (here, _update_context_usage, and Bedrock
+                # state merge). All are correct; consolidation deferred for now.
+                self.bond_provider.threads.update_thread_session(
+                    thread_id=thread_id, user_id=user_id,
+                    session_id=session_id, session_state=session_state
+                )
+                LOGGER.info("Injected pending compaction summary into conversationHistory")
 
             # Pass cross-agent conversation history via sessionState
             try:
@@ -365,8 +426,17 @@ class BedrockAgent(Agent):
                     current_agent_id=self.agent_id
                 )
                 if cross_agent_history:
-                    session_state['conversationHistory'] = {'messages': cross_agent_history}
-                    LOGGER.info(f"Injected {len(cross_agent_history)} cross-agent messages into conversationHistory")
+                    # If both compaction summary and cross-agent history exist, merge them
+                    if pending_summary:
+                        merged = pending_summary + cross_agent_history
+                        if len(merged) > 20:
+                            LOGGER.warning(f"Merged conversation history ({len(merged)} msgs) exceeds 20, truncating")
+                            merged = merged[:20]
+                        session_state['conversationHistory'] = {'messages': merged}
+                        LOGGER.info(f"Merged compaction summary with {len(cross_agent_history)} cross-agent messages")
+                    else:
+                        session_state['conversationHistory'] = {'messages': cross_agent_history}
+                        LOGGER.info(f"Injected {len(cross_agent_history)} cross-agent messages into conversationHistory")
             except Exception as e:
                 LOGGER.warning(f"Failed to build cross-agent conversation history: {e}")
 
@@ -1367,6 +1437,14 @@ Please integrate any relevant insights from the documents with your analysis of 
         if files:
             updated_session_state['files'] = files
 
+        # Strip custom keys that are not valid Bedrock sessionState parameters.
+        # These are used internally for context tracking but must not be sent to the API.
+        _CUSTOM_SESSION_KEYS = {'context_usage', 'pending_compaction_summary', 'compaction_in_progress'}
+        bedrock_session_state = {
+            k: v for k, v in updated_session_state.items()
+            if k not in _CUSTOM_SESSION_KEYS
+        }
+
         # Build request
         request = {
             'agentId': self.bedrock_agent_id,
@@ -1374,7 +1452,7 @@ Please integrate any relevant insights from the documents with your analysis of 
             'sessionId': session_id,
             'inputText': prompt,
             'enableTrace': True,
-            'sessionState': updated_session_state,
+            'sessionState': bedrock_session_state,
             'streamingConfigurations': {
                 'streamFinalResponse': True
             }
@@ -1426,6 +1504,10 @@ Please integrate any relevant insights from the documents with your analysis of 
             except Exception as e:
                 LOGGER.error(f"Bedrock invocation failed - Agent: {self.bedrock_agent_id}, Error: {str(e)}")
                 raise
+
+        # Accumulators for token counts from trace events
+        trace_input_tokens = 0
+        trace_output_tokens = 0
 
         # Process streaming response
         event_stream = response.get('completion')
@@ -1519,6 +1601,16 @@ Please integrate any relevant insights from the documents with your analysis of 
                         # Log more details about orchestrationTrace which contains tool invocation plans
                         if 'orchestrationTrace' in event_trace:
                             orch_trace = event_trace['orchestrationTrace']
+                            # Extract token usage from modelInvocationOutput
+                            if 'modelInvocationOutput' in orch_trace:
+                                model_output = orch_trace['modelInvocationOutput']
+                                usage = model_output.get('metadata', {}).get('usage', {})
+                                input_t = usage.get('inputToken', 0)
+                                output_t = usage.get('outputToken', 0)
+                                if input_t or output_t:
+                                    trace_input_tokens += input_t
+                                    trace_output_tokens += output_t
+                                    LOGGER.debug(f"Trace tokens: input={input_t}, output={output_t}")
                             if 'invocationInput' in orch_trace:
                                 inv_input = orch_trace['invocationInput']
                                 # Log what action the agent is planning
@@ -1540,6 +1632,7 @@ Please integrate any relevant insights from the documents with your analysis of 
         yield '</_bondmessage>'
 
         # Save response if we have content
+        compaction_performed = False
         if full_content:
             # Build metadata
             metadata = {
@@ -1562,8 +1655,36 @@ Please integrate any relevant insights from the documents with your analysis of 
             )
             LOGGER.debug(f"Saved assistant response to thread {thread_id}")
 
-        # Update session state if provided
-        if new_session_state:
+            # Track context usage
+            input_chars = len(prompt) if prompt else 0
+            self._update_context_usage(thread_id, user_id,
+                                       trace_input_tokens, trace_output_tokens,
+                                       input_chars, len(full_content))
+
+            # Check if compaction is needed after updating context usage
+            try:
+                updated_session_state = self.bond_provider.threads.get_thread_session_state(thread_id, user_id) or {}
+                if self._needs_compaction(updated_session_state):
+                    LOGGER.info(f"Context compaction triggered for thread {thread_id} "
+                                f"(tokens={updated_session_state.get('context_usage', {}).get('estimated_tokens', 0)})")
+                    result = self._compact_context(thread_id, user_id, updated_session_state)
+                    if result[0] is not None:
+                        compaction_performed = True
+            except Exception as e:
+                LOGGER.error(f"Post-invocation context compaction failed (non-fatal): {e}")
+
+        # Update session state if provided by Bedrock, preserving our custom tracking keys.
+        # Skip if compaction just rotated the session — the compaction already wrote fresh state.
+        if new_session_state and not compaction_performed:
+            current_state = self.bond_provider.threads.get_thread_session_state(thread_id, user_id) or {}
+            # Only preserve context_usage and compaction_in_progress.
+            # pending_compaction_summary is intentionally excluded — once consumed
+            # at the start of a request (line ~402), it should not be re-injected.
+            new_session_state.update({
+                k: current_state[k]
+                for k in ('context_usage', 'compaction_in_progress')
+                if k in current_state and k not in new_session_state
+            })
             self.bond_provider.threads.update_thread_session(
                 thread_id=thread_id,
                 user_id=user_id,
@@ -1571,6 +1692,199 @@ Please integrate any relevant insights from the documents with your analysis of 
                 session_state=new_session_state
             )
             LOGGER.debug(f"Updated session state for thread {thread_id}")
+
+    def _update_context_usage(self, thread_id: str, user_id: str,
+                              trace_input_tokens: int, trace_output_tokens: int,
+                              input_chars: int, output_chars: int):
+        """
+        Update running context usage in thread session_state.
+
+        Uses real token counts from Bedrock trace events when available,
+        falls back to character-based estimation otherwise.
+        """
+        session_state = self.bond_provider.threads.get_thread_session_state(thread_id, user_id) or {}
+        usage = session_state.get('context_usage', {
+            'total_tokens': 0,
+            'total_chars': 0,
+            'estimated_tokens': 0,
+            'message_count': 0,
+            'compaction_count': 0,
+        })
+
+        # Prefer real token counts from trace; fall back to char estimation
+        if trace_input_tokens > 0 or trace_output_tokens > 0:
+            new_tokens = trace_input_tokens + trace_output_tokens
+            usage['total_tokens'] = usage.get('total_tokens', 0) + new_tokens
+            # Add new trace tokens to existing estimate (preserves prior char-based estimates)
+            usage['estimated_tokens'] = usage.get('estimated_tokens', 0) + new_tokens
+            usage['token_source'] = 'trace'  # nosec B105
+        else:
+            new_chars = input_chars + output_chars
+            usage['total_chars'] = usage.get('total_chars', 0) + new_chars
+            usage['estimated_tokens'] = usage.get('total_tokens', 0) + (usage['total_chars'] // CHARS_PER_TOKEN_ESTIMATE)
+            usage['token_source'] = 'estimated'  # nosec B105
+
+        usage['message_count'] = usage.get('message_count', 0) + 2
+        session_state['context_usage'] = usage
+
+        session_id = self.bond_provider.threads.get_thread_session_id(thread_id)
+        self.bond_provider.threads.update_thread_session(
+            thread_id=thread_id, user_id=user_id,
+            session_id=session_id, session_state=session_state
+        )
+
+    def _needs_compaction(self, session_state: dict) -> bool:
+        """Check if context usage exceeds compaction threshold."""
+        usage = session_state.get('context_usage', {})
+        estimated_tokens = usage.get('estimated_tokens', 0)
+        if estimated_tokens == 0:
+            return False
+        threshold = int(self._get_context_window_size() * COMPACTION_THRESHOLD_RATIO)
+        return estimated_tokens >= threshold
+
+    def _compact_context(self, thread_id: str, user_id: str,
+                         session_state: dict) -> tuple:
+        """
+        Summarize conversation and rotate to a new Bedrock session.
+
+        Returns:
+            (new_session_id, new_session_state, summary_history) or
+            (None, None, None) if compaction is skipped.
+        """
+        from datetime import datetime, timezone
+
+        # Mark compaction in progress
+        session_state['compaction_in_progress'] = datetime.now(timezone.utc).isoformat()
+        session_id = self.bond_provider.threads.get_thread_session_id(thread_id)
+        self.bond_provider.threads.update_thread_session(
+            thread_id=thread_id, user_id=user_id,
+            session_id=session_id, session_state=session_state
+        )
+
+        try:
+            # Get all messages from thread
+            messages = self.bond_provider.threads.get_messages(thread_id)
+
+            # Build conversation text for summarization
+            def _truncate(text, limit=3000):
+                return text[:limit] + "..." if len(text) > limit else text
+
+            conversation_parts = [
+                f"{msg.role.upper()}: {_truncate(content)}"
+                for msg in messages.values()
+                for content in [msg.clob.get_content() if hasattr(msg, 'clob') and msg.clob else '']
+                if content
+            ]
+
+            # Skip compaction if there's no meaningful conversation to summarize
+            if not conversation_parts:
+                LOGGER.warning(f"Skipping compaction for thread {thread_id}: no conversation content to summarize")
+                session_state.pop('compaction_in_progress', None)
+                self.bond_provider.threads.update_thread_session(
+                    thread_id=thread_id, user_id=user_id,
+                    session_id=session_id, session_state=session_state
+                )
+                return None, None, None
+
+            conversation_text = "\n\n".join(conversation_parts)
+            # Cap total text sent to summarizer to avoid exceeding its own context
+            if len(conversation_text) > 150_000:
+                conversation_text = conversation_text[-150_000:]
+
+            # Call Converse API for summary
+            summary = self._generate_summary(conversation_text)
+
+            # Validate summary is non-empty
+            if not summary or not summary.strip():
+                LOGGER.warning(f"Skipping compaction for thread {thread_id}: summarizer returned empty result")
+                session_state.pop('compaction_in_progress', None)
+                self.bond_provider.threads.update_thread_session(
+                    thread_id=thread_id, user_id=user_id,
+                    session_id=session_id, session_state=session_state
+                )
+                return None, None, None
+
+            # Build conversationHistory with summary
+            summary_history = [
+                {"role": "user", "content": [{"text":
+                    "Please continue our conversation. Here is a summary of our discussion so far."}]},
+                {"role": "assistant", "content": [{"text": summary}]}
+            ]
+
+            # Generate new session ID and reset context usage
+            new_session_id = uuid.uuid4().hex
+            old_usage = session_state.get('context_usage', {})
+            summary_chars = len(summary)
+            new_session_state = {
+                'context_usage': {
+                    'total_tokens': 0,
+                    'total_chars': summary_chars,
+                    'estimated_tokens': summary_chars // CHARS_PER_TOKEN_ESTIMATE,
+                    'message_count': 0,
+                    'compaction_count': old_usage.get('compaction_count', 0) + 1,
+                    'token_source': 'reset',
+                },
+                'pending_compaction_summary': summary_history,
+            }
+
+            # Persist new session
+            self.bond_provider.threads.update_thread_session(
+                thread_id=thread_id, user_id=user_id,
+                session_id=new_session_id, session_state=new_session_state
+            )
+
+            LOGGER.info(
+                f"Context compaction #{new_session_state['context_usage']['compaction_count']} "
+                f"for thread {thread_id}: rotated session, "
+                f"summary={summary_chars} chars, "
+                f"old_tokens={old_usage.get('estimated_tokens', 0)}"
+            )
+
+            return new_session_id, new_session_state, summary_history
+
+        except Exception as e:
+            LOGGER.error(f"Context compaction failed for thread {thread_id}: {e}")
+            # Clear the compaction_in_progress flag so subsequent requests aren't blocked
+            session_state.pop('compaction_in_progress', None)
+            try:
+                self.bond_provider.threads.update_thread_session(
+                    thread_id=thread_id, user_id=user_id,
+                    session_id=session_id, session_state=session_state
+                )
+            except Exception as cleanup_err:
+                LOGGER.error(f"Failed to clear compaction flag for thread {thread_id}: {cleanup_err}")
+            return None, None, None
+
+    def _generate_summary(self, conversation_text: str) -> str:
+        """Call Converse API to summarize a conversation. Returns summary text."""
+        system_prompt = (
+            "You are a conversation summarizer. Produce a concise summary that preserves: "
+            "1) Key facts and decisions made, 2) User preferences and requirements stated, "
+            "3) Important context about ongoing tasks or tools used, "
+            "4) Any unresolved questions or next steps. "
+            "Keep the summary under 1500 characters. Be factual and precise."
+        )
+
+        response = self.bond_provider.bedrock_runtime_client.converse(
+            modelId=self.model,
+            messages=[{
+                "role": "user",
+                "content": [{"text":
+                    f"Summarize this conversation concisely:\n\n{conversation_text}"}]
+            }],
+            system=[{"text": system_prompt}],
+            inferenceConfig={"maxTokens": MAX_SUMMARY_TOKENS, "temperature": 0.0}
+        )
+
+        output = response.get('output', {}).get('message', {})
+        parts = [b['text'] for b in output.get('content', []) if 'text' in b]
+        summary = '\n'.join(parts)
+
+        # Enforce character limit for conversationHistory compatibility
+        if len(summary) > 1800:
+            summary = summary[:1800] + "..."
+
+        return summary
 
     # Maximum recursion depth for nested tool calls (safety limit)
     MAX_TOOL_CALL_DEPTH = 10
