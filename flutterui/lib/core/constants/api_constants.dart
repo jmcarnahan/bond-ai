@@ -11,4 +11,5 @@ class ApiConstants {
   static const String threadsEndpoint = '/threads';
   static const String chatEndpoint = '/chat';
   static const String filesEndpoint = '/files';
+  static const String scheduledJobsEndpoint = '/scheduled-jobs';
 }
