@@ -29,3 +29,13 @@ repos:
       - id: detect-private-key
       - id: end-of-file-fixer
       - id: trailing-whitespace
+
+  # Prevent direct pushes to main
+  - repo: local
+    hooks:
+      - id: no-push-to-main
+        name: Prevent direct push to main
+        entry: scripts/no-push-to-main.sh
+        language: script
+        stages: [pre-push]
+        always_run: true
