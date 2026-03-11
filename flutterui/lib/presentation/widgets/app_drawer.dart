@@ -5,6 +5,7 @@ import 'package:flutterui/providers/core_providers.dart';
 import 'package:flutterui/main.dart' show navigationIndexProvider, isUserNavigatingProvider;
 import 'package:flutterui/presentation/screens/profile/profile_screen.dart';
 import 'package:flutterui/presentation/screens/connections/connections_screen.dart';
+import 'package:flutterui/presentation/screens/scheduled_jobs/scheduled_jobs_screen.dart';
 import 'package:flutterui/providers/config_provider.dart';
 import 'package:flutterui/providers/connections_provider.dart';
 
@@ -192,7 +193,8 @@ class AppDrawer extends ConsumerWidget {
                     // Capture the route BEFORE popping the drawer
                     final currentRoute = ModalRoute.of(context)?.settings.name;
                     final isOnSubScreen = currentRoute == ProfileScreen.routeName ||
-                        currentRoute == ConnectionsScreen.routeName;
+                        currentRoute == ConnectionsScreen.routeName ||
+                        currentRoute == ScheduledJobsScreen.routeName;
 
                     Navigator.pop(context); // Close drawer
 
@@ -238,7 +240,8 @@ class AppDrawer extends ConsumerWidget {
                   // Capture the route BEFORE popping the drawer
                   final currentRoute = ModalRoute.of(context)?.settings.name;
                   final isOnSubScreen = currentRoute == ProfileScreen.routeName ||
-                      currentRoute == ConnectionsScreen.routeName;
+                      currentRoute == ConnectionsScreen.routeName ||
+                      currentRoute == ScheduledJobsScreen.routeName;
 
                   Navigator.pop(context); // Close drawer
 
@@ -284,7 +287,8 @@ class AppDrawer extends ConsumerWidget {
                   // Capture the route BEFORE popping the drawer
                   final currentRoute = ModalRoute.of(context)?.settings.name;
                   final isOnSubScreen = currentRoute == ProfileScreen.routeName ||
-                      currentRoute == ConnectionsScreen.routeName;
+                      currentRoute == ConnectionsScreen.routeName ||
+                      currentRoute == ScheduledJobsScreen.routeName;
 
                   Navigator.pop(context); // Close drawer
 
@@ -315,6 +319,23 @@ class AppDrawer extends ConsumerWidget {
                 },
               ),
               _buildConnectionsListTile(context, ref, theme),
+              ListTile(
+                leading: Icon(
+                  Icons.schedule,
+                  color: theme.colorScheme.onSurface,
+                ),
+                title: Text(
+                  'Scheduled Jobs',
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface,
+                    fontSize: 16,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context); // Close drawer
+                  Navigator.pushNamed(context, ScheduledJobsScreen.routeName);
+                },
+              ),
               const Divider(indent: 16, endIndent: 16),
               ListTile(
                 leading: Icon(
@@ -331,9 +352,10 @@ class AppDrawer extends ConsumerWidget {
                 onTap: () {
                   Navigator.pop(context); // Close drawer
 
-                  // Check if we're currently on Connections screen
+                  // Check if we're currently on a sub-screen
                   final currentRoute = ModalRoute.of(context)?.settings.name;
-                  if (currentRoute == ConnectionsScreen.routeName) {
+                  if (currentRoute == ConnectionsScreen.routeName ||
+                      currentRoute == ScheduledJobsScreen.routeName) {
                     // Navigate back to main shell first, then to profile
                     Navigator.pushNamedAndRemoveUntil(
                       context,
