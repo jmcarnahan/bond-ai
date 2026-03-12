@@ -40,6 +40,8 @@ urllib3 = ">=2.6.3"
 authlib = ">=1.6.9"
 filelock = ">=3.20.1"
 croniter = "^2.0"
+trafilatura = "^2.0"
+duckduckgo-search = "^7.0"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
