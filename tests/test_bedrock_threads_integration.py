@@ -7,7 +7,7 @@ This simulates how the Bond system would actually use threads.
 """
 
 import pytest
-pytest.skip("Integration test: requires live AWS Bedrock for thread operations", allow_module_level=True)
+pytestmark = pytest.mark.integration
 
 import os
 import sys

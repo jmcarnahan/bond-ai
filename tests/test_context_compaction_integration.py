@@ -29,8 +29,8 @@ from typing import Optional, Dict, List
 
 import pytest
 
-# Skip by default -- remove this line to run against a live server
-pytestmark = pytest.mark.skip(reason="Integration test: requires running REST API server")
+# Marked as integration — excluded by default, run with: pytest --integration
+pytestmark = pytest.mark.integration
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s - %(message)s')
 logger = logging.getLogger(__name__)

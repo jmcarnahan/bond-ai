@@ -23,6 +23,7 @@ Test Classes:
 
 import logging
 import pytest
+pytestmark = pytest.mark.integration
 import asyncio
 import os
 import requests

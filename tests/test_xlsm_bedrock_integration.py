@@ -10,7 +10,7 @@ Prerequisites:
 """
 
 import pytest
-pytestmark = pytest.mark.skip(reason="Integration test: requires live AWS Bedrock and running backend server")
+pytestmark = pytest.mark.integration
 import requests
 import io
 import openpyxl
