@@ -502,3 +502,21 @@ class TestSSRFProtection:
         from bondable.bond.providers.bedrock.CommonToolsMCP import _is_internal_url
 
         assert _is_internal_url("http://0.0.0.0/") is True
+
+    def test_blocked_hostnames_from_env(self):
+        """Verify SSRF_BLOCKED_HOSTNAMES env var overrides defaults."""
+        from bondable.bond.providers.bedrock import CommonToolsMCP as mod
+
+        with patch.dict("os.environ", {"SSRF_BLOCKED_HOSTNAMES": "evil.com,badhost"}):
+            reloaded = mod._load_blocked_hostnames()
+            assert reloaded == {"evil.com", "badhost"}
+
+    def test_blocked_hostnames_default_when_unset(self):
+        """Verify defaults are used when env var is not set."""
+        from bondable.bond.providers.bedrock import CommonToolsMCP as mod
+
+        with patch.dict("os.environ", {}, clear=True):
+            reloaded = mod._load_blocked_hostnames()
+            assert "localhost" in reloaded
+            assert "127.0.0.1" in reloaded
+            assert "metadata.google.internal" in reloaded
