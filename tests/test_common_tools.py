@@ -74,7 +74,8 @@ class TestFetchUrls:
         assert result["success"] is True
         assert "Hello World" in result["result"]
         assert "example.com" in result["result"]
-        mock_fetch.assert_called_once_with("https://example.com")
+        mock_fetch.assert_called_once()
+        assert mock_fetch.call_args[0][0] == "https://example.com"
 
     @patch("trafilatura.extract")
     @patch("trafilatura.fetch_url")
@@ -197,6 +198,20 @@ class TestFetchUrls:
         assert "truncated" in result["result"].lower()
         # Content should be truncated to ~10000 chars + header + truncation notice
         assert len(result["result"]) < 15000
+
+    @patch("trafilatura.extract")
+    @patch("trafilatura.fetch_url")
+    def test_fetch_extract_exception(self, mock_fetch, mock_extract):
+        """P3-4: Test that an exception during trafilatura.extract() is handled gracefully."""
+        from bondable.bond.providers.bedrock.CommonToolsMCP import execute_common_tool
+
+        mock_fetch.return_value = "<html>test</html>"
+        mock_extract.side_effect = Exception("Extraction failed unexpectedly")
+
+        result = execute_common_tool("fetch_urls", {"urls": "https://example.com"})
+
+        assert result["success"] is True
+        assert "Error fetching URL" in result["result"]
 
     def test_fetch_no_urls_provided(self):
         from bondable.bond.providers.bedrock.CommonToolsMCP import execute_common_tool
