@@ -10,9 +10,12 @@ Tool path format: /b.COMN00.{tool_name}
 - This format matches the standard MCP tool path format for seamless integration
 """
 
+import copy
+import ipaddress
 import json
 import logging
 from typing import Dict, Any, List
+from urllib.parse import urlparse
 
 LOGGER = logging.getLogger(__name__)
 
@@ -75,6 +78,9 @@ COMMON_TOOL_DEFINITIONS = [
 # Per-URL content truncation limit (characters)
 MAX_CONTENT_PER_URL = 10000
 
+# Blocked hostnames for SSRF protection
+_BLOCKED_HOSTNAMES = {"localhost", "127.0.0.1", "0.0.0.0", "[::1]", "metadata.google.internal"}  # nosec B104
+
 
 # =============================================================================
 # Public Functions
@@ -87,7 +93,7 @@ def get_common_tool_definitions() -> List[Dict[str, Any]]:
     Returns:
         List of tool definition dictionaries with name, description, and inputSchema
     """
-    return COMMON_TOOL_DEFINITIONS.copy()
+    return copy.deepcopy(COMMON_TOOL_DEFINITIONS)
 
 
 def is_common_tool(tool_name: str) -> bool:
@@ -156,6 +162,42 @@ def execute_common_tool(
 # Tool Handlers
 # =============================================================================
 
+def _is_internal_url(url: str) -> bool:
+    """
+    Check if a URL points to an internal/private network address.
+
+    Blocks requests to localhost, private IP ranges (10.x, 172.16-31.x, 192.168.x),
+    link-local (169.254.x), and cloud metadata endpoints to prevent SSRF attacks.
+
+    Args:
+        url: URL string to check
+
+    Returns:
+        True if the URL targets an internal address
+    """
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return True  # No hostname = reject
+
+        # Check blocked hostnames
+        if hostname.lower() in _BLOCKED_HOSTNAMES:
+            return True
+
+        # Try to parse as IP address and check if private/reserved
+        try:
+            ip = ipaddress.ip_address(hostname)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return True
+        except ValueError:
+            pass  # Not an IP address, it's a hostname - allow it
+
+        return False
+    except Exception:
+        return True  # If we can't parse it, reject it
+
+
 def _parse_urls(urls_param: str) -> List[str]:
     """
     Parse URLs from a string parameter.
@@ -203,13 +245,16 @@ def _handle_fetch_urls(parameters: Dict[str, Any]) -> Dict[str, Any]:
     if not urls:
         return {"success": False, "error": "No URLs provided. Please provide at least one URL."}
 
-    # Validate URLs
+    # Validate URLs (scheme + SSRF protection)
     valid_urls = []
     for url in urls:
-        if url.startswith('http://') or url.startswith('https://'):
-            valid_urls.append(url)
-        else:
+        if not (url.startswith('http://') or url.startswith('https://')):
             LOGGER.warning(f"[Common Tools] Rejecting invalid URL (not http/https): {url}")
+            continue
+        if _is_internal_url(url):
+            LOGGER.warning(f"[Common Tools] Rejecting internal/private URL (SSRF protection): {url}")
+            continue
+        valid_urls.append(url)
 
     if not valid_urls:
         return {"success": False, "error": "No valid URLs provided. URLs must start with http:// or https://"}

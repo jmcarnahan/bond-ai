@@ -3,7 +3,6 @@ Tests for CommonToolsMCP - web tools available to all users.
 """
 
 import json
-import pytest
 from unittest.mock import patch, MagicMock
 
 
@@ -110,6 +109,36 @@ class TestFetchUrls:
         result = execute_common_tool("fetch_urls", {"urls": "ftp://example.com"})
         assert result["success"] is False
         assert "http" in result["error"].lower()
+
+    def test_fetch_ssrf_localhost_blocked(self):
+        from bondable.bond.providers.bedrock.CommonToolsMCP import execute_common_tool
+
+        result = execute_common_tool("fetch_urls", {"urls": "http://localhost/admin"})
+        assert result["success"] is False
+
+    def test_fetch_ssrf_private_ip_blocked(self):
+        from bondable.bond.providers.bedrock.CommonToolsMCP import execute_common_tool
+
+        result = execute_common_tool("fetch_urls", {"urls": "http://10.0.0.1/secret"})
+        assert result["success"] is False
+
+    def test_fetch_ssrf_metadata_blocked(self):
+        from bondable.bond.providers.bedrock.CommonToolsMCP import execute_common_tool
+
+        result = execute_common_tool("fetch_urls", {"urls": "http://169.254.169.254/latest/meta-data/"})
+        assert result["success"] is False
+
+    def test_fetch_ssrf_127_blocked(self):
+        from bondable.bond.providers.bedrock.CommonToolsMCP import execute_common_tool
+
+        result = execute_common_tool("fetch_urls", {"urls": "http://127.0.0.1:8080/internal"})
+        assert result["success"] is False
+
+    def test_fetch_ssrf_192_168_blocked(self):
+        from bondable.bond.providers.bedrock.CommonToolsMCP import execute_common_tool
+
+        result = execute_common_tool("fetch_urls", {"urls": "http://192.168.1.1/"})
+        assert result["success"] is False
 
     @patch("trafilatura.extract")
     @patch("trafilatura.fetch_url")
@@ -404,3 +433,57 @@ class TestURLParsing:
 
         result = _parse_urls("  https://a.com ,  https://b.com  ")
         assert result == ["https://a.com", "https://b.com"]
+
+
+# =============================================================================
+# SSRF Protection Tests
+# =============================================================================
+
+class TestSSRFProtection:
+    """Tests for _is_internal_url SSRF protection."""
+
+    def test_public_url_allowed(self):
+        from bondable.bond.providers.bedrock.CommonToolsMCP import _is_internal_url
+
+        assert _is_internal_url("https://example.com") is False
+        assert _is_internal_url("https://docs.python.org/3/") is False
+
+    def test_localhost_blocked(self):
+        from bondable.bond.providers.bedrock.CommonToolsMCP import _is_internal_url
+
+        assert _is_internal_url("http://localhost/") is True
+        assert _is_internal_url("http://localhost:8080/admin") is True
+
+    def test_loopback_ip_blocked(self):
+        from bondable.bond.providers.bedrock.CommonToolsMCP import _is_internal_url
+
+        assert _is_internal_url("http://127.0.0.1/") is True
+        assert _is_internal_url("http://127.0.0.1:9200/") is True
+
+    def test_private_10_range_blocked(self):
+        from bondable.bond.providers.bedrock.CommonToolsMCP import _is_internal_url
+
+        assert _is_internal_url("http://10.0.0.1/") is True
+        assert _is_internal_url("http://10.255.255.255/") is True
+
+    def test_private_172_range_blocked(self):
+        from bondable.bond.providers.bedrock.CommonToolsMCP import _is_internal_url
+
+        assert _is_internal_url("http://172.16.0.1/") is True
+        assert _is_internal_url("http://172.31.255.255/") is True
+
+    def test_private_192_168_blocked(self):
+        from bondable.bond.providers.bedrock.CommonToolsMCP import _is_internal_url
+
+        assert _is_internal_url("http://192.168.0.1/") is True
+        assert _is_internal_url("http://192.168.1.100/") is True
+
+    def test_aws_metadata_blocked(self):
+        from bondable.bond.providers.bedrock.CommonToolsMCP import _is_internal_url
+
+        assert _is_internal_url("http://169.254.169.254/latest/meta-data/") is True
+
+    def test_zero_ip_blocked(self):
+        from bondable.bond.providers.bedrock.CommonToolsMCP import _is_internal_url
+
+        assert _is_internal_url("http://0.0.0.0/") is True

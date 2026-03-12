@@ -79,7 +79,6 @@ from bondable.bond.providers.bedrock.CommonToolsMCP import (
     COMMON_SERVER_NAME,
     COMMON_TOOL_NAMES,
     get_common_tool_definitions,
-    is_common_tool
 )
 
 def _hash_server_name(server_name: str) -> str:
