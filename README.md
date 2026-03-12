@@ -185,6 +185,7 @@ For specific test categories:
 ```bash
 poetry run pytest tests/test_rest_api.py  # API tests
 poetry run pytest tests/test_bedrock_*.py  # Bedrock tests
+poetry run pytest --integration            # Include integration tests (requires running backend)
 ```
 
 ## Environment Variables
@@ -221,6 +222,27 @@ poetry run pytest tests/test_bedrock_*.py  # Bedrock tests
 
 **MCP Configuration:**
 - `BOND_MCP_CONFIG` - JSON configuration for MCP servers
+
+**Common Tools / SSRF Protection:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SSRF_BLOCKED_HOSTNAMES` | `localhost,127.0.0.1,0.0.0.0,[::1],metadata.google.internal` | Comma-separated hostnames blocked by `fetch_urls` for SSRF protection |
+
+**Context Compaction (Bedrock):**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BEDROCK_COMPACTION_THRESHOLD` | `0.6` | Fraction of context window that triggers automatic conversation summarization (0.0-1.0) |
+
+**Scheduled Jobs:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SCHEDULED_JOBS_ENABLED` | `false` | Enable the background job scheduler |
+| `SCHEDULER_POLL_INTERVAL_SECONDS` | `30` | How often the scheduler polls for due jobs |
+| `MIN_SCHEDULE_INTERVAL_MINUTES` | `60` | Minimum allowed cron interval in minutes (set to `1` for testing) |
+| `MAX_JOBS_PER_USER` | `20` | Maximum number of scheduled jobs per user |
 
 ## Troubleshooting
 
