@@ -268,6 +268,46 @@ async def list_mcp_tools(
             all_tools.extend(admin_tools)
             LOGGER.info(f"[MCP Tools] Injected {len(admin_tools)} admin tools for admin user {current_user.email}")
 
+        # =================================================================
+        # Inject Common Tools for All Users
+        # =================================================================
+        # Common tools (web browsing, search) are available to everyone
+        # =================================================================
+        from bondable.bond.providers.bedrock.CommonToolsMCP import (
+            COMMON_SERVER_NAME, COMMON_DISPLAY_NAME, COMMON_DESCRIPTION,
+            get_common_tool_definitions
+        )
+
+        common_tool_defs = get_common_tool_definitions()
+        common_tools = [
+            MCPToolResponse(
+                name=t["name"],
+                description=t["description"],
+                input_schema=t["inputSchema"]
+            )
+            for t in common_tool_defs
+        ]
+
+        common_server = MCPServerWithTools(
+            server_name=COMMON_SERVER_NAME,
+            display_name=COMMON_DISPLAY_NAME,
+            description=COMMON_DESCRIPTION,
+            icon_url=None,
+            auth_type="internal",
+            connection_status=ConnectionStatusInfo(
+                connected=True,
+                valid=True,
+                requires_authorization=False,
+                expires_at=None
+            ),
+            tools=common_tools,
+            tool_count=len(common_tools)
+        )
+
+        server_tools_list.append(common_server)
+        all_tools.extend(common_tools)
+        LOGGER.info(f"[MCP Tools] Injected {len(common_tools)} common tools for user {current_user.email}")
+
         LOGGER.info(f"[MCP Tools] Total tools collected: {len(all_tools)}")
 
         if grouped:

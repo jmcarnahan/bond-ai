@@ -10,6 +10,7 @@ Prerequisites:
 """
 
 import pytest
+pytestmark = pytest.mark.integration
 import requests
 import re
 import json

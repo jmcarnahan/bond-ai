@@ -22,6 +22,7 @@ Test Flow:
 """
 
 import pytest
+pytestmark = pytest.mark.integration
 import requests
 import os
 from datetime import datetime, timedelta, timezone
