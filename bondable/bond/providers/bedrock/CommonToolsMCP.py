@@ -14,7 +14,8 @@ import copy
 import ipaddress
 import json
 import logging
-from typing import Dict, Any, List
+import os
+from typing import Dict, Any, List, Set
 from urllib.parse import urlparse
 
 LOGGER = logging.getLogger(__name__)
@@ -22,6 +23,15 @@ LOGGER = logging.getLogger(__name__)
 # =============================================================================
 # Constants
 # =============================================================================
+
+# Explicit timeout configuration for trafilatura URL fetching
+def _create_trafilatura_config():
+    from trafilatura.settings import use_config
+    config = use_config()
+    config.set("DEFAULT", "DOWNLOAD_TIMEOUT", "30")
+    return config
+
+_TRAFILATURA_CONFIG = _create_trafilatura_config()
 
 # Special 6-character "hash" for common tools (matches the /b.{hash6}.{tool} format)
 # This is NOT a real hash - it's a reserved identifier that won't collide with
@@ -78,8 +88,17 @@ COMMON_TOOL_DEFINITIONS = [
 # Per-URL content truncation limit (characters)
 MAX_CONTENT_PER_URL = 10000
 
-# Blocked hostnames for SSRF protection
-_BLOCKED_HOSTNAMES = {"localhost", "127.0.0.1", "0.0.0.0", "[::1]", "metadata.google.internal"}  # nosec B104
+# Blocked hostnames for SSRF protection.
+# Override via SSRF_BLOCKED_HOSTNAMES env var (comma-separated).
+_DEFAULT_BLOCKED_HOSTNAMES = "localhost,127.0.0.1,0.0.0.0,[::1],metadata.google.internal"  # nosec B104
+
+
+def _load_blocked_hostnames() -> Set[str]:
+    raw = os.environ.get("SSRF_BLOCKED_HOSTNAMES", _DEFAULT_BLOCKED_HOSTNAMES)
+    return {h.strip().lower() for h in raw.split(",") if h.strip()}
+
+
+_BLOCKED_HOSTNAMES = _load_blocked_hostnames()
 
 
 # =============================================================================
@@ -257,7 +276,7 @@ def _handle_fetch_urls(parameters: Dict[str, Any]) -> Dict[str, Any]:
         valid_urls.append(url)
 
     if not valid_urls:
-        return {"success": False, "error": "No valid URLs provided. URLs must start with http:// or https://"}
+        return {"success": False, "error": "No valid URLs provided. URLs must start with http:// or https:// and must not target internal/private addresses."}
 
     # Limit to 5 URLs
     truncated = False
@@ -269,7 +288,7 @@ def _handle_fetch_urls(parameters: Dict[str, Any]) -> Dict[str, Any]:
     results_parts = []
     for url in valid_urls:
         try:
-            html = trafilatura.fetch_url(url)
+            html = trafilatura.fetch_url(url, config=_TRAFILATURA_CONFIG)
             if html is None:
                 results_parts.append(f"## {url}\n\n*Error: Could not fetch URL (network error or URL not accessible)*\n")
                 continue
