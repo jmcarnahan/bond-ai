@@ -38,6 +38,10 @@ from .AdminMCP import (
     ADMIN_SERVER_HASH,
     execute_admin_tool
 )
+from .CommonToolsMCP import (
+    COMMON_SERVER_HASH,
+    execute_common_tool
+)
 from .BedrockMetadata import BedrockMetadata, BedrockAgentOptions
 from .BedrockProvider import BedrockProvider
 from .BedrockFiles import is_image_mime_type, get_converse_image_format
@@ -983,6 +987,54 @@ Please integrate any relevant insights from the documents with your analysis of 
 
                         results.append(tool_response)
                         continue  # Skip the rest of the loop for admin tools
+
+                    # =============================================================
+                    # Check if this is a common tool (COMN00 hash)
+                    # =============================================================
+                    if server_hash == COMMON_SERVER_HASH:
+                        LOGGER.info(f"Executing common tool: {tool_name} (hash: {server_hash})")
+
+                        # No auth check needed - common tools available to all users
+                        parameters = self._extract_tool_parameters(action_input)
+                        LOGGER.debug(f"Common tool '{tool_name}' parameters: {parameters}")
+
+                        result = execute_common_tool(
+                            tool_name=tool_name,
+                            parameters=parameters
+                        )
+
+                        # Format response
+                        success = result.get('success', False)
+                        result_preview = str(result.get('result', result.get('error', 'Unknown')))[:200]
+                        if success:
+                            LOGGER.info(f"Common tool {tool_name} completed successfully, result preview: {result_preview}")
+                        else:
+                            LOGGER.warning(f"Common tool {tool_name} returned an error, result preview: {result_preview}")
+
+                        raw_result = result.get('result', result.get('error', 'Unknown error'))
+                        compacted_result = self._compact_tool_result(
+                            json.dumps(raw_result, default=str) if not isinstance(raw_result, str) else raw_result,
+                            tool_name=tool_name
+                        )
+                        response_body = json.dumps({"result": compacted_result})
+
+                        tool_response = {
+                            "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
+                            "apiPath": api_path,
+                            "httpMethod": action_input.get('httpMethod', 'POST'),
+                            "httpStatusCode": 200,
+                            "responseBody": {
+                                "application/json": {
+                                    "body": response_body
+                                }
+                            }
+                        }
+
+                        if 'apiInvocationInput' in inv_input:
+                            tool_response = {"apiResult": tool_response}
+
+                        results.append(tool_response)
+                        continue  # Skip the rest of the loop for common tools
 
                     # =============================================================
                     # Regular MCP tool - route to external server
