@@ -56,6 +56,11 @@ weasyprint = "^68.1"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests that require a running backend (deselected by default, run with --integration)",
+]
+
 [tool.bandit]
 exclude_dirs = [".venv", "tests", "scripts/.archive"]
 skips = [
