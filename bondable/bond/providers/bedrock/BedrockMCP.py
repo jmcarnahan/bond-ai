@@ -73,6 +73,15 @@ from bondable.bond.providers.bedrock.AdminMCP import (
     is_admin_tool
 )
 
+# Import common tool constants
+from bondable.bond.providers.bedrock.CommonToolsMCP import (
+    COMMON_SERVER_HASH,
+    COMMON_SERVER_NAME,
+    COMMON_TOOL_NAMES,
+    get_common_tool_definitions,
+    is_common_tool
+)
+
 def _hash_server_name(server_name: str) -> str:
     """
     Generate 6-character hash of server name.
@@ -120,8 +129,8 @@ def _parse_tool_path(api_path: str) -> Tuple[Optional[str], Optional[str]]:
     """
     if not api_path:
         return None, None
-    # Match hex hash (a-f0-9) OR the special ADMIN0 identifier
-    match = re.match(r'^/b\.([a-f0-9]{6}|ADMIN0)\.(.+)$', api_path)
+    # Match hex hash (a-f0-9) OR the special ADMIN0/COMN00 identifiers
+    match = re.match(r'^/b\.([a-f0-9]{6}|ADMIN0|COMN00)\.(.+)$', api_path)
     if match:
         return match.group(1), match.group(2)
     return None, None
@@ -138,6 +147,19 @@ def _build_admin_tool_path(tool_name: str) -> str:
         Tool path in admin format, e.g., /b.ADMIN0.get_usage_stats
     """
     return f"/b.{ADMIN_SERVER_HASH}.{tool_name}"
+
+
+def _build_common_tool_path(tool_name: str) -> str:
+    """
+    Build tool path for a common tool: /b.COMN00.{tool_name}
+
+    Args:
+        tool_name: Common tool name
+
+    Returns:
+        Tool path in common format, e.g., /b.COMN00.fetch_urls
+    """
+    return f"/b.{COMMON_SERVER_HASH}.{tool_name}"
 
 
 def _resolve_server_from_hash(server_hash: str, mcp_config: Dict[str, Any]) -> Optional[str]:
@@ -620,6 +642,10 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
                 tool_path = _build_admin_tool_path(tool['name'])
                 server_hash = ADMIN_SERVER_HASH
                 LOGGER.debug(f"[MCP Action Groups] Building admin tool path: {tool_path}")
+            elif tool_server_name == COMMON_SERVER_NAME:
+                tool_path = _build_common_tool_path(tool['name'])
+                server_hash = COMMON_SERVER_HASH
+                LOGGER.debug(f"[MCP Action Groups] Building common tool path: {tool_path}")
             else:
                 tool_path = _build_tool_path(tool_server_name, tool['name'])
                 server_hash = _hash_server_name(tool_server_name)
@@ -789,6 +815,37 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
                 tool_definitions.append(tool_def)
                 remaining_tools.remove(tool_name)
                 LOGGER.debug(f"[MCP Tool Defs] Added admin tool '{tool_name}'")
+
+    # =================================================================
+    # Next, check for common tools in the requested list
+    # =================================================================
+    # Common tools are available to all users and handled internally
+    common_tool_names_requested = remaining_tools & COMMON_TOOL_NAMES
+    if common_tool_names_requested:
+        LOGGER.debug(f"[MCP Tool Defs] Found {len(common_tool_names_requested)} common tools in request: {common_tool_names_requested}")
+        common_tool_defs = get_common_tool_definitions()
+        common_tool_map = {t['name']: t for t in common_tool_defs}
+
+        for tool_name in common_tool_names_requested:
+            if tool_name in common_tool_map:
+                common_tool = common_tool_map[tool_name]
+                raw_properties = common_tool['inputSchema'].get('properties', {})
+                raw_required = common_tool['inputSchema'].get('required', [])
+                sanitized_props, sanitized_required = _sanitize_tool_parameters(
+                    tool_name=tool_name,
+                    properties=raw_properties,
+                    required=raw_required,
+                )
+                tool_def = {
+                    'name': tool_name,
+                    'description': common_tool['description'],
+                    'parameters': sanitized_props,
+                    'required': sanitized_required,
+                    'server_name': COMMON_SERVER_NAME  # Mark as common tool
+                }
+                tool_definitions.append(tool_def)
+                remaining_tools.remove(tool_name)
+                LOGGER.debug(f"[MCP Tool Defs] Added common tool '{tool_name}'")
 
     # =================================================================
     # Search each external MCP server for the remaining tools
