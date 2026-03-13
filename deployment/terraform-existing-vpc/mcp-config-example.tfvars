@@ -43,9 +43,6 @@ bond_mcp_config = <<-EOT
 }
 EOT
 
-# IMPORTANT: Set backend_service_url for OAuth redirects
-backend_service_url = "https://YOUR-BACKEND-SERVICE.us-west-2.awsapprunner.com"
-
 # Optional: Keep mcp_atlassian_service_url if used elsewhere (e.g., for health checks)
 mcp_atlassian_service_url = "https://YOUR-MCP-ATLASSIAN-SERVICE.us-west-2.awsapprunner.com"
 
@@ -60,14 +57,12 @@ mcp_atlassian_service_url = "https://YOUR-MCP-ATLASSIAN-SERVICE.us-west-2.awsapp
 # mcp_atlassian_oauth_client_id  = "your-client-id"
 # mcp_atlassian_oauth_scopes     = "read:jira-work,read:confluence-content.all"
 # mcp_atlassian_oauth_cloud_id   = "your-cloud-id"
-# backend_service_url            = "https://backend.example.com"
 #
 # NEW APPROACH (Replace with):
 # ----------------------------
 # 1. Create bond_mcp_config JSON (see above)
-# 2. Keep backend_service_url variable
-# 3. Optionally keep mcp_atlassian_service_url if needed
-# 4. Remove all mcp_atlassian_oauth_* variables
+# 2. Optionally keep mcp_atlassian_service_url if needed
+# 3. Remove all mcp_atlassian_oauth_* variables
 #
 # The client_secret is now referenced by ARN instead of being fetched at
 # terraform apply time. The backend application will resolve the secret.
