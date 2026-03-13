@@ -60,6 +60,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.pytest.ini_options]
 markers = [
     "integration: marks tests that require a running backend (deselected by default, run with --integration)",
+    "docker: marks tests that require Docker daemon (deselected by default, run with --docker)",
 ]
 
 [tool.bandit]
