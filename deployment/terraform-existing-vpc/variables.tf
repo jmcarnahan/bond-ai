@@ -44,12 +44,6 @@ variable "mcp_atlassian_service_url" {
   default     = ""
 }
 
-variable "backend_service_url" {
-  description = "Backend service URL (e.g., https://xxx.us-west-2.awsapprunner.com). Set after first deployment. Used by frontend build to configure API endpoint."
-  type        = string
-  default     = ""
-}
-
 # Database
 variable "db_username" {
   description = "Database master username"
@@ -307,12 +301,6 @@ variable "aurora_kb_snapshot_identifier" {
 # Private App Runner Configuration
 variable "backend_is_private" {
   description = "Make the backend App Runner service private (VPC-only access via VPN)."
-  type        = bool
-  default     = false
-}
-
-variable "frontend_is_private" {
-  description = "Make the frontend App Runner service private (VPC-only access via VPN)."
   type        = bool
   default     = false
 }
