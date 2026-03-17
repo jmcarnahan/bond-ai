@@ -35,7 +35,7 @@ okta_redirect_uri = ""  # Will be set to service URL/auth/okta/callback
 jwt_redirect_uri  = ""  # Will be set to service URL (same origin)
 
 # CORS Configuration (localhost for development)
-cors_allowed_origins = "http://localhost,http://localhost:3000,http://localhost:5000"
+cors_allowed_origins = "http://localhost,http://localhost:3000"
 
 # Custom Domain Configuration (Optional but recommended)
 # By default, uses pattern: bondai.{account_id}.aws.internalzone.com
