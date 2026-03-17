@@ -28,7 +28,7 @@ fastmcp run scripts/sample_mcp_server.py --transport streamable-http --port 5555
 uvicorn bondable.rest.main:app --reload --host 0.0.0.0 --port 8000
 
 # 3. Frontend (from flutterui directory)
-cd flutterui && flutter run -d chrome --web-port=5000 --target lib/main.dart
+cd flutterui && flutter run -d chrome --web-port=3000 --target lib/main.dart
 ```
 
 ## Prerequisites
@@ -135,10 +135,10 @@ uvicorn bondable.rest.main:app --reload --host 0.0.0.0 --port 8000
 ### Terminal 3: Frontend
 ```bash
 # From flutterui directory
-flutter run -d chrome --web-port=5000 --target lib/main.dart
+flutter run -d chrome --web-port=3000 --target lib/main.dart
 ```
 
-Access the application at: **http://localhost:5000**
+Access the application at: **http://localhost:3000**
 
 ## Architecture Overview
 
