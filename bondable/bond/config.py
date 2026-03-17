@@ -469,6 +469,13 @@ class Config:
             return mcp_config
 
         # Fall back to env var
+        # T20: Warn when using env var fallback in production (Secrets Manager preferred)
+        if os.getenv('APP_CONFIG_SECRET_NAME'):
+            LOGGER.warning(
+                "BOND_MCP_CONFIG env var fallback used despite APP_CONFIG_SECRET_NAME being set. "
+                "MCP config should be stored in Secrets Manager via the bond_mcp_config key. "
+                "The BOND_MCP_CONFIG env var is deprecated for production use."
+            )
         default_config = '''{
             "mcpServers": {
                 "hello": {
