@@ -223,10 +223,18 @@ class FilesProvider(ABC):
                     LOGGER.error(f"Error deleting file with file_id: {file_record.file_id}. Error: {e}")
 
 
-    def get_file_details(self, file_ids: List[str]) -> List[FileDetails]:
-        """ Get the file details from the file IDs. """
+    def get_file_details(self, file_ids: List[str], user_id: str = None) -> List[FileDetails]:
+        """Get the file details from the file IDs.
+
+        Args:
+            file_ids: List of file IDs to look up.
+            user_id: If provided, only return files owned by this user (T15 defense-in-depth).
+        """
         with self.metadata.get_db_session() as session:
-            file_records = session.query(FileRecord).filter(FileRecord.file_id.in_(file_ids)).all()
+            query = session.query(FileRecord).filter(FileRecord.file_id.in_(file_ids))
+            if user_id:
+                query = query.filter(FileRecord.owner_user_id == user_id)
+            file_records = query.all()
             file_details = []
             for file_record in file_records:
                 file_details.append(FileDetails.from_file_record(file_record))
