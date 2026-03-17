@@ -68,7 +68,7 @@ resource "null_resource" "update_backend_config" {
                 "OKTA_REDIRECT_URI": "https://'$BACKEND_URL'/auth/okta/callback",
                 "OKTA_SCOPES": "${var.okta_scopes}",
                 "JWT_REDIRECT_URI": "https://'$FRONTEND_URL'",
-                "CORS_ALLOWED_ORIGINS": "https://'$FRONTEND_URL',http://localhost:3000,http://localhost:5000",
+                "CORS_ALLOWED_ORIGINS": "https://'$FRONTEND_URL',http://localhost:3000",
                 "FRONTEND_URL": "https://'$FRONTEND_URL'"
               }
             }
