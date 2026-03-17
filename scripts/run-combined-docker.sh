@@ -97,7 +97,7 @@ echo "========================================="
 echo ""
 
 # Override OAuth redirect URIs for the combined container.
-# The .env values point to localhost:8000 (direct Uvicorn) and localhost:5000
+# The .env values point to localhost:8000 (direct Uvicorn) and localhost:3000
 # (Flutter dev server), but in Docker everything runs behind Nginx on $PORT.
 # We export these overrides so the -e VARNAME flags in DOCKER_ENV_FLAGS pick
 # up the correct values (Docker reads from the host's shell environment).
