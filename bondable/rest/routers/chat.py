@@ -103,6 +103,15 @@ async def chat(
             LOGGER.warning("Unauthorized access attempt on agent %s", safe_id(request_body.agent_id))
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access to this agent is forbidden.")
 
+        # T27: Check if user has read-only permission — if so, disable external MCP tools
+        if not is_default_agent:
+            user_perm = provider.agents.get_user_agent_permission(current_user.user_id, request_body.agent_id)
+            if user_perm == 'can_use_read_only':
+                # Temporarily override agent metadata to block write tools
+                if hasattr(agent_instance, 'metadata') and isinstance(agent_instance.metadata, dict):
+                    agent_instance.metadata['allow_write_tools'] = False
+                    LOGGER.info(f"Read-only user {current_user.user_id} — MCP tools disabled for agent {request_body.agent_id}")
+
         # Track the last agent used on this thread (non-blocking)
         try:
             provider.threads.update_thread_last_agent(thread_id, current_user.user_id, request_body.agent_id)

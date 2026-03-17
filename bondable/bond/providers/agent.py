@@ -532,11 +532,13 @@ class AgentProvider(ABC):
                     return 'can_use'
                 return None
 
-            # Return highest permission: can_edit > can_use
+            # Return highest permission: can_edit > can_use > can_use_read_only
             permissions = [p[0] for p in shared_permissions]
             if 'can_edit' in permissions:
                 return 'can_edit'
-            return 'can_use'
+            if 'can_use' in permissions:
+                return 'can_use'
+            return 'can_use_read_only'
 
     def get_default_agent(self) -> Optional[Agent]:
         """

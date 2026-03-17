@@ -1043,6 +1043,35 @@ Please integrate any relevant insights from the documents with your analysis of 
                     mcp_config = Config.config().get_mcp_config()
                     target_server = _resolve_server_from_hash(server_hash, mcp_config) if mcp_config else None
 
+                    # T9/T21: Structured audit log for MCP tool invocations
+                    user_email = getattr(self._current_user, 'email', 'unknown') if self._current_user else 'unknown'
+                    user_id_for_log = getattr(self._current_user, 'user_id', 'unknown') if self._current_user else 'unknown'
+                    LOGGER.info(
+                        "MCP_TOOL_INVOCATION: tool=%s server=%s user_id=%s user_email=%s agent_id=%s",
+                        tool_name, target_server or 'unknown', user_id_for_log, user_email, self.agent_id
+                    )
+
+                    # T9/T21: Check allow_write_tools flag in agent metadata
+                    agent_metadata = getattr(self, 'metadata', {}) or {}
+                    if not agent_metadata.get('allow_write_tools', True):
+                        LOGGER.warning(
+                            "MCP_TOOL_BLOCKED: tool=%s blocked by allow_write_tools=false on agent=%s user=%s",
+                            tool_name, self.agent_id, user_id_for_log
+                        )
+                        result = {"success": False, "error": f"External tool '{tool_name}' is disabled for this agent (allow_write_tools=false)"}
+
+                        raw_result = result.get('error', 'Tool blocked')
+                        response_body = json.dumps({"result": raw_result})
+                        tool_response = {
+                            "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
+                            "apiPath": api_path,
+                            "httpMethod": action_input.get('httpMethod', 'POST'),
+                            "httpStatusCode": 200,
+                            "responseBody": {"application/json": {"body": response_body}},
+                        }
+                        tool_responses.append(tool_response)
+                        continue
+
                     LOGGER.info("Executing MCP tool: %s (server: %s, hash: %s)", safe_id(tool_name), safe_id(target_server or 'unknown'), safe_id(server_hash))
                     LOGGER.debug(f"Tool name: {tool_name}, action input: {action_input}")
 
@@ -1090,9 +1119,13 @@ Please integrate any relevant insights from the documents with your analysis of 
                                 target_server=target_server  # Direct routing to correct server
                             )
 
-                            # Log result status
+                            # T9/T21: Structured audit log for tool execution outcome
                             success = result.get('success', False)
                             result_preview = str(result.get('result', result.get('error', 'Unknown')))[:200]
+                            LOGGER.info(
+                                "MCP_TOOL_RESULT: tool=%s server=%s user_id=%s agent_id=%s success=%s",
+                                tool_name, target_server or 'unknown', user_id_for_log, self.agent_id, success
+                            )
                             if success:
                                 LOGGER.info(f"MCP tool {tool_name} completed successfully, result preview: {result_preview}")
                             else:

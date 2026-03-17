@@ -277,6 +277,18 @@ async def update_agent(
         if user_perm not in ('owner', 'can_edit'):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to edit this agent.")
 
+        # T27: can_edit users cannot modify instructions (system prompt) — only owners can
+        if user_perm == 'can_edit' and request_data.instructions is not None:
+            existing_agent = provider.agents.get_agent(agent_id=agent_id)
+            if existing_agent:
+                existing_def = existing_agent.get_agent_definition()
+                if request_data.instructions != getattr(existing_def, 'instructions', ''):
+                    LOGGER.warning(f"User {current_user.user_id} (can_edit) attempted to modify system prompt for agent {agent_id}")
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Only the agent owner can modify the system prompt (instructions)."
+                    )
+
     # Log tool_resources for debugging
     LOGGER.debug(f"Update agent {agent_id} - tool_resources: {request_data.tool_resources}")
 
