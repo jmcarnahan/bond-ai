@@ -85,6 +85,27 @@ def _is_token_revoked(jti: str, bond_provider=None) -> bool:
     return False
 
 
+def _check_admin_status(user_id: str, email: str) -> bool:
+    """Check admin status from DB, falling back to env var config.
+
+    The DB is the source of truth for admin status (T7). The env var
+    ADMIN_USERS serves as a bootstrap mechanism — it's synced to the DB
+    on each login via get_or_create_user().
+    """
+    try:
+        from bondable.rest.dependencies.providers import get_bond_provider
+        from bondable.bond.providers.metadata import User as UserModel
+        bond_provider = get_bond_provider()
+        with bond_provider.metadata.get_db_session() as session:
+            user_record = session.query(UserModel).filter(UserModel.id == user_id).first()
+            if user_record and hasattr(user_record, 'is_admin'):
+                return bool(user_record.is_admin)
+    except Exception as e:
+        LOGGER.debug(f"DB admin check failed, falling back to env var: {e}")
+    # Fallback to env var if DB check fails
+    return Config.config().is_admin_user(email)
+
+
 async def get_current_user(request: Request) -> User:
     """Verify JWT token (from Bearer header or cookie) and return user data."""
     credentials_exception = HTTPException(
@@ -129,13 +150,15 @@ async def get_current_user(request: Request) -> User:
             LOGGER.warning(f"Rejected revoked token jti={jti}")
             raise credentials_exception
 
-        # Extract Okta metadata if available
+        # T7: Check admin status from DB first, fall back to env var
+        is_admin = _check_admin_status(user_id, email)
+
         return User(
             email=email,
             name=name,
             provider=provider,
             user_id=user_id,
-            is_admin=Config.config().is_admin_user(email),
+            is_admin=is_admin,
             okta_sub=payload.get("okta_sub"),
             given_name=payload.get("given_name"),
             family_name=payload.get("family_name"),

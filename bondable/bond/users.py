@@ -2,6 +2,7 @@ from typing import Tuple, Optional
 from datetime import datetime
 import logging
 
+from bondable.bond.config import Config
 from bondable.bond.providers.metadata import Metadata, User as UserModel
 
 LOGGER = logging.getLogger(__name__)
@@ -39,6 +40,13 @@ class Users:
                     existing_user.name = name
                     needs_update = True
 
+                # T7: Sync admin status from env var on each login
+                env_is_admin = Config.config().is_admin_user(email)
+                if hasattr(existing_user, 'is_admin') and existing_user.is_admin != env_is_admin:
+                    existing_user.is_admin = env_is_admin
+                    needs_update = True
+                    LOGGER.info(f"Admin status for {email} updated to {env_is_admin}")
+
                 if needs_update:
                     existing_user.updated_at = datetime.now()
                     db_session.commit()
@@ -70,6 +78,12 @@ class Users:
                         email_user.sign_in_method = sign_in_method
                         needs_update = True
 
+                    # T7: Sync admin status
+                    env_is_admin = Config.config().is_admin_user(email)
+                    if hasattr(email_user, 'is_admin') and email_user.is_admin != env_is_admin:
+                        email_user.is_admin = env_is_admin
+                        needs_update = True
+
                     if needs_update:
                         email_user.updated_at = datetime.now()
                         db_session.commit()
@@ -81,7 +95,8 @@ class Users:
                         id=user_id,
                         email=email,
                         name=name,
-                        sign_in_method=sign_in_method
+                        sign_in_method=sign_in_method,
+                        is_admin=Config.config().is_admin_user(email),
                     )
                     db_session.add(new_user)
                     db_session.commit()

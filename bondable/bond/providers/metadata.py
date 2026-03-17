@@ -67,7 +67,7 @@ class AgentGroup(Base):
     __tablename__ = "agent_groups"
     agent_id = Column(String, ForeignKey('agents.agent_id'), primary_key=True)
     group_id = Column(String, ForeignKey('groups.id'), primary_key=True)
-    permission = Column(String, nullable=False, default='can_use')  # 'can_use' or 'can_edit'
+    permission = Column(String, nullable=False, default='can_use')  # 'can_use_read_only', 'can_use', or 'can_edit'
     created_at = Column(DateTime, default=datetime.datetime.now)
 class Group(Base):
     __tablename__ = "groups"
@@ -88,6 +88,7 @@ class User(Base):
     email = Column(String, nullable=False, unique=True, index=True)
     sign_in_method = Column(String, nullable=False)
     name = Column(String, nullable=True)
+    is_admin = Column(Boolean, nullable=False, default=False)  # T7: DB-backed admin role
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
