@@ -151,6 +151,56 @@ class ConnectionOAuthState(Base):
     created_at = Column(DateTime, default=datetime.datetime.now)
 
 
+class AuthOAuthState(Base):
+    """
+    Temporary storage for OAuth state during the primary auth login flow.
+
+    Unlike ConnectionOAuthState, this table does NOT have a foreign key to users
+    because the user hasn't authenticated yet when the login flow is initiated.
+    Records are cleaned up after 10 minutes or after use.
+    """
+    __tablename__ = "auth_oauth_states"
+
+    state = Column(String, primary_key=True, nullable=False)  # Random state parameter
+    provider_name = Column(String, nullable=False)  # e.g., "okta", "google", "cognito"
+    code_verifier = Column(String, nullable=True)  # For PKCE
+    redirect_uri = Column(String, nullable=True)  # Mobile redirect URI
+    platform = Column(String, nullable=True)  # "mobile" or empty
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+
+
+class AuthCode(Base):
+    """
+    Short-lived authorization codes for the token exchange flow.
+
+    After OAuth callback, a code is issued and the frontend exchanges it
+    for either an HttpOnly cookie (web) or a bearer token (mobile).
+    Codes are single-use and expire after 60 seconds.
+    """
+    __tablename__ = "auth_codes"
+    code = Column(String, primary_key=True)  # secrets.token_urlsafe(32)
+    access_token = Column(String, nullable=False)  # The JWT
+    user_id = Column(String, nullable=False)
+    platform = Column(String, nullable=True)  # "mobile" or None (web)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    used_at = Column(DateTime, nullable=True)  # Set on redemption, prevents reuse
+    expires_at = Column(DateTime, nullable=False)  # created_at + 60 seconds
+
+
+class RevokedToken(Base):
+    """
+    Revoked JWT tokens tracked by their jti claim.
+
+    Used by POST /auth/logout to invalidate tokens before expiry.
+    The expires_at field (copied from JWT exp) allows periodic cleanup.
+    """
+    __tablename__ = "revoked_tokens"
+    jti = Column(String, primary_key=True)  # From JWT jti claim
+    user_id = Column(String, nullable=False)
+    revoked_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    expires_at = Column(DateTime, nullable=False)  # Copied from JWT exp, for cleanup
+
+
 class ScheduledJob(Base):
     __tablename__ = "scheduled_jobs"
     id = Column(String, primary_key=True, nullable=False)

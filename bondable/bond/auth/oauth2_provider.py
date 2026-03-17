@@ -35,9 +35,14 @@ class OAuth2Provider(ABC):
         pass
 
     @abstractmethod
-    def get_auth_url(self) -> str:
+    def get_auth_url(self, state: str = None, code_challenge: str = None, code_challenge_method: str = None) -> str:
         """
         Generate the authorization URL for initiating OAuth2 flow.
+
+        Args:
+            state: OAuth state parameter for CSRF protection (T-O2)
+            code_challenge: PKCE code challenge (T-O4)
+            code_challenge_method: PKCE method, typically 'S256' (T-O4)
 
         Returns:
             Authorization URL string
@@ -45,12 +50,13 @@ class OAuth2Provider(ABC):
         pass
 
     @abstractmethod
-    def get_user_info_from_code(self, auth_code: str) -> Dict[str, Any]:
+    def get_user_info_from_code(self, auth_code: str, code_verifier: str = None) -> Dict[str, Any]:
         """
         Exchange authorization code for user information.
 
         Args:
             auth_code: Authorization code received from OAuth2 callback
+            code_verifier: PKCE code verifier for token exchange (T-O4)
 
         Returns:
             Dictionary containing user information with at least:
