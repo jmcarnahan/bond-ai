@@ -81,6 +81,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Security response headers (Referrer-Policy, Permissions-Policy, HSTS, etc.)
+from bondable.rest.middleware.security_headers import SecurityHeadersMiddleware
+app.add_middleware(SecurityHeadersMiddleware)
+
+# CSRF protection (double-submit cookie pattern for cookie-authenticated requests)
+from bondable.rest.middleware.csrf import CSRFMiddleware
+app.add_middleware(CSRFMiddleware)
+
+# Rate limiting
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 LOGGER.info(f"CORSMiddleware added with origins: {origins}")
 
 # Include routers

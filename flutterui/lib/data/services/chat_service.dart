@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show immutable;
 import 'package:flutterui/core/constants/api_constants.dart';
 import 'package:flutterui/data/services/auth_service.dart';
+import 'package:flutterui/data/services/web_http_client.dart' as web_client;
 import 'package:flutterui/data/models/chat_models.dart';
 import 'package:http/http.dart' as http;
 
@@ -14,7 +15,7 @@ class ChatService {
   final AuthService _authService;
 
   ChatService({http.Client? httpClient, required AuthService authService})
-    : _httpClient = httpClient ?? http.Client(),
+    : _httpClient = httpClient ?? web_client.createHttpClient(),
       _authService = authService;
 
   Stream<String> streamChatResponse({

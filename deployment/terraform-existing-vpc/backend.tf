@@ -143,6 +143,14 @@ resource "aws_apprunner_service" "backend" {
           # Admin configuration (prefer ADMIN_USERS for multiple admins)
           ADMIN_USERS = var.admin_users
           ADMIN_EMAIL = var.admin_email  # Legacy fallback for backward compatibility
+
+          # Email validation: allow all authenticated IdP users (T-O6)
+          # Set to "true" when IdP app assignment controls access (e.g., Okta groups)
+          # Set to "false" and configure *_VALID_EMAILS to restrict by email list
+          ALLOW_ALL_EMAILS = var.allow_all_emails
+
+          # Cookie security: "true" in production (HTTPS), "false" for local dev (HTTP)
+          COOKIE_SECURE = "true"
         }
       }
     }

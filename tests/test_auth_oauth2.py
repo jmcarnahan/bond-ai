@@ -148,11 +148,12 @@ class TestGoogleOAuth2Provider:
         mock_flow_instance.credentials = mock_creds
         mock_flow.from_client_config.return_value = mock_flow_instance
 
-        # Mock ID token verification
+        # Mock ID token verification (include email_verified for T-O5)
         mock_id_token.verify_oauth2_token.return_value = {
             "email": "test@example.com",
             "name": "Test User",
-            "sub": "123456"
+            "sub": "123456",
+            "email_verified": True
         }
 
         provider = OAuth2ProviderFactory.create_provider("google", mock_google_config)
@@ -173,10 +174,11 @@ class TestGoogleOAuth2Provider:
         mock_flow_instance.credentials = mock_creds
         mock_flow.from_client_config.return_value = mock_flow_instance
 
-        # Mock ID token verification
+        # Mock ID token verification (include email_verified for T-O5)
         mock_id_token.verify_oauth2_token.return_value = {
             "email": "test@example.com",
-            "name": "Test User"
+            "name": "Test User",
+            "email_verified": True
         }
 
         provider = OAuth2ProviderFactory.create_provider("google", mock_google_config)
@@ -195,10 +197,11 @@ class TestGoogleOAuth2Provider:
         mock_flow_instance.credentials = mock_creds
         mock_flow.from_client_config.return_value = mock_flow_instance
 
-        # Mock ID token verification with unauthorized email
+        # Mock ID token verification with unauthorized email (but verified)
         mock_id_token.verify_oauth2_token.return_value = {
             "email": "unauthorized@example.com",
-            "name": "Unauthorized User"
+            "name": "Unauthorized User",
+            "email_verified": True
         }
 
         provider = OAuth2ProviderFactory.create_provider("google", mock_google_config)
@@ -206,15 +209,16 @@ class TestGoogleOAuth2Provider:
         with pytest.raises(ValueError, match="is not authorized"):
             provider.get_user_info_from_code("test_auth_code")
 
+    @patch.dict(os.environ, {"ALLOW_ALL_EMAILS": "true"})
     def test_google_user_validation_no_restriction(self, mock_google_config):
-        """Test Google user validation with no email restrictions."""
+        """Test Google user validation with no email restrictions (ALLOW_ALL_EMAILS=true)."""
         # Remove valid_emails restriction
         config_no_restriction = mock_google_config.copy()
         config_no_restriction["valid_emails"] = []
 
         provider = OAuth2ProviderFactory.create_provider("google", config_no_restriction)
 
-        # Test with any email
+        # Test with any email — allowed because ALLOW_ALL_EMAILS=true
         user_info = {"email": "anyone@example.com", "name": "Anyone"}
         assert provider.validate_user(user_info) is True
 
@@ -268,8 +272,9 @@ class TestAuthenticationRoutes:
         assert "Invalid OAuth2 provider" in response.json()["detail"]
 
     def test_auth_callback_success(self, test_client):
-        """Test successful OAuth callback."""
-        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
+        """Test successful OAuth callback with valid state (T-O2)."""
+        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create, \
+             patch('bondable.rest.routers.auth._get_and_delete_auth_oauth_state') as mock_state:
             mock_provider = MagicMock()
             mock_provider.get_user_info_from_code.return_value = {
                 "sub": TEST_USER_ID,
@@ -278,11 +283,21 @@ class TestAuthenticationRoutes:
             }
             mock_create.return_value = mock_provider
 
-            response = test_client.get("/auth/cognito/callback?code=test_code", follow_redirects=False)
+            # Mock valid state lookup
+            mock_state.return_value = {
+                "code_verifier": "test_verifier",
+                "redirect_uri": "",
+                "provider_name": "cognito",
+                "platform": "",
+            }
+
+            response = test_client.get("/auth/cognito/callback?code=test_code&state=test_state", follow_redirects=False)
 
             assert response.status_code == 307
-            assert "token=" in response.headers["location"]
-            mock_provider.get_user_info_from_code.assert_called_once_with("test_code")
+            # Phase 3: callback now redirects with ?code= (opaque auth code) instead of ?token=
+            assert "code=" in response.headers["location"]
+            assert "token=" not in response.headers["location"]
+            mock_provider.get_user_info_from_code.assert_called_once_with("test_code", code_verifier="test_verifier")
 
     def test_auth_callback_missing_code(self, test_client):
         """Test OAuth callback without code."""
@@ -292,22 +307,36 @@ class TestAuthenticationRoutes:
         assert "Authorization code missing" in response.json()["detail"]
 
     def test_auth_callback_invalid_code(self, test_client):
-        """Test OAuth callback with invalid code."""
-        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
+        """Test OAuth callback with invalid code but valid state."""
+        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create, \
+             patch('bondable.rest.routers.auth._get_and_delete_auth_oauth_state') as mock_state:
             mock_provider = MagicMock()
             mock_provider.get_user_info_from_code.side_effect = ValueError("Invalid code")
             mock_create.return_value = mock_provider
 
-            response = test_client.get("/auth/cognito/callback?code=invalid")
+            mock_state.return_value = {
+                "code_verifier": "test_verifier",
+                "redirect_uri": "",
+                "provider_name": "cognito",
+                "platform": "",
+            }
+
+            response = test_client.get("/auth/cognito/callback?code=invalid&state=test_state")
 
             assert response.status_code == 401
             assert "Invalid code" in response.json()["detail"]
+
+    def test_auth_callback_invalid_state(self, test_client):
+        """Test OAuth callback with missing/invalid state (T-O2 CSRF protection)."""
+        response = test_client.get("/auth/cognito/callback?code=test_code")
+        assert response.status_code == 400
+        assert "state" in response.json()["detail"].lower()
 
 class TestJWTWithProvider:
     """Test JWT token creation and validation with provider information."""
 
     def test_create_token_with_provider(self):
-        """Test creating JWT token with provider information."""
+        """Test creating JWT token with provider information and standard claims (T3)."""
         token_data = {
             "sub": TEST_USER_EMAIL,
             "name": "Test User",
@@ -316,11 +345,20 @@ class TestJWTWithProvider:
 
         access_token = create_access_token(data=token_data, expires_delta=timedelta(minutes=15))
 
-        # Decode and verify token
-        payload = jwt.decode(access_token, jwt_config.JWT_SECRET_KEY, algorithms=[jwt_config.JWT_ALGORITHM])
+        # Decode and verify token with audience validation (T3)
+        payload = jwt.decode(
+            access_token, jwt_config.JWT_SECRET_KEY,
+            algorithms=[jwt_config.JWT_ALGORITHM],
+            audience="bond-ai-api"
+        )
         assert payload["sub"] == TEST_USER_EMAIL
         assert payload["name"] == "Test User"
         assert payload["provider"] == "cognito"
+        # Verify standard claims are present (T3)
+        assert payload["iss"] == "bond-ai"
+        assert "bond-ai-api" in payload["aud"]
+        assert "mcp-server" in payload["aud"]
+        assert "jti" in payload  # UUID for token revocation (T2 prep)
 
     def test_get_current_user_with_provider(self, test_client):
         """Test getting current user with provider information."""
@@ -380,8 +418,9 @@ class TestBackwardsCompatibility:
             response = test_client.get("/login", follow_redirects=False)
             assert response.status_code == 307
 
-        # Test /auth/cognito/callback endpoint
-        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
+        # Test /auth/cognito/callback endpoint (requires valid state now — T-O2)
+        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create, \
+             patch('bondable.rest.routers.auth._get_and_delete_auth_oauth_state') as mock_state:
             mock_provider = MagicMock()
             mock_provider.get_user_info_from_code.return_value = {
                 "sub": TEST_USER_ID,
@@ -389,6 +428,12 @@ class TestBackwardsCompatibility:
                 "name": "Test User"
             }
             mock_create.return_value = mock_provider
+            mock_state.return_value = {
+                "code_verifier": "test_verifier",
+                "redirect_uri": "",
+                "provider_name": "cognito",
+                "platform": "",
+            }
 
-            response = test_client.get("/auth/cognito/callback?code=test", follow_redirects=False)
+            response = test_client.get("/auth/cognito/callback?code=test&state=test_state", follow_redirects=False)
             assert response.status_code == 307

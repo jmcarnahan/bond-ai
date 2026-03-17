@@ -1,4 +1,5 @@
 import logging
+import os
 import requests
 from typing import Dict, Any
 from urllib.parse import urlencode
@@ -47,7 +48,7 @@ class CognitoOAuth2Provider(OAuth2Provider):
 
         LOGGER.debug(f"Cognito OAuth2 initialized: domain={self.domain} redirect_uri={config['redirect_uri']} scopes={config['scopes']}")
 
-    def get_auth_url(self) -> str:
+    def get_auth_url(self, state: str = None, code_challenge: str = None, code_challenge_method: str = None) -> str:
         """Generate Cognito OAuth2 authorization URL."""
         auth_params = {
             'client_id': self.config["client_id"],
@@ -56,11 +57,20 @@ class CognitoOAuth2Provider(OAuth2Provider):
             'redirect_uri': self.config["redirect_uri"],
         }
 
+        # T-O2: Add state for CSRF protection
+        if state:
+            auth_params['state'] = state
+
+        # T-O4: Add PKCE code challenge
+        if code_challenge:
+            auth_params['code_challenge'] = code_challenge
+            auth_params['code_challenge_method'] = code_challenge_method or 'S256'
+
         auth_url = f"{self.domain}/oauth2/authorize?{urlencode(auth_params)}"
-        LOGGER.debug(f"Generated Cognito auth URL: {auth_url}")
+        LOGGER.debug(f"Generated Cognito auth URL")
         return auth_url
 
-    def _exchange_code_for_tokens(self, auth_code: str) -> Dict[str, Any]:
+    def _exchange_code_for_tokens(self, auth_code: str, code_verifier: str = None) -> Dict[str, Any]:
         """Exchange authorization code for access and ID tokens."""
         token_url = f"{self.domain}/oauth2/token"
 
@@ -70,6 +80,10 @@ class CognitoOAuth2Provider(OAuth2Provider):
             'redirect_uri': self.config["redirect_uri"],
             'client_id': self.config["client_id"],
         }
+
+        # T-O4: Include PKCE code_verifier in token exchange
+        if code_verifier:
+            token_data['code_verifier'] = code_verifier
 
         # Add client secret if configured (for confidential clients)
         client_secret = self.config.get("client_secret", "")
@@ -116,12 +130,13 @@ class CognitoOAuth2Provider(OAuth2Provider):
 
         return response.json()
 
-    def get_user_info_from_code(self, auth_code: str) -> Dict[str, Any]:
+    def get_user_info_from_code(self, auth_code: str, code_verifier: str = None) -> Dict[str, Any]:
         """
         Exchange authorization code for user information.
 
         Args:
             auth_code: Cognito OAuth2 authorization code
+            code_verifier: PKCE code verifier for token exchange (T-O4)
 
         Returns:
             Dictionary with user information including email, name, etc.
@@ -133,8 +148,8 @@ class CognitoOAuth2Provider(OAuth2Provider):
         try:
             LOGGER.info(f"Authenticating with Cognito auth code: {auth_code[:10]}...")
 
-            # Exchange code for tokens
-            tokens = self._exchange_code_for_tokens(auth_code)
+            # Exchange code for tokens (with PKCE code_verifier if provided)
+            tokens = self._exchange_code_for_tokens(auth_code, code_verifier=code_verifier)
             access_token = tokens.get('access_token')
 
             if not access_token:
@@ -158,6 +173,14 @@ class CognitoOAuth2Provider(OAuth2Provider):
 
             LOGGER.info("Cognito authentication successful")
 
+            # Verify email is verified before allowing login
+            email_verified = normalized_user_info.get('email_verified', False)
+            if isinstance(email_verified, str):
+                email_verified = email_verified.lower() == 'true'
+            if not email_verified:
+                LOGGER.warning(f"Cognito user {normalized_user_info.get('email')} has unverified email")
+                raise ValueError(f"Email address {normalized_user_info.get('email')} has not been verified")
+
             # Validate user authorization
             if not self.validate_user(normalized_user_info):
                 raise ValueError(f"User {normalized_user_info.get('email')} is not authorized to access this application")
@@ -180,9 +203,13 @@ class CognitoOAuth2Provider(OAuth2Provider):
         """
         valid_emails = self.config.get("valid_emails", [])
 
-        # If no valid_emails configured, allow all users
+        # If no valid_emails configured, require explicit ALLOW_ALL_EMAILS=true
         if not valid_emails:
-            return True
+            allow_all = os.environ.get("ALLOW_ALL_EMAILS", "false").lower() == "true"
+            if allow_all:
+                return True
+            LOGGER.error("No valid_emails configured and ALLOW_ALL_EMAILS is not set to 'true'. Blocking login.")
+            return False
 
         user_email = user_info.get("email")
         if not user_email:

@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:flutterui/data/models/user_model.dart';
 import 'package:flutterui/data/services/auth_service.dart';
+import 'package:flutterui/data/services/cookie_helper.dart' as cookie_helper;
 import 'package:flutterui/providers/services/service_providers.dart';
 import '../core/utils/logger.dart';
 
@@ -58,6 +60,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
         final user = await _authService.getCurrentUser();
         logger.i("[AuthNotifier] User authenticated: ${user.email} (ID: ${user.userId})");
         state = Authenticated(user);
+      } else if (kIsWeb && cookie_helper.isWebCookieAuth) {
+        // On web with cookie auth, try to fetch user using session cookie
+        logger.i("[AuthNotifier] Web cookie auth flag set, fetching user data");
+        final user = await _authService.getCurrentUser();
+        logger.i("[AuthNotifier] User authenticated via cookie: ${user.email} (ID: ${user.userId})");
+        state = Authenticated(user);
       } else {
         logger.i("[AuthNotifier] No token found, user is unauthenticated");
         state = const Unauthenticated();
@@ -83,6 +91,22 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } catch (e) {
       logger.e("[AuthNotifier] Failed to get providers: ${e.toString()}");
       return [];
+    }
+  }
+
+  Future<bool> loginWithCode(String code) async {
+    state = const AuthLoading();
+    try {
+      await _authService.exchangeCodeForToken(code);
+      final user = await _authService.getCurrentUser();
+      logger.i("[AuthNotifier] Login via code exchange successful: ${user.email} (ID: ${user.userId})");
+      state = Authenticated(user);
+      return true;
+    } catch (e) {
+      logger.e("[AuthNotifier] Login via code exchange failed: ${e.toString()}");
+      await _authService.clearToken();
+      state = AuthError("Login failed: ${e.toString()}");
+      return false;
     }
   }
 

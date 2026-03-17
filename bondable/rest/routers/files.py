@@ -74,6 +74,24 @@ async def delete_file(
 ):
     """Delete a file from the provider and local metadata."""
     try:
+        # Verify ownership before deletion (matches download_file() pattern)
+        file_details_list = provider.files.get_file_details([provider_file_id])
+        if not file_details_list:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found"
+            )
+        file_details = file_details_list[0]
+        if file_details.owner_user_id != current_user.user_id:
+            LOGGER.warning(
+                f"User {current_user.user_id} attempted to delete file {provider_file_id} "
+                f"owned by {file_details.owner_user_id}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to delete this file"
+            )
+
         success = provider.files.delete_file(file_id=provider_file_id)
 
         if success:

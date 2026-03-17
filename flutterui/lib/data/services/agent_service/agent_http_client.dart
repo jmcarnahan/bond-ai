@@ -3,6 +3,8 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 
 import 'package:flutterui/data/services/auth_service.dart';
+import 'package:flutterui/data/services/cookie_helper.dart' as cookie_helper;
+import 'package:flutterui/data/services/web_http_client.dart' as web_client;
 import '../../../core/utils/logger.dart';
 
 @immutable
@@ -13,16 +15,18 @@ class AgentHttpClient {
   AgentHttpClient({
     http.Client? httpClient,
     required AuthService authService,
-  })  : _httpClient = httpClient ?? http.Client(),
+  })  : _httpClient = httpClient ?? web_client.createHttpClient(),
         _authService = authService;
 
   Future<Map<String, String>> get _authenticatedHeaders async {
     try {
       final headers = await _authService.authenticatedHeaders;
 
-      if (headers['Authorization'] == null) {
-        logger.e("[AgentHttpClient] No Authorization header found!");
-        throw Exception('Authentication token not found');
+      if (!kIsWeb || !cookie_helper.isWebCookieAuth) {
+        if (headers['Authorization'] == null) {
+          logger.e("[AgentHttpClient] No Authorization header found!");
+          throw Exception('Authentication token not found');
+        }
       }
 
       return headers;

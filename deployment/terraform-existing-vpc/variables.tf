@@ -239,6 +239,12 @@ variable "admin_email" {
   default     = ""
 }
 
+variable "allow_all_emails" {
+  description = "Allow all authenticated IdP users to log in when valid_emails is empty. Set to 'true' when relying on IdP app assignment for access control."
+  type        = string
+  default     = "true"
+}
+
 # Build Configuration
 variable "force_rebuild" {
   description = "Force rebuild of all Docker images regardless of source changes. Set to current timestamp to trigger: -var='force_rebuild=$(date +%s)'"
