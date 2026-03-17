@@ -65,11 +65,14 @@ resource "aws_iam_role_policy" "app_runner_instance" {
           "s3:GetObject",
           "s3:PutObject",
           "s3:DeleteObject",
-          "s3:ListBucket"
+          "s3:ListBucket",
+          "s3:HeadBucket",
+          "s3:CreateBucket"
         ]
         Resource = [
           aws_s3_bucket.uploads.arn,
-          "${aws_s3_bucket.uploads.arn}/*"
+          "${aws_s3_bucket.uploads.arn}/*",
+          "arn:aws:s3:::bond-bedrock-files-*"
         ]
       },
       {
