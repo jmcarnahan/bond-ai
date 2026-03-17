@@ -209,7 +209,7 @@ class Config:
             'JWT_ALGORITHM': os.environ.get("JWT_ALGORITHM", "HS256"),
             'ACCESS_TOKEN_EXPIRE_MINUTES': int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 1440)),  # Default to 24 hours
             'JWT_ISSUER': os.environ.get("JWT_ISSUER", "bondable"),
-            'JWT_REDIRECT_URI': os.environ.get("JWT_REDIRECT_URI", "http://localhost:5000"),
+            'JWT_REDIRECT_URI': os.environ.get("JWT_REDIRECT_URI", "http://localhost:3000"),
         }
         return type('JWTConfig', (object,), jwt_config)()
 
