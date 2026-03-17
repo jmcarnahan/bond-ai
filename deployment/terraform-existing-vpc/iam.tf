@@ -27,17 +27,11 @@ resource "aws_iam_role" "app_runner_instance" {
   })
 }
 
-# Attach AmazonBedrockFullAccess managed policy
-resource "aws_iam_role_policy_attachment" "app_runner_bedrock_full_access" {
-  role       = aws_iam_role.app_runner_instance.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"
-}
-
-# Add S3 Full Access
-resource "aws_iam_role_policy_attachment" "app_runner_s3_full_access" {
-  role       = aws_iam_role.app_runner_instance.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
-}
+# T33: Removed AmazonBedrockFullAccess and AmazonS3FullAccess managed policies.
+# The inline policy below already provides scoped access:
+# - S3: GetObject/PutObject/DeleteObject/ListBucket on the specific uploads bucket only
+# - Bedrock: bedrock:*/bedrock-agent:*/bedrock-runtime:*/bedrock-agent-runtime:* on *
+# Removing the managed policies eliminates wildcard S3 access to all buckets.
 
 # IAM Policy for App Runner to access AWS services
 resource "aws_iam_role_policy" "app_runner_instance" {
@@ -181,25 +175,31 @@ resource "aws_iam_role" "bedrock_agent" {
   })
 }
 
-# Managed policy: AmazonBedrockFullAccess
+# T33 NOTE: The Bedrock agent role retains managed policies because AWS Bedrock's
+# internal operations (knowledge base ingestion, OpenSearch indexing, S3 data source
+# access) require broad permissions that are opaque to the application layer.
+# Scoping these down risks breaking Bedrock agent functionality. Review with
+# IAM Access Analyzer once operational patterns are established.
+
+# Managed policy: AmazonBedrockFullAccess (required for agent orchestration)
 resource "aws_iam_role_policy_attachment" "bedrock_agent_bedrock_full_access" {
   role       = aws_iam_role.bedrock_agent.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"
 }
 
-# Managed policy: AmazonS3FullAccess
+# Managed policy: AmazonS3FullAccess (required for knowledge base data sources)
 resource "aws_iam_role_policy_attachment" "bedrock_agent_s3_full_access" {
   role       = aws_iam_role.bedrock_agent.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
 }
 
-# Managed policy: CloudWatchEventsFullAccess
+# Managed policy: CloudWatchEventsFullAccess (required for Bedrock scheduling)
 resource "aws_iam_role_policy_attachment" "bedrock_agent_cloudwatch_events" {
   role       = aws_iam_role.bedrock_agent.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchEventsFullAccess"
 }
 
-# Managed policy: AmazonOpenSearchServiceFullAccess
+# Managed policy: AmazonOpenSearchServiceFullAccess (required for KB vector store)
 resource "aws_iam_role_policy_attachment" "bedrock_agent_opensearch_full_access" {
   role       = aws_iam_role.bedrock_agent.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonOpenSearchServiceFullAccess"

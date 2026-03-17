@@ -40,6 +40,31 @@ resource "aws_rds_cluster_parameter_group" "aurora" {
     apply_method = "pending-reboot"
   }
 
+  # T34: Query logging for security audit trail
+  parameter {
+    name         = "log_min_duration_statement"
+    value        = "1000"  # Log queries taking > 1 second
+    apply_method = "immediate"
+  }
+
+  parameter {
+    name         = "log_statement"
+    value        = "ddl"  # Log all DDL statements (CREATE, ALTER, DROP)
+    apply_method = "immediate"
+  }
+
+  parameter {
+    name         = "log_connections"
+    value        = "1"  # Log connection attempts
+    apply_method = "immediate"
+  }
+
+  parameter {
+    name         = "log_disconnections"
+    value        = "1"  # Log disconnections
+    apply_method = "immediate"
+  }
+
   # Logical Replication for Databricks CDC (requires cluster reboot)
   parameter {
     name         = "rds.logical_replication"

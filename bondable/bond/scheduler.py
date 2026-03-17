@@ -78,16 +78,86 @@ class JobScheduler:
     def _run_loop(self):
         """Main polling loop."""
         LOGGER.info("Scheduler loop started, polling every %ds", self._poll_interval)
+        retention_check_counter = 0
         while not self._stop_event.is_set():
             try:
                 self._poll_and_execute()
             except Exception as e:
                 LOGGER.error("Scheduler poll error: %s", e, exc_info=True)
 
+            # T16/T17: Run data retention cleanup once per hour (every ~120 polls at 30s interval)
+            retention_check_counter += 1
+            if retention_check_counter >= 120:
+                retention_check_counter = 0
+                try:
+                    self._run_data_retention_cleanup()
+                except Exception as e:
+                    LOGGER.error("Data retention cleanup error: %s", e, exc_info=True)
+
             # Wait for poll interval or until stop is signaled
             if self._stop_event.wait(timeout=self._poll_interval):
                 break  # Stop was requested
         LOGGER.info("Scheduler loop exited")
+
+    def _run_data_retention_cleanup(self):
+        """T16/T17: Delete messages and related records older than the retention period.
+
+        Default retention: 90 days, configurable via MESSAGE_RETENTION_DAYS env var.
+        Also cleans up expired auth codes and revoked tokens.
+        """
+        retention_days = int(os.getenv("MESSAGE_RETENTION_DAYS", "90"))
+        if retention_days <= 0:
+            return  # Retention disabled
+
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=retention_days)
+
+        try:
+            from bondable.bond.providers.bedrock.BedrockMetadata import BedrockMessage
+            session = self._metadata.get_db_session()
+            try:
+                deleted = session.query(BedrockMessage).filter(
+                    BedrockMessage.created_at < cutoff
+                ).delete()
+                if deleted > 0:
+                    session.commit()
+                    LOGGER.info("DATA_RETENTION: Deleted %d messages older than %d days", deleted, retention_days)
+                else:
+                    session.rollback()
+            except Exception as e:
+                session.rollback()
+                LOGGER.error("Error during message retention cleanup: %s", e)
+            finally:
+                session.close()
+        except ImportError:
+            pass  # BedrockMessage not available (non-Bedrock provider)
+
+        # Also clean up expired auth codes and revoked tokens
+        try:
+            from bondable.bond.providers.metadata import AuthCode, RevokedToken
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            session = self._metadata.get_db_session()
+            try:
+                expired_codes = session.query(AuthCode).filter(
+                    AuthCode.expires_at < now - timedelta(minutes=5)
+                ).delete()
+                expired_tokens = session.query(RevokedToken).filter(
+                    RevokedToken.expires_at < now
+                ).delete()
+                if expired_codes > 0 or expired_tokens > 0:
+                    session.commit()
+                    LOGGER.info(
+                        "DATA_RETENTION: Cleaned %d expired auth codes, %d expired revoked tokens",
+                        expired_codes, expired_tokens
+                    )
+                else:
+                    session.rollback()
+            except Exception as e:
+                session.rollback()
+                LOGGER.error("Error during auth cleanup: %s", e)
+            finally:
+                session.close()
+        except ImportError:
+            pass
 
     def _poll_and_execute(self):
         """Poll for due jobs and execute them."""
