@@ -74,8 +74,8 @@ async def delete_file(
 ):
     """Delete a file from the provider and local metadata."""
     try:
-        # Verify ownership before deletion (matches download_file() pattern)
-        file_details_list = provider.files.get_file_details([provider_file_id])
+        # T15: Verify ownership at query level (defense-in-depth)
+        file_details_list = provider.files.get_file_details([provider_file_id], user_id=current_user.user_id)
         if not file_details_list:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -130,15 +130,9 @@ async def get_file_details(
     provider: Provider = Depends(get_bond_provider)
 ):
     """Get file details for a list of file IDs."""
-    # TODO: we should make sure that the file_ids belong to the current user
     try:
-        file_details_list = provider.files.get_file_details(file_ids)
-
-        # Filter to only return files owned by the current user for security
-        user_files = [
-            details for details in file_details_list
-            if details.owner_user_id == current_user.user_id
-        ]
+        # T15: Filter at ORM query level (defense-in-depth, not just router filtering)
+        user_files = provider.files.get_file_details(file_ids, user_id=current_user.user_id)
 
         LOGGER.info(f"Retrieved {len(user_files)} file details for user {current_user.user_id} ({current_user.email})")
 
@@ -166,8 +160,8 @@ async def download_file(
 ):
     """Download a file by its ID. Verifies user has access to the file."""
     try:
-        # Get file details to verify ownership and get metadata
-        file_details_list = provider.files.get_file_details([file_id])
+        # T15: Get file details with user_id filter (defense-in-depth)
+        file_details_list = provider.files.get_file_details([file_id], user_id=current_user.user_id)
 
         if not file_details_list:
             LOGGER.warning(f"File {file_id} not found for download request by user {current_user.user_id}")
