@@ -6,6 +6,7 @@ import 'package:flutterui/core/constants/api_constants.dart';
 import 'package:flutterui/data/models/thread_model.dart';
 import 'package:flutterui/data/models/message_model.dart';
 import 'package:flutterui/data/services/auth_service.dart';
+import 'package:flutterui/data/services/web_http_client.dart' as web_client;
 import '../../core/utils/logger.dart';
 
 @immutable
@@ -14,7 +15,7 @@ class ThreadService {
   final AuthService _authService;
 
   ThreadService({http.Client? httpClient, required AuthService authService})
-    : _httpClient = httpClient ?? http.Client(),
+    : _httpClient = httpClient ?? web_client.createHttpClient(),
       _authService = authService;
 
   Future<({List<Thread> threads, int total, bool hasMore})> getThreads({

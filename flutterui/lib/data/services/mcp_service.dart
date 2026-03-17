@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutterui/core/constants/api_constants.dart';
 import 'package:flutterui/data/models/mcp_model.dart';
 import 'package:flutterui/data/services/auth_service.dart'; // To get authenticated headers
+import 'package:flutterui/data/services/web_http_client.dart' as web_client;
 import '../../core/utils/logger.dart';
 
 @immutable
@@ -13,7 +14,7 @@ class McpService {
   final AuthService _authService;
 
   McpService({http.Client? httpClient, required AuthService authService})
-    : _httpClient = httpClient ?? http.Client(),
+    : _httpClient = httpClient ?? web_client.createHttpClient(),
       _authService = authService;
 
   /// Fetch MCP tools grouped by server with connection status

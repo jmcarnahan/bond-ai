@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutterui/core/constants/api_constants.dart';
 import 'package:flutterui/data/models/scheduled_job_model.dart';
 import 'package:flutterui/data/services/auth_service.dart';
+import 'package:flutterui/data/services/web_http_client.dart' as web_client;
 import '../../core/utils/logger.dart';
 
 class ScheduledJobService {
@@ -11,7 +12,7 @@ class ScheduledJobService {
   final AuthService _authService;
 
   ScheduledJobService({http.Client? httpClient, required AuthService authService})
-    : _httpClient = httpClient ?? http.Client(),
+    : _httpClient = httpClient ?? web_client.createHttpClient(),
       _authService = authService;
 
   Future<List<ScheduledJob>> getScheduledJobs() async {

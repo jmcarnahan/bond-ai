@@ -3,6 +3,8 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 
 import 'package:flutterui/data/services/auth_service.dart';
+import 'package:flutterui/data/services/cookie_helper.dart' as cookie_helper;
+import 'package:flutterui/data/services/web_http_client.dart' as web_client;
 import '../../core/utils/logger.dart';
 
 /// A generic HTTP client with authentication support that can be used by any service
@@ -14,16 +16,20 @@ class AuthenticatedHttpClient {
   AuthenticatedHttpClient({
     http.Client? httpClient,
     required AuthService authService,
-  })  : _httpClient = httpClient ?? http.Client(),
+  })  : _httpClient = httpClient ?? web_client.createHttpClient(),
         _authService = authService;
 
   Future<Map<String, String>> get _authenticatedHeaders async {
     try {
       final headers = await _authService.authenticatedHeaders;
 
-      if (headers['Authorization'] == null) {
-        logger.e("[AuthenticatedHttpClient] No Authorization header found!");
-        throw Exception('Authentication token not found');
+      // On web with cookie auth, Authorization header is not needed —
+      // cookies are sent automatically by BrowserClient with withCredentials.
+      if (!kIsWeb || !cookie_helper.isWebCookieAuth) {
+        if (headers['Authorization'] == null) {
+          logger.e("[AuthenticatedHttpClient] No Authorization header found!");
+          throw Exception('Authentication token not found');
+        }
       }
 
       return headers;
@@ -106,12 +112,20 @@ class AuthenticatedHttpClient {
   Future<http.Response> sendMultipartRequest(http.MultipartRequest request) async {
     try {
       final headers = await _authenticatedHeaders;
-      final token = headers['Authorization'];
-      if (token == null) {
-        throw Exception('Authentication token not found for multipart request');
-      }
 
-      request.headers['Authorization'] = token;
+      if (kIsWeb && cookie_helper.isWebCookieAuth) {
+        // On web with cookie auth, add CSRF token for the POST request
+        final csrfToken = headers['X-CSRF-Token'];
+        if (csrfToken != null) {
+          request.headers['X-CSRF-Token'] = csrfToken;
+        }
+      } else {
+        final token = headers['Authorization'];
+        if (token == null) {
+          throw Exception('Authentication token not found for multipart request');
+        }
+        request.headers['Authorization'] = token;
+      }
 
       final streamedResponse = await _httpClient.send(request);
       final response = await http.Response.fromStream(streamedResponse);
