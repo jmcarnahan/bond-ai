@@ -174,7 +174,7 @@ async def auth_callback_provider(provider: str, request: Request, bond_provider 
             user_agent = request.headers.get("user-agent", "").lower()
 
             # For mobile app or when hash routing is not needed
-            if "flutter" in user_agent or jwt_config.JWT_REDIRECT_URI.endswith(":5000"):
+            if "flutter" in user_agent or jwt_config.JWT_REDIRECT_URI.endswith(":3000"):
                 # Use regular routing for mobile app
                 flutter_redirect_url = f"{jwt_config.JWT_REDIRECT_URI}/auth-callback?token={access_token}"
             else:
