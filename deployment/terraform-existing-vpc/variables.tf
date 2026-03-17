@@ -245,6 +245,13 @@ variable "allow_all_emails" {
   default     = "true"
 }
 
+# CloudTrail (T34)
+variable "enable_cloudtrail" {
+  description = "Enable AWS CloudTrail for API audit logging (T34). Creates S3 bucket, CloudWatch Logs group, and trail."
+  type        = bool
+  default     = false
+}
+
 # Build Configuration
 variable "force_rebuild" {
   description = "Force rebuild of all Docker images regardless of source changes. Set to current timestamp to trigger: -var='force_rebuild=$(date +%s)'"
