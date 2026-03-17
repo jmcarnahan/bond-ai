@@ -1,4 +1,5 @@
 import logging
+import os
 import requests
 from typing import Dict, Any
 from urllib.parse import urlencode
@@ -54,21 +55,29 @@ class OktaOAuth2Provider(OAuth2Provider):
 
         LOGGER.debug(f"Okta OAuth2 initialized: domain={self.domain} auth_server_path={self.auth_server_path} redirect_uri={config['redirect_uri']} scopes={config['scopes']}")
 
-    def get_auth_url(self) -> str:
+    def get_auth_url(self, state: str = None, code_challenge: str = None, code_challenge_method: str = None) -> str:
         """Generate Okta OAuth2 authorization URL."""
         auth_params = {
             'client_id': self.config["client_id"],
             'response_type': 'code',
             'scope': ' '.join(self.config["scopes"]),
             'redirect_uri': self.config["redirect_uri"],
-            'state': 'bond-ai-auth'  # You might want to make this more secure/random
         }
 
+        # Use provided state or generate one (T-O2: no more hardcoded state)
+        if state:
+            auth_params['state'] = state
+
+        # T-O4: Add PKCE code challenge
+        if code_challenge:
+            auth_params['code_challenge'] = code_challenge
+            auth_params['code_challenge_method'] = code_challenge_method or 'S256'
+
         auth_url = f"{self.domain}{self.auth_server_path}/v1/authorize?{urlencode(auth_params)}"
-        LOGGER.debug(f"Generated Okta auth URL: {auth_url}")
+        LOGGER.debug(f"Generated Okta auth URL")
         return auth_url
 
-    def _exchange_code_for_tokens(self, auth_code: str) -> Dict[str, Any]:
+    def _exchange_code_for_tokens(self, auth_code: str, code_verifier: str = None) -> Dict[str, Any]:
         """Exchange authorization code for access and ID tokens."""
         token_url = f"{self.domain}{self.auth_server_path}/v1/token"
 
@@ -79,6 +88,10 @@ class OktaOAuth2Provider(OAuth2Provider):
             'client_id': self.config["client_id"],
             'client_secret': self.config["client_secret"]
         }
+
+        # T-O4: Include PKCE code_verifier in token exchange
+        if code_verifier:
+            token_data['code_verifier'] = code_verifier
 
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -118,12 +131,13 @@ class OktaOAuth2Provider(OAuth2Provider):
 
         return response.json()
 
-    def get_user_info_from_code(self, auth_code: str) -> Dict[str, Any]:
+    def get_user_info_from_code(self, auth_code: str, code_verifier: str = None) -> Dict[str, Any]:
         """
         Exchange authorization code for user information.
 
         Args:
             auth_code: Okta OAuth2 authorization code
+            code_verifier: PKCE code verifier for token exchange (T-O4)
 
         Returns:
             Dictionary with user information including email, name, etc.
@@ -135,8 +149,8 @@ class OktaOAuth2Provider(OAuth2Provider):
         try:
             LOGGER.info(f"Authenticating with Okta auth code: {auth_code[:10]}...")
 
-            # Exchange code for tokens
-            tokens = self._exchange_code_for_tokens(auth_code)
+            # Exchange code for tokens (with PKCE code_verifier if provided)
+            tokens = self._exchange_code_for_tokens(auth_code, code_verifier=code_verifier)
             access_token = tokens.get('access_token')
 
             if not access_token:
@@ -144,6 +158,12 @@ class OktaOAuth2Provider(OAuth2Provider):
 
             # Get user info using access token
             user_info = self._get_user_info_from_token(access_token)
+
+            # Verify email is verified before allowing login
+            email_verified = user_info.get('email_verified', False)
+            if not email_verified:
+                LOGGER.warning(f"Okta user {user_info.get('email')} has unverified email")
+                raise ValueError(f"Email address {user_info.get('email')} has not been verified by Okta")
 
             # Normalize the user info to match our expected format
             normalized_user_info = {
@@ -180,9 +200,13 @@ class OktaOAuth2Provider(OAuth2Provider):
         """
         valid_emails = self.config.get("valid_emails", [])
 
-        # If no valid_emails configured, allow all users
+        # If no valid_emails configured, require explicit ALLOW_ALL_EMAILS=true
         if not valid_emails:
-            return True
+            allow_all = os.environ.get("ALLOW_ALL_EMAILS", "false").lower() == "true"
+            if allow_all:
+                return True
+            LOGGER.error("No valid_emails configured and ALLOW_ALL_EMAILS is not set to 'true'. Blocking login.")
+            return False
 
         user_email = user_info.get("email")
         if not user_email:
@@ -191,6 +215,6 @@ class OktaOAuth2Provider(OAuth2Provider):
 
         is_valid = user_email in valid_emails
         if not is_valid:
-            LOGGER.error(f"Email {user_email} not in valid emails list: {valid_emails}")
+            LOGGER.error(f"Email {user_email} not in valid emails list")
 
         return is_valid

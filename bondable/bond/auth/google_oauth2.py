@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Dict, Any
 from google_auth_oauthlib.flow import Flow
 from google.auth.transport import requests
@@ -46,24 +47,37 @@ class GoogleOAuth2Provider(OAuth2Provider):
             redirect_uri=self.config["redirect_uri"]
         )
 
-    def get_auth_url(self) -> str:
+    def get_auth_url(self, state: str = None, code_challenge: str = None, code_challenge_method: str = None) -> str:
         """Generate Google OAuth2 authorization URL."""
         flow = self._get_flow()
-        authorization_url, state = flow.authorization_url(
-            # Enable offline access for refresh tokens
-            access_type='offline',
-            # Enable incremental authorization
-            include_granted_scopes='true',
-            # Force consent prompt to ensure fresh tokens
-            prompt='consent'
-        )
-        LOGGER.debug(f"Generated Google auth URL: {authorization_url}")
+
+        kwargs = {
+            'access_type': 'offline',
+            'include_granted_scopes': 'true',
+            'prompt': 'consent',
+        }
+
+        # T-O2: Use provided state for CSRF protection
+        if state:
+            kwargs['state'] = state
+
+        # T-O4: Add PKCE code challenge
+        if code_challenge:
+            kwargs['code_challenge'] = code_challenge
+            kwargs['code_challenge_method'] = code_challenge_method or 'S256'
+
+        authorization_url, _ = flow.authorization_url(**kwargs)
+        LOGGER.debug(f"Generated Google auth URL")
         return authorization_url
 
-    def _fetch_google_token(self, auth_code: str):
+    def _fetch_google_token(self, auth_code: str, code_verifier: str = None):
         """Exchange authorization code for Google OAuth2 credentials."""
         flow = self._get_flow()
-        flow.fetch_token(code=auth_code)
+        # T-O4: Pass code_verifier for PKCE token exchange
+        if code_verifier:
+            flow.fetch_token(code=auth_code, code_verifier=code_verifier)
+        else:
+            flow.fetch_token(code=auth_code)
         return flow.credentials
 
     def _get_google_user_info(self, creds) -> Dict[str, Any]:
@@ -76,12 +90,13 @@ class GoogleOAuth2Provider(OAuth2Provider):
         )
         return user_info
 
-    def get_user_info_from_code(self, auth_code: str) -> Dict[str, Any]:
+    def get_user_info_from_code(self, auth_code: str, code_verifier: str = None) -> Dict[str, Any]:
         """
         Exchange authorization code for user information.
 
         Args:
             auth_code: Google OAuth2 authorization code
+            code_verifier: PKCE code verifier for token exchange (T-O4)
 
         Returns:
             Dictionary with user information including email, name, etc.
@@ -93,13 +108,19 @@ class GoogleOAuth2Provider(OAuth2Provider):
         try:
             LOGGER.info(f"Authenticating with Google auth code: {auth_code[:10]}...")
 
-            # Exchange code for credentials
-            creds = self._fetch_google_token(auth_code)
+            # Exchange code for credentials (with PKCE code_verifier if provided)
+            creds = self._fetch_google_token(auth_code, code_verifier=code_verifier)
 
             # Extract user info from ID token
             user_info = self._get_google_user_info(creds)
 
             LOGGER.info(f"Google authentication successful: {user_info.get('name')} {user_info.get('email')}")
+
+            # Verify email is verified before allowing login
+            email_verified = user_info.get('email_verified', False)
+            if not email_verified:
+                LOGGER.warning(f"Google user {user_info.get('email')} has unverified email")
+                raise ValueError(f"Email address {user_info.get('email')} has not been verified by Google")
 
             # Validate user authorization
             if not self.validate_user(user_info):
@@ -123,9 +144,13 @@ class GoogleOAuth2Provider(OAuth2Provider):
         """
         valid_emails = self.config.get("valid_emails", [])
 
-        # If no valid_emails configured, allow all users
+        # If no valid_emails configured, require explicit ALLOW_ALL_EMAILS=true
         if not valid_emails:
-            return True
+            allow_all = os.environ.get("ALLOW_ALL_EMAILS", "false").lower() == "true"
+            if allow_all:
+                return True
+            LOGGER.error("No valid_emails configured and ALLOW_ALL_EMAILS is not set to 'true'. Blocking login.")
+            return False
 
         user_email = user_info.get("email")
         if not user_email:
@@ -134,6 +159,6 @@ class GoogleOAuth2Provider(OAuth2Provider):
 
         is_valid = user_email in valid_emails
         if not is_valid:
-            LOGGER.error(f"Email {user_email} not in valid emails list: {valid_emails}")
+            LOGGER.error(f"Email {user_email} not in valid emails list")
 
         return is_valid
