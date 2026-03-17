@@ -159,24 +159,6 @@ resource "aws_iam_role_policy" "app_runner_ecr_kms" {
   })
 }
 
-# IAM Role for Frontend App Runner
-resource "aws_iam_role" "frontend_apprunner_instance" {
-  name = "${var.project_name}-${var.environment}-frontend-apprunner-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "tasks.apprunner.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
 # =============================================================================
 # Bedrock Agent Role
 # This role is assumed by AWS Bedrock when executing agents.

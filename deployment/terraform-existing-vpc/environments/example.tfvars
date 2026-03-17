@@ -31,11 +31,11 @@ db_allocated_storage = 20              # GB of storage
 okta_scopes = "openid,profile,email"
 
 # These are set automatically during deployment - leave empty
-okta_redirect_uri = ""  # Will be set to backend URL/auth/okta/callback
-jwt_redirect_uri  = ""  # Will be set to frontend URL
+okta_redirect_uri = ""  # Will be set to service URL/auth/okta/callback
+jwt_redirect_uri  = ""  # Will be set to service URL (same origin)
 
 # CORS Configuration (localhost for development)
-cors_allowed_origins = "http://localhost,http://localhost:3000,http://localhost:5000"
+cors_allowed_origins = "http://localhost,http://localhost:3000"
 
 # Custom Domain Configuration (Optional but recommended)
 # By default, uses pattern: bondai.{account_id}.aws.internalzone.com
@@ -76,7 +76,6 @@ bedrock_default_model = "us.anthropic.claude-sonnet-4-20250514-v1:0"
 # When true, services are only accessible via VPN/Direct Connect through the VPC.
 # See PRIVATE_APPRUNNER.md for full setup guide including VPN, DNS, and tfvars checklist.
 # backend_is_private       = true
-# frontend_is_private      = true
 # has_private_mcp_services = true  # Set when standalone MCPs (mcps/*/deployment/) are deployed as private
 
 # ===== BEFORE DEPLOYING =====

@@ -65,7 +65,7 @@ app = FastAPI(
 
 # Configure CORS
 # Get CORS origins from environment variable or use defaults
-cors_origins_str = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost,http://localhost:5000,http://localhost:3000")
+cors_origins_str = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost,http://localhost:3000")
 origins = [origin.strip() for origin in cors_origins_str.split(",")]
 
 # Add production frontend URL if available

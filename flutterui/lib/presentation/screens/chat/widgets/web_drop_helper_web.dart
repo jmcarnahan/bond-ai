@@ -1,7 +1,8 @@
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:async';
 import 'dart:html' as html;
-import 'dart:js_util' as js_util;
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
 /// Web implementation of drag-and-drop file handling.
@@ -52,23 +53,26 @@ void disposeWebDrop() {
 /// Read files from the global _bondDroppedFiles set by JavaScript.
 Future<List<({String name, Uint8List bytes})>> _readDroppedFiles() async {
   try {
-    final dynamic fileList =
-        js_util.getProperty(html.window, '_bondDroppedFiles');
-    if (fileList == null) return [];
+    final fileListRaw = globalContext['_bondDroppedFiles'];
+    if (fileListRaw == null) return [];
 
+    final fileList = fileListRaw as JSObject;
     final int length =
-        (js_util.getProperty(fileList, 'length') as num).toInt();
+        (fileList['length']! as JSNumber).toDartDouble.toInt();
     final files = <({String name, Uint8List bytes})>[];
 
     for (var i = 0; i < length; i++) {
-      final dynamic file = js_util.callMethod(fileList, 'item', [i]);
+      final file = fileList
+          .callMethodVarArgs('item'.toJS, [i.toJS]);
       if (file == null) continue;
 
-      final String name = js_util.getProperty(file, 'name').toString();
+      final String name =
+          ((file as JSObject)['name']! as JSString).toDart;
 
       // Read file contents using FileReader
+      // In dart2js, JS File objects are compatible with html.Blob via dynamic cast
       final reader = html.FileReader();
-      reader.readAsArrayBuffer(file as html.Blob);
+      reader.readAsArrayBuffer((file as dynamic) as html.Blob);
       await reader.onLoadEnd.first;
 
       final result = reader.result;
@@ -79,7 +83,7 @@ Future<List<({String name, Uint8List bytes})>> _readDroppedFiles() async {
     }
 
     // Clear the global reference
-    js_util.setProperty(html.window, '_bondDroppedFiles', null);
+    globalContext['_bondDroppedFiles'] = null;
 
     return files;
   } catch (e) {

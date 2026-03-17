@@ -1,4 +1,4 @@
-# App Runner Backend Service
+# App Runner Combined Service (Backend + Frontend)
 
 locals {
   # When private, service_url is null — use VPC Ingress Connection domain instead
@@ -32,10 +32,10 @@ resource "aws_apprunner_auto_scaling_configuration_version" "backend" {
 # App Runner auto-deploys when it detects a new :latest image, which races with
 # Terraform's UpdateService call. This resource polls until the service is RUNNING.
 resource "null_resource" "wait_for_backend_auto_deploy" {
-  depends_on = [null_resource.build_backend_image]
+  depends_on = [null_resource.build_combined_image]
 
   triggers = {
-    build_id = null_resource.build_backend_image.id
+    build_id = null_resource.build_combined_image.id
   }
 
   provisioner "local-exec" {
@@ -83,7 +83,7 @@ resource "null_resource" "wait_for_backend_auto_deploy" {
   }
 }
 
-# App Runner Service
+# App Runner Service (combined frontend + backend)
 resource "aws_apprunner_service" "backend" {
   service_name = "${var.project_name}-${var.environment}-backend"
 
@@ -93,11 +93,11 @@ resource "aws_apprunner_service" "backend" {
     }
 
     image_repository {
-      image_identifier      = "${aws_ecr_repository.backend.repository_url}:${local.backend_image_tag}"
+      image_identifier      = "${aws_ecr_repository.backend.repository_url}:${local.combined_image_tag}"
       image_repository_type = "ECR"
 
       image_configuration {
-        port = "8000"
+        port = "8080"
 
         runtime_environment_variables = {
           AWS_REGION             = var.aws_region
@@ -119,17 +119,16 @@ resource "aws_apprunner_service" "backend" {
           OKTA_SCOPES       = var.okta_scopes
 
           # AWS Cognito OAuth Configuration (only if configured)
-          # Note: Add "cognito" to oauth2_providers variable to enable
           COGNITO_DOMAIN       = var.cognito_domain
           COGNITO_SECRET_NAME  = var.cognito_secret_name
           COGNITO_REDIRECT_URI = var.cognito_redirect_uri != "" ? var.cognito_redirect_uri : (var.cognito_domain != "" ? "https://BACKEND_URL_PLACEHOLDER/auth/cognito/callback" : "")
           COGNITO_SCOPES       = var.cognito_scopes
           COGNITO_REGION       = var.cognito_region
 
-          # JWT redirect URI for frontend - uses variable to avoid circular dependency
+          # JWT redirect URI for frontend - same origin now (root of the service)
           JWT_REDIRECT_URI = var.jwt_redirect_uri != "" ? var.jwt_redirect_uri : "*"
 
-          # CORS configuration - uses variable to allow post-deployment tightening
+          # CORS configuration - keep for local dev compatibility
           CORS_ALLOWED_ORIGINS = var.cors_allowed_origins
 
           # Allowed redirect domains for OAuth callbacks (security)
@@ -162,8 +161,8 @@ resource "aws_apprunner_service" "backend" {
   }
 
   instance_configuration {
-    cpu               = "0.5 vCPU"
-    memory            = "1 GB"
+    cpu               = "1 vCPU"
+    memory            = "2 GB"
     instance_role_arn = aws_iam_role.app_runner_instance.arn
   }
 

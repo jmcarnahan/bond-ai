@@ -66,7 +66,7 @@ locals {
 
   # True if ANY App Runner service is private — drives shared infra (VPC endpoint)
   # Includes standalone private MCP services deployed outside this module
-  any_service_private = var.backend_is_private || var.frontend_is_private || var.has_private_mcp_services
+  any_service_private = var.backend_is_private || var.has_private_mcp_services
 }
 
 # Note: These data sources are informational only - not used in resource creation

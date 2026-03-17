@@ -24,6 +24,7 @@ LICENSE
 # Exclude node_modules and Flutter dependencies
 **/node_modules
 **/build
+!flutterui/build/web
 **/.dart_tool
 **/.flutter-plugins
 **/.flutter-plugins-dependencies

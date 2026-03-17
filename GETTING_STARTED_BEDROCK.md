@@ -266,7 +266,7 @@ The web-based user interface for interacting with Bond AI.
 ```bash
 # From the project root directory
 cd flutterui
-flutter run -d chrome --web-port=5000 --target lib/main.dart
+flutter run -d chrome --web-port=3000 --target lib/main.dart
 ```
 
 You should see Flutter compile and launch Chrome with the Bond AI interface.
@@ -274,7 +274,7 @@ You should see Flutter compile and launch Chrome with the Bond AI interface.
 ### Accessing the Application
 
 Once all three components are running:
-1. Open your browser to `http://localhost:5000`
+1. Open your browser to `http://localhost:3000`
 2. Click "Sign in" with your configured auth provider
 3. After authentication, you'll be redirected to the main Bond AI interface
 4. Create a new agent and start chatting!

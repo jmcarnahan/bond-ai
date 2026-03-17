@@ -1,4 +1,4 @@
-# Custom Domain Configuration for Frontend
+# Custom Domain Configuration for Combined Service
 # Requires domain to be registered first via AWS Console
 # Note: AWS automatically creates a hosted zone when registering a domain
 #
@@ -7,7 +7,7 @@
 #   - Leave custom_domain_name = "" (default) to skip custom domain setup
 
 locals {
-  custom_domain_enabled = var.custom_domain_name != "" && !var.frontend_is_private
+  custom_domain_enabled = var.custom_domain_name != "" && !var.backend_is_private
   # Use hosted_zone_name if provided, otherwise fall back to custom_domain_name (for root domains)
   hosted_zone_name = var.hosted_zone_name != "" ? var.hosted_zone_name : var.custom_domain_name
 }
@@ -24,18 +24,15 @@ data "aws_apprunner_hosted_zone_id" "main" {
   region = var.aws_region
 }
 
-# Associate custom domain with App Runner service
+# Associate custom domain with the combined App Runner service
 resource "aws_apprunner_custom_domain_association" "frontend" {
   count                = local.custom_domain_enabled ? 1 : 0
   domain_name          = var.custom_domain_name
-  service_arn          = aws_apprunner_service.frontend.arn
+  service_arn          = aws_apprunner_service.backend.arn
   enable_www_subdomain = var.enable_www_subdomain
 }
 
 # Certificate validation CNAME records
-# App Runner requires these records for ACM certificate validation
-# Using null_resource to create records via AWS CLI after association is established
-# This avoids the Terraform "count depends on resource attributes" limitation
 resource "null_resource" "cert_validation_records" {
   count = local.custom_domain_enabled ? 1 : 0
 
@@ -51,7 +48,7 @@ resource "null_resource" "cert_validation_records" {
 
       # Get the certificate validation records from the association
       RECORDS=$(aws apprunner describe-custom-domains \
-        --service-arn "${aws_apprunner_service.frontend.arn}" \
+        --service-arn "${aws_apprunner_service.backend.arn}" \
         --region "${var.aws_region}" \
         --query "CustomDomains[?DomainName=='${var.custom_domain_name}'].CertificateValidationRecords[]" \
         --output json)
@@ -94,7 +91,7 @@ resource "aws_route53_record" "frontend_alias" {
   type    = "A"
 
   alias {
-    name                   = aws_apprunner_service.frontend.service_url
+    name                   = aws_apprunner_service.backend.service_url
     zone_id                = data.aws_apprunner_hosted_zone_id.main[0].id
     evaluate_target_health = true
   }
@@ -108,7 +105,7 @@ resource "aws_route53_record" "frontend_www_alias" {
   type    = "A"
 
   alias {
-    name                   = aws_apprunner_service.frontend.service_url
+    name                   = aws_apprunner_service.backend.service_url
     zone_id                = data.aws_apprunner_hosted_zone_id.main[0].id
     evaluate_target_health = true
   }

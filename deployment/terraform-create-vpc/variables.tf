@@ -102,5 +102,5 @@ variable "jwt_redirect_uri" {
 variable "cors_allowed_origins" {
   description = "Comma-separated list of allowed CORS origins"
   type        = string
-  default     = "http://localhost,http://localhost:3000,http://localhost:5000"
+  default     = "http://localhost,http://localhost:3000"
 }

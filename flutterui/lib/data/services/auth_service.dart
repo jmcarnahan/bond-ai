@@ -30,6 +30,13 @@ class AuthService {
       final redirectUri = Uri.encodeComponent('bondai://auth-callback');
       loginUrl = '$loginUrl?redirect_uri=$redirectUri&platform=mobile';
       logger.i('[AuthService] Mobile login URL: $loginUrl');
+    } else {
+      // On web, resolve relative URLs (e.g. /rest/login/cognito) to absolute
+      // URLs using the current origin. url_launcher requires absolute URLs.
+      final parsed = Uri.parse(loginUrl);
+      if (!parsed.hasScheme) {
+        loginUrl = Uri.base.resolve(loginUrl).toString();
+      }
     }
 
     final Uri loginUri = Uri.parse(loginUrl);

@@ -35,23 +35,10 @@ check_terraform_state() {
         echo "✗ Backend service: NOT FOUND"
     fi
 
-    if terraform state show aws_apprunner_service.frontend 2>/dev/null | grep -q "service_url"; then
-        FRONTEND_URL=$(terraform state show aws_apprunner_service.frontend 2>/dev/null | grep "service_url" | awk '{print $3}' | tr -d '"')
-        echo "✓ Frontend service: https://$FRONTEND_URL"
-    else
-        echo "✗ Frontend service: NOT FOUND"
-    fi
-
     if terraform state show null_resource.build_backend_image 2>/dev/null | grep -q "id"; then
         echo "✓ Backend image build: COMPLETE"
     else
         echo "✗ Backend image build: NOT FOUND"
-    fi
-
-    if terraform state show null_resource.build_frontend_image 2>/dev/null | grep -q "id"; then
-        echo "✓ Frontend image build: COMPLETE"
-    else
-        echo "✗ Frontend image build: NOT FOUND"
     fi
 }
 
@@ -70,7 +57,7 @@ check_aws_resources() {
     echo "Checking ECR repositories..."
 
     # Check ECR repos
-    for REPO in "bond-ai-dev-backend" "bond-ai-dev-frontend"; do
+    for REPO in "bond-ai-dev-backend"; do
         IMAGE_COUNT=$(aws ecr describe-images \
             --repository-name $REPO \
             --region $REGION \
@@ -96,11 +83,6 @@ test_services() {
         --query 'ServiceSummaryList[?ServiceName==`bond-ai-dev-backend`].ServiceUrl' \
         --output text 2>/dev/null)
 
-    FRONTEND_URL=$(aws apprunner list-services \
-        --region $REGION \
-        --query 'ServiceSummaryList[?ServiceName==`bond-ai-dev-frontend`].ServiceUrl' \
-        --output text 2>/dev/null)
-
     if [ -n "$BACKEND_URL" ]; then
         echo ""
         echo "Testing backend at https://$BACKEND_URL/health"
@@ -113,20 +95,6 @@ test_services() {
         fi
     else
         echo "✗ Backend URL not found"
-    fi
-
-    if [ -n "$FRONTEND_URL" ]; then
-        echo ""
-        echo "Testing frontend at https://$FRONTEND_URL/"
-        RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "https://$FRONTEND_URL/" || echo "000")
-
-        if [ "$RESPONSE" = "200" ]; then
-            echo "✓ Frontend: HTTP $RESPONSE"
-        else
-            echo "✗ Frontend: HTTP $RESPONSE"
-        fi
-    else
-        echo "✗ Frontend URL not found"
     fi
 }
 

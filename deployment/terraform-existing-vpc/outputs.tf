@@ -47,11 +47,6 @@ output "ecr_backend_repository_url" {
   description = "URL of the backend ECR repository"
 }
 
-output "ecr_frontend_repository_url" {
-  value       = aws_ecr_repository.frontend.repository_url
-  description = "URL of the frontend ECR repository"
-}
-
 output "app_runner_vpc_connector_arn" {
   value       = aws_apprunner_vpc_connector.backend.arn
   description = "ARN of the App Runner VPC connector"
@@ -59,12 +54,7 @@ output "app_runner_vpc_connector_arn" {
 
 output "app_runner_service_url" {
   value       = "https://${local.backend_url}"
-  description = "Backend App Runner service URL"
-}
-
-output "frontend_app_runner_service_url" {
-  value       = "https://${local.frontend_url}"
-  description = "Frontend App Runner service URL (auto-generated or private domain)"
+  description = "Combined App Runner service URL (serves both frontend and backend)"
 }
 
 output "jwt_secret" {
@@ -104,18 +94,19 @@ output "deployment_instructions" {
 
     Deployment Complete!
 
-    Backend URL: https://${local.backend_url}${var.backend_is_private ? " (PRIVATE — VPN required)" : ""}
-    Frontend URL: https://${local.frontend_url}${var.frontend_is_private ? " (PRIVATE — VPN required)" : ""}
+    Service URL: https://${local.backend_url}${var.backend_is_private ? " (PRIVATE — VPN required)" : ""}
+    Frontend:    https://${local.backend_url}/
+    Backend API: https://${local.backend_url}/rest/
 
     Next Steps:
-    1. Update Okta application with callback URL:
+    1. Update OAuth provider with callback URL:
        https://${local.backend_url}/auth/okta/callback
 
     2. Test the deployment:
        curl https://${local.backend_url}/health
 
     3. Access the application:
-       https://${local.frontend_url}
+       https://${local.backend_url}
   EOT
   description = "Post-deployment instructions"
 }
@@ -138,39 +129,29 @@ output "aurora_cluster_resource_id" {
 
 # Custom Domain Outputs
 output "custom_domain_url" {
-  description = "Custom domain URL for frontend (null if not configured or frontend is private)"
+  description = "Custom domain URL (null if not configured or service is private)"
   value       = local.custom_domain_enabled ? "https://${var.custom_domain_name}" : null
 }
 
 output "custom_domain_status" {
-  description = "Custom domain certificate status (null if not configured or frontend is private)"
+  description = "Custom domain certificate status (null if not configured or service is private)"
   value       = local.custom_domain_enabled ? aws_apprunner_custom_domain_association.frontend[0].status : null
 }
 
 output "custom_domain_nameservers" {
-  description = "Route 53 nameservers for custom domain (null if not configured or frontend is private)"
+  description = "Route 53 nameservers for custom domain (null if not configured or service is private)"
   value       = local.custom_domain_enabled ? data.aws_route53_zone.frontend[0].name_servers : null
 }
 
 # Private App Runner Outputs
 output "backend_is_private" {
-  description = "Whether the backend App Runner service is private (VPC-only access)"
+  description = "Whether the App Runner service is private (VPC-only access)"
   value       = var.backend_is_private
 }
 
 output "backend_private_domain" {
-  description = "Private domain name for the backend (via VPC Ingress Connection). Null if public."
+  description = "Private domain name for the service (via VPC Ingress Connection). Null if public."
   value       = var.backend_is_private ? aws_apprunner_vpc_ingress_connection.backend[0].domain_name : null
-}
-
-output "frontend_is_private" {
-  description = "Whether the frontend App Runner service is private (VPC-only access)"
-  value       = var.frontend_is_private
-}
-
-output "frontend_private_domain" {
-  description = "Private domain name for the frontend (via VPC Ingress Connection). Null if public."
-  value       = var.frontend_is_private ? aws_apprunner_vpc_ingress_connection.frontend[0].domain_name : null
 }
 
 output "apprunner_requests_vpc_endpoint_id" {

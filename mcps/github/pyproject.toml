@@ -9,6 +9,8 @@ packages = [{include = "github"}]
 python = ">=3.10,<4.0"
 httpx = ">=0.27"
 fastmcp = ">=3.0.0,<4.0"
+authlib = ">=1.6.9"
+pyjwt = {version = ">=2.12.0", extras = ["crypto"]}
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0"

@@ -10,7 +10,7 @@ This guide explains how to customize the appearance of the Bond AI Flutter appli
 dart tool/generate_theme.dart
 
 # Restart the Flutter app
-flutter run -d chrome --web-port=5000 --target lib/main.dart
+flutter run -d chrome --web-port=3000 --target lib/main.dart
 ```
 
 That's it! The app will now use your selected theme.
@@ -142,7 +142,7 @@ Place your logo files in `flutterui/assets/theme_specific/`:
 dart tool/generate_theme.dart --config theme_configs/my_company_config.json
 
 # Restart the app
-flutter run -d chrome --web-port=5000 --target lib/main.dart
+flutter run -d chrome --web-port=3000 --target lib/main.dart
 ```
 
 ## Theme Configuration Reference
