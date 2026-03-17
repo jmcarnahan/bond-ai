@@ -138,7 +138,7 @@ okta_secret_name = "bond-ai-dev-okta-secret"
 # These will be automatically updated during deployment
 okta_redirect_uri = "https://BACKEND_URL/auth/okta/callback"
 jwt_redirect_uri = "https://FRONTEND_URL"
-cors_allowed_origins = "http://localhost,http://localhost:3000,http://localhost:5000"
+cors_allowed_origins = "http://localhost,http://localhost:3000"
 ```
 
 ### ⚠️ IMPORTANT: Post-Deployment Manual Steps
