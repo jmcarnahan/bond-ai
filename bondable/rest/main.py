@@ -85,6 +85,10 @@ app.add_middleware(
 from bondable.rest.middleware.security_headers import SecurityHeadersMiddleware
 app.add_middleware(SecurityHeadersMiddleware)
 
+# Structured audit logging for security events (T5/T14/T22)
+from bondable.rest.middleware.audit_log import AuditLogMiddleware
+app.add_middleware(AuditLogMiddleware)
+
 # CSRF protection (double-submit cookie pattern for cookie-authenticated requests)
 from bondable.rest.middleware.csrf import CSRFMiddleware
 app.add_middleware(CSRFMiddleware)
