@@ -82,6 +82,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "cloudtrail_logs" {
   rule {
     id     = "expire-old-logs"
     status = "Enabled"
+    filter {}  # Apply to all objects
     expiration {
       days = 365  # SOC 2 minimum retention
     }
