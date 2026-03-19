@@ -221,13 +221,14 @@ class BedrockThreadsProvider(ThreadsProvider):
             # On error, assume there might be new messages
             return True
 
-    def get_messages(self, thread_id: str, limit: int = 100) -> Dict[str, BondMessage]:
+    def get_messages(self, thread_id: str, limit: int = 100, user_id: Optional[str] = None) -> Dict[str, BondMessage]:
         """
         Get messages from a thread.
 
         Args:
             thread_id: The thread ID
             limit: Maximum number of messages to return
+            user_id: If provided, verify thread ownership before returning messages
 
         Returns:
             Dictionary mapping message IDs to BondMessage objects
@@ -238,8 +239,13 @@ class BedrockThreadsProvider(ThreadsProvider):
             with self.metadata.get_db_session() as session:
                 from bondable.bond.providers.bedrock.BedrockMetadata import BedrockMessage
 
-                # Get all messages for this thread, ordered by index
-                # Since we don't have user_id, we get all messages
+                # Verify thread ownership if user_id is provided
+                if user_id:
+                    thread = session.query(Thread).filter_by(thread_id=thread_id, user_id=user_id).first()
+                    if not thread:
+                        LOGGER.warning(f"Thread {thread_id} not found for user {user_id}")
+                        return messages
+
                 query = session.query(BedrockMessage)\
                     .filter_by(thread_id=thread_id)\
                     .order_by(BedrockMessage.message_index.asc())\

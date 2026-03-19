@@ -61,7 +61,7 @@ class OAIAThreadsProvider(ThreadsProvider):
         return not response.data
 
     @override
-    def get_messages(self, thread_id, limit=100) -> Dict[str, BondMessage]:
+    def get_messages(self, thread_id, limit=100, user_id=None) -> Dict[str, BondMessage]:
         response_msgs = []
         messages = self.openai_client.beta.threads.messages.list(thread_id=thread_id, limit=limit, order="asc")
         for message in messages.data:
