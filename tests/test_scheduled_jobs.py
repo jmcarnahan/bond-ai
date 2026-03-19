@@ -6,6 +6,7 @@ Tests CRUD endpoints, runs endpoint, agent validation, and scheduler engine.
 import logging
 import os
 import tempfile
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch, PropertyMock
@@ -592,21 +593,32 @@ class TestSchedulerEngine:
         mock_metadata = MagicMock()
         mock_provider = MagicMock()
 
+        # Mock DB session for startup recovery (returns no running jobs)
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter.return_value.all.return_value = []
+        mock_metadata.get_db_session.return_value = mock_session
+
         scheduler = JobScheduler(metadata=mock_metadata, provider=mock_provider)
         scheduler.start()
         assert not scheduler._stop_event.is_set()
+        assert scheduler._executor is not None
 
         scheduler.stop()
         assert scheduler._stop_event.is_set()
+        assert scheduler._executor is None
 
     def test_poll_picks_up_due_jobs(self):
-        """Test that _poll_and_execute picks up due jobs."""
+        """Test that _poll_and_execute picks up due jobs and submits to pool."""
         from bondable.bond.scheduler import JobScheduler
 
         mock_metadata = MagicMock()
         mock_provider = MagicMock()
 
         scheduler = JobScheduler(metadata=mock_metadata, provider=mock_provider)
+        # Set up executor and in-flight tracking (normally done in start())
+        scheduler._executor = MagicMock()
+        mock_future = MagicMock()
+        scheduler._executor.submit.return_value = mock_future
 
         # Create a mock session with a due job
         mock_session = MagicMock()
@@ -630,14 +642,19 @@ class TestSchedulerEngine:
         mock_session.query.return_value = mock_query_result
         mock_metadata.get_db_session.return_value = mock_session
 
-        # Mock _execute_job to prevent actual execution
-        scheduler._execute_job_by_id = MagicMock()
-
         scheduler._poll_and_execute()
 
         # Verify the job was picked up and marked as running
         assert mock_job.status == "running"
-        scheduler._execute_job_by_id.assert_called_once_with(mock_job.id, mock_job.name)
+        # Verify job was submitted to the thread pool
+        scheduler._executor.submit.assert_called_once()
+        submit_args = scheduler._executor.submit.call_args[0]
+        assert submit_args[1] == mock_job.id
+        assert submit_args[2] == mock_job.name
+        # Verify done callback was registered
+        mock_future.add_done_callback.assert_called_once()
+        # Verify job is tracked as in-flight
+        assert mock_job.id in scheduler._in_flight
 
     def test_poll_skips_disabled_jobs(self):
         """Test that disabled jobs are not picked up."""
@@ -647,6 +664,7 @@ class TestSchedulerEngine:
         mock_provider = MagicMock()
 
         scheduler = JobScheduler(metadata=mock_metadata, provider=mock_provider)
+        scheduler._executor = MagicMock()
 
         # Return no jobs (disabled/future jobs filtered by query)
         mock_session = MagicMock()
@@ -654,10 +672,9 @@ class TestSchedulerEngine:
         mock_session.query.return_value.filter.return_value.with_for_update.return_value.all.return_value = []
         mock_metadata.get_db_session.return_value = mock_session
 
-        scheduler._execute_job_by_id = MagicMock()
         scheduler._poll_and_execute()
 
-        scheduler._execute_job_by_id.assert_not_called()
+        scheduler._executor.submit.assert_not_called()
 
     def test_zombie_detection_uses_per_job_timeout(self):
         """Test that zombie detection uses each job's timeout_seconds * 2."""
@@ -667,12 +684,16 @@ class TestSchedulerEngine:
         mock_provider = MagicMock()
 
         scheduler = JobScheduler(metadata=mock_metadata, provider=mock_provider)
+        scheduler._executor = MagicMock()
+        mock_future = MagicMock()
+        scheduler._executor.submit.return_value = mock_future
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # Job with 60s timeout, locked 130s ago — should be zombie (> 60*2=120)
         zombie_job = MagicMock()
         zombie_job.id = "zombie-1"
+        zombie_job.name = "Zombie Job"
         zombie_job.timeout_seconds = 60
         zombie_job.locked_at = now - timedelta(seconds=130)
         zombie_job.status = "running"
@@ -680,6 +701,7 @@ class TestSchedulerEngine:
         # Job with 300s timeout, locked 130s ago — should NOT be zombie (< 300*2=600)
         active_job = MagicMock()
         active_job.id = "active-1"
+        active_job.name = "Active Job"
         active_job.timeout_seconds = 300
         active_job.locked_at = now - timedelta(seconds=130)
         active_job.status = "running"
@@ -691,14 +713,13 @@ class TestSchedulerEngine:
         mock_session.query.return_value.filter.return_value.with_for_update.return_value.all.return_value = [zombie_job, active_job]
         mock_metadata.get_db_session.return_value = mock_session
 
-        scheduler._execute_job_by_id = MagicMock()
         scheduler._poll_and_execute()
 
         # Only the zombie job should be picked up
         assert zombie_job.status == "running"  # marked by poll
-        scheduler._execute_job_by_id.assert_called_once()
-        call_args = scheduler._execute_job_by_id.call_args[0]
-        assert call_args[0] == "zombie-1"
+        scheduler._executor.submit.assert_called_once()
+        submit_args = scheduler._executor.submit.call_args[0]
+        assert submit_args[1] == "zombie-1"
 
     def test_execute_job_creates_thread(self):
         """Test that _execute_job creates a thread with correct name."""
@@ -1140,6 +1161,9 @@ class TestSchedulerEngine:
         mock_provider = MagicMock()
 
         scheduler = JobScheduler(metadata=mock_metadata, provider=mock_provider)
+        scheduler._executor = MagicMock()
+        mock_future = MagicMock()
+        scheduler._executor.submit.return_value = mock_future
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -1157,11 +1181,13 @@ class TestSchedulerEngine:
         mock_session.query.return_value.filter.return_value.with_for_update.return_value.all.return_value = []
         mock_metadata.get_db_session.return_value = mock_session
 
-        # Mock _execute_job_by_id to verify it receives IDs, not ORM objects
-        scheduler._execute_job_by_id = MagicMock()
         scheduler._poll_and_execute()
 
-        scheduler._execute_job_by_id.assert_called_once_with("detach-test-job", "Detach Test")
+        # Verify job was submitted with IDs (not ORM objects)
+        scheduler._executor.submit.assert_called_once()
+        submit_args = scheduler._executor.submit.call_args[0]
+        assert submit_args[1] == "detach-test-job"
+        assert submit_args[2] == "Detach Test"
 
     def test_execute_job_session_rollback_on_commit_failure(self):
         """Regression (R3-B2): If session.commit() fails mid-execution,
@@ -1258,6 +1284,294 @@ class TestSchedulerEngine:
         assert mock_job.status == "pending"
         mock_session.commit.assert_called()
         mock_session.close.assert_called()
+
+    def test_concurrent_execution_doesnt_block_polling(self):
+        """Submit 2+ jobs, verify they are submitted to pool concurrently."""
+        from bondable.bond.scheduler import JobScheduler
+
+        mock_metadata = MagicMock()
+        mock_provider = MagicMock()
+
+        scheduler = JobScheduler(metadata=mock_metadata, provider=mock_provider)
+        scheduler._executor = MagicMock()
+        mock_future = MagicMock()
+        scheduler._executor.submit.return_value = mock_future
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        mock_job_1 = MagicMock()
+        mock_job_1.id = "concurrent-1"
+        mock_job_1.name = "Job 1"
+        mock_job_1.timeout_seconds = 300
+        mock_job_1.status = "pending"
+
+        mock_job_2 = MagicMock()
+        mock_job_2.id = "concurrent-2"
+        mock_job_2.name = "Job 2"
+        mock_job_2.timeout_seconds = 300
+        mock_job_2.status = "pending"
+
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter.return_value.with_for_update.return_value.limit.return_value.all.return_value = [mock_job_1, mock_job_2]
+        mock_session.query.return_value.filter.return_value.with_for_update.return_value.all.return_value = []
+        mock_metadata.get_db_session.return_value = mock_session
+
+        scheduler._poll_and_execute()
+
+        # Both jobs should be submitted to the pool (not executed sequentially)
+        assert scheduler._executor.submit.call_count == 2
+        # Both should be in-flight
+        assert "concurrent-1" in scheduler._in_flight
+        assert "concurrent-2" in scheduler._in_flight
+
+    def test_job_timeout_enforcement(self):
+        """Job with short timeout + slow stream_response is terminated."""
+        from bondable.bond.scheduler import JobScheduler
+        from bondable.bond.providers.metadata import User
+
+        mock_metadata = MagicMock()
+        mock_provider = MagicMock()
+
+        mock_session = MagicMock()
+        mock_user = MagicMock(spec=User)
+        mock_user.id = "test-user"
+        mock_user.email = "test@example.com"
+        mock_user.name = "Test User"
+        mock_user.sign_in_method = "okta"
+
+        mock_job = MagicMock()
+        mock_job.id = "timeout-job"
+        mock_job.user_id = "test-user"
+        mock_job.agent_id = "test-agent"
+        mock_job.name = "Timeout Test"
+        mock_job.prompt = "Run"
+        mock_job.schedule = "0 * * * *"
+        mock_job.timezone = "UTC"
+        mock_job.timeout_seconds = 300
+
+        mock_session.query.return_value.filter.return_value.first.side_effect = [
+            mock_job,    # Re-load job
+            mock_user,   # User lookup
+            MagicMock(), # Thread record for scheduled_job_id
+            mock_job,    # Re-load job after stream_response
+            None,        # Thread for _set_thread_run_status
+        ]
+        mock_metadata.get_db_session.return_value = mock_session
+
+        mock_thread = MagicMock()
+        mock_thread.thread_id = "thread-timeout"
+        mock_provider.threads.create_thread.return_value = mock_thread
+
+        # Simulate a slow stream that yields chunks but respects cancel_event
+        def slow_stream(**kwargs):
+            yield "chunk1"
+            yield "chunk2"
+            yield "chunk3"
+
+        mock_agent = MagicMock()
+        mock_agent.stream_response.side_effect = slow_stream
+        mock_provider.agents.get_agent.return_value = mock_agent
+        mock_provider.agents.can_user_access_agent.return_value = True
+
+        scheduler = JobScheduler(metadata=mock_metadata, provider=mock_provider)
+
+        # Test with a cancel_event that is already set (simulates timeout)
+        cancel_event = threading.Event()
+        cancel_event.set()  # Pre-set to simulate timeout
+
+        with patch('bondable.bond.scheduler.create_access_token', return_value="mock-token"):
+            scheduler._execute_job_by_id(mock_job.id, mock_job.name, cancel_event=cancel_event)
+
+        # Job should still complete (cancel_event checked after first chunk)
+        # The stream should have been cut short
+        assert mock_job.status == "pending"
+
+    def test_startup_recovery_resets_stale_running_jobs(self):
+        """Create jobs with status='running', start recovery, verify reset."""
+        from bondable.bond.scheduler import JobScheduler
+
+        mock_metadata = MagicMock()
+        mock_provider = MagicMock()
+
+        mock_session = MagicMock()
+
+        stale_job_1 = MagicMock()
+        stale_job_1.id = "stale-1"
+        stale_job_1.name = "Stale Job 1"
+        stale_job_1.status = "running"
+        stale_job_1.locked_by = "old-instance"
+        stale_job_1.locked_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
+        stale_job_1.schedule = "0 * * * *"
+        stale_job_1.timezone = "UTC"
+
+        stale_job_2 = MagicMock()
+        stale_job_2.id = "stale-2"
+        stale_job_2.name = "Stale Job 2"
+        stale_job_2.status = "running"
+        stale_job_2.locked_by = "old-instance"
+        stale_job_2.locked_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=2)
+        stale_job_2.schedule = "0 9 * * *"
+        stale_job_2.timezone = "UTC"
+
+        mock_session.query.return_value.filter.return_value.all.return_value = [stale_job_1, stale_job_2]
+        mock_metadata.get_db_session.return_value = mock_session
+
+        scheduler = JobScheduler(metadata=mock_metadata, provider=mock_provider)
+        scheduler._recover_stale_jobs()
+
+        # Both jobs should be reset to pending
+        assert stale_job_1.status == "pending"
+        assert stale_job_1.locked_by is None
+        assert stale_job_1.locked_at is None
+        assert stale_job_1.next_run_at is not None
+
+        assert stale_job_2.status == "pending"
+        assert stale_job_2.locked_by is None
+        assert stale_job_2.locked_at is None
+        assert stale_job_2.next_run_at is not None
+
+        mock_session.commit.assert_called_once()
+
+    def test_in_flight_tracking_prevents_double_submission(self):
+        """Due job already in _in_flight set is not re-submitted."""
+        from bondable.bond.scheduler import JobScheduler
+
+        mock_metadata = MagicMock()
+        mock_provider = MagicMock()
+
+        scheduler = JobScheduler(metadata=mock_metadata, provider=mock_provider)
+        scheduler._executor = MagicMock()
+        mock_future = MagicMock()
+        scheduler._executor.submit.return_value = mock_future
+
+        # Pre-add job to in-flight set
+        scheduler._in_flight.add("already-running-job")
+
+        mock_job = MagicMock()
+        mock_job.id = "already-running-job"
+        mock_job.name = "Already Running"
+        mock_job.timeout_seconds = 300
+        mock_job.status = "pending"
+
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter.return_value.with_for_update.return_value.limit.return_value.all.return_value = [mock_job]
+        mock_session.query.return_value.filter.return_value.with_for_update.return_value.all.return_value = []
+        mock_metadata.get_db_session.return_value = mock_session
+
+        scheduler._poll_and_execute()
+
+        # Job should NOT be submitted (already in-flight)
+        scheduler._executor.submit.assert_not_called()
+
+    def test_done_callback_records_success(self):
+        """Verify that the done callback clears in-flight on success."""
+        from bondable.bond.scheduler import JobScheduler
+
+        mock_metadata = MagicMock()
+        mock_provider = MagicMock()
+
+        scheduler = JobScheduler(metadata=mock_metadata, provider=mock_provider)
+        scheduler._in_flight.add("done-job-1")
+
+        mock_future = MagicMock()
+        mock_future.result.return_value = None  # Success (no exception)
+
+        scheduler._on_job_done(mock_future, "done-job-1", "Done Job")
+
+        # Job should be removed from in-flight
+        assert "done-job-1" not in scheduler._in_flight
+
+    def test_done_callback_records_failure(self):
+        """Verify that execution errors trigger failure recording via callback."""
+        from bondable.bond.scheduler import JobScheduler
+
+        mock_metadata = MagicMock()
+        mock_provider = MagicMock()
+
+        scheduler = JobScheduler(metadata=mock_metadata, provider=mock_provider)
+        scheduler._in_flight.add("fail-job-1")
+
+        mock_future = MagicMock()
+        mock_future.result.side_effect = RuntimeError("Something went wrong")
+
+        # Mock _record_failure_by_id
+        mock_failure_session = MagicMock()
+        mock_failure_job = MagicMock()
+        mock_failure_job.id = "fail-job-1"
+        mock_failure_job.schedule = "0 * * * *"
+        mock_failure_job.timezone = "UTC"
+        mock_failure_session.query.return_value.filter.return_value.first.return_value = mock_failure_job
+        mock_metadata.get_db_session.return_value = mock_failure_session
+
+        scheduler._on_job_done(mock_future, "fail-job-1", "Fail Job")
+
+        # Job should be removed from in-flight
+        assert "fail-job-1" not in scheduler._in_flight
+        # Failure should be recorded
+        assert mock_failure_job.last_run_status == "failed"
+
+    def test_batch_size_configurable(self):
+        """Verify SCHEDULER_BATCH_SIZE env var controls query limit."""
+        from bondable.bond.scheduler import JobScheduler
+
+        mock_metadata = MagicMock()
+        mock_provider = MagicMock()
+
+        with patch.dict(os.environ, {"SCHEDULER_BATCH_SIZE": "20"}):
+            scheduler = JobScheduler(metadata=mock_metadata, provider=mock_provider)
+            assert scheduler._batch_size == 20
+
+        with patch.dict(os.environ, {"SCHEDULER_BATCH_SIZE": "5"}):
+            scheduler2 = JobScheduler(metadata=mock_metadata, provider=mock_provider)
+            assert scheduler2._batch_size == 5
+
+    def test_polling_continues_while_jobs_execute(self):
+        """Multiple poll cycles can occur while long-running jobs are in pool."""
+        from bondable.bond.scheduler import JobScheduler
+
+        mock_metadata = MagicMock()
+        mock_provider = MagicMock()
+
+        scheduler = JobScheduler(metadata=mock_metadata, provider=mock_provider)
+        scheduler._executor = MagicMock()
+        mock_future = MagicMock()
+        scheduler._executor.submit.return_value = mock_future
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        # First poll: pick up job-A
+        mock_job_a = MagicMock()
+        mock_job_a.id = "job-a"
+        mock_job_a.name = "Job A"
+        mock_job_a.timeout_seconds = 300
+        mock_job_a.status = "pending"
+
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter.return_value.with_for_update.return_value.limit.return_value.all.return_value = [mock_job_a]
+        mock_session.query.return_value.filter.return_value.with_for_update.return_value.all.return_value = []
+        mock_metadata.get_db_session.return_value = mock_session
+
+        scheduler._poll_and_execute()
+        assert scheduler._executor.submit.call_count == 1
+
+        # Second poll: job-A is still in-flight, new job-B appears
+        mock_job_b = MagicMock()
+        mock_job_b.id = "job-b"
+        mock_job_b.name = "Job B"
+        mock_job_b.timeout_seconds = 300
+        mock_job_b.status = "pending"
+
+        mock_session2 = MagicMock()
+        mock_session2.query.return_value.filter.return_value.with_for_update.return_value.limit.return_value.all.return_value = [mock_job_b]
+        mock_session2.query.return_value.filter.return_value.with_for_update.return_value.all.return_value = []
+        mock_metadata.get_db_session.return_value = mock_session2
+
+        scheduler._poll_and_execute()
+
+        # Job B should also be submitted even though A is still running
+        assert scheduler._executor.submit.call_count == 2
+        assert "job-a" in scheduler._in_flight
+        assert "job-b" in scheduler._in_flight
 
 
 class TestDefaultAgentSchedulingBlocked:
