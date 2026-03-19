@@ -897,7 +897,8 @@ class TestThreads:
         assert len(messages) == 2
         mock_provider.threads.get_messages.assert_called_once_with(
             thread_id="test_thread",
-            limit=100
+            limit=100,
+            user_id="test-user-id-123"
         )
 
     def test_get_messages_with_limit(self, authenticated_client):
@@ -911,8 +912,23 @@ class TestThreads:
         assert response.status_code == 200
         mock_provider.threads.get_messages.assert_called_once_with(
             thread_id="test_thread",
-            limit=50
+            limit=50,
+            user_id="test-user-id-123"
         )
+
+    def test_get_messages_wrong_user_returns_404(self, authenticated_client):
+        """Test that a user cannot read messages from another user's thread."""
+        client, auth_headers, mock_provider = authenticated_client
+
+        # Simulate thread not belonging to the authenticated user
+        mock_provider.threads.get_thread.return_value = None
+
+        response = client.get("/threads/other_users_thread/messages", headers=auth_headers)
+
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+        # Crucially, get_messages should never be called if ownership check fails
+        mock_provider.threads.get_messages.assert_not_called()
 
     def test_get_messages_thread_not_found(self, authenticated_client):
         """Test getting messages for non-existent thread."""

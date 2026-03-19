@@ -40,7 +40,7 @@ class ThreadsProvider(ABC):
         pass
 
     @abstractmethod
-    def get_messages(self, thread_id, limit=100) -> Dict[str, BondMessage]:
+    def get_messages(self, thread_id, limit=100, user_id: Optional[str] = None) -> Dict[str, BondMessage]:
         pass
 
     def create_thread(self, user_id: str, name: Optional[str] = None) -> Thread: # Return Thread object

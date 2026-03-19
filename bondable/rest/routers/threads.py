@@ -192,7 +192,15 @@ async def get_messages(
 ):
     """Get messages for a specific thread."""
     try:
-        messages_dict: Dict[str, Any] = provider.threads.get_messages(thread_id=thread_id, limit=limit)
+        # Verify thread ownership before fetching messages
+        thread = provider.threads.get_thread(thread_id=thread_id, user_id=current_user.user_id)
+        if not thread:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Thread not found or not accessible by this user."
+            )
+
+        messages_dict: Dict[str, Any] = provider.threads.get_messages(thread_id=thread_id, limit=limit, user_id=current_user.user_id)
 
         message_refs = []
         for msg_obj in messages_dict.values():
