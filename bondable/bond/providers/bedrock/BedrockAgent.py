@@ -28,6 +28,7 @@ from bondable.bond.providers.threads import ThreadsProvider
 from bondable.bond.providers.files import FilesProvider
 from bondable.bond.providers.metadata import AgentRecord
 from .BedrockCRUD import create_bedrock_agent, update_bedrock_agent, delete_bedrock_agent, get_bedrock_agent
+from xml.sax.saxutils import escape as xml_escape, unescape as xml_unescape  # nosec B406
 from bondable.utils.logging_utils import safe_id
 from .BedrockMCP import (
     execute_mcp_tool_sync,
@@ -1296,7 +1297,7 @@ Please integrate any relevant insights from the documents with your analysis of 
                 user_id=user_id,
                 role="assistant",
                 message_type="text",
-                content=full_content,
+                content=xml_unescape(full_content),
                 attachments=attachments,
                 metadata={
                     'agent_id': self.agent_id,
@@ -1337,7 +1338,7 @@ Please integrate any relevant insights from the documents with your analysis of 
         """
         if 'bytes' in chunk:
             text = chunk['bytes'].decode('utf-8')
-            return text
+            return xml_escape(text)
         return None
 
     def _separate_files_by_use_case(self, files: List[Dict[str, Any]]) -> tuple[List[Dict], List[Dict]]:
@@ -1719,6 +1720,10 @@ Please integrate any relevant insights from the documents with your analysis of 
         # Save response if we have content
         compaction_performed = False
         if full_content:
+            # Unescape XML entities before persisting — the stream escapes
+            # <, >, & for safe XML transport, but the DB should store raw text.
+            db_content = xml_unescape(full_content)
+
             # Build metadata
             metadata = {
                 'agent_id': self.agent_id,
@@ -1735,7 +1740,7 @@ Please integrate any relevant insights from the documents with your analysis of 
                 user_id=user_id,
                 role=response_role,
                 message_type=response_type,
-                content=full_content,
+                content=db_content,
                 metadata=metadata
             )
             LOGGER.debug(f"Saved assistant response to thread {thread_id}")
@@ -1744,7 +1749,7 @@ Please integrate any relevant insights from the documents with your analysis of 
             input_chars = len(prompt) if prompt else 0
             self._update_context_usage(thread_id, user_id,
                                        trace_input_tokens, trace_output_tokens,
-                                       input_chars, len(full_content))
+                                       input_chars, len(db_content))
 
             # Check if compaction is needed after updating context usage
             try:

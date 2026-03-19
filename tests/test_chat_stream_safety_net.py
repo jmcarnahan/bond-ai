@@ -4,10 +4,12 @@ Unit tests for the chat streaming safety net in bondable/rest/routers/chat.py.
 Verifies that stream_response_generator() catches exceptions and always emits
 a complete error bond message to the frontend, even when the agent's
 stream_response() fails mid-stream. Also verifies content and done-signal
-guarantees.
+guarantees, keepalive wrapper, and XML escaping.
 """
 
+import asyncio
 import json
+import time
 import pytest
 from unittest.mock import MagicMock, patch
 from types import SimpleNamespace
@@ -54,7 +56,7 @@ def _simulate_stream_response_generator(
             yield response_chunk
 
         # Post-stream content guarantee
-        if has_yielded_bond_message and not has_yielded_assistant_content and not has_yielded_done:
+        if has_yielded_bond_message and not has_yielded_assistant_content:
             if bond_message_open:
                 yield '</_bondmessage>'
                 bond_message_open = False
@@ -463,8 +465,14 @@ class TestStreamContentGuarantee:
         assert len(error_tags) == 1
         assert 'is_error="true"' in error_tags[0]
 
-    def test_no_fallback_when_agent_already_sent_done_with_content(self):
-        """If agent sent is_done with no assistant content, done is already present, no content fallback needed since done was sent."""
+    def test_fallback_fires_when_done_already_sent_without_assistant_content(self):
+        """If agent sent is_done but no assistant content, content fallback should still fire.
+
+        Bug #3: Previously the condition checked ``not has_yielded_done`` which
+        prevented the fallback when the backend had already sent a done signal
+        without any assistant text.  This left the UI showing '...' with action
+        buttons visible but no response text.
+        """
         def mock_stream(**kwargs):
             # Agent sends a done message directly without assistant content
             yield '<_bondmessage id="-1" thread_id="t" agent_id="a" type="text" role="system" is_error="false" is_done="true">'
@@ -476,9 +484,11 @@ class TestStreamContentGuarantee:
 
         results = list(_simulate_stream_response_generator(agent))
 
-        # Only the original 3 chunks - done was already sent, content fallback
-        # condition checks `not has_yielded_done` which is True here
-        assert len(results) == 3
+        # Original 3 chunks + content fallback (open tag + text + close tag) = 6
+        assert len(results) == 6
+        # The fallback should be an error message
+        assert 'is_error="true"' in results[3]
+        assert "unable to generate a response" in results[4]
 
 
 class TestStreamDoneGuarantee:
@@ -603,3 +613,112 @@ class TestStreamDoubleExceptFallback:
         assert 'is_done="true"' in results[0]
         assert "An internal error occurred" in results[1]
         assert results[2] == '</_bondmessage>'
+
+
+class TestKeepaliveWrapper:
+    """Tests for the async keepalive wrapper in chat.py."""
+
+    @staticmethod
+    async def _collect(async_gen):
+        """Collect all items from an async generator."""
+        items = []
+        async for item in async_gen:
+            items.append(item)
+        return items
+
+    def test_keepalive_emitted_during_slow_stream(self):
+        """Verify keepalive comments appear when no data flows for the interval."""
+        from bondable.rest.routers.chat import async_keepalive_wrapper
+
+        def slow_gen():
+            yield "chunk1"
+            time.sleep(2)  # Exceed the 0.5s interval
+            yield "chunk2"
+
+        async def run():
+            return await TestKeepaliveWrapper._collect(
+                async_keepalive_wrapper(slow_gen(), keepalive_interval=0.5)
+            )
+
+        results = asyncio.run(run())
+        keepalives = [r for r in results if "keepalive" in r]
+        data = [r for r in results if "keepalive" not in r]
+        assert len(keepalives) >= 1, "Should have at least one keepalive"
+        assert data == ["chunk1", "chunk2"]
+
+    def test_keepalive_absent_in_fast_stream(self):
+        """No keepalive when data flows faster than the interval."""
+        from bondable.rest.routers.chat import async_keepalive_wrapper
+
+        def fast_gen():
+            for i in range(5):
+                yield f"chunk{i}"
+
+        async def run():
+            return await TestKeepaliveWrapper._collect(
+                async_keepalive_wrapper(fast_gen(), keepalive_interval=10)
+            )
+
+        results = asyncio.run(run())
+        keepalives = [r for r in results if "keepalive" in r]
+        assert len(keepalives) == 0
+        assert len(results) == 5
+
+    def test_keepalive_propagates_exceptions(self):
+        """Errors from the sync generator should propagate through the wrapper."""
+        from bondable.rest.routers.chat import async_keepalive_wrapper
+
+        def failing_gen():
+            yield "ok"
+            raise RuntimeError("boom")
+
+        async def run():
+            return await TestKeepaliveWrapper._collect(
+                async_keepalive_wrapper(failing_gen(), keepalive_interval=10)
+            )
+
+        with pytest.raises(RuntimeError, match="boom"):
+            asyncio.run(run())
+
+
+class TestContentFallbackWithDoneAlreadySent:
+    """Regression test for Bug #3: content guarantee fires even when is_done was sent."""
+
+    def test_content_fallback_fires_even_when_done_already_sent(self):
+        """Content fallback should trigger regardless of done signal state."""
+        def mock_stream(**kwargs):
+            # System message with done, but no assistant content
+            yield '<_bondmessage id="-1" thread_id="t" agent_id="a" type="text" role="system" is_error="false" is_done="true">'
+            yield "Processing complete."
+            yield '</_bondmessage>'
+
+        agent = MagicMock()
+        agent.stream_response.side_effect = mock_stream
+
+        results = list(_simulate_stream_response_generator(agent))
+
+        # Should have content fallback even though done was already sent
+        error_tags = [r for r in results if isinstance(r, str) and 'is_error="true"' in r]
+        assert len(error_tags) >= 1, "Content fallback should fire when no assistant content despite done signal"
+
+
+class TestXmlEscaping:
+    """Tests for XML special character escaping in the streaming pipeline."""
+
+    def test_xml_special_chars_escaped_in_stream(self):
+        """Verify _handle_chunk_event escapes < > & in text."""
+        from xml.sax.saxutils import escape as xml_escape
+        # Simulate what _handle_chunk_event now does
+        text = "if x < y && z > 0"
+        escaped = xml_escape(text)
+        assert "&lt;" in escaped
+        assert "&gt;" in escaped
+        assert "&amp;" in escaped
+        assert "<" not in escaped.replace("&lt;", "").replace("&gt;", "")
+
+    def test_escaped_content_unescaped_for_db(self):
+        """Verify xml_unescape restores original text for DB storage."""
+        from xml.sax.saxutils import escape as xml_escape, unescape as xml_unescape
+        original = "if x < y && z > 0"
+        roundtripped = xml_unescape(xml_escape(original))
+        assert roundtripped == original

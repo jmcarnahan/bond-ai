@@ -2,6 +2,7 @@
 Job Scheduler Engine - Database-polling scheduler for scheduled agent executions.
 
 Uses SELECT FOR UPDATE SKIP LOCKED for distributed locking across multiple instances.
+Jobs execute concurrently via a thread pool so polling is never blocked by execution.
 """
 
 import logging
@@ -9,6 +10,7 @@ import os
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, Future
 from datetime import datetime, timedelta, timezone
 
 import pytz
@@ -24,6 +26,8 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_POLL_INTERVAL = 30  # seconds
 DEFAULT_MIN_SCHEDULE_INTERVAL_MINUTES = 60  # minimum cron interval allowed
 MAX_TIMEOUT_SECONDS = 3600  # 1 hour max timeout
+DEFAULT_MAX_WORKERS = 3
+DEFAULT_BATCH_SIZE = 10
 
 
 class JobScheduler:
@@ -31,7 +35,8 @@ class JobScheduler:
     Database-polling scheduler for executing scheduled jobs.
 
     Polls the database at a configurable interval for due jobs,
-    acquires them with distributed locking, and executes them.
+    acquires them with distributed locking, and executes them
+    concurrently via a thread pool.
     """
 
     def __init__(self, metadata, provider, instance_id=None):
@@ -43,7 +48,16 @@ class JobScheduler:
         self._poll_interval = int(
             os.getenv("SCHEDULER_POLL_INTERVAL_SECONDS", str(DEFAULT_POLL_INTERVAL))
         )
+        self._max_workers = int(
+            os.getenv("SCHEDULER_MAX_WORKERS", str(DEFAULT_MAX_WORKERS))
+        )
+        self._batch_size = int(
+            os.getenv("SCHEDULER_BATCH_SIZE", str(DEFAULT_BATCH_SIZE))
+        )
         self._is_sqlite = None  # Lazy-detected on first poll
+        self._executor = None  # Created in start()
+        self._in_flight = set()  # Job IDs currently executing in the pool
+        self._in_flight_lock = threading.Lock()  # Protects _in_flight set
 
     def _detect_sqlite(self):
         """Check if the underlying database is SQLite (which doesn't support FOR UPDATE)."""
@@ -62,10 +76,17 @@ class JobScheduler:
     def start(self):
         """Start the scheduler in a daemon thread."""
         self._stop_event.clear()
+        self._executor = ThreadPoolExecutor(
+            max_workers=self._max_workers,
+            thread_name_prefix="scheduler-job",
+        )
+        self._recover_stale_jobs()
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
-        LOGGER.info("JobScheduler started (instance=%s, poll_interval=%ds)",
-                     self._instance_id, self._poll_interval)
+        LOGGER.info("JobScheduler started (instance=%s, poll_interval=%ds, "
+                     "max_workers=%d, batch_size=%d)",
+                     self._instance_id, self._poll_interval,
+                     self._max_workers, self._batch_size)
 
     def stop(self):
         """Stop the scheduler."""
@@ -73,7 +94,58 @@ class JobScheduler:
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=10)
+        if self._executor:
+            self._executor.shutdown(wait=False)
+            self._executor = None
+        with self._in_flight_lock:
+            self._in_flight.clear()
         LOGGER.info("JobScheduler stopped (instance=%s)", self._instance_id)
+
+    def _recover_stale_jobs(self):
+        """Reset jobs stuck in 'running' from a previous instance crash.
+
+        Called once at startup. Resets all running jobs to pending so they
+        can be picked up on the next poll cycle instead of waiting for
+        zombie detection (which requires 2x timeout).
+        """
+        session = self._metadata.get_db_session()
+        try:
+            running_jobs = (
+                session.query(ScheduledJob)
+                .filter(ScheduledJob.status == "running")
+                .all()
+            )
+            if not running_jobs:
+                LOGGER.info("Startup recovery: no stale running jobs found")
+                session.close()
+                return
+
+            for job in running_jobs:
+                LOGGER.warning(
+                    "Startup recovery: resetting stale job %s (%s) — "
+                    "was locked by %s at %s",
+                    job.id, job.name, job.locked_by, job.locked_at,
+                )
+                job.status = "pending"
+                job.locked_by = None
+                job.locked_at = None
+                job.next_run_at = self._compute_next_run(
+                    job.schedule, job.timezone or "UTC"
+                )
+
+            session.commit()
+            LOGGER.info("Startup recovery: reset %d stale job(s)", len(running_jobs))
+        except Exception as e:
+            LOGGER.error("Startup recovery error: %s", e, exc_info=True)
+            try:
+                session.rollback()
+            except Exception:  # nosec B110
+                pass
+        finally:
+            try:
+                session.close()
+            except Exception:  # nosec B110
+                pass
 
     def _run_loop(self):
         """Main polling loop."""
@@ -160,7 +232,11 @@ class JobScheduler:
             pass
 
     def _poll_and_execute(self):
-        """Poll for due jobs and execute them."""
+        """Poll for due jobs and submit them to the thread pool.
+
+        This method returns immediately after submitting jobs so polling
+        is never blocked by job execution.
+        """
         if self._is_sqlite is None:
             self._is_sqlite = self._detect_sqlite()
 
@@ -179,7 +255,7 @@ class JobScheduler:
             )
             if not self._is_sqlite:
                 due_query = due_query.with_for_update(skip_locked=True)
-            jobs = due_query.limit(5).all()
+            jobs = due_query.limit(self._batch_size).all()
 
             # Also pick up zombie jobs — use per-job timeout (2x) for detection
             running_query = (
@@ -203,28 +279,51 @@ class JobScheduler:
                 session.close()
                 return
 
-            LOGGER.info("Scheduler poll: found %d due job(s), %d zombie(s)",
-                        len(jobs), len(zombies))
+            # Filter out jobs already executing in the pool
+            with self._in_flight_lock:
+                new_jobs = [j for j in all_jobs if j.id not in self._in_flight]
+
+            if not new_jobs:
+                LOGGER.debug("Scheduler poll: %d due job(s) already in-flight",
+                             len(all_jobs))
+                session.close()
+                return
+
+            LOGGER.info("Scheduler poll: found %d due job(s), %d zombie(s), "
+                        "%d already in-flight",
+                        len(jobs), len(zombies), len(all_jobs) - len(new_jobs))
 
             # Mark jobs as running within the same transaction
-            for job in all_jobs:
+            for job in new_jobs:
                 job.status = "running"
                 job.locked_by = self._instance_id
                 job.locked_at = now
 
-            # Capture job IDs before closing session (objects become detached)
-            job_ids = [(job.id, job.name) for job in all_jobs]
+            # Capture job IDs and timeouts before closing session
+            job_entries = [
+                (job.id, job.name, job.timeout_seconds or 300)
+                for job in new_jobs
+            ]
 
             session.commit()
             session.close()
 
-            # Execute each job with its own session to isolate failures
-            for job_id, job_name in job_ids:
+            # Submit each job to the thread pool
+            for job_id, job_name, timeout_seconds in job_entries:
+                with self._in_flight_lock:
+                    self._in_flight.add(job_id)
                 try:
-                    self._execute_job_by_id(job_id, job_name)
+                    future = self._executor.submit(
+                        self._execute_job_with_timeout, job_id, job_name, timeout_seconds
+                    )
+                    future.add_done_callback(
+                        lambda f, jid=job_id, jname=job_name: self._on_job_done(f, jid, jname)
+                    )
                 except Exception as e:
-                    LOGGER.error("Error executing job %s: %s", job_id, e, exc_info=True)
-                    self._record_failure_by_id(job_id, str(e))
+                    LOGGER.error("Failed to submit job %s to pool: %s", job_id, e)
+                    with self._in_flight_lock:
+                        self._in_flight.discard(job_id)
+                    self._record_failure_by_id(job_id, f"Failed to submit: {e}")
 
         except Exception as e:
             LOGGER.error("Error in poll_and_execute: %s", e, exc_info=True)
@@ -237,7 +336,42 @@ class JobScheduler:
             except Exception:  # nosec B110
                 pass
 
-    def _execute_job_by_id(self, job_id, job_name):
+    def _execute_job_with_timeout(self, job_id, job_name, timeout_seconds):
+        """Execute a job with a hard timeout enforced via threading.Timer.
+
+        Runs in a thread pool worker. If the job exceeds timeout_seconds,
+        a cancel event is set that _execute_job_by_id checks periodically.
+        """
+        cancel_event = threading.Event()
+        timer = threading.Timer(timeout_seconds, cancel_event.set)
+        timer.daemon = True
+        timer.start()
+        try:
+            self._execute_job_by_id(job_id, job_name, cancel_event=cancel_event)
+            if cancel_event.is_set():
+                raise TimeoutError(
+                    f"Job execution timed out after {timeout_seconds}s"
+                )
+        finally:
+            timer.cancel()
+
+    def _on_job_done(self, future, job_id, job_name):
+        """Callback fired when a job future completes (success or failure)."""
+        with self._in_flight_lock:
+            self._in_flight.discard(job_id)
+
+        try:
+            future.result()  # Re-raises any exception from the worker
+            LOGGER.info("Job %s (%s) completed via thread pool", job_id, job_name)
+        except TimeoutError as e:
+            LOGGER.error("Job %s (%s) timed out: %s", job_id, job_name, e)
+            self._record_failure_by_id(job_id, str(e))
+        except Exception as e:
+            LOGGER.error("Job %s (%s) failed in thread pool: %s",
+                         job_id, job_name, e, exc_info=True)
+            self._record_failure_by_id(job_id, str(e))
+
+    def _execute_job_by_id(self, job_id, job_name, cancel_event=None):
         """Execute a single scheduled job using its own DB session."""
         LOGGER.info("Executing scheduled job %s (%s)", job_id, job_name)
 
@@ -296,7 +430,7 @@ class JobScheduler:
                 thread_record.scheduled_job_id = job.id
                 session.commit()
 
-            # Stream response (consume all chunks)
+            # Stream response (consume all chunks), checking cancel event
             start_time = time.time()
             chunk_count = 0
             for chunk in agent_instance.stream_response(
@@ -308,6 +442,10 @@ class JobScheduler:
                 jwt_token=jwt_token,
             ):
                 chunk_count += 1
+                if cancel_event and cancel_event.is_set():
+                    LOGGER.warning("Job %s: cancelled by timeout after %d chunks",
+                                   job.id, chunk_count)
+                    break
             elapsed = time.time() - start_time
             LOGGER.info("Job %s: streamed %d chunks in %.1fs", job.id, chunk_count, elapsed)
 

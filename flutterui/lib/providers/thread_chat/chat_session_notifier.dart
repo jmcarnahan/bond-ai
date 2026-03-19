@@ -157,6 +157,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState>
       logger.i("[ChatSessionNotifier]   - prompt: $prompt");
       logger.i("[ChatSessionNotifier]   - overrideRole: $overrideRole");
 
+      resetStreamIdleTimer(assistantMessageIndex);
       chatStreamSubscription = _chatService
           .streamChatResponse(
             threadId:
@@ -197,6 +198,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState>
 
   void clearChatSession() {
     logger.i("[ChatSessionNotifier] Clearing chat session.");
+    cancelStreamIdleTimer();
     chatStreamSubscription?.cancel();
     chatStreamSubscription = null;
     state = ChatSessionState();
@@ -225,6 +227,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState>
 
   @override
   void dispose() {
+    cancelStreamIdleTimer();
     chatStreamSubscription?.cancel();
     super.dispose();
   }

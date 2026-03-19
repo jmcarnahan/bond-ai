@@ -26,6 +26,18 @@ class ParsedBondMessage {
 
 class BondMessageParser {
 
+  /// Unescape XML entities back to their literal characters.
+  /// Order matters: `&amp;` must be unescaped last so that sequences like
+  /// `&amp;lt;` correctly become `&lt;` (not `<`).
+  static String unescapeXmlEntities(String text) {
+    return text
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&apos;', "'")
+        .replaceAll('&amp;', '&');
+  }
+
   static String extractStreamingBodyContent(String accumulatedXml) {
     String stringToDisplayForUi = "...";
 
@@ -37,7 +49,7 @@ class BondMessageParser {
       String strippedContent = rawBodyContent.replaceAll(RegExp(r'<[^>]*>'), '').trim();
 
       if (strippedContent.isNotEmpty) {
-        stringToDisplayForUi = strippedContent;
+        stringToDisplayForUi = unescapeXmlEntities(strippedContent);
       }
     } else {
       final bondMessageStartTagRegex = RegExp(r'<_bondmessage[^>]*>');
@@ -66,7 +78,7 @@ class BondMessageParser {
           String strippedContent = rawBodyContent.replaceAll(RegExp(r'<[^>]*>'), '').trim();
 
           if (strippedContent.isNotEmpty) {
-            stringToDisplayForUi = strippedContent;
+            stringToDisplayForUi = unescapeXmlEntities(strippedContent);
           }
         }
       }
