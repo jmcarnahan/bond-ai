@@ -1,4 +1,6 @@
 from typing import Annotated
+import asyncio
+import queue
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -13,6 +15,64 @@ from bondable.utils.logging_utils import safe_id
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 LOGGER = logging.getLogger(__name__)
+
+_KEEPALIVE_COMMENT = "<!-- keepalive -->\n"
+_KEEPALIVE_INTERVAL = 15  # seconds
+_SENTINEL = object()
+
+
+async def async_keepalive_wrapper(sync_gen, keepalive_interval=_KEEPALIVE_INTERVAL):
+    """
+    Wrap a synchronous generator in an async generator that yields
+    ``<!-- keepalive -->`` XML comments when no data arrives within
+    *keepalive_interval* seconds.  This prevents infrastructure (e.g.
+    App Runner) from killing idle HTTP connections during long Bedrock
+    operations like tool calls.
+
+    XML comments are transparent to the frontend's regex extractor
+    (strips tags) and the XML parser (ignores comments).
+    """
+    q: queue.Queue = queue.Queue()
+
+    def _drain_sync_gen():
+        try:
+            for item in sync_gen:
+                q.put(item)
+        except Exception as exc:
+            q.put(exc)
+        finally:
+            q.put(_SENTINEL)
+
+    # Run the sync generator in a background thread
+    loop = asyncio.get_running_loop()
+    fut = loop.run_in_executor(None, _drain_sync_gen)
+
+    try:
+        while True:
+            # Poll the queue with short sleeps so we can yield keepalives
+            waited = 0.0
+            poll_interval = 0.1
+            item = None
+            while True:
+                try:
+                    item = q.get_nowait()
+                    break
+                except queue.Empty:
+                    if waited >= keepalive_interval:
+                        yield _KEEPALIVE_COMMENT
+                        waited = 0.0
+                    else:
+                        await asyncio.sleep(poll_interval)
+                        waited += poll_interval
+
+            if item is _SENTINEL:
+                break
+            if isinstance(item, Exception):
+                raise item
+            yield item
+    finally:
+        # Wait for the background thread to finish
+        await fut
 
 
 @router.post("")
@@ -154,7 +214,7 @@ async def chat(
 
                 # Content guarantee: if bond messages were sent but no assistant
                 # text content was delivered, emit a fallback so the UI isn't empty
-                if has_yielded_bond_message and not has_yielded_assistant_content and not has_yielded_done:
+                if has_yielded_bond_message and not has_yielded_assistant_content:
                     LOGGER.warning(
                         f"Stream for thread {thread_id}, agent {request_body.agent_id} "
                         f"completed with bond messages but no assistant content"
@@ -256,7 +316,10 @@ async def chat(
                     except Exception:
                         LOGGER.critical("All error handlers failed for chat stream")
 
-        return StreamingResponse(stream_response_generator(), media_type="text/event-stream")
+        return StreamingResponse(
+            async_keepalive_wrapper(stream_response_generator()),
+            media_type="text/event-stream",
+        )
 
     except HTTPException:
         raise
