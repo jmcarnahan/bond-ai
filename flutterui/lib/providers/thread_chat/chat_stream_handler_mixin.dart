@@ -8,8 +8,31 @@ import '../../core/utils/logger.dart';
 mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
   abstract final StringBuffer currentAssistantXmlBuffer;
   abstract StreamSubscription<String>? chatStreamSubscription;
+  Timer? streamIdleTimer;
+  static const streamIdleTimeout = Duration(seconds: 120);
+
+  void resetStreamIdleTimer(int assistantMessageIndex) {
+    streamIdleTimer?.cancel();
+    streamIdleTimer = Timer(streamIdleTimeout, () {
+      logger.w("[ChatStreamHandler] Stream idle timeout after ${streamIdleTimeout.inSeconds}s");
+      chatStreamSubscription?.cancel();
+      handleStreamError("Connection timed out — no data received for ${streamIdleTimeout.inSeconds} seconds.", assistantMessageIndex);
+    });
+  }
+
+  void cancelStreamIdleTimer() {
+    streamIdleTimer?.cancel();
+    streamIdleTimer = null;
+  }
 
   void handleStreamData(String chunk, int assistantMessageIndex) {
+    // Reset idle timer on ANY data, including keepalives — they prove the
+    // connection is alive even when no content is flowing (e.g. tool calls).
+    resetStreamIdleTimer(assistantMessageIndex);
+
+    // Skip keepalive comments — they prevent infra timeouts but carry no content
+    if (chunk.trim() == '<!-- keepalive -->') return;
+
     currentAssistantXmlBuffer.write(chunk);
     String stringToDisplayForUi = BondMessageParser.extractStreamingBodyContent(
       currentAssistantXmlBuffer.toString(),
@@ -31,6 +54,8 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
   }
 
   void handleStreamDone(int assistantMessageIndex) {
+    if (chatStreamSubscription == null) return; // guard against double-processing
+    cancelStreamIdleTimer();
     final completeXmlString = currentAssistantXmlBuffer.toString();
     logger.i(
       "[ChatStreamHandler] Stream done. Total XML length: ${completeXmlString.length} chars",
@@ -93,6 +118,28 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
               content: systemErrors.first.content,
               isError: true,
             );
+      } else if (assistantMessageIndex < currentMessages.length) {
+        // Fallback: XML parse failed or stream was truncated.
+        // Try to recover readable content via the streaming regex extractor.
+        final recovered = BondMessageParser.extractStreamingBodyContent(completeXmlString);
+        if (recovered.isNotEmpty && recovered != "...") {
+          logger.w(
+            "[ChatStreamHandler] Recovered content from unparseable stream (${recovered.length} chars)",
+          );
+          currentMessages[assistantMessageIndex] =
+              currentMessages[assistantMessageIndex].copyWith(
+                content: recovered,
+              );
+        } else {
+          logger.w(
+            "[ChatStreamHandler] No content recovered from stream, showing error",
+          );
+          currentMessages[assistantMessageIndex] =
+              currentMessages[assistantMessageIndex].copyWith(
+                content: "No response received. Please try again.",
+                isError: true,
+              );
+        }
       }
     } else {
       for (int i = 0; i < assistantMessages.length; i++) {
@@ -136,6 +183,8 @@ mixin ChatStreamHandlerMixin on StateNotifier<ChatSessionState> {
   }
 
   void handleStreamError(dynamic error, int assistantMessageIndex) {
+    if (chatStreamSubscription == null) return; // guard against double-processing
+    cancelStreamIdleTimer();
     logger.i(
       "[ChatStreamHandlerMixin] Error in message stream: ${error.toString()}",
     );
