@@ -201,6 +201,14 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
   Widget _buildFormContent(CreateAgentFormState formState, ThemeData theme) {
     return Column(
       children: [
+        if (formState.errorMessage != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 0),
+            child: AgentErrorBanner(
+              errorMessage: formState.errorMessage,
+              onDismiss: () => ref.read(createAgentFormProvider.notifier).clearError(),
+            ),
+          ),
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
@@ -209,7 +217,6 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  AgentErrorBanner(errorMessage: formState.errorMessage),
                   if (widget.viewOnly)
                     Container(
                       margin: const EdgeInsets.only(bottom: 16),
@@ -412,6 +419,19 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
   }
 
   Widget _buildBottomSaveButton(CreateAgentFormState formState, ThemeData theme) {
+    final bool isDisabled = formState.isLoading || !_controller.isFormValid;
+
+    // Build hint message for disabled button
+    String? hintMessage;
+    if (!formState.isLoading && !_controller.isFormValid) {
+      final missing = <String>[];
+      if (_nameController.text.isEmpty) missing.add('Agent Name');
+      if (_instructionsController.text.isEmpty) missing.add('Instructions');
+      if (missing.isNotEmpty) {
+        hintMessage = 'Please fill in: ${missing.join(', ')}';
+      }
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -424,28 +444,64 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
       ),
       padding: const EdgeInsets.all(16.0),
       child: SafeArea(
-        child: SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: ElevatedButton(
-            onPressed: formState.isLoading || !_controller.isFormValid
-                ? null
-                : _onSavePressed,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: theme.colorScheme.primary,
-              foregroundColor: theme.colorScheme.onPrimary,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (hintMessage != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: theme.colorScheme.error.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: theme.colorScheme.error,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        hintMessage,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.error,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                onPressed: isDisabled ? null : _onSavePressed,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: theme.colorScheme.onPrimary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(
+                  _controller.isEditing ? 'Update Agent' : 'Create Agent',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ),
-            child: Text(
-              _controller.isEditing ? 'Update Agent' : 'Create Agent',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
+          ],
         ),
       ),
     );

@@ -15,6 +15,7 @@ class ResizableTextBox extends StatefulWidget {
   final double initialHeight;
   final double minHeight;
   final double maxHeight;
+  final bool isRequired;
 
   const ResizableTextBox({
     super.key,
@@ -29,6 +30,7 @@ class ResizableTextBox extends StatefulWidget {
     this.initialHeight = 120,
     this.minHeight = 80,
     this.maxHeight = 400,
+    this.isRequired = false,
   });
 
   @override
@@ -64,12 +66,36 @@ class _ResizableTextBoxState extends State<ResizableTextBox> {
         if (widget.helpTooltip != null) ...[
           Row(
             children: [
-              Text(
-                widget.labelText,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
-              ),
+              widget.isRequired
+                  ? Semantics(
+                      label: '${widget.labelText} (required)',
+                      excludeSemantics: true,
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: widget.labelText,
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                              ),
+                            ),
+                            TextSpan(
+                              text: ' *',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: theme.colorScheme.error,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : Text(
+                      widget.labelText,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
               SizedBox(width: AppSpacing.sm),
               Tooltip(
                 message: widget.helpTooltip!,
@@ -99,7 +125,29 @@ class _ResizableTextBoxState extends State<ResizableTextBox> {
                 validator: widget.validator,
                 onChanged: widget.onChanged,
                 decoration: InputDecoration(
-                  labelText: widget.helpTooltip != null ? null : widget.labelText,
+                  labelText: widget.helpTooltip != null || widget.isRequired ? null : widget.labelText,
+                  label: widget.helpTooltip != null
+                      ? null
+                      : (widget.isRequired
+                          ? Semantics(
+                              label: '${widget.labelText} (required)',
+                              excludeSemantics: true,
+                              child: Text.rich(
+                                TextSpan(
+                                  children: [
+                                    TextSpan(text: widget.labelText),
+                                    TextSpan(
+                                      text: ' *',
+                                      style: TextStyle(
+                                        color: theme.colorScheme.error,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                          : null),
                   border: OutlineInputBorder(
                     borderRadius: AppBorderRadius.allMd,
                     borderSide: BorderSide(
