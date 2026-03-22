@@ -35,7 +35,8 @@ class AgentCrudService {
       }
     } catch (e) {
       logger.e("[AgentCrudService] Error in getAgents: ${e.toString()}");
-      throw Exception('Failed to fetch agents: ${e.toString()}');
+      if (e is Exception) rethrow;
+      throw Exception('Failed to fetch agents: $e');
     }
   }
 
@@ -54,7 +55,8 @@ class AgentCrudService {
       }
     } catch (e) {
       logger.e("[AgentCrudService] Error in getAgentDetails for $agentId: ${e.toString()}");
-      throw Exception('Failed to fetch agent details: ${e.toString()}');
+      if (e is Exception) rethrow;
+      throw Exception('Failed to fetch agent details: $e');
     }
   }
 
@@ -80,7 +82,8 @@ class AgentCrudService {
       }
     } catch (e) {
       logger.e("[AgentCrudService] Error in createAgent for ${agentData.name}: ${e.toString()}");
-      throw Exception('Failed to create agent: ${e.toString()}');
+      if (e is Exception) rethrow;
+      throw Exception('Failed to create agent: $e');
     }
   }
 
@@ -100,7 +103,8 @@ class AgentCrudService {
       }
     } catch (e) {
       logger.e("[AgentCrudService] Error in updateAgent for $agentId: ${e.toString()}");
-      throw Exception('Failed to update agent: ${e.toString()}');
+      if (e is Exception) rethrow;
+      throw Exception('Failed to update agent: $e');
     }
   }
 
@@ -119,7 +123,8 @@ class AgentCrudService {
       }
     } catch (e) {
       logger.e("[AgentCrudService] Error in deleteAgent for $agentId: ${e.toString()}");
-      throw Exception('Failed to delete agent: ${e.toString()}');
+      if (e is Exception) rethrow;
+      throw Exception('Failed to delete agent: $e');
     }
   }
 
@@ -143,7 +148,8 @@ class AgentCrudService {
       }
     } catch (e) {
       logger.e("[AgentCrudService] Error in getAvailableGroups: ${e.toString()}");
-      throw Exception('Failed to fetch available groups: ${e.toString()}');
+      if (e is Exception) rethrow;
+      throw Exception('Failed to fetch available groups: $e');
     }
   }
 
@@ -167,7 +173,8 @@ class AgentCrudService {
       }
     } catch (e) {
       logger.e("[AgentCrudService] Error in getAvailableModels: ${e.toString()}");
-      throw Exception('Failed to fetch available models: ${e.toString()}');
+      if (e is Exception) rethrow;
+      throw Exception('Failed to fetch available models: $e');
     }
   }
 
@@ -187,7 +194,8 @@ class AgentCrudService {
       }
     } catch (e) {
       logger.e("[AgentCrudService] Error in getDefaultAgent: ${e.toString()}");
-      throw Exception('Failed to fetch default agent: ${e.toString()}');
+      if (e is Exception) rethrow;
+      throw Exception('Failed to fetch default agent: $e');
     }
   }
 }
