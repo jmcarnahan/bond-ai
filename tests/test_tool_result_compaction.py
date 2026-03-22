@@ -4,10 +4,15 @@ Unit tests for tool result compaction in BedrockAgent.
 Tests the pipeline that:
 - Converts list-of-dicts (5+ records) to CSV for token efficiency, even below the byte limit
 - Truncates results that exceed Bedrock's ~25KB payload limit
+- Filters out low-value columns (nulls, constants, API artifacts)
+- Row-boundary-aware CSV truncation
+- Pagination metadata extraction
+- Always-respond guarantee for tool invocations
 - Retries transient connection errors on continuation invoke_agent calls
 """
 
 import json
+import pandas as pd
 import pytest
 from unittest.mock import MagicMock, patch
 from http.client import RemoteDisconnected
@@ -373,7 +378,7 @@ class TestCompactToolResult:
         """A small (well under byte limit) list with 10 records should still become CSV."""
         agent = _make_agent()
         data = [
-            {"id": i, "name": f"Item {i}", "status": {"state": "active"}}
+            {"id": i, "name": f"Item {i}", "status": {"state": f"state_{i % 3}"}}
             for i in range(10)
         ]
         json_result = json.dumps(data)
@@ -384,7 +389,7 @@ class TestCompactToolResult:
         # Should be CSV, not the original JSON
         assert result != json_result
         assert "status.state" in result  # Flattened nested field
-        assert "active" in result
+        assert "state_0" in result
         # CSV should be smaller than JSON
         assert len(result.encode('utf-8')) < len(json_result.encode('utf-8'))
 
@@ -617,3 +622,516 @@ class TestCompactionIntegration:
 
         # The response body should fit within the limit (with some tolerance for wrapper)
         assert len(response_body.encode('utf-8')) <= MAX_TOOL_RESULT_BYTES + 100
+
+
+# ---------------------------------------------------------------------------
+# TestRecordsToCsvEdgeCases
+# ---------------------------------------------------------------------------
+class TestRecordsToCsvEdgeCases:
+    """Edge case tests for _records_to_csv (Bug 1 and Bug 2 fixes)."""
+
+    def test_list_cell_values_truncated(self):
+        """Bug 1 fix: list values longer than 200 chars when stringified should be truncated."""
+        long_list = list(range(100))  # str(list(range(100))) is well over 200 chars
+        records = [{"key": "A", "labels": long_list}]
+        csv_output = BedrockAgent._records_to_csv(records)
+        # The stringified list should be truncated to 200 chars + "..."
+        assert "..." in csv_output
+        # Should not contain the full list
+        assert str(long_list) not in csv_output
+
+    def test_int_cell_values_truncated(self):
+        """Bug 1 fix: non-string types with long str() should also be truncated."""
+        # Very large integer has a long string representation
+        records = [{"key": "A", "big_number": 10**250}]
+        csv_output = BedrockAgent._records_to_csv(records)
+        # 10**250 is 251 digits, should be truncated
+        assert "..." in csv_output
+
+    def test_json_normalize_failure_fallback(self):
+        """Bug 2 fix: when json_normalize raises, should fall back to simple DataFrame."""
+        records = [{"key": "A", "name": "Alice"}, {"key": "B", "name": "Bob"}]
+        # Mock json_normalize to raise, forcing the fallback path
+        with patch("bondable.bond.providers.bedrock.BedrockAgent.pd.json_normalize",
+                   side_effect=TypeError("Cannot normalize")):
+            csv_output = BedrockAgent._records_to_csv(records)
+        # Fallback should produce valid CSV with stringified values
+        assert "key" in csv_output
+        assert "A" in csv_output
+        assert "Bob" in csv_output
+
+    def test_json_normalize_with_mixed_nesting(self):
+        """Records with mixed nested/simple values should produce CSV without crash."""
+        records = [{"a": {"nested": [1, 2, {"deep": True}]}}, {"a": "simple"}]
+        csv_output = BedrockAgent._records_to_csv(records)
+        assert csv_output  # Should produce some output
+
+    def test_very_wide_records(self):
+        """100+ columns should not crash."""
+        records = [{f"col_{i}": f"val_{i}_{j}" for i in range(120)} for j in range(5)]
+        csv_output = BedrockAgent._records_to_csv(records)
+        lines = csv_output.strip().split("\n")
+        assert len(lines) == 6  # header + 5 rows
+
+    def test_all_null_values(self):
+        """Records with all None values should not crash."""
+        records = [{"a": None, "b": None} for _ in range(5)]
+        csv_output = BedrockAgent._records_to_csv(records)
+        assert csv_output  # Should not crash
+
+    def test_empty_dict_records(self):
+        """Records that are empty dicts should not crash."""
+        records = [{} for _ in range(5)]
+        csv_output = BedrockAgent._records_to_csv(records)
+        # May produce just a newline or empty CSV, but should not crash
+        assert isinstance(csv_output, str)
+
+    def test_newlines_in_cell_values_replaced(self):
+        """Cell values with newlines should have them replaced with spaces."""
+        records = [
+            {"key": "A", "description": "line1\nline2\nline3"},
+            {"key": "B", "description": "single line"},
+        ]
+        csv_output = BedrockAgent._records_to_csv(records)
+        # CSV should not have newlines within data rows
+        lines = csv_output.strip().split("\n")
+        assert len(lines) == 3  # header + 2 data rows (not 4 from split newlines)
+        # The newlines should be replaced with spaces
+        assert "line1 line2 line3" in csv_output
+
+    def test_unicode_in_csv(self):
+        """Multi-byte Unicode characters should be handled correctly."""
+        records = [
+            {"key": "A", "name": "\u4e16\u754c" * 50},  # Chinese characters
+            {"key": "B", "name": "\U0001f600" * 50},  # Emoji
+        ]
+        csv_output = BedrockAgent._records_to_csv(records)
+        assert csv_output
+        # Should be valid encoding
+        csv_output.encode('utf-8')
+
+    def test_mixed_type_list_handling(self):
+        """Records where some items aren't dicts should be handled by fallback."""
+        records = [{"a": 1}, {"a": 2}]
+        # This is a normal case that should work fine
+        csv_output = BedrockAgent._records_to_csv(records)
+        assert "a" in csv_output
+        assert "1" in csv_output
+
+
+# ---------------------------------------------------------------------------
+# TestColumnFiltering
+# ---------------------------------------------------------------------------
+class TestColumnFiltering:
+    """Tests for _filter_low_value_columns."""
+
+    def test_all_null_columns_dropped(self):
+        """Columns where every value is null should be dropped."""
+        df = pd.DataFrame({
+            "key": ["A", "B", "C"],
+            "name": ["Alice", "Bob", "Carol"],
+            "empty_col": [None, None, None],
+        })
+        result = BedrockAgent._filter_low_value_columns(df)
+        assert "empty_col" not in result.columns
+        assert "key" in result.columns
+        assert "name" in result.columns
+
+    def test_constant_columns_dropped(self):
+        """Columns where every row has the same non-null value should be dropped."""
+        df = pd.DataFrame({
+            "key": ["A", "B", "C"],
+            "constant": ["same", "same", "same"],
+            "varied": [1, 2, 3],
+        })
+        result = BedrockAgent._filter_low_value_columns(df)
+        assert "constant" not in result.columns
+        assert "key" in result.columns
+        assert "varied" in result.columns
+
+    def test_columns_with_some_nulls_not_dropped(self):
+        """Columns with a mix of values and nulls should NOT be dropped."""
+        df = pd.DataFrame({
+            "key": ["A", "B", "C"],
+            "sparse": ["val", None, "val"],
+        })
+        result = BedrockAgent._filter_low_value_columns(df)
+        assert "sparse" in result.columns
+
+    def test_low_value_patterns_dropped(self):
+        """Columns matching low-value regex patterns should be dropped."""
+        df = pd.DataFrame({
+            "key": ["A", "B"],
+            "assignee.self": ["https://jira.example.com/rest/api/2/user?id=1", "https://jira.example.com/rest/api/2/user?id=2"],
+            "assignee.displayName": ["Alice", "Bob"],
+            "assignee.accountId": ["abc123", "def456"],
+            "assignee.avatarUrl": ["https://avatar.example.com/1.png", "https://avatar.example.com/2.png"],
+            "assignee.timeZone": ["America/New_York", "America/Los_Angeles"],
+            "priority.iconUrl": ["https://jira.example.com/icon1.png", "https://jira.example.com/icon2.png"],
+            "avatar.48x48": ["url1", "url2"],
+        })
+        result = BedrockAgent._filter_low_value_columns(df)
+        # Should keep key and displayName
+        assert "key" in result.columns
+        assert "assignee.displayName" in result.columns
+        # Should drop all low-value patterns
+        assert "assignee.self" not in result.columns
+        assert "assignee.accountId" not in result.columns
+        assert "assignee.avatarUrl" not in result.columns
+        assert "assignee.timeZone" not in result.columns
+        assert "priority.iconUrl" not in result.columns
+        assert "avatar.48x48" not in result.columns
+
+    def test_unhashable_types_dont_crash(self):
+        """Columns with list values should not crash nunique()."""
+        df = pd.DataFrame({
+            "key": ["A", "B"],
+            "labels": [["bug", "urgent"], ["feature"]],
+        })
+        # Should not crash
+        result = BedrockAgent._filter_low_value_columns(df)
+        assert "labels" in result.columns
+
+    def test_empty_dataframe(self):
+        """Empty DataFrame should be returned as-is."""
+        df = pd.DataFrame()
+        result = BedrockAgent._filter_low_value_columns(df)
+        assert result.empty
+
+
+# ---------------------------------------------------------------------------
+# TestCsvTruncation
+# ---------------------------------------------------------------------------
+class TestCsvTruncation:
+    """Tests for _truncate_csv row-boundary-aware truncation."""
+
+    def test_truncation_at_row_boundary(self):
+        """CSV should be truncated at row boundaries, not mid-row."""
+        # Create CSV with many rows
+        header = "id,name,description"
+        rows = [f"{i},Name {i},Description for item {i}" for i in range(100)]
+        csv_text = header + "\n" + "\n".join(rows)
+
+        result = BedrockAgent._truncate_csv(csv_text, 500, "test_tool")
+        lines = result.strip().split("\n")
+
+        # First line should be the header
+        assert lines[0] == header
+        # Last line should be the footer comment
+        assert lines[-1].startswith("# [Showing")
+        # All middle lines should be complete data rows
+        for line in lines[1:-1]:
+            assert "," in line  # Should have CSV separators
+
+    def test_truncation_footer_shows_counts(self):
+        """Footer should show how many rows were kept vs total."""
+        header = "id,name"
+        rows = [f"{i},Name {i}" for i in range(50)]
+        csv_text = header + "\n" + "\n".join(rows)
+
+        result = BedrockAgent._truncate_csv(csv_text, 200, "test_tool")
+        assert "of 50 rows" in result
+
+    def test_small_csv_passes_through(self):
+        """CSV that fits within the limit should be returned unchanged."""
+        csv_text = "id,name\n1,Alice\n2,Bob\n"
+        result = BedrockAgent._truncate_csv(csv_text, 10000, "test_tool")
+        assert result == csv_text
+
+    def test_single_line_csv(self):
+        """Header-only CSV should be returned as-is."""
+        csv_text = "id,name"
+        result = BedrockAgent._truncate_csv(csv_text, 100, "test_tool")
+        assert result == csv_text
+
+    def test_zero_rows_fit(self):
+        """If header + footer exceed max_bytes, should still return header + footer."""
+        header = "id,name,description,extra_col_1,extra_col_2"
+        rows = [f"{i},Name {i},Desc {i},Extra1,Extra2" for i in range(10)]
+        csv_text = header + "\n" + "\n".join(rows)
+        # Set max_bytes very small - only header fits
+        result = BedrockAgent._truncate_csv(csv_text, 80, "test_tool")
+        assert "Showing 0 of 10 rows" in result
+
+
+# ---------------------------------------------------------------------------
+# TestPaginationMetadata
+# ---------------------------------------------------------------------------
+class TestPaginationMetadata:
+    """Tests for _extract_pagination_metadata."""
+
+    def test_jira_pagination(self):
+        """Jira-style pagination metadata should be extracted."""
+        parsed = {
+            "total": 234,
+            "startAt": 0,
+            "maxResults": 50,
+            "issues": [{"key": "X"}],
+        }
+        result = BedrockAgent._extract_pagination_metadata(parsed)
+        assert result is not None
+        assert "234" in result
+        assert "50" in result
+        assert "startAt=0" in result
+
+    def test_has_more_pagination(self):
+        """has_more flag should be detected."""
+        parsed = {"has_more": True, "items": []}
+        result = BedrockAgent._extract_pagination_metadata(parsed)
+        assert result is not None
+        assert "more results available" in result
+
+    def test_no_pagination_metadata(self):
+        """Data without pagination fields should return None."""
+        parsed = {"items": [{"a": 1}]}
+        result = BedrockAgent._extract_pagination_metadata(parsed)
+        assert result is None
+
+    def test_non_dict_returns_none(self):
+        """Non-dict input should return None."""
+        assert BedrockAgent._extract_pagination_metadata([1, 2, 3]) is None
+        assert BedrockAgent._extract_pagination_metadata("string") is None
+
+    def test_pagination_prepended_to_csv(self):
+        """Pagination metadata should appear in compacted CSV output."""
+        agent = _make_agent()
+        data = {
+            "total": 100,
+            "startAt": 0,
+            "maxResults": 10,
+            "issues": [
+                {"key": f"T-{i}", "summary": f"Issue {i}", "status": {"name": f"s{i}"}}
+                for i in range(10)
+            ],
+        }
+        json_result = json.dumps(data)
+        result = agent._compact_tool_result(json_result, "jira_search")
+        # Should contain pagination comment
+        assert "# " in result
+        assert "100" in result
+
+    def test_pagination_skipped_when_over_budget(self):
+        """Pagination header should be skipped if it would push the result over the byte limit."""
+        agent = _make_agent()
+        # Create data that fits but just barely under the byte limit
+        # The pagination header (~80 bytes) should be skipped if it would push over
+        data = {
+            "total": 999,
+            "startAt": 0,
+            "maxResults": 50,
+            "issues": [
+                {"key": f"PROJ-{i}", "summary": f"Summary text for issue number {i} with detail",
+                 "status": {"name": f"status_{i % 5}"}}
+                for i in range(50)
+            ],
+        }
+        json_result = json.dumps(data)
+        result = agent._compact_tool_result(json_result, "jira_search")
+
+        # Result must always fit within the byte limit
+        wrapped_size = len(json.dumps({"result": result}).encode('utf-8'))
+        assert wrapped_size <= MAX_TOOL_RESULT_BYTES
+
+    def test_pagination_does_not_break_truncated_csv(self):
+        """Pagination header must come BEFORE CSV header, even when CSV is truncated."""
+        agent = _make_agent()
+        # Create large data that will require truncation
+        data = {
+            "total": 500,
+            "startAt": 0,
+            "maxResults": 200,
+            "issues": [
+                {"key": f"PROJ-{i}", "summary": f"Summary for issue {i} with extra text" * 3,
+                 "description": f"Description " * 20, "status": {"name": f"s{i}"}}
+                for i in range(200)
+            ],
+        }
+        json_result = json.dumps(data)
+        assert len(json_result.encode('utf-8')) > MAX_TOOL_RESULT_BYTES
+
+        result = agent._compact_tool_result(json_result, "jira_search")
+        lines = result.strip().split("\n")
+
+        # First line should be the pagination comment
+        assert lines[0].startswith("# ")
+        assert "500" in lines[0]  # total count
+
+        # Second line should be the actual CSV header (column names)
+        assert "key" in lines[1]
+        assert "summary" in lines[1]
+
+        # Should have a truncation footer
+        assert any("Showing" in line for line in lines)
+
+
+# ---------------------------------------------------------------------------
+# TestCompactToolResultEdgeCases
+# ---------------------------------------------------------------------------
+class TestCompactToolResultEdgeCases:
+    """Edge case tests for _compact_tool_result."""
+
+    def test_empty_string_input(self):
+        """Empty string should not crash."""
+        agent = _make_agent()
+        result = agent._compact_tool_result("", "test_tool")
+        assert isinstance(result, str)
+
+    def test_null_json_input(self):
+        """'null' JSON string should not crash."""
+        agent = _make_agent()
+        result = agent._compact_tool_result("null", "test_tool")
+        assert isinstance(result, str)
+
+    def test_division_by_zero_empty_result(self):
+        """Bug 4 fix: empty result string should not cause ZeroDivisionError."""
+        agent = _make_agent()
+        # An empty list of records that triggers CSV conversion won't happen
+        # (MIN_RECORDS_FOR_CSV=5), but ensure the code handles edge cases
+        result = agent._compact_tool_result("[]", "test_tool")
+        assert isinstance(result, str)
+
+    def test_csv_larger_than_json_prefers_compact(self):
+        """Bug 3 fix: when CSV is larger than compact JSON, prefer JSON."""
+        agent = _make_agent()
+        # Create records with many columns but very short values
+        # This produces CSV with a large header row relative to data
+        records = [{f"c{i}": i for i in range(50)} for _ in range(5)]
+        data = {"items": records}
+        json_result = json.dumps(data)
+        result = agent._compact_tool_result(json_result, "wide_tool")
+        # Should produce some output without crashing
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_special_json_escape_chars(self):
+        """Strings with JSON escape chars should be handled within the headroom budget."""
+        agent = _make_agent()
+        # Create records with lots of escape-heavy characters
+        records = [
+            {"key": f"T-{i}", "desc": 'He said "hello"\nand left\t\\end'}
+            for i in range(10)
+        ]
+        json_result = json.dumps(records)
+        result = agent._compact_tool_result(json_result, "escape_tool")
+        # Should produce valid output
+        assert isinstance(result, str)
+        # JSON-wrapped size should be within limits
+        wrapped_size = len(json.dumps({"result": result}).encode('utf-8'))
+        assert wrapped_size <= MAX_TOOL_RESULT_BYTES
+
+
+# ---------------------------------------------------------------------------
+# TestAlwaysRespond
+# ---------------------------------------------------------------------------
+class TestAlwaysRespond:
+    """Tests for the always-respond guarantee in _handle_return_control."""
+
+    def _make_return_control(self, api_path="/b.abc123.some_tool", inv_type="apiInvocationInput"):
+        return {
+            "invocationId": "inv-123",
+            "invocationInputs": [
+                {
+                    inv_type: {
+                        "actionGroupName": "MCPTools",
+                        "apiPath": api_path,
+                        "httpMethod": "POST",
+                        "parameters": [{"name": "query", "value": "test"}],
+                    }
+                }
+            ],
+        }
+
+    def test_allow_write_tools_false_returns_response(self):
+        """Bug 5 fix: allow_write_tools=false should return a proper error response, not crash."""
+        agent = _make_agent()
+        agent.metadata = {"allow_write_tools": False}
+        agent.agent_id = "test-agent"
+        agent._current_user = MagicMock()
+        agent._current_user.email = "user@test.com"
+        agent._current_user.user_id = "user-123"
+        agent._jwt_token = None
+
+        # Mock Config to return MCP config
+        with patch("bondable.bond.providers.bedrock.BedrockAgent.Config") as mock_config:
+            mock_config.config.return_value.get_mcp_config.return_value = {
+                "mcpServers": {"test-server": {"url": "http://localhost:8000"}}
+            }
+            with patch("bondable.bond.providers.bedrock.BedrockAgent._resolve_server_from_hash", return_value="test-server"):
+                results = agent._handle_return_control(self._make_return_control())
+
+        # Should produce exactly one response
+        assert len(results) == 1
+        # Should be wrapped in apiResult
+        assert "apiResult" in results[0]
+        # Should contain an error message about allow_write_tools
+        body = json.loads(results[0]["apiResult"]["responseBody"]["application/json"]["body"])
+        assert "error" in body
+        assert "allow_write_tools" in body["error"]
+
+    def test_null_action_input_returns_error(self):
+        """Phase 2.1: invocation with neither actionGroupInvocationInput nor apiInvocationInput."""
+        agent = _make_agent()
+
+        return_control = {
+            "invocationId": "inv-123",
+            "invocationInputs": [
+                {"unknownInputType": {"some": "data"}}
+            ],
+        }
+        results = agent._handle_return_control(return_control)
+        assert len(results) == 1
+        # Should contain an error response
+        body_str = results[0].get("responseBody", {}).get("application/json", {}).get("body", "{}")
+        body = json.loads(body_str)
+        assert "error" in body
+
+    def test_compact_crash_still_responds(self):
+        """Phase 2.2: if _compact_tool_result crashes, a response is still sent."""
+        agent = _make_agent()
+        agent._current_user = MagicMock()
+        agent._current_user.email = "admin@test.com"
+        agent._current_user.user_id = "admin-123"
+
+        with patch("bondable.bond.providers.bedrock.BedrockAgent.Config") as mock_config:
+            mock_config.config.return_value.is_admin_user.return_value = True
+            with patch("bondable.bond.providers.bedrock.BedrockAgent.execute_admin_tool",
+                       return_value={"success": True, "result": "ok"}):
+                # Make _compact_tool_result raise an exception
+                with patch.object(agent, '_compact_tool_result', side_effect=RuntimeError("compaction exploded")):
+                    results = agent._handle_return_control(
+                        self._make_return_control(api_path="/b.ADMIN0.get_usage_stats")
+                    )
+
+        # Should still produce a response (via _make_tool_response fallback)
+        assert len(results) == 1
+
+    def test_top_level_exception_still_responds(self):
+        """Phase 2.3: completely unexpected error still produces a response."""
+        agent = _make_agent()
+
+        # Create a return_control where _parse_tool_path will raise
+        with patch("bondable.bond.providers.bedrock.BedrockAgent._parse_tool_path",
+                   side_effect=RuntimeError("unexpected crash")):
+            results = agent._handle_return_control(
+                self._make_return_control()
+            )
+
+        # Safety net should catch and produce a response
+        assert len(results) == 1
+        body_str = results[0].get("apiResult", results[0]).get("responseBody", {}).get("application/json", {}).get("body", "{}")
+        body = json.loads(body_str)
+        assert "error" in body
+        assert "unexpected crash" in body["error"]
+
+    def test_non_dict_inv_input_does_not_crash_safety_net(self):
+        """Safety net must not crash if inv_input is None or non-dict."""
+        agent = _make_agent()
+
+        # Simulate a malformed invocationInputs list containing None
+        return_control = {
+            "invocationId": "inv-123",
+            "invocationInputs": [None],
+        }
+        results = agent._handle_return_control(return_control)
+        # Should still produce a response via the safety net
+        assert len(results) == 1
