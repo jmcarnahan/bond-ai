@@ -27,6 +27,12 @@ variable "existing_vpc_id" {
   type        = string
 }
 
+variable "app_runner_subnet_ids" {
+  description = "Explicit subnet IDs for App Runner VPC connector. Must be private subnets with NAT gateway routes for internet access. If empty, auto-detects (may pick wrong subnets in VPCs with infrastructure subnets)."
+  type        = list(string)
+  default     = []
+}
+
 # -----------------------------------------------------------------------------
 # GitHub MCP-specific variables
 # -----------------------------------------------------------------------------
