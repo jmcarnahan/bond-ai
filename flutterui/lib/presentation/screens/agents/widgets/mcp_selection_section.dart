@@ -64,11 +64,25 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
       final grouped = results[0] as McpToolsGroupedResponse;
       final resources = results[1] as List<McpResourceModel>;
 
+      // Auto-upgrade bare tool names to qualified format
+      if (widget.selectedToolNames.isNotEmpty) {
+        final upgraded = _upgradeToolNames(widget.selectedToolNames, grouped);
+        if (upgraded.length != widget.selectedToolNames.length ||
+            !upgraded.containsAll(widget.selectedToolNames)) {
+          // Schedule the callback after build to avoid setState during build
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              widget.onToolsChanged(upgraded);
+            }
+          });
+        }
+      }
+
       // Initialize expanded state: expand servers that contain pre-selected tools
       final expandedServers = <String, bool>{};
       for (final server in grouped.servers) {
         final hasSelectedTools = server.tools.any(
-          (tool) => widget.selectedToolNames.contains(tool.name),
+          (tool) => _isToolSelected(server.serverName, tool.name),
         );
         expandedServers[server.serverName] = hasSelectedTools;
       }
@@ -98,13 +112,61 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
     }
   }
 
-  void _onToolSelectionChanged(String toolName, bool selected) {
+  /// Check if a tool is selected, supporting both qualified (server:tool)
+  /// and bare (tool) name formats for backward compatibility.
+  bool _isToolSelected(String serverName, String toolName) {
+    // Check qualified name first (new format)
+    if (widget.selectedToolNames.contains('$serverName:$toolName')) return true;
+    // Backward compat: check bare name (legacy agents saved before qualification)
+    if (widget.selectedToolNames.contains(toolName)) return true;
+    return false;
+  }
+
+  /// Upgrade bare tool names to qualified "server_name:tool_name" format.
+  /// Returns the upgraded set. Bare names map to the first matching server
+  /// (preserving backward-compatible behavior).
+  Set<String> _upgradeToolNames(
+    Set<String> current,
+    McpToolsGroupedResponse grouped,
+  ) {
+    final upgraded = <String>{};
+    for (final name in current) {
+      if (name.contains(':')) {
+        upgraded.add(name); // Already qualified
+      } else {
+        // Bare name — find first server with this tool
+        bool found = false;
+        for (final server in grouped.servers) {
+          // Match by exact name or displayName (which strips b.{hash}. prefix)
+          final matchingTool = server.tools.cast<McpToolModel?>().firstWhere(
+            (t) => t!.name == name || t.displayName == name,
+            orElse: () => null,
+          );
+          if (matchingTool != null) {
+            // Use matchingTool.name (not the input bare name) to preserve
+            // the actual tool name format from the MCP server
+            upgraded.add('${server.serverName}:${matchingTool.name}');
+            found = true;
+            break;
+          }
+        }
+        if (!found) upgraded.add(name); // Keep as-is if not found
+      }
+    }
+    return upgraded;
+  }
+
+  void _onToolSelectionChanged(
+      String serverName, String toolName, bool selected) {
     if (!widget.enabled) return;
 
+    final qualifiedName = '$serverName:$toolName';
     final updatedSelection = Set<String>.from(widget.selectedToolNames);
     if (selected) {
-      updatedSelection.add(toolName);
+      updatedSelection.add(qualifiedName);
     } else {
+      // Remove both qualified and bare forms to avoid duplicates
+      updatedSelection.remove(qualifiedName);
       updatedSelection.remove(toolName);
     }
     widget.onToolsChanged(updatedSelection);
@@ -132,9 +194,12 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
 
     final updatedSelection = Set<String>.from(widget.selectedToolNames);
     for (final tool in server.tools) {
+      final qualifiedName = '$serverName:${tool.name}';
       if (select) {
-        updatedSelection.add(tool.name);
+        updatedSelection.add(qualifiedName);
       } else {
+        // Remove both qualified and bare forms
+        updatedSelection.remove(qualifiedName);
         updatedSelection.remove(tool.name);
       }
     }
@@ -267,7 +332,7 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
 
     // Count selected tools in this server
     final selectedCount = server.tools.where(
-      (tool) => widget.selectedToolNames.contains(tool.name),
+      (tool) => _isToolSelected(server.serverName, tool.name),
     ).length;
 
     return Card(
@@ -407,9 +472,9 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
                       type: BondAITileType.checkbox,
                       title: tool.displayName, // Use displayName for UI (strips b.{hash}. prefix)
                       subtitle: tool.description,
-                      value: widget.selectedToolNames.contains(tool.name), // Full name for state
+                      value: _isToolSelected(server.serverName, tool.name),
                       enabled: widget.enabled && status.valid,
-                      onChanged: (value) => _onToolSelectionChanged(tool.name, value ?? false), // Full name for API
+                      onChanged: (value) => _onToolSelectionChanged(server.serverName, tool.name, value ?? false),
                     ),
                   ),
                 ],

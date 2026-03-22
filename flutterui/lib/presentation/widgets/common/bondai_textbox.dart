@@ -22,6 +22,7 @@ class BondAITextBox extends StatelessWidget {
   final TextInputAction? textInputAction;
   final void Function(String)? onFieldSubmitted;
   final double? fontSize;
+  final bool isRequired;
 
   const BondAITextBox({
     super.key,
@@ -44,6 +45,7 @@ class BondAITextBox extends StatelessWidget {
     this.textInputAction,
     this.onFieldSubmitted,
     this.fontSize,
+    this.isRequired = false,
   });
 
   @override
@@ -56,12 +58,36 @@ class BondAITextBox extends StatelessWidget {
         if (helpTooltip != null) ...[
           Row(
             children: [
-              Text(
-                labelText,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
-              ),
+              isRequired
+                  ? Semantics(
+                      label: '$labelText (required)',
+                      excludeSemantics: true,
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: labelText,
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                              ),
+                            ),
+                            TextSpan(
+                              text: ' *',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: theme.colorScheme.error,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : Text(
+                      labelText,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
               SizedBox(width: AppSpacing.sm),
               InfoIcon(
                 tooltip: helpTooltip!,
@@ -86,7 +112,29 @@ class BondAITextBox extends StatelessWidget {
           textInputAction: textInputAction,
           onFieldSubmitted: onFieldSubmitted,
           decoration: InputDecoration(
-            labelText: helpTooltip != null ? null : labelText,
+            labelText: helpTooltip != null || isRequired ? null : labelText,
+            label: helpTooltip != null
+                ? null
+                : (isRequired
+                    ? Semantics(
+                        label: '$labelText (required)',
+                        excludeSemantics: true,
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(text: labelText),
+                              TextSpan(
+                                text: ' *',
+                                style: TextStyle(
+                                  color: theme.colorScheme.error,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : null),
             hintText: hintText,
             suffixIcon: suffixIcon,
             prefixIcon: prefixIcon,

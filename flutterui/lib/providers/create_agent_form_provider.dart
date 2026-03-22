@@ -5,6 +5,7 @@ import 'package:flutterui/data/services/agent_service.dart';
 import 'package:flutterui/data/services/file_service.dart';
 import 'package:flutterui/providers/services/service_providers.dart';
 import 'package:flutterui/providers/models_provider.dart';
+import '../core/utils/error_message_utils.dart';
 import '../core/utils/logger.dart';
 
 class UploadedFileInfo {
@@ -318,7 +319,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
     } catch (e) {
       logger.i('Error uploading file: ${e.toString()}');
       state = state.copyWith(
-        errorMessage: 'Failed to upload file: ${e.toString()}',
+        errorMessage: humanizeErrorMessage('Failed to upload file: ${e.toString()}'),
       );
     } finally {
       state = state.copyWith(isUploadingFile: false);
@@ -461,7 +462,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
-        errorMessage: "Failed to load agent details: ${e.toString()}",
+        errorMessage: humanizeErrorMessage("Failed to load agent details: ${e.toString()}"),
       );
       logger.e("[CreateAgentFormNotifier] Error loading agent for editing: $e");
     }
@@ -601,9 +602,13 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       return true;
     } catch (e) {
       logger.i('Error saving agent: ${e.toString()}');
-      state = state.copyWith(isLoading: false, errorMessage: e.toString());
+      state = state.copyWith(isLoading: false, errorMessage: humanizeErrorMessage(e.toString()));
       return false;
     }
+  }
+
+  void clearError() {
+    state = state.copyWith(clearErrorMessage: true);
   }
 
   Future<bool> deleteAgent(String agentId) async {
@@ -617,7 +622,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
       return true;
     } catch (e) {
       logger.e('Error deleting agent: ${e.toString()}');
-      state = state.copyWith(isLoading: false, errorMessage: e.toString());
+      state = state.copyWith(isLoading: false, errorMessage: humanizeErrorMessage(e.toString()));
       return false;
     }
   }

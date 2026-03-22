@@ -179,6 +179,51 @@ def _resolve_server_from_hash(server_hash: str, mcp_config: Dict[str, Any]) -> O
     return None
 
 
+# =============================================================================
+# Qualified Tool Name Utilities
+# =============================================================================
+# Storage format: "server_name:tool_name" (e.g., "microsoft:get_user_profile")
+# This threads server affiliation through the save/load/UI cycle so that
+# tools with the same name on different servers are correctly distinguished.
+# Bare names (no colon) are supported for backward compatibility with
+# agents created before this format was introduced.
+# =============================================================================
+
+def parse_qualified_tool_name(qualified: str) -> Tuple[Optional[str], str]:
+    """
+    Parse a potentially qualified tool name.
+
+    Args:
+        qualified: Tool name, optionally prefixed with "server_name:"
+
+    Returns:
+        Tuple of (server_name, tool_name). server_name is None for bare names.
+
+    Examples:
+        "microsoft:get_user_profile" -> ("microsoft", "get_user_profile")
+        "get_user_profile"           -> (None, "get_user_profile")
+        "server:tool:with:colons"    -> ("server", "tool:with:colons")
+    """
+    if ':' in qualified:
+        server, tool = qualified.split(':', 1)
+        return (server, tool)
+    return (None, qualified)
+
+
+def qualify_tool_name(server_name: str, tool_name: str) -> str:
+    """
+    Create a qualified tool name with server affiliation.
+
+    Args:
+        server_name: MCP server config key
+        tool_name: Original MCP tool name
+
+    Returns:
+        Qualified name in "server_name:tool_name" format
+    """
+    return f"{server_name}:{tool_name}"
+
+
 def _get_bedrock_agent_client() -> Any:
     from bondable.bond.providers.bedrock.BedrockProvider import BedrockProvider
     bond_provider: BedrockProvider = Config.config().get_provider()
@@ -202,6 +247,9 @@ def _get_bedrock_agent_client() -> Any:
 MAX_APIS_PER_AGENT = 11
 MAX_PARAMS_PER_FUNCTION = 5
 MAX_DESCRIPTION_LENGTH = 200
+# Timeout for individual MCP tool calls (seconds). Prevents indefinite hangs
+# when an MCP server is unresponsive.
+MCP_TOOL_TIMEOUT = 120
 
 # Unsupported JSON Schema keywords that must be removed for Bedrock
 _UNSUPPORTED_SCHEMA_KEYWORDS = {
@@ -782,13 +830,57 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
         current_user = UserContext(user_id)
 
     tool_definitions = []
-    remaining_tools = set(tool_names)  # Track which tools we still need to find
+
+    # =================================================================
+    # Parse qualified tool names (server_name:tool_name format)
+    # =================================================================
+    # Qualified names route to a specific server; bare names use first-match
+    # for backward compatibility with agents created before qualification.
+    server_targeted: Dict[str, set] = {}  # {server_name: {tool_name, ...}}
+    unqualified: set = set()              # bare tool names (backward compat)
+    for qualified in tool_names:
+        server, tool = parse_qualified_tool_name(qualified)
+        if server:
+            server_targeted.setdefault(server, set()).add(tool)
+        else:
+            unqualified.add(tool)
+
+    # Deduplicate: if a tool is explicitly targeted to a server via qualified name,
+    # remove its bare form from unqualified to prevent duplicate definitions
+    all_targeted_tools = set()
+    for tools in server_targeted.values():
+        all_targeted_tools.update(tools)
+    duplicated = unqualified & all_targeted_tools
+    if duplicated:
+        LOGGER.debug(f"[MCP Tool Defs] Removing bare names that have qualified equivalents: {duplicated}")
+        unqualified -= duplicated
+
+    LOGGER.debug(f"[MCP Tool Defs] Qualified tools by server: {dict(server_targeted)}, unqualified: {unqualified}")
+
+    # Helper to track found tools across both sets
+    def _mark_found(server_name_found: str, tool_name_found: str):
+        """Remove a found tool from the appropriate tracking set(s).
+        Always removes from unqualified too, to prevent duplicates when
+        the same tool name exists in both server_targeted and unqualified."""
+        targeted_set = server_targeted.get(server_name_found)
+        if targeted_set and tool_name_found in targeted_set:
+            targeted_set.discard(tool_name_found)
+            if not targeted_set:
+                del server_targeted[server_name_found]
+        # Always remove from unqualified to prevent duplicate tool definitions
+        unqualified.discard(tool_name_found)
+
+    def _has_remaining():
+        """Check if any tools still need to be found."""
+        return bool(server_targeted) or bool(unqualified)
 
     # =================================================================
     # First, check for admin tools in the requested list
     # =================================================================
     # Admin tools are handled internally and don't need external MCP calls
-    admin_tool_names_requested = remaining_tools & ADMIN_TOOL_NAMES
+    admin_targeted = server_targeted.get(ADMIN_SERVER_NAME, set())
+    admin_unqualified = unqualified & ADMIN_TOOL_NAMES
+    admin_tool_names_requested = admin_targeted | admin_unqualified
     if admin_tool_names_requested:
         LOGGER.debug(f"[MCP Tool Defs] Found {len(admin_tool_names_requested)} admin tools in request: {admin_tool_names_requested}")
         admin_tool_defs = get_admin_tool_definitions()
@@ -812,14 +904,16 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
                     'server_name': ADMIN_SERVER_NAME  # Mark as admin tool
                 }
                 tool_definitions.append(tool_def)
-                remaining_tools.remove(tool_name)
+                _mark_found(ADMIN_SERVER_NAME, tool_name)
                 LOGGER.debug(f"[MCP Tool Defs] Added admin tool '{tool_name}'")
 
     # =================================================================
     # Next, check for common tools in the requested list
     # =================================================================
     # Common tools are available to all users and handled internally
-    common_tool_names_requested = remaining_tools & COMMON_TOOL_NAMES
+    common_targeted = server_targeted.get(COMMON_SERVER_NAME, set())
+    common_unqualified = unqualified & COMMON_TOOL_NAMES
+    common_tool_names_requested = common_targeted | common_unqualified
     if common_tool_names_requested:
         LOGGER.debug(f"[MCP Tool Defs] Found {len(common_tool_names_requested)} common tools in request: {common_tool_names_requested}")
         common_tool_defs = get_common_tool_definitions()
@@ -843,14 +937,14 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
                     'server_name': COMMON_SERVER_NAME  # Mark as common tool
                 }
                 tool_definitions.append(tool_def)
-                remaining_tools.remove(tool_name)
+                _mark_found(COMMON_SERVER_NAME, tool_name)
                 LOGGER.debug(f"[MCP Tool Defs] Added common tool '{tool_name}'")
 
     # =================================================================
     # Search each external MCP server for the remaining tools
     # =================================================================
     for server_name, server_config in servers.items():
-        if not remaining_tools:
+        if not _has_remaining():
             break  # Found all tools
 
         server_url = server_config.get('url')
@@ -885,11 +979,18 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
                 # Fetch all available tools from this server
                 all_tools = await client.list_tools()
                 tool_dict = {tool.name: tool for tool in all_tools}
-                server_tool_names = list(tool_dict.keys())
                 LOGGER.debug("[MCP Tool Defs] Server '%s': %d tools available", safe_id(server_name), len(all_tools))
 
-                # Check which requested tools are on this server
-                for tool_name in list(remaining_tools):
+                # Determine which tools to look for on this server:
+                # 1. Tools explicitly targeted to this server (qualified names)
+                # 2. Unqualified tools (backward compat: first-match wins)
+                tools_to_find = set()
+                targeted_for_server = server_targeted.get(server_name, set())
+                if targeted_for_server:
+                    tools_to_find.update(targeted_for_server)
+                tools_to_find.update(unqualified)
+
+                for tool_name in list(tools_to_find):
                     if tool_name in tool_dict:
                         tool = tool_dict[tool_name]
                         tool_def = {
@@ -925,15 +1026,21 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
                             tool_def['required'] = []
 
                         tool_definitions.append(tool_def)
-                        remaining_tools.remove(tool_name)
+                        _mark_found(server_name, tool_name)
                         LOGGER.debug("[MCP Tool Defs] Found tool '%s' on server '%s'", safe_id(tool_name), safe_id(server_name))
 
         except Exception as e:
             LOGGER.error("[MCP Tool Defs] Error fetching tools from server '%s': %s", safe_id(server_name), e)
             continue
 
-    if remaining_tools:
-        LOGGER.warning(f"[MCP Tool Defs] Tools not found on any server: {remaining_tools}")
+    # Report any tools not found
+    remaining_report = []
+    for srv, tools in server_targeted.items():
+        for t in tools:
+            remaining_report.append(f"{srv}:{t}")
+    remaining_report.extend(unqualified)
+    if remaining_report:
+        LOGGER.warning(f"[MCP Tool Defs] Tools not found on any server: {remaining_report}")
 
     LOGGER.debug(f"[MCP Tool Defs] Total tool definitions found: {len(tool_definitions)}")
     return tool_definitions
@@ -1162,7 +1269,22 @@ async def execute_mcp_tool(
                     tool_parameters = _coerce_parameters_for_mcp(tool_name, tool_parameters, tool_schema)
 
                     LOGGER.debug("[MCP Execute] Executing tool '%s' with parameters: %s", safe_id(tool_name), list(tool_parameters.keys()))
-                    result = await client.call_tool(tool_name, tool_parameters)
+                    try:
+                        result = await asyncio.wait_for(
+                            client.call_tool(tool_name, tool_parameters),
+                            timeout=MCP_TOOL_TIMEOUT
+                        )
+                    except asyncio.TimeoutError:
+                        LOGGER.error(
+                            "[MCP Execute] Tool '%s' on server '%s' timed out after %ds",
+                            safe_id(tool_name), safe_id(server_name), MCP_TOOL_TIMEOUT
+                        )
+                        return {
+                            "success": False,
+                            "error": f"Tool '{tool_name}' timed out after {MCP_TOOL_TIMEOUT}s. "
+                                     f"The server may be overloaded or the query too complex. "
+                                     f"Try simplifying the request."
+                        }
 
                     # Handle different result types (inside the async with block)
                     if hasattr(result, 'content') and isinstance(result.content, list):

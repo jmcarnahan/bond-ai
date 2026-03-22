@@ -6,6 +6,7 @@ providing conversation management with native session support.
 """
 
 import os
+import re
 import uuid
 import json
 import time
@@ -730,22 +731,57 @@ Please integrate any relevant insights from the documents with your analysis of 
         if parsed is not None:
             records = self._extract_records(parsed)
             if records and len(records) >= MIN_RECORDS_FOR_CSV:
+                # Extract pagination metadata before converting to CSV
+                pagination_header = self._extract_pagination_metadata(parsed)
+
                 csv_result = self._records_to_csv(records, tool_name)
+                # NOTE: pagination_header is prepended AFTER size checks and truncation,
+                # not before, so that _truncate_csv always sees pure CSV (header + data rows)
+                # and can correctly identify row boundaries.
+
                 csv_wrapped_size = _json_wrapped_size(csv_result)
 
+                # Bug 3 guard: if CSV is larger than compact JSON (e.g., wide but short tables),
+                # prefer compact JSON when it fits
+                if csv_wrapped_size > original_size:
+                    try:
+                        compact_json = json.dumps(parsed, separators=(',', ':'))
+                        compact_json_size = _json_wrapped_size(compact_json)
+                        if compact_json_size <= MAX_TOOL_RESULT_BYTES:
+                            LOGGER.info(
+                                f"[Compaction] Tool '{tool_name}': compact JSON ({compact_json_size} bytes) "
+                                f"smaller than CSV ({csv_wrapped_size} bytes), using JSON"
+                            )
+                            return compact_json
+                    except (TypeError, ValueError):
+                        pass
+
                 if csv_wrapped_size <= MAX_TOOL_RESULT_BYTES:
+                    reduction_pct = (100 - (csv_wrapped_size * 100 // original_size)) if original_size > 0 else 0
                     LOGGER.info(
                         f"[Compaction] Tool '{tool_name}': converted {len(records)} records to CSV "
                         f"({original_size} -> {csv_wrapped_size} bytes JSON-wrapped, "
-                        f"{100 - (csv_wrapped_size * 100 // original_size)}% reduction)"
+                        f"{reduction_pct}% reduction)"
                     )
+                    # Prepend pagination metadata only if the combined result still fits
+                    if pagination_header:
+                        csv_with_pagination = pagination_header + "\n" + csv_result
+                        if _json_wrapped_size(csv_with_pagination) <= MAX_TOOL_RESULT_BYTES:
+                            csv_result = csv_with_pagination
+                        # else: skip pagination header to stay within budget
                     return csv_result
                 else:
                     LOGGER.warning(
                         f"[Compaction] Tool '{tool_name}': CSV is {csv_wrapped_size} bytes "
                         f"(JSON-wrapped), exceeds {MAX_TOOL_RESULT_BYTES} byte limit, will truncate"
                     )
-                    return self._truncate_result(csv_result, raw_budget, tool_name)
+                    # Truncate pure CSV first (preserves header + complete rows)
+                    truncated = self._truncate_csv(csv_result, raw_budget, tool_name)
+                    # Prepend pagination metadata after truncation so _truncate_csv
+                    # correctly identifies the CSV header row
+                    if pagination_header:
+                        truncated = pagination_header + "\n" + truncated
+                    return truncated
 
         # --- Phase 2: Byte limit enforcement ---
         if original_size <= MAX_TOOL_RESULT_BYTES:
@@ -835,13 +871,78 @@ Please integrate any relevant insights from the documents with your analysis of 
         _scan(parsed)
         return best
 
+    # Regex patterns for columns that carry no useful information for LLM reasoning.
+    # These are API artifacts (internal IDs, avatar URLs, self-links, etc.) that
+    # waste tokens without aiding comprehension.
+    LOW_VALUE_COLUMN_PATTERNS = [
+        re.compile(r'.*\.self$'),           # Jira API self-links
+        re.compile(r'.*\.iconUrl$'),        # Icon URLs
+        re.compile(r'.*avatarUrl.*'),       # Avatar URLs at any depth
+        re.compile(r'.*\.\d+x\d+$'),       # Avatar size variants (48x48, 24x24, etc.)
+        re.compile(r'.*\.accountId$'),      # Opaque Jira account IDs
+        re.compile(r'.*\.timeZone$'),       # User timezone (rarely useful)
+        re.compile(r'.*\.expand$'),         # Jira expand metadata
+    ]
+
+    @staticmethod
+    def _filter_low_value_columns(df: pd.DataFrame, tool_name: str = "unknown") -> pd.DataFrame:
+        """
+        Drop columns that carry zero or near-zero information for LLM reasoning.
+
+        Removes:
+        - All-null columns
+        - Constant-value columns (every row identical)
+        - Columns matching known low-value patterns (API self-links, avatar URLs, etc.)
+
+        Returns:
+            DataFrame with low-value columns removed
+        """
+        if df.empty:
+            return df
+
+        original_cols = len(df.columns)
+
+        # Drop all-null columns
+        df = df.dropna(axis=1, how='all')
+
+        # Drop constant-value columns (where every row has the same value, no nulls)
+        if len(df) > 1:
+            cols_to_drop = []
+            for col in df.columns:
+                # Only drop if ALL rows are non-null AND all have the same value
+                if df[col].notna().all():
+                    try:
+                        if df[col].nunique() == 1:
+                            cols_to_drop.append(col)
+                    except TypeError:
+                        # nunique() fails on unhashable types (lists, dicts) - skip
+                        pass
+            if cols_to_drop:
+                df = df.drop(columns=cols_to_drop)
+
+        # Drop columns matching known low-value patterns
+        pattern_drops = [
+            col for col in df.columns
+            if any(p.search(col) for p in BedrockAgent.LOW_VALUE_COLUMN_PATTERNS)
+        ]
+        if pattern_drops:
+            df = df.drop(columns=pattern_drops)
+
+        dropped = original_cols - len(df.columns)
+        if dropped > 0:
+            LOGGER.info(
+                f"[Compaction] Tool '{tool_name}': dropped {dropped} low-value columns "
+                f"({original_cols} -> {len(df.columns)})"
+            )
+        return df
+
     @staticmethod
     def _records_to_csv(records: List[Dict], tool_name: str = "unknown") -> str:
         """
         Convert a list of dicts to CSV string format using pandas json_normalize.
 
         Flattens nested dicts to arbitrary depth using dot notation (e.g., "user.address.city").
-        Truncates individual cell values that are very long.
+        Filters out low-value columns and truncates individual cell values that are very long.
 
         Returns:
             CSV-formatted string
@@ -852,13 +953,39 @@ Please integrate any relevant insights from the documents with your analysis of 
         MAX_CELL_LENGTH = 200
 
         # Use pandas json_normalize for deep flattening with dot-notation columns
-        df = pd.json_normalize(records, sep='.')
-
-        # Truncate long string cell values
-        for col in df.columns:
-            df[col] = df[col].apply(
-                lambda v: (str(v)[:MAX_CELL_LENGTH] + '...') if isinstance(v, str) and len(str(v)) > MAX_CELL_LENGTH else v
+        try:
+            df = pd.json_normalize(records, sep='.')
+        except Exception as e:
+            LOGGER.warning(
+                f"[Compaction] json_normalize failed for '{tool_name}': {e}, "
+                f"falling back to simple DataFrame"
             )
+            df = pd.DataFrame([
+                {k: str(v)[:MAX_CELL_LENGTH] for k, v in r.items()}
+                if isinstance(r, dict) else {}
+                for r in records
+            ])
+
+        # Filter out low-value columns (nulls, constants, API artifacts)
+        df = BedrockAgent._filter_low_value_columns(df, tool_name)
+
+        # Truncate long cell values (applies to all types, not just strings).
+        # Also replace newlines with spaces so CSV rows don't span multiple lines,
+        # which would break _truncate_csv's row-boundary logic.
+        def _clean_cell(v):
+            try:
+                if pd.isna(v):
+                    return v
+            except (ValueError, TypeError):
+                pass  # pd.isna raises for lists, dicts, etc.
+            s = str(v)
+            s = s.replace('\r\n', ' ').replace('\n', ' ').replace('\r', ' ')
+            if len(s) > MAX_CELL_LENGTH:
+                return s[:MAX_CELL_LENGTH] + '...'
+            return s
+
+        for col in df.columns:
+            df[col] = df[col].apply(_clean_cell)
 
         csv_string = df.to_csv(index=False)
         LOGGER.debug(
@@ -901,9 +1028,175 @@ Please integrate any relevant insights from the documents with your analysis of 
         )
         return truncated_text + suffix
 
+    @staticmethod
+    def _truncate_csv(csv_text: str, max_bytes: int, tool_name: str = "unknown") -> str:
+        """
+        Truncate CSV text at row boundaries so the LLM always sees complete rows.
+
+        Unlike _truncate_result which cuts at arbitrary byte boundaries (potentially
+        mid-row, producing malformed CSV), this method preserves the header and as
+        many complete rows as fit within the byte budget.
+
+        Returns:
+            CSV with header + complete rows + footer showing how many rows were kept
+        """
+        lines = csv_text.split('\n')
+        if len(lines) <= 1:
+            return csv_text
+
+        header = lines[0]
+        # Filter out empty trailing lines
+        data_lines = [l for l in lines[1:] if l.strip()]
+        total_rows = len(data_lines)
+
+        # Build up result line by line
+        kept_lines = [header]
+        current_size = len(header.encode('utf-8')) + 1  # +1 for newline
+
+        # Reserve space for footer
+        footer_template = f"\n# [Showing {{}} of {total_rows} rows. Refine your query for fewer results.]"
+        footer_reserve = len(footer_template.format(total_rows).encode('utf-8'))
+
+        for line in data_lines:
+            line_bytes = len(line.encode('utf-8')) + 1  # +1 for newline
+            if current_size + line_bytes + footer_reserve > max_bytes:
+                break
+            kept_lines.append(line)
+            current_size += line_bytes
+
+        kept_rows = len(kept_lines) - 1  # exclude header
+        if kept_rows < total_rows:
+            footer = footer_template.format(kept_rows)
+            LOGGER.info(
+                f"[Compaction] Tool '{tool_name}': CSV truncated at row boundary "
+                f"({kept_rows} of {total_rows} rows)"
+            )
+            return '\n'.join(kept_lines) + footer
+        return csv_text
+
+    @staticmethod
+    def _extract_pagination_metadata(parsed: Any) -> Optional[str]:
+        """
+        Extract pagination metadata from a parsed JSON response.
+
+        Looks for common pagination fields (total, startAt, maxResults, count,
+        has_more, next_page_token) and returns a comment line for prepending to CSV.
+
+        Returns:
+            A comment string like '# Showing 50 of 234 results (startAt=0).' or None
+        """
+        if not isinstance(parsed, dict):
+            return None
+
+        # Common pagination field names
+        total = None
+        for key in ('total', 'totalCount', 'total_count'):
+            if key in parsed and isinstance(parsed[key], (int, float)):
+                total = int(parsed[key])
+                break
+
+        start_at = None
+        for key in ('startAt', 'start_at', 'offset', 'skip'):
+            if key in parsed and isinstance(parsed[key], (int, float)):
+                start_at = int(parsed[key])
+                break
+
+        max_results = None
+        for key in ('maxResults', 'max_results', 'limit', 'pageSize', 'page_size'):
+            if key in parsed and isinstance(parsed[key], (int, float)):
+                max_results = int(parsed[key])
+                break
+
+        has_more = None
+        for key in ('has_more', 'hasMore', 'isLast', 'is_last'):
+            if key in parsed:
+                val = parsed[key]
+                if isinstance(val, bool):
+                    has_more = val if key not in ('isLast', 'is_last') else not val
+                break
+
+        if total is None and has_more is None:
+            return None
+
+        parts = []
+        if total is not None:
+            shown = max_results or 'unknown'
+            parts.append(f"Query returned {total} total results (showing {shown})")
+        if start_at is not None:
+            parts.append(f"startAt={start_at}")
+        if has_more is True:
+            parts.append("more results available")
+
+        if parts:
+            return "# " + ". ".join(parts) + ". Use pagination parameters to see more."
+        return None
+
+    def _make_error_response(self, action_input: Optional[Dict], inv_input: Dict,
+                             api_path: Optional[str], error_message: str) -> Dict[str, Any]:
+        """
+        Create a standardized error response for Bedrock (always HTTP 200).
+
+        Every tool invocation MUST produce a response back to Bedrock.
+        Non-200 codes cause dependencyFailedException which aborts the conversation.
+        """
+        tool_response = {
+            "actionGroup": (action_input or {}).get('actionGroup') or (action_input or {}).get('actionGroupName', 'Unknown'),
+            "apiPath": api_path or '/unknown',
+            "httpMethod": (action_input or {}).get('httpMethod', 'POST'),
+            "httpStatusCode": 200,
+            "responseBody": {
+                "application/json": {
+                    "body": json.dumps({"error": error_message})
+                }
+            }
+        }
+        if isinstance(inv_input, dict) and 'apiInvocationInput' in inv_input:
+            tool_response = {"apiResult": tool_response}
+        return tool_response
+
+    def _make_tool_response(self, action_input: Dict, inv_input: Dict,
+                            api_path: str, raw_result: Any, tool_name: str) -> Dict[str, Any]:
+        """
+        Create a standardized success response for Bedrock with compaction.
+
+        Compacts the raw result for token efficiency and wraps in the required
+        Bedrock response format. Falls back gracefully if compaction fails.
+        """
+        raw_result_str = json.dumps(raw_result, default=str) if not isinstance(raw_result, str) else raw_result
+
+        # Defensive wrap: if compaction crashes, fall back to truncated string
+        try:
+            compacted_result = self._compact_tool_result(raw_result_str, tool_name=tool_name)
+        except Exception as e:
+            LOGGER.exception(f"[Compaction] Failed for tool '{tool_name}': {e}")
+            compacted_result = str(raw_result_str)[:int(MAX_TOOL_RESULT_BYTES * 0.5)] + \
+                "\n[COMPACTION FAILED - partial result shown]"
+
+        response_body = json.dumps({"result": compacted_result})
+
+        tool_response = {
+            "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
+            "apiPath": api_path,
+            "httpMethod": action_input.get('httpMethod', 'POST'),
+            "httpStatusCode": 200,
+            "responseBody": {
+                "application/json": {
+                    "body": response_body
+                }
+            }
+        }
+
+        if isinstance(inv_input, dict) and 'apiInvocationInput' in inv_input:
+            tool_response = {"apiResult": tool_response}
+        return tool_response
+
     def _handle_return_control(self, return_control: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Handle returnControl event from Bedrock for tool execution.
+
+        INVARIANT: Every invocation_input MUST produce exactly one response in results.
+        Failure to respond causes Bedrock to throw dependencyFailedException which
+        aborts the entire conversation.
 
         Args:
             return_control: The returnControl event data
@@ -915,19 +1208,35 @@ Please integrate any relevant insights from the documents with your analysis of 
         results = []
 
         for inv_input in invocation_inputs:
-            # Check both possible input types
+            # Top-level safety net: guarantee a response is appended for every invocation
             action_input = None
-            if 'actionGroupInvocationInput' in inv_input:
-                action_input = inv_input['actionGroupInvocationInput']
-            elif 'apiInvocationInput' in inv_input:
-                action_input = inv_input['apiInvocationInput']
+            api_path = None
+            tool_name = 'unknown'
 
-            if action_input:
+            try:
+                # Check both possible input types
+                if 'actionGroupInvocationInput' in inv_input:
+                    action_input = inv_input['actionGroupInvocationInput']
+                elif 'apiInvocationInput' in inv_input:
+                    action_input = inv_input['apiInvocationInput']
+
+                if not action_input:
+                    LOGGER.warning(f"[ReturnControl] Invocation input has no actionGroupInvocationInput "
+                                   f"or apiInvocationInput: {list(inv_input.keys())}")
+                    results.append(self._make_error_response(
+                        None, inv_input, None,
+                        "Unrecognized invocation input format. Neither actionGroupInvocationInput "
+                        "nor apiInvocationInput was present."
+                    ))
+                    continue
+
                 api_path = action_input.get('apiPath')
 
                 # Check if this is an MCP tool using new format: /b.{hash6}.{tool_name}
-                server_hash, tool_name = _parse_tool_path(api_path)
-                if server_hash and tool_name:
+                server_hash, parsed_name = _parse_tool_path(api_path)
+                if parsed_name:
+                    tool_name = parsed_name
+                if server_hash and parsed_name:
                     # =============================================================
                     # Check if this is an admin tool (ADMIN0 hash)
                     # =============================================================
@@ -960,33 +1269,8 @@ Please integrate any relevant insights from the documents with your analysis of 
                         else:
                             LOGGER.warning(f"Admin tool {tool_name} returned an error, result preview: {result_preview}")
 
-                        # Always return 200 to Bedrock so the LLM sees the error and can relay it
-                        # to the user or adjust its approach.  Non-200 codes cause Bedrock to throw
-                        # dependencyFailedException which aborts the conversation entirely.
                         raw_result = result.get('result', result.get('error', 'Unknown error'))
-                        compacted_result = self._compact_tool_result(
-                            json.dumps(raw_result, default=str) if not isinstance(raw_result, str) else raw_result,
-                            tool_name=tool_name
-                        )
-                        response_body = json.dumps({"result": compacted_result})
-
-                        tool_response = {
-                            "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
-                            "apiPath": api_path,
-                            "httpMethod": action_input.get('httpMethod', 'POST'),
-                            "httpStatusCode": 200,
-                            "responseBody": {
-                                "application/json": {
-                                    "body": response_body
-                                }
-                            }
-                        }
-
-                        # Wrap in apiResult if it was an apiInvocationInput
-                        if 'apiInvocationInput' in inv_input:
-                            tool_response = {"apiResult": tool_response}
-
-                        results.append(tool_response)
+                        results.append(self._make_tool_response(action_input, inv_input, api_path, raw_result, tool_name))
                         continue  # Skip the rest of the loop for admin tools
 
                     # =============================================================
@@ -1013,28 +1297,7 @@ Please integrate any relevant insights from the documents with your analysis of 
                             LOGGER.warning(f"Common tool {tool_name} returned an error, result preview: {result_preview}")
 
                         raw_result = result.get('result', result.get('error', 'Unknown error'))
-                        compacted_result = self._compact_tool_result(
-                            json.dumps(raw_result, default=str) if not isinstance(raw_result, str) else raw_result,
-                            tool_name=tool_name
-                        )
-                        response_body = json.dumps({"result": compacted_result})
-
-                        tool_response = {
-                            "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
-                            "apiPath": api_path,
-                            "httpMethod": action_input.get('httpMethod', 'POST'),
-                            "httpStatusCode": 200,
-                            "responseBody": {
-                                "application/json": {
-                                    "body": response_body
-                                }
-                            }
-                        }
-
-                        if 'apiInvocationInput' in inv_input:
-                            tool_response = {"apiResult": tool_response}
-
-                        results.append(tool_response)
+                        results.append(self._make_tool_response(action_input, inv_input, api_path, raw_result, tool_name))
                         continue  # Skip the rest of the loop for common tools
 
                     # =============================================================
@@ -1059,18 +1322,10 @@ Please integrate any relevant insights from the documents with your analysis of 
                             "MCP_TOOL_BLOCKED: tool=%s blocked by allow_write_tools=false on agent=%s user=%s",
                             tool_name, self.agent_id, user_id_for_log
                         )
-                        result = {"success": False, "error": f"External tool '{tool_name}' is disabled for this agent (allow_write_tools=false)"}
-
-                        raw_result = result.get('error', 'Tool blocked')
-                        response_body = json.dumps({"result": raw_result})
-                        tool_response = {
-                            "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
-                            "apiPath": api_path,
-                            "httpMethod": action_input.get('httpMethod', 'POST'),
-                            "httpStatusCode": 200,
-                            "responseBody": {"application/json": {"body": response_body}},
-                        }
-                        tool_responses.append(tool_response)
+                        results.append(self._make_error_response(
+                            action_input, inv_input, api_path,
+                            f"External tool '{tool_name}' is disabled for this agent (allow_write_tools=false)"
+                        ))
                         continue
 
                     LOGGER.info("Executing MCP tool: %s (server: %s, hash: %s)", safe_id(tool_name), safe_id(target_server or 'unknown'), safe_id(server_hash))
@@ -1132,100 +1387,37 @@ Please integrate any relevant insights from the documents with your analysis of 
                             else:
                                 LOGGER.warning(f"MCP tool {tool_name} returned an error, result preview: {result_preview}")
 
-                            # Always return 200 to Bedrock so the LLM sees the error message and can
-                            # respond intelligently (e.g. retry with corrected parameters, explain the
-                            # issue to the user, etc.).  Non-200 codes cause Bedrock to throw
-                            # dependencyFailedException which aborts the conversation entirely.
                             raw_result = result.get('result', result.get('error', 'Unknown error'))
-                            compacted_result = self._compact_tool_result(
-                                json.dumps(raw_result, default=str) if not isinstance(raw_result, str) else raw_result,
-                                tool_name=tool_name
-                            )
-                            response_body = json.dumps({"result": compacted_result})
-
-                            tool_response = {
-                                "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
-                                "apiPath": api_path,
-                                "httpMethod": action_input.get('httpMethod', 'POST'),
-                                "httpStatusCode": 200,
-                                "responseBody": {
-                                    "application/json": {
-                                        "body": response_body
-                                    }
-                                }
-                            }
-
-                            # Wrap in apiResult if it was an apiInvocationInput
-                            if 'apiInvocationInput' in inv_input:
-                                tool_response = {"apiResult": tool_response}
-
+                            tool_response = self._make_tool_response(action_input, inv_input, api_path, raw_result, tool_name)
                             LOGGER.debug(f"Returning tool response to Bedrock: \n{json.dumps(tool_response, indent=2)}")
-
                             results.append(tool_response)
                         else:
                             LOGGER.error("No MCP config available")
-                            # Always return 200 to Bedrock so the LLM sees the error and can
-                            # respond to the user.  Non-200 codes cause dependencyFailedException.
-                            error_response = {
-                                "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
-                                "apiPath": api_path,
-                                "httpMethod": action_input.get('httpMethod', 'POST'),
-                                "httpStatusCode": 200,
-                                "responseBody": {
-                                    "application/json": {
-                                        "body": json.dumps({"error": "MCP configuration not available. The tool could not be executed."})
-                                    }
-                                }
-                            }
-
-                            # Wrap in apiResult if it was an apiInvocationInput
-                            if 'apiInvocationInput' in inv_input:
-                                error_response = {"apiResult": error_response}
-
-                            results.append(error_response)
+                            results.append(self._make_error_response(
+                                action_input, inv_input, api_path,
+                                "MCP configuration not available. The tool could not be executed."
+                            ))
                     except Exception as e:
                         LOGGER.exception(f"Error executing MCP tool {tool_name} with parameters {list(parameters.keys()) if parameters else []}: {e}")
-                        # Always return 200 to Bedrock so the LLM sees the error and can
-                        # respond to the user.  Non-200 codes cause dependencyFailedException.
-                        error_response = {
-                            "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
-                            "apiPath": api_path,
-                            "httpMethod": action_input.get('httpMethod', 'POST'),
-                            "httpStatusCode": 200,
-                            "responseBody": {
-                                "application/json": {
-                                    "body": json.dumps({"error": f"Tool execution failed: {str(e)}"})
-                                }
-                            }
-                        }
-
-                        # Wrap in apiResult if it was an apiInvocationInput
-                        if 'apiInvocationInput' in inv_input:
-                            error_response = {"apiResult": error_response}
-
-                        results.append(error_response)
+                        results.append(self._make_error_response(
+                            action_input, inv_input, api_path,
+                            f"Tool execution failed: {str(e)}"
+                        ))
                 else:
                     # Tool path doesn't match expected format (/b.{hash}.{tool_name})
                     LOGGER.warning(f"Unrecognized tool path format: {api_path}")
-                    # Always return 200 to Bedrock so the LLM sees the error and can
-                    # respond to the user.  Non-200 codes cause dependencyFailedException.
-                    error_response = {
-                        "actionGroup": action_input.get('actionGroup') or action_input.get('actionGroupName'),
-                        "apiPath": api_path,
-                        "httpMethod": action_input.get('httpMethod', 'POST'),
-                        "httpStatusCode": 200,
-                        "responseBody": {
-                            "application/json": {
-                                "body": json.dumps({"error": f"Tool path not recognized: {api_path}. Expected format: /b.{{hash}}.{{tool_name}}"})
-                            }
-                        }
-                    }
+                    results.append(self._make_error_response(
+                        action_input, inv_input, api_path,
+                        f"Tool path not recognized: {api_path}. Expected format: /b.{{hash}}.{{tool_name}}"
+                    ))
 
-                    # Wrap in apiResult if it was an apiInvocationInput
-                    if 'apiInvocationInput' in inv_input:
-                        error_response = {"apiResult": error_response}
-
-                    results.append(error_response)
+            except Exception as e:
+                # Top-level safety net: guarantee a response for completely unexpected errors
+                LOGGER.exception(f"[ReturnControl] Unexpected error handling tool invocation for '{tool_name}': {e}")
+                results.append(self._make_error_response(
+                    action_input, inv_input, api_path,
+                    f"Internal error processing tool request: {str(e)}"
+                ))
 
         return results
 

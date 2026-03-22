@@ -46,6 +46,7 @@ class AgentFormFields extends StatelessWidget {
         BondAITextBox(
           controller: nameController,
           labelText: 'Agent Name',
+          isRequired: true,
           enabled: fieldEnabled,
           readOnly: fieldReadOnly,
           validator: readOnly ? null : (value) {
@@ -69,6 +70,7 @@ class AgentFormFields extends StatelessWidget {
         ResizableTextBox(
           controller: instructionsController,
           labelText: 'Instructions',
+          isRequired: true,
           enabled: fieldEnabled,
           readOnly: fieldReadOnly,
           initialHeight: 140,
