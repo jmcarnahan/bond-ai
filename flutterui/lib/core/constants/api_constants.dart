@@ -12,6 +12,7 @@ class ApiConstants {
   static const String chatEndpoint = '/chat';
   static const String filesEndpoint = '/files';
   static const String scheduledJobsEndpoint = '/scheduled-jobs';
+  static const String agentFoldersEndpoint = '/agent-folders';
   static const String tokenExchangeEndpoint = '/auth/token';
   static const String logoutEndpoint = '/auth/logout';
 }

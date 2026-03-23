@@ -64,7 +64,7 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> with ErrorHandlin
 
     return Scaffold(
       drawer: const AppDrawer(),
-      appBar: const ThreadsAppBar(),
+      appBar: ThreadsAppBar(onCreateThread: _showCreateThreadDialog),
       body: threadsAsyncValue.when(
         data: (threads) => _buildDataState(threads, selectedThreadId),
         loading: () => const ThreadsLoadingState(),
@@ -115,27 +115,6 @@ class _ThreadsScreenState extends ConsumerState<ThreadsScreen> with ErrorHandlin
             ),
           );
         },
-      ),
-      floatingActionButton: Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
-              blurRadius: 12,
-              spreadRadius: 2,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: FloatingActionButton(
-          onPressed: _showCreateThreadDialog,
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          foregroundColor: Colors.white,
-          tooltip: 'Start New Conversation',
-          elevation: 0,
-          child: const Icon(Icons.add_comment_rounded, size: 28),
-        ),
       ),
     );
   }

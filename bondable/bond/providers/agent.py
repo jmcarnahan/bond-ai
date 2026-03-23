@@ -252,6 +252,26 @@ class AgentProvider(ABC):
                 ).delete()
                 LOGGER.debug(f"Deleted {agent_group_deleted} agent-group relationships for agent {agent_id}")
 
+                # Clean up folder assignments (all users' assignments for this agent)
+                try:
+                    from bondable.bond.providers.metadata import AgentFolderAssignment
+                    folder_assignment_deleted = session.query(AgentFolderAssignment).filter(
+                        AgentFolderAssignment.agent_id == agent_id
+                    ).delete()
+                    LOGGER.debug(f"Deleted {folder_assignment_deleted} folder assignments for agent {agent_id}")
+                except Exception as e:
+                    LOGGER.warning(f"Error cleaning up folder assignments for {agent_id}: {e}")
+
+                # Clean up sort order entries (all users' sort orders for this agent)
+                try:
+                    from bondable.bond.providers.metadata import UserAgentSortOrder
+                    sort_order_deleted = session.query(UserAgentSortOrder).filter(
+                        UserAgentSortOrder.agent_id == agent_id
+                    ).delete()
+                    LOGGER.debug(f"Deleted {sort_order_deleted} sort order entries for agent {agent_id}")
+                except Exception as e:
+                    LOGGER.warning(f"Error cleaning up sort orders for {agent_id}: {e}")
+
                 # Clean up Bedrock-specific agent options if they exist
                 try:
                     # Import here to avoid circular imports and handle cases where Bedrock isn't available

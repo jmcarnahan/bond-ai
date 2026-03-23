@@ -8,6 +8,8 @@ class AgentRef(BaseModel):
     description: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     user_permission: Optional[str] = None
+    folder_id: Optional[str] = None
+    sort_order: Optional[int] = None
 
 
 class ToolResourceFilesList(BaseModel):

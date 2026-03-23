@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import routers
-from bondable.rest.routers import auth, agents, threads, chat, files, mcp, groups, connections, scheduled_jobs
+from bondable.rest.routers import auth, agents, threads, chat, files, mcp, groups, connections, scheduled_jobs, agent_folders
 
 # Configure logging from YAML file
 def setup_logging():
@@ -114,6 +114,7 @@ app.include_router(mcp.router)
 app.include_router(groups.router)
 app.include_router(connections.router)
 app.include_router(scheduled_jobs.router)
+app.include_router(agent_folders.router)
 
 # Health check endpoint
 @app.get("/health")

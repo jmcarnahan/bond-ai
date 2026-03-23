@@ -5,8 +5,11 @@ import 'package:flutterui/providers/core_providers.dart';
 import 'package:flutterui/presentation/widgets/connection_status_indicator.dart';
 
 class ThreadsAppBar extends ConsumerWidget implements PreferredSizeWidget {
+  final VoidCallback? onCreateThread;
+
   const ThreadsAppBar({
     super.key,
+    this.onCreateThread,
   });
 
   @override
@@ -79,9 +82,17 @@ class ThreadsAppBar extends ConsumerWidget implements PreferredSizeWidget {
             ),
           ],
         ),
-        actions: const [
-          ConnectionStatusIndicator(),
-          SizedBox(width: 8),
+        actions: [
+          if (onCreateThread != null)
+            Tooltip(
+              message: 'New Conversation',
+              child: IconButton(
+                icon: Icon(Icons.add_comment_outlined, color: theme.colorScheme.onSurfaceVariant),
+                onPressed: onCreateThread,
+              ),
+            ),
+          const ConnectionStatusIndicator(),
+          const SizedBox(width: 8),
         ],
       ),
     );
