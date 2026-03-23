@@ -56,7 +56,9 @@ resource "aws_iam_role_policy" "app_runner_instance" {
             data.aws_secretsmanager_secret.mcp_atlassian_oauth_backend[0].arn
           ] : [],
           # Add Databricks secret access
-          ["arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}-${var.environment}-databricks-secret-*"]
+          ["arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}-${var.environment}-databricks-secret-*"],
+          # Add Microsoft MCP secret access
+          ["arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}-${var.environment}-microsoft-mcp-secret-*"]
         )
       },
       {
