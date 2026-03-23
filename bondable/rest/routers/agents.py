@@ -67,6 +67,14 @@ async def get_agents(
     """Get list of agents for the authenticated user."""
     try:
         agent_records = provider.agents.get_agent_records(user_id=current_user.user_id)
+
+        # Get folder assignments and sort orders for this user
+        folder_assignments = {}
+        sort_orders = {}
+        if hasattr(provider, 'agent_folders') and provider.agent_folders:
+            folder_assignments = provider.agent_folders.get_user_folder_assignments(current_user.user_id)
+            sort_orders = provider.agent_folders.get_user_agent_sort_orders(current_user.user_id)
+
         result = []
         for record in agent_records:
             agent = provider.agents.get_agent(agent_id=record['agent_id'])
@@ -78,12 +86,15 @@ async def get_agents(
             if record.get('is_default') and current_user.is_admin:
                 permission = 'admin'
             metadata = agent.get_metadata()
+            agent_id = agent.get_agent_id()
             result.append(AgentRef(
-                id=agent.get_agent_id(),
+                id=agent_id,
                 name=agent.get_name(),
                 description=agent.get_description(),
                 metadata=metadata,
                 user_permission=permission,
+                folder_id=folder_assignments.get(agent_id),
+                sort_order=sort_orders.get(agent_id),
             ))
         return result
     except Exception as e:
