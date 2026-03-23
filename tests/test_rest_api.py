@@ -23,6 +23,7 @@ from bondable.bond.providers.threads import ThreadsProvider
 from bondable.bond.providers.files import FilesProvider, FileDetails
 from bondable.bond.providers.vectorstores import VectorStoresProvider
 from bondable.bond.groups import Groups
+from bondable.bond.agent_folders import AgentFolders
 
 # Test configuration
 jwt_config = Config.config().get_jwt_config()
@@ -56,6 +57,9 @@ def mock_provider():
     provider.files = MagicMock(spec=FilesProvider)
     provider.vectorstores = MagicMock(spec=VectorStoresProvider)
     provider.groups = MagicMock(spec=Groups)
+    provider.agent_folders = MagicMock(spec=AgentFolders)
+    provider.agent_folders.get_user_folder_assignments.return_value = {}
+    provider.agent_folders.get_user_agent_sort_orders.return_value = {}
     provider.get_default_model.return_value = "gpt-4.1-nano"
     return provider
 
@@ -100,7 +104,8 @@ class TestAuthentication:
 
     def test_auth_callback_success(self, test_client):
         """Test successful OAuth callback."""
-        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
+        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create, \
+             patch('bondable.rest.routers.auth._get_and_delete_auth_oauth_state') as mock_state:
             mock_provider = MagicMock()
             mock_provider.get_user_info_from_code.return_value = {
                 "sub": TEST_USER_ID,
@@ -108,11 +113,21 @@ class TestAuthentication:
                 "name": "Test User"
             }
             mock_create.return_value = mock_provider
+            mock_state.return_value = {"provider_name": "cognito", "code_verifier": None, "redirect_uri": None, "platform": None}
 
-            response = test_client.get("/auth/cognito/callback?code=test_code", follow_redirects=False)
+            mock_bond_provider = MagicMock()
+            mock_bond_provider.users.get_or_create_user.return_value = (TEST_USER_ID, False)
+            from bondable.rest.dependencies.providers import get_bond_provider
+            app.dependency_overrides[get_bond_provider] = lambda: mock_bond_provider
 
-            assert response.status_code == 307
-            assert "token=" in response.headers["location"]
+            try:
+                response = test_client.get("/auth/cognito/callback?code=test_code&state=test_state", follow_redirects=False)
+                assert response.status_code == 307
+                location = response.headers["location"]
+                assert "token=" in location or "code=" in location
+            finally:
+                if get_bond_provider in app.dependency_overrides:
+                    del app.dependency_overrides[get_bond_provider]
 
     def test_auth_callback_missing_code(self, test_client):
         """Test OAuth callback without code."""
@@ -123,12 +138,14 @@ class TestAuthentication:
 
     def test_auth_callback_invalid_code(self, test_client):
         """Test OAuth callback with invalid code."""
-        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create:
+        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create, \
+             patch('bondable.rest.routers.auth._get_and_delete_auth_oauth_state') as mock_state:
             mock_provider = MagicMock()
             mock_provider.get_user_info_from_code.side_effect = ValueError("Invalid code")
             mock_create.return_value = mock_provider
+            mock_state.return_value = {"provider_name": "cognito", "code_verifier": None, "redirect_uri": None, "platform": None}
 
-            response = test_client.get("/auth/cognito/callback?code=invalid")
+            response = test_client.get("/auth/cognito/callback?code=invalid&state=test_state")
 
             assert response.status_code == 401
             assert "Invalid code" in response.json()["detail"]
@@ -1445,10 +1462,17 @@ class TestFiles:
         assert response.status_code == 500
         assert "Could not process file" in response.json()["detail"]
 
+    def _mock_file_ownership(self, mock_provider, file_id, owner_user_id=TEST_USER_ID):
+        """Set up mock file ownership for delete/details endpoints."""
+        mock_detail = MagicMock(spec=FileDetails)
+        mock_detail.owner_user_id = owner_user_id
+        mock_provider.files.get_file_details.return_value = [mock_detail]
+
     def test_delete_file_success(self, authenticated_client):
         """Test deleting file successfully."""
         client, auth_headers, mock_provider = authenticated_client
 
+        self._mock_file_ownership(mock_provider, "file_to_delete")
         mock_provider.files.delete_file.return_value = True
 
         response = client.delete("/files/file_to_delete", headers=auth_headers)
@@ -1463,23 +1487,18 @@ class TestFiles:
         """Test deleting non-existent file."""
         client, auth_headers, mock_provider = authenticated_client
 
-        mock_provider.files.delete_file.return_value = False
+        mock_provider.files.get_file_details.return_value = []
 
         response = client.delete("/files/nonexistent", headers=auth_headers)
 
-        # The endpoint currently returns 500 when delete_file returns False
-        # This suggests the endpoint error handling needs to be fixed
-        if response.status_code == 500:
-            # Check if it's the expected error from the endpoint logic
-            assert "Could not delete file" in response.json()["detail"]
-        else:
-            # If the endpoint is fixed to return 404
-            assert response.status_code == 404
-            assert "File not found in local records" in response.json()["detail"]
+        assert response.status_code == 404
+        assert "File not found" in response.json()["detail"]
 
     def test_delete_file_provider_error(self, authenticated_client):
         """Test delete when provider raises API error."""
         client, auth_headers, mock_provider = authenticated_client
+
+        self._mock_file_ownership(mock_provider, "provider_error")
 
         import openai
         import httpx
@@ -1532,13 +1551,13 @@ class TestFiles:
         assert result[1]["file_id"] == "file_2"
         assert result[1]["mime_type"] == "text/csv"
 
-        mock_provider.files.get_file_details.assert_called_once_with(["file_1", "file_2"])
+        mock_provider.files.get_file_details.assert_called_once_with(["file_1", "file_2"], user_id=TEST_USER_ID)
 
     def test_get_file_details_filters_by_user(self, authenticated_client):
-        """Test that file details are filtered by current user."""
+        """Test that file details are filtered by current user at query level."""
         client, auth_headers, mock_provider = authenticated_client
 
-        # Mock file details with mixed owners
+        # Mock: provider now filters at query level, returning only user's files
         mock_provider.files.get_file_details.return_value = [
             FileDetails(
                 file_id="file_1",
@@ -1547,23 +1566,18 @@ class TestFiles:
                 mime_type="application/pdf",
                 owner_user_id=TEST_USER_ID  # Current user's file
             ),
-            FileDetails(
-                file_id="file_2",
-                file_path="/tmp/other.csv",
-                file_hash="hash2",
-                mime_type="text/csv",
-                owner_user_id="other@example.com"  # Other user's file
-            )
         ]
 
         response = client.get("/files/details?file_ids=file_1&file_ids=file_2", headers=auth_headers)
 
         assert response.status_code == 200
         result = response.json()
-        # Should only return the current user's file
         assert len(result) == 1
         assert result[0]["file_id"] == "file_1"
-        assert result[0]["owner_user_id"] == TEST_USER_ID
+        # Verify user_id was passed to the provider for filtering
+        mock_provider.files.get_file_details.assert_called_once_with(
+            ["file_1", "file_2"], user_id=TEST_USER_ID
+        )
 
     def test_upload_same_content_different_filename(self):
         """Regression test: uploading identical content with a different filename
