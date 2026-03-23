@@ -18,7 +18,7 @@ def _make_agent():
     agent = object.__new__(BedrockAgent)
     agent.bedrock_agent_id = "test-agent-id"
     agent.bedrock_agent_alias_id = "test-alias-id"
-    agent.agent_id = "bond-agent-id"
+    agent.agent_id = "test-agent-record-id"
     agent.bond_provider = MagicMock()
     agent._current_user = None
     agent._jwt_token = None
