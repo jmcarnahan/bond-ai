@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/data/models/agent_model.dart';
 import 'package:flutterui/providers/agent_provider.dart';
+import 'package:flutterui/providers/folder_provider.dart';
 import 'package:flutterui/presentation/widgets/agent_icon.dart';
 
 class AgentSidebar extends ConsumerWidget {
@@ -16,7 +17,7 @@ class AgentSidebar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final agentsAsyncValue = ref.watch(agentsProvider);
+    final agentsAsyncValue = ref.watch(sidebarAgentsProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -39,23 +40,45 @@ class AgentSidebar extends ConsumerWidget {
         ],
       ),
       child: agentsAsyncValue.when(
-        data:
-            (agents) => ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              itemCount: agents.length,
-              itemBuilder: (context, index) {
-                final agent = agents[index];
-                return _AgentIconButton(
-                  agent: agent,
-                  isSelected: agent.id == currentAgentId,
-                  onTap: () {
-                    if (agent.id != currentAgentId) {
-                      onAgentSelected(agent);
-                    }
+        data: (agents) {
+          final totalAgents = ref.watch(agentsProvider).valueOrNull?.length ?? 0;
+          final hiddenCount = totalAgents - agents.length;
+
+          return Column(
+            children: [
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  itemCount: agents.length,
+                  itemBuilder: (context, index) {
+                    final agent = agents[index];
+                    return _AgentIconButton(
+                      agent: agent,
+                      isSelected: agent.id == currentAgentId,
+                      onTap: () {
+                        if (agent.id != currentAgentId) {
+                          onAgentSelected(agent);
+                        }
+                      },
+                    );
                   },
-                );
-              },
-            ),
+                ),
+              ),
+              if (hiddenCount > 0)
+                Tooltip(
+                  message: '$hiddenCount agent${hiddenCount == 1 ? '' : 's'} in folders',
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Icon(
+                      Icons.folder_outlined,
+                      size: 20,
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (_, __) => const SizedBox.shrink(),
       ),

@@ -35,6 +35,7 @@ class AgentCard extends ConsumerWidget {
           width: 1.0,
         ),
       ),
+      clipBehavior: Clip.hardEdge,
       color: themeData.cardTheme.color ?? colorScheme.surface,
       child: InkWell(
         onTap: () {
@@ -49,7 +50,7 @@ class AgentCard extends ConsumerWidget {
           }
         },
         borderRadius: BorderRadius.circular(12.0),
-        child: Container(
+        child: Padding(
           padding: const EdgeInsets.all(6.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -129,18 +130,20 @@ class AgentCard extends ConsumerWidget {
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
               ),
-              // Description
+              // Description — flexible so it shrinks when space is tight
               if (agent.description != null && agent.description!.isNotEmpty) ...[
                 const SizedBox(height: 2),
-                Text(
-                  agent.description!,
-                  style: textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                    fontSize: 11,
+                Flexible(
+                  child: Text(
+                    agent.description!,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 11,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
                 ),
               ],
               const SizedBox(height: 4),
