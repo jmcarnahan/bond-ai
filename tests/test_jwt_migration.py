@@ -267,6 +267,15 @@ class TestInvalidTokenErrorCatchAll:
 class TestGetCurrentUserIntegration:
     """Test that get_current_user works correctly with PyJWT."""
 
+    @staticmethod
+    def _make_mock_request(token: str):
+        """Create a mock Request object with a Bearer token."""
+        from unittest.mock import MagicMock
+        request = MagicMock()
+        request.headers = {"authorization": f"Bearer {token}"}
+        request.cookies = {}
+        return request
+
     @pytest.mark.asyncio
     async def test_valid_token_returns_user(self):
         """A valid token with all required claims returns a User."""
@@ -280,10 +289,12 @@ class TestGetCurrentUserIntegration:
             "okta_sub": "00utest",
             "given_name": "Test",
             "family_name": "User",
+            "iss": "bond-ai",
+            "aud": "bond-ai-api",
         }
         token = _make_token(claims)
 
-        user = await get_current_user(token)
+        user = await get_current_user(self._make_mock_request(token))
         assert user.email == "testuser@example.com"
         assert user.user_id == "user_test_123"
         assert user.provider == "okta"
@@ -302,12 +313,14 @@ class TestGetCurrentUserIntegration:
             "sub": "user@example.com",
             "user_id": "user_123",
             "provider": "okta",
+            "iss": "bond-ai",
+            "aud": "bond-ai-api",
             "exp": datetime.now(timezone.utc) - timedelta(hours=1),
         }
         token = jwt.encode(payload, SECRET, algorithm=ALGORITHM)
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(token)
+            await get_current_user(self._make_mock_request(token))
         assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
@@ -316,10 +329,10 @@ class TestGetCurrentUserIntegration:
         from bondable.rest.dependencies.auth import get_current_user
         from fastapi import HTTPException
 
-        token = _make_token({"user_id": "user_123", "provider": "okta"})
+        token = _make_token({"user_id": "user_123", "provider": "okta", "iss": "bond-ai", "aud": "bond-ai-api"})
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(token)
+            await get_current_user(self._make_mock_request(token))
         assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
@@ -328,10 +341,10 @@ class TestGetCurrentUserIntegration:
         from bondable.rest.dependencies.auth import get_current_user
         from fastapi import HTTPException
 
-        token = _make_token({"sub": "user@example.com", "provider": "okta"})
+        token = _make_token({"sub": "user@example.com", "provider": "okta", "iss": "bond-ai", "aud": "bond-ai-api"})
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(token)
+            await get_current_user(self._make_mock_request(token))
         assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
@@ -340,8 +353,8 @@ class TestGetCurrentUserIntegration:
         from bondable.rest.dependencies.auth import get_current_user
         from fastapi import HTTPException
 
-        token = _make_token({"sub": "user@example.com", "user_id": "user_123"})
+        token = _make_token({"sub": "user@example.com", "user_id": "user_123", "iss": "bond-ai", "aud": "bond-ai-api"})
 
         with pytest.raises(HTTPException) as exc_info:
-            await get_current_user(token)
+            await get_current_user(self._make_mock_request(token))
         assert exc_info.value.status_code == 401

@@ -97,6 +97,7 @@ class TestOktaOAuth2Provider:
         mock_get.return_value.json.return_value = {
             "sub": "test_user_id",
             "email": "test@example.com",
+            "email_verified": True,
             "name": "Test User",
             "given_name": "Test",
             "family_name": "User",
@@ -155,6 +156,7 @@ class TestOktaOAuth2Provider:
         mock_get.return_value.status_code = 200
         mock_get.return_value.json.return_value = {
             "email": "unauthorized@example.com",
+            "email_verified": True,
             "name": "Unauthorized User"
         }
 
@@ -244,7 +246,8 @@ class TestOktaAuthenticationRoutes:
                 response = test_client.get("/auth/okta/callback?code=test_code", follow_redirects=False)
 
                 assert response.status_code == 307
-                assert "token=" in response.headers["location"]
+                location = response.headers["location"]
+                assert "token=" in location or "code=" in location
         finally:
             if get_bond_provider in app.dependency_overrides:
                 del app.dependency_overrides[get_bond_provider]

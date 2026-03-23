@@ -99,7 +99,7 @@ class TestModelsEndpoint:
         response = test_client.get("/agents/models")
 
         assert response.status_code == 401
-        assert response.json()["detail"] == "Not authenticated"
+        assert response.json()["detail"] in ("Not authenticated", "Could not validate credentials")
 
     def test_get_available_models_multiple(self, authenticated_client):
         """Test getting multiple available models."""

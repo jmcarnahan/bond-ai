@@ -14,7 +14,6 @@ class MessageInputBar extends ConsumerStatefulWidget {
   final VoidCallback onSendMessage;
   final void Function(List<PlatformFile>) onFileAttachmentsChanged;
   final List<PlatformFile> attachments;
-  final VoidCallback? onCreateNewThread;
 
   const MessageInputBar({
     super.key,
@@ -25,7 +24,6 @@ class MessageInputBar extends ConsumerStatefulWidget {
     required this.onSendMessage,
     required this.onFileAttachmentsChanged,
     required this.attachments,
-    this.onCreateNewThread,
   });
 
   @override
@@ -35,26 +33,6 @@ class MessageInputBar extends ConsumerStatefulWidget {
 class _MessageInputBarState extends ConsumerState<MessageInputBar> {
   late final FocusNode _keyboardFocusNode;
   late final ScrollController _inputScrollController;
-
-  /// Replace non-ASCII characters in filenames with spaces.
-  String _sanitizeFilename(String name) {
-    return name.replaceAll(RegExp(r'[^\x20-\x7E]'), ' ').replaceAll(RegExp(r' {2,}'), ' ').trim();
-  }
-
-  Future<void> _pickFiles() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
-
-    if (result != null && result.files.isNotEmpty) {
-      final sanitized = result.files.map((f) => PlatformFile(
-        name: _sanitizeFilename(f.name),
-        size: f.size,
-        bytes: f.bytes,
-      )).toList();
-      final updated = List<PlatformFile>.from(widget.attachments)
-        ..addAll(sanitized);
-      widget.onFileAttachmentsChanged(List.unmodifiable(updated));
-    }
-  }
 
   void _onAttachmentRemoved(PlatformFile file) {
     final updated = List<PlatformFile>.from(widget.attachments)..remove(file);
@@ -122,15 +100,6 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              if (widget.onCreateNewThread != null) ...[
-                _buildActionButton(
-                  icon: Icons.add_rounded,
-                  onPressed:
-                      widget.isSendingMessage ? null : widget.onCreateNewThread,
-                  tooltip: 'New thread',
-                ),
-                const SizedBox(width: 12.0),
-              ],
               Expanded(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
@@ -228,12 +197,6 @@ class _MessageInputBarState extends ConsumerState<MessageInputBar> {
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12.0),
-              _buildActionButton(
-                icon: Icons.attach_file_rounded,
-                onPressed: widget.isSendingMessage ? null : _pickFiles,
-                tooltip: 'Attach file',
               ),
               const SizedBox(width: 8.0),
               widget.isSendingMessage
