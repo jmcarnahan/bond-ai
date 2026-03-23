@@ -12,6 +12,8 @@ class AgentListItemModel {
   final String? samplePrompt;
   final Map<String, dynamic>? metadata;
   final String? userPermission;
+  final String? folderId;
+  final int? sortOrder;
 
   const AgentListItemModel({
     required this.id,
@@ -24,6 +26,8 @@ class AgentListItemModel {
     this.samplePrompt,
     this.metadata,
     this.userPermission,
+    this.folderId,
+    this.sortOrder,
   });
 
   factory AgentListItemModel.fromJson(Map<String, dynamic> json) {
@@ -39,6 +43,8 @@ class AgentListItemModel {
       samplePrompt: json['sample_prompt'] as String?,
       metadata: json['metadata'] as Map<String, dynamic>?,
       userPermission: json['user_permission'] as String?,
+      folderId: json['folder_id'] as String?,
+      sortOrder: json['sort_order'] as int?,
     );
   }
 
@@ -53,6 +59,8 @@ class AgentListItemModel {
       'sample_prompt': samplePrompt,
       'metadata': metadata,
       'user_permission': userPermission,
+      'folder_id': folderId,
+      'sort_order': sortOrder,
     };
   }
 
@@ -69,7 +77,9 @@ class AgentListItemModel {
         other.createdAtDisplay == createdAtDisplay &&
         other.samplePrompt == samplePrompt &&
         other.metadata == metadata &&
-        other.userPermission == userPermission;
+        other.userPermission == userPermission &&
+        other.folderId == folderId &&
+        other.sortOrder == sortOrder;
   }
 
   @override
@@ -82,7 +92,9 @@ class AgentListItemModel {
       createdAtDisplay.hashCode ^
       samplePrompt.hashCode ^
       metadata.hashCode ^
-      userPermission.hashCode;
+      userPermission.hashCode ^
+      folderId.hashCode ^
+      sortOrder.hashCode;
 }
 
 @immutable

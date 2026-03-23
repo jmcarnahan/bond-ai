@@ -8,6 +8,7 @@ import 'package:flutterui/data/services/mcp_service.dart';
 import 'package:flutterui/data/services/file_service.dart';
 import 'package:flutterui/data/services/connections_service.dart';
 import 'package:flutterui/data/services/scheduled_job_service.dart';
+import 'package:flutterui/data/services/folder_service.dart';
 import 'package:flutterui/providers/core_providers.dart' show sharedPreferencesProvider;
 
 final authServiceProvider = Provider<AuthService>((ref) {
@@ -48,4 +49,9 @@ final connectionsServiceProvider = Provider<ConnectionsService>((ref) {
 final scheduledJobServiceProvider = Provider<ScheduledJobService>((ref) {
   final authService = ref.watch(authServiceProvider);
   return ScheduledJobService(authService: authService);
+});
+
+final folderServiceProvider = Provider<FolderService>((ref) {
+  final authService = ref.watch(authServiceProvider);
+  return FolderService(authService: authService);
 });
