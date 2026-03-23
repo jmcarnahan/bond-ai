@@ -225,6 +225,38 @@ class ScheduledJob(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
 
+class AgentFolder(Base):
+    __tablename__ = "agent_folders"
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    user_id = Column(String, ForeignKey('users.id'), nullable=False, index=True)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+    __table_args__ = (UniqueConstraint('name', 'user_id', name='_folder_name_user_uc'),)
+
+
+class AgentFolderAssignment(Base):
+    __tablename__ = "agent_folder_assignments"
+    agent_id = Column(String, nullable=False)
+    user_id = Column(String, ForeignKey('users.id'), nullable=False)
+    folder_id = Column(String, ForeignKey('agent_folders.id', ondelete='CASCADE'), nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    __table_args__ = (PrimaryKeyConstraint('agent_id', 'user_id'),)
+
+
+class UserAgentSortOrder(Base):
+    """Per-user agent ordering. Sort order is global per agent (not per-folder).
+    When an agent moves between contexts (main screen <-> folder), its sort_order
+    row is deleted so it appears at the end of the new context.
+    The frontend filters agents by context first, then sorts by sort_order."""
+    __tablename__ = "user_agent_sort_orders"
+    user_id = Column(String, ForeignKey('users.id'), nullable=False)
+    agent_id = Column(String, nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    __table_args__ = (PrimaryKeyConstraint('user_id', 'agent_id'),)
+
+
 class Metadata(ABC):
 
     def __init__(self, metadata_db_url):

@@ -5,6 +5,7 @@ from bondable.bond.providers.threads import ThreadsProvider
 from bondable.bond.providers.agent import AgentProvider
 from bondable.bond.groups import Groups
 from bondable.bond.users import Users
+from bondable.bond.agent_folders import AgentFolders
 import logging
 LOGGER = logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ class Provider(ABC):
     agents: AgentProvider = None
     groups: Groups = None
     users: Users = None
+    agent_folders: AgentFolders = None
 
     def get_default_model(self) -> str:
         """

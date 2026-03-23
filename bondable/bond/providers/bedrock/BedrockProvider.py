@@ -79,11 +79,13 @@ class BedrockProvider(Provider):
         )
         self.vectorstores.files_provider = self.files  # Set files provider reference
 
-        # Groups and users are handled by base metadata
+        # Groups, users, and agent folders are handled by base metadata
         from bondable.bond.groups import Groups
         from bondable.bond.users import Users
+        from bondable.bond.agent_folders import AgentFolders
         self.groups = Groups(self.metadata)
         self.users = Users(self.metadata)
+        self.agent_folders = AgentFolders(self.metadata)
 
         LOGGER.info("Initialized BedrockProvider")
 
