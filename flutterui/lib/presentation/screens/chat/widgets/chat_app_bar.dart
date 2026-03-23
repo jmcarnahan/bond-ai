@@ -9,12 +9,18 @@ class ChatAppBar extends ConsumerStatefulWidget implements PreferredSizeWidget {
   final String agentName;
   final String? threadName;
   final String? threadId;
+  final VoidCallback? onCreateNewThread;
+  final VoidCallback? onAttachFile;
+  final bool isSendingMessage;
 
   const ChatAppBar({
     super.key,
     required this.agentName,
     this.threadName,
     this.threadId,
+    this.onCreateNewThread,
+    this.onAttachFile,
+    this.isSendingMessage = false,
   });
 
   @override
@@ -199,9 +205,35 @@ class _ChatAppBarState extends ConsumerState<ChatAppBar> {
             ),
           ],
         ),
-        actions: const [
-          ConnectionStatusIndicator(),
-          SizedBox(width: 8),
+        actions: [
+          if (widget.onAttachFile != null)
+            Tooltip(
+              message: 'Attach File',
+              child: IconButton(
+                icon: Icon(
+                  Icons.attach_file_rounded,
+                  color: widget.isSendingMessage
+                      ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                onPressed: widget.isSendingMessage ? null : widget.onAttachFile,
+              ),
+            ),
+          if (widget.onCreateNewThread != null)
+            Tooltip(
+              message: 'New Conversation',
+              child: IconButton(
+                icon: Icon(
+                  Icons.add_comment_outlined,
+                  color: widget.isSendingMessage
+                      ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                onPressed: widget.isSendingMessage ? null : widget.onCreateNewThread,
+              ),
+            ),
+          const ConnectionStatusIndicator(),
+          const SizedBox(width: 8),
         ],
       ),
     );

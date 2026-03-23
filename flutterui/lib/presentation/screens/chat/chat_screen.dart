@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 import 'package:desktop_drop/desktop_drop.dart';
-import 'package:file_picker/file_picker.dart' show PlatformFile;
+import 'package:file_picker/file_picker.dart' show FilePicker, PlatformFile;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -242,6 +242,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     });
   }
 
+  Future<void> _pickFiles() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+      if (result != null && result.files.isNotEmpty) {
+        final sanitized = result.files.map((f) => PlatformFile(
+          name: _sanitizeFilename(f.name),
+          size: f.size,
+          bytes: f.bytes,
+        )).toList();
+        final updated = List<PlatformFile>.from(_fileAttachments)
+          ..addAll(sanitized);
+        _onAttachmentsChanged(List.unmodifiable(updated));
+      }
+    } catch (e) {
+      logger.e("[ChatScreen] Error picking files: $e");
+    }
+  }
+
   void _handleAgentSwitch(AgentListItemModel agent) {
     // Only update local state when switching from sidebar
     // This prevents screen reconstruction and thread changes
@@ -403,6 +421,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       agentName: _currentAgentName,
       threadName: threadName,
       threadId: effectiveThreadId,
+      onCreateNewThread: _createNewThread,
+      onAttachFile: _pickFiles,
+      isSendingMessage: chatState.isSendingMessage,
     );
   }
 
@@ -507,7 +528,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                         onSendMessage: _sendMessage,
                         onFileAttachmentsChanged: _onAttachmentsChanged,
                         attachments: _fileAttachments,
-                        onCreateNewThread: _createNewThread,
                       ),
                     ],
                   ),
