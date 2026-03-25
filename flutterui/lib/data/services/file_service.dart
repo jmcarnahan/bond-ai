@@ -1,8 +1,9 @@
 import 'dart:convert';
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' show AnchorElement, Blob, Url, document;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+
+import 'web_download_stub.dart'
+    if (dart.library.html) 'web_download_web.dart' as download;
 import 'package:http_parser/http_parser.dart';
 
 import 'package:flutterui/core/constants/api_constants.dart';
@@ -182,28 +183,8 @@ class FileService {
       if (response.statusCode == 200) {
         logger.i("[FileService] Successfully downloaded file: $fileName");
 
-        // For web platform, trigger download via blob
-        if (kIsWeb) {
-          // Create blob from response bytes and trigger download
-          final blob = Blob([response.bodyBytes]);
-          final blobUrl = Url.createObjectUrlFromBlob(blob);
-
-          final anchor = AnchorElement()
-            ..href = blobUrl
-            ..download = fileName
-            ..style.display = 'none';
-          document.body?.append(anchor);
-          anchor.click();
-          anchor.remove();
-
-          // Clean up the blob URL
-          Url.revokeObjectUrl(blobUrl);
-        } else {
-          // For mobile/desktop, we would use path_provider and save to downloads
-          // This would require additional implementation
-          logger.w("[FileService] Mobile/desktop download not yet implemented");
-          throw Exception('Download is only supported on web platform currently');
-        }
+        // Trigger browser download (web) or throw on non-web platforms
+        download.triggerBrowserDownload(fileName, response.bodyBytes);
       } else {
         final errorMsg = 'Failed to download file: ${response.statusCode}';
         logger.e("[FileService] $errorMsg for $fileId");
