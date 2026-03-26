@@ -32,12 +32,14 @@ def create_auth_token(user_email: str = "demo@example.com") -> str:
         from bondable.bond.config import Config
         jwt_config = Config.config().get_jwt_config()
 
-        # Token needs user_id and provider fields based on auth.py requirements
+        # Token needs user_id, provider, iss, and aud fields based on auth.py requirements
         token_data = {
             "sub": user_email,
             "name": "Demo User",
             "user_id": f"test_user_{user_email.split('@')[0]}",
             "provider": "cognito",
+            "iss": "bond-ai",
+            "aud": "bond-ai-api",
             "exp": datetime.now(timezone.utc) + timedelta(minutes=jwt_config.ACCESS_TOKEN_EXPIRE_MINUTES)
         }
 
