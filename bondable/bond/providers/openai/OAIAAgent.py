@@ -264,26 +264,26 @@ class OAIAAgent(Agent):
         return self.agent_metadata
 
     @override
-    def create_user_message(self, prompt, thread_id, attachments=None, override_role="user") -> str:
+    def create_user_message(self, prompt, thread_id, attachments=None, hidden=False) -> str:
         msg = self.openai_client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
             content=prompt,
             attachments=attachments,
-            metadata={"override_role": override_role}
+            metadata={"hidden": str(hidden).lower()}
         )
         return msg.id
 
     @override
-    def stream_response(self, prompt=None, thread_id=None, attachments=None, override_role="user") -> Generator[str, None, None]:
+    def stream_response(self, prompt=None, thread_id=None, attachments=None, hidden=False) -> Generator[str, None, None]:
         LOGGER.debug(f"Agent streaming response using assistant id: {self.assistant_id}")
 
         if prompt is not None:
-            LOGGER.info(f"stream_response called with override_role='{override_role}', prompt length={len(prompt)}")
-            if override_role == "system":
-                LOGGER.debug(f"System message (introduction) content: {prompt[:200]}...")
-            user_message_id = self.create_user_message(prompt=prompt, thread_id=thread_id, attachments=attachments, override_role=override_role)
-            LOGGER.debug(f"Created new message with role '{override_role}': {user_message_id}")
+            LOGGER.info(f"stream_response called with hidden={hidden}, prompt length={len(prompt)}")
+            if hidden:
+                LOGGER.debug(f"Hidden message (introduction) content: {prompt[:200]}...")
+            user_message_id = self.create_user_message(prompt=prompt, thread_id=thread_id, attachments=attachments, hidden=hidden)
+            LOGGER.debug(f"Created new message (hidden={hidden}): {user_message_id}")
         message_queue = Queue()
 
         # Use reminder as additional_instructions
@@ -333,7 +333,7 @@ class OAIAAgent(Agent):
                         attachments=[
                             {"file_id": file_id, "tools": [{"type": "code_interpreter"}]}
                         ],
-                        metadata={"override_role": "system"}
+                        metadata={"hidden": "true"}
                     )
                 LOGGER.info(f"Added code files to thread: {code_file_ids} from functions")
             return

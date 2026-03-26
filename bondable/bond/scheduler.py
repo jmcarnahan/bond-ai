@@ -437,7 +437,7 @@ class JobScheduler:
                 thread_id=new_thread.thread_id,
                 prompt=job.prompt,
                 attachments=[],
-                override_role="user",
+                hidden=False,
                 current_user=rest_user,
                 jwt_token=jwt_token,
             ):

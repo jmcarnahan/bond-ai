@@ -120,13 +120,46 @@ resource "aws_s3_bucket_public_access_block" "uploads" {
 resource "aws_s3_bucket_cors_configuration" "uploads" {
   bucket = aws_s3_bucket.uploads.id
 
+  # SA-6/SA-14: Restrict CORS origins (no wildcard). Reuses backend CORS origins
+  # plus custom domain if configured. Note: S3 uploads currently go through the
+  # backend (not direct browser uploads), so this is defense-in-depth.
   cors_rule {
     allowed_headers = ["*"]
     allowed_methods = ["GET", "PUT", "POST", "DELETE", "HEAD"]
-    allowed_origins = ["*"]
+    allowed_origins = concat(
+      split(",", var.cors_allowed_origins),
+      var.custom_domain_name != "" ? ["https://${var.custom_domain_name}"] : []
+    )
     expose_headers  = ["ETag", "x-amz-server-side-encryption", "x-amz-request-id", "x-amz-id-2"]
     max_age_seconds = 3000
   }
+}
+
+# SA-6: Deny non-SSL access to uploads bucket (matching access-logs bucket policy)
+resource "aws_s3_bucket_policy" "uploads" {
+  bucket     = aws_s3_bucket.uploads.id
+  depends_on = [aws_s3_bucket_public_access_block.uploads]
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "DenyNonSSL"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "s3:*"
+        Resource = [
+          aws_s3_bucket.uploads.arn,
+          "${aws_s3_bucket.uploads.arn}/*"
+        ]
+        Condition = {
+          Bool = {
+            "aws:SecureTransport" = "false"
+          }
+        }
+      }
+    ]
+  })
 }
 
 # S3 Access Logging Bucket

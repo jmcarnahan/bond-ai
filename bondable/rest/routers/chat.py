@@ -89,11 +89,11 @@ async def chat(
     if thread_id is None:
         LOGGER.info("No thread_id provided, creating new thread")
 
-        # Use prompt for thread name only if it's a user message, otherwise use generic name
-        if request_body.override_role == "user":
+        # Use prompt for thread name only if it's a visible user message, otherwise use generic name
+        if not request_body.hidden:
             thread_name = request_body.prompt[:30] + "..." if len(request_body.prompt) > 30 else request_body.prompt
         else:
-            # For system messages (introduction), use generic name
+            # For hidden messages (introduction), use generic name
             thread_name = "New Conversation"
 
         try:
@@ -107,8 +107,8 @@ async def chat(
                 detail="Failed to create new thread. Please try again."
             )
     else:
-        # Check if this is a user message and the thread name needs updating
-        if request_body.override_role == "user":
+        # Check if this is a visible user message and the thread name needs updating
+        if not request_body.hidden:
             try:
                 existing_thread = provider.threads.get_thread(thread_id, current_user.user_id)
                 if existing_thread and existing_thread.name == "New Conversation":
@@ -119,8 +119,8 @@ async def chat(
                 LOGGER.error(f"Failed to update thread name for {thread_id}: {e}", exc_info=True)
                 # Don't fail the request, just log the error
 
-    if request_body.override_role == "system":
-        LOGGER.info(f"System message (introduction) being sent: {request_body.prompt[:100]}...")
+    if request_body.hidden:
+        LOGGER.info(f"Hidden message (introduction) being sent: {request_body.prompt[:100]}...")
 
     # Build resolved attachments with appropriate tools based on suggested_tool
     resolved_attachements = []
@@ -190,7 +190,7 @@ async def chat(
                     thread_id=thread_id,
                     prompt=request_body.prompt,
                     attachments=resolved_attachements,
-                    override_role=request_body.override_role,
+                    hidden=request_body.hidden,
                     current_user=current_user,
                     jwt_token=jwt_token
                 ):

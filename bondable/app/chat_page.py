@@ -111,7 +111,7 @@ class ChatPage(Page):
             initial_prompt = self.agent.get_metadata_value('initial_prompt')
             if initial_prompt:
                 conn = Broker.broker().connect(thread_id=thread_id, subscriber_id=st.session_state['user_id'])
-                message = self.agent.create_user_message(initial_prompt, thread_id, override_role='system')
+                message = self.agent.create_user_message(initial_prompt, thread_id, hidden=True)
                 self.run_thread(thread_id, conn)
                 LOGGER.info(f"Clear thread -> Sent initial prompt: {initial_prompt}")
             st.session_state['clear_thread'] = False

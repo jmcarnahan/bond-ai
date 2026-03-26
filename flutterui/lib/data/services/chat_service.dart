@@ -23,10 +23,10 @@ class ChatService {
     required String agentId,
     required String prompt,
     List<ChatAttachment>? attachments,
-    String overrideRole = "user",
+    bool hidden = false,
   }) async* {
     logger.i(
-      "[ChatService] streamChatResponse called for threadId: $threadId, agentId: $agentId, overrideRole: $overrideRole",
+      "[ChatService] streamChatResponse called for threadId: $threadId, agentId: $agentId, hidden: $hidden",
     );
     logger.i("[ChatService] Prompt: $prompt");
     try {
@@ -36,7 +36,7 @@ class ChatService {
         'agent_id': agentId,
         'prompt': prompt,
         'attachments': attachments?.map((attachment) => attachment.toJson()).toList(),
-        'override_role': overrideRole,
+        'hidden': hidden,
       });
 
       final request =

@@ -207,7 +207,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         await chatNotifier.sendMessage(
           agentId: agentId,
           prompt: message,
-          overrideRole: "system",
+          hidden: true,
         );
         logger.i("[ChatScreen] System message sent");
       },

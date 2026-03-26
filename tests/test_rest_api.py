@@ -1150,7 +1150,7 @@ class TestThreadAgentAssociation:
             "thread_id": None,
             "agent_id": "agent_789",
             "prompt": "Hello",
-            "override_role": "system"
+            "hidden": True
         }
 
         response = client.post("/chat", headers=auth_headers, json=chat_data)
@@ -1191,7 +1191,7 @@ class TestChat:
             thread_id="test_thread",
             prompt="Hello",
             attachments=[],
-            override_role="user",
+            hidden=False,
             current_user=ANY,
             jwt_token=ANY
         )
@@ -1281,13 +1281,13 @@ class TestChat:
             thread_id="test_thread",
             prompt="Analyze this data",
             attachments=expected_attachments,
-            override_role="user",
+            hidden=False,
             current_user=ANY,
             jwt_token=ANY
         )
 
-    def test_chat_with_system_override_role(self, authenticated_client):
-        """Test chat with override_role set to system."""
+    def test_chat_with_hidden_flag(self, authenticated_client):
+        """Test chat with hidden=True for introduction messages."""
         client, auth_headers, mock_provider = authenticated_client
 
         # Mock agent
@@ -1302,7 +1302,7 @@ class TestChat:
             "thread_id": "test_thread",
             "agent_id": "test_agent",
             "prompt": "This is the agent introduction",
-            "override_role": "system"
+            "hidden": True
         }
 
         response = client.post("/chat", headers=auth_headers, json=chat_data)
@@ -1313,7 +1313,7 @@ class TestChat:
             thread_id="test_thread",
             prompt="This is the agent introduction",
             attachments=[],
-            override_role="system",
+            hidden=True,
             current_user=ANY,
             jwt_token=ANY
         )
@@ -1339,7 +1339,7 @@ class TestChat:
             "thread_id": None,
             "agent_id": "test_agent",
             "prompt": "This is the agent introduction",
-            "override_role": "system"
+            "hidden": True
         }
 
         response = client.post("/chat", headers=auth_headers, json=chat_data)
@@ -1350,7 +1350,7 @@ class TestChat:
         # Verify thread was created with correct name
         mock_provider.threads.create_thread.assert_called_once_with(
             user_id="test-user-id-123",
-            name="New Conversation"  # System message should use generic name
+            name="New Conversation"  # Hidden message should use generic name
         )
 
         # Verify agent was called with new thread_id
@@ -1358,7 +1358,7 @@ class TestChat:
             thread_id="new_thread_123",
             prompt="This is the agent introduction",
             attachments=[],
-            override_role="system",
+            hidden=True,
             current_user=ANY,
             jwt_token=ANY
         )

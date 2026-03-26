@@ -304,7 +304,7 @@ class BedrockAgent(Agent):
 
     def create_user_message(self, prompt: str, thread_id: str,
                           attachments: Optional[List] = None,
-                          override_role: str = "user") -> str:
+                          hidden: bool = False) -> str:
         """
         Create a user message in a thread.
 
@@ -312,7 +312,7 @@ class BedrockAgent(Agent):
             prompt: The message content
             thread_id: Thread to add message to
             attachments: Optional attachments (not yet implemented)
-            override_role: Role override (default: "user")
+            hidden: If True, message is hidden from chat UI (e.g. introductions)
 
         Returns:
             Message ID
@@ -328,13 +328,13 @@ class BedrockAgent(Agent):
         message_id = self.bond_provider.threads.add_message(
             thread_id=thread_id,
             user_id=user_id,
-            role=override_role,
+            role="user",  # ALWAYS "user" — never client-controlled
             message_type='text',
             content=prompt,
             attachments=attachments,
             metadata={
                 'agent_id': self.agent_id,
-                'override_role': override_role
+                'hidden': hidden
             }
         )
 
@@ -344,7 +344,7 @@ class BedrockAgent(Agent):
     def stream_response(self, prompt: Optional[str] = None,
                        thread_id: Optional[str] = None,
                        attachments: Optional[List] = None,
-                       override_role: str = "user",
+                       hidden: bool = False,
                        current_user: Optional[Any] = None,
                        jwt_token: Optional[str] = None) -> Generator[str, None, None]:
         """
@@ -354,7 +354,7 @@ class BedrockAgent(Agent):
             prompt: Optional prompt to add to thread
             thread_id: Thread ID (required)
             attachments: Optional attachments
-            override_role: Role for the prompt message
+            hidden: If True, message is hidden from chat UI (e.g. introductions)
             current_user: User object with authentication context
             jwt_token: Raw JWT token for passing to MCP servers
 
@@ -448,7 +448,7 @@ class BedrockAgent(Agent):
 
             # Add user message if needed
             if prompt:
-                self.create_user_message(prompt, thread_id, attachments, override_role)
+                self.create_user_message(prompt, thread_id, attachments, hidden=hidden)
             elif not prompt:
                 # Get the last user message
                 messages = self.bond_provider.threads.get_messages(thread_id, limit=1)
@@ -540,7 +540,7 @@ Please briefly acknowledge the documents and indicate you're ready to proceed wi
                         session_state=session_state,
                         files=chat_files,
                         attachments=attachments,
-                        override_role=override_role,
+                        hidden=hidden,
                         user_id=user_id,
                         phase_metadata={'phase': 'document_analysis', 'phase_number': 1}
                     )
@@ -559,7 +559,7 @@ Please integrate any relevant insights from the documents with your analysis of 
                         session_state=session_state,
                         files=code_files,
                         attachments=None,  # Don't re-send attachments in phase 2
-                        override_role=override_role,
+                        hidden=hidden,
                         user_id=user_id,
                         phase_metadata={'phase': 'data_analysis', 'phase_number': 2}
                     )
@@ -585,7 +585,7 @@ Please integrate any relevant insights from the documents with your analysis of 
                 session_state=session_state,
                 files=all_files if all_files else None,
                 attachments=attachments,
-                override_role=override_role,
+                hidden=hidden,
                 user_id=user_id,
             )
 
@@ -1688,7 +1688,7 @@ Please integrate any relevant insights from the documents with your analysis of 
 
     def _process_bedrock_invocation(self, prompt: Optional[str], thread_id: str, session_id: str,
                                    session_state: Dict[str, Any], files: Optional[List[Dict]],
-                                   attachments: Optional[List], override_role: str, user_id: str,
+                                   attachments: Optional[List], hidden: bool, user_id: str,
                                    phase_metadata: Optional[Dict] = None) -> Generator[str, None, None]:
         """
         Process a single Bedrock invocation with the given files.
@@ -1703,7 +1703,7 @@ Please integrate any relevant insights from the documents with your analysis of 
             session_state: Current session state
             files: Files to include in this invocation (already have useCase set)
             attachments: Original attachments (only used for first invocation)
-            override_role: Role for user message
+            hidden: If True, message is hidden from chat UI
             user_id: User ID
             phase_metadata: Optional metadata to include (e.g., phase information)
 

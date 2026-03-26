@@ -37,7 +37,7 @@ def _simulate_stream_response_generator(
             thread_id=thread_id,
             prompt=prompt,
             attachments=[],
-            override_role="user",
+            hidden=False,
             current_user=None,
             jwt_token=None,
         ):

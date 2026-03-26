@@ -48,10 +48,10 @@ class MockAgent(Agent):
     def get_metadata(self):
         return self.agent_def.metadata
 
-    def create_user_message(self, prompt, thread_id, attachments=None, override_role="user"):
+    def create_user_message(self, prompt, thread_id, attachments=None, hidden=False):
         return f"msg-{self.agent_id}-{thread_id}"
 
-    def stream_response(self, prompt=None, thread_id=None, attachments=None, override_role="user"):
+    def stream_response(self, prompt=None, thread_id=None, attachments=None, hidden=False):
         yield f"Response from {self.agent_id}"
 
 

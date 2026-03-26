@@ -54,11 +54,11 @@ class TestAgent:
         agent = Agent.get_agent_by_name("Simple Agent")
         assert agent is not None
 
-        msg = agent.create_user_message("Say Hello", thread_id, override_role="system")
+        msg = agent.create_user_message("Say Hello", thread_id, hidden=True)
         response: BondMessage  = conn.wait_for_message()
         assert response is not None
         assert response.thread_id == thread_id
-        assert response.role == "system"
+        assert response.role == "user"
         assert response.type == "text"
         assert response.clob.get_content() == "Say Hello"
 
@@ -66,7 +66,7 @@ class TestAgent:
         msgs = self.threads.get_messages(thread_id)
         assert len(msgs) == 1
         response = list(msgs.values())[0]
-        assert response.role == "system"
+        assert response.role == "user"
         assert response.type == "text"
         assert response.clob.get_content() == "Say Hello"
 
