@@ -12,4 +12,5 @@ class ChatRequest(BaseModel):
     agent_id: str
     prompt: str
     attachments: Optional[List[ChatAttachment]] = None  # List of attachments with tool info
-    override_role: Optional[str] = "user"  # Default to "user", can be "system" for introduction messages
+    hidden: bool = False  # True for introduction messages hidden from chat UI
+    override_role: Optional[str] = None  # DEPRECATED: ignored by server, kept for backward compat

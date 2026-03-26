@@ -78,7 +78,7 @@ class Agent(ABC):
         pass
 
     @abstractmethod
-    def create_user_message(self, prompt, thread_id, attachments=None, override_role="user") -> str:
+    def create_user_message(self, prompt, thread_id, attachments=None, hidden=False) -> str:
         """
         Creates a user message for the agent based on the provided prompt and thread ID.
         This method should be implemented by subclasses.
@@ -87,7 +87,7 @@ class Agent(ABC):
             prompt (str): The prompt to send to the agent.
             thread_id (str): The ID of the thread to which the message belongs.
             attachments (Optional[List[str]]): List of file IDs to attach to the message.
-            override_role (str): Role to override the default role for the message.
+            hidden (bool): If True, message is hidden from chat UI (e.g. introductions).
 
         Returns:
             str: The ID of the created message.
@@ -95,7 +95,7 @@ class Agent(ABC):
         pass
 
     @abstractmethod
-    def stream_response(self, prompt=None, thread_id=None, attachments=None, override_role="user") -> Generator[str, None, None]:
+    def stream_response(self, prompt=None, thread_id=None, attachments=None, hidden=False) -> Generator[str, None, None]:
         """
         Streams the response from the agent based on the provided prompt and thread ID.
         This method should be implemented by subclasses.
@@ -103,16 +103,16 @@ class Agent(ABC):
             prompt (Optional[str]): The prompt to send to the agent.
             thread_id (Optional[str]): The ID of the thread to which the message belongs.
             attachments (Optional[List[str]]): List of file IDs to attach to the message.
-            override_role (str): The role to use for the message (default: "user").
+            hidden (bool): If True, message is hidden from chat UI (default: False).
         Yields:
             str: The streamed response from the agent.
         """
         pass
 
-    def broadcast_message(self, prompt, thread_id, attachments=None, override_role="user") -> str:
-        msg_id = self.create_user_message(prompt=prompt, thread_id=thread_id, attachments=attachments, override_role=override_role)
+    def broadcast_message(self, prompt, thread_id, attachments=None, hidden=False) -> str:
+        msg_id = self.create_user_message(prompt=prompt, thread_id=thread_id, attachments=attachments, hidden=hidden)
         LOGGER.debug(f"Broadcasting new message: {prompt}")
-        self.broker.publish(thread_id=thread_id, message=f"<_bondmessage id=\"{msg_id}\" role=\"{override_role}\" type=\"text\" thread_id=\"{thread_id}\" is_done=\"false\">")
+        self.broker.publish(thread_id=thread_id, message=f"<_bondmessage id=\"{msg_id}\" role=\"user\" type=\"text\" thread_id=\"{thread_id}\" is_done=\"false\">")
         self.broker.publish(thread_id=thread_id, message=prompt)
         self.broker.publish(thread_id=thread_id, message="</_bondmessage>")
         return msg_id

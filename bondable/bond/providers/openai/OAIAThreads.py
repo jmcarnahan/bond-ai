@@ -67,15 +67,16 @@ class OAIAThreadsProvider(ThreadsProvider):
         for message in messages.data:
             part_idx = 0
 
-            metadata = message.metadata
-            if metadata is not None and "override_role" in metadata:
-                message.role = metadata["override_role"]
+            # Propagate OpenAI message metadata to BondMessage for filtering
+            msg_metadata = message.metadata or {}
 
             for part in message.content:
                 LOGGER.debug(f"Processing message part: {str(part)}")
                 part_id = f"{message.id}_{part_idx}"
                 if part.type == "text":
-                    response_msgs.append(BondMessage(thread_id=thread_id, message_id=part_id, type=part.type, role=message.role, content=part.text.value))
+                    bond_msg = BondMessage(thread_id=thread_id, message_id=part_id, type=part.type, role=message.role, content=part.text.value)
+                    bond_msg.metadata = msg_metadata
+                    response_msgs.append(bond_msg)
                 elif part.type == "image_file":
                     image_content = self.openai_client.files.content(part.image_file.file_id)
                     data_in_bytes = image_content.read()
@@ -84,6 +85,8 @@ class OAIAThreadsProvider(ThreadsProvider):
                     # data_in_bytes = response_content.read()
                     # readable_buffer = io.BytesIO(data_in_bytes)
                     # image = Image.open(readable_buffer)
-                    response_msgs.append(BondMessage(thread_id=thread_id, message_id=part_id, type=part.type, role=message.role, content=img_src))
+                    bond_msg = BondMessage(thread_id=thread_id, message_id=part_id, type=part.type, role=message.role, content=img_src)
+                    bond_msg.metadata = msg_metadata
+                    response_msgs.append(bond_msg)
                 part_idx += 1
         return {message.message_id: message for message in response_msgs}
