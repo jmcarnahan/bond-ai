@@ -63,7 +63,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState>
     required String agentId,
     required String prompt,
     List<PlatformFile>? attachedFiles,
-    String overrideRole = "user",
+    bool hidden = false,
   }) async {
     if (prompt.isEmpty) return;
     state = state.copyWith(isSendingMessage: true, clearErrorMessage: true);
@@ -117,8 +117,8 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState>
       }
     }
 
-    // Add user message to UI (unless it's a system message)
-    if (overrideRole != "system") {
+    // Add user message to UI (unless it's a hidden message like an introduction)
+    if (!hidden) {
       final userMessage = Message(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         type: 'text',
@@ -155,7 +155,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState>
       logger.i("[ChatSessionNotifier]   - agentId: $agentId");
       logger.i("[ChatSessionNotifier]   - threadId: ${state.currentThreadId}");
       logger.i("[ChatSessionNotifier]   - prompt: $prompt");
-      logger.i("[ChatSessionNotifier]   - overrideRole: $overrideRole");
+      logger.i("[ChatSessionNotifier]   - hidden: $hidden");
 
       resetStreamIdleTimer(assistantMessageIndex);
       chatStreamSubscription = _chatService
@@ -166,7 +166,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState>
             agentId: agentId,
             prompt: prompt,
             attachments: chatAttachments,
-            overrideRole: overrideRole,
+            hidden: hidden,
           )
           .listen(
             (chunk) => handleStreamData(chunk, assistantMessageIndex),
@@ -191,7 +191,7 @@ class ChatSessionNotifier extends StateNotifier<ChatSessionState>
     await sendMessage(
       agentId: agentId,
       prompt: introduction,
-      overrideRole: "system",
+      hidden: true,
     );
     state = state.copyWith(isSendingIntroduction: false);
   }
