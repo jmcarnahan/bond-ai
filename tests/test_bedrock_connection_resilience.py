@@ -104,7 +104,7 @@ class TestInvokeAgentRetry:
             session_state={},
             files=None,
             attachments=None,
-            override_role='user',
+            hidden=False,
             user_id='user-1',
         ))
         return results
