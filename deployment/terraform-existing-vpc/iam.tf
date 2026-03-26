@@ -10,6 +10,9 @@ data "aws_secretsmanager_secret" "mcp_atlassian_oauth_backend" {
 resource "aws_iam_role" "app_runner_instance" {
   name = "${var.project_name}-${var.environment}-apprunner-instance-role"
 
+  # SA-8: Added SourceAccount condition to prevent confused deputy attacks.
+  # Uses SourceAccount (not SourceArn) because the App Runner service ARN
+  # isn't known at role creation time (circular dependency).
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -21,6 +24,11 @@ resource "aws_iam_role" "app_runner_instance" {
             "tasks.apprunner.amazonaws.com",
             "bedrock.amazonaws.com"
           ]
+        }
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
         }
       }
     ]
@@ -166,6 +174,7 @@ resource "aws_iam_role_policy" "app_runner_ecr_kms" {
 resource "aws_iam_role" "bedrock_agent" {
   name = var.bedrock_agent_role_name
 
+  # SA-8: Added SourceAccount condition to prevent confused deputy attacks.
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -175,6 +184,11 @@ resource "aws_iam_role" "bedrock_agent" {
           Service = "bedrock.amazonaws.com"
         }
         Action = "sts:AssumeRole"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
       }
     ]
   })

@@ -129,6 +129,10 @@ variable "jwt_redirect_uri" {
   default     = ""
 }
 
+# SA-16 NOTE: Cognito is an optional/alternative OAuth provider. No Cognito resources
+# are provisioned by this Terraform. These variables are only used if explicitly configured
+# in environment tfvars. Primary auth is Okta. If security policy prohibits Cognito,
+# these variables and their backend.tf references can be safely removed.
 # AWS Cognito Configuration
 variable "cognito_domain" {
   description = "AWS Cognito user pool domain (e.g., https://your-domain.auth.us-west-2.amazoncognito.com)"
