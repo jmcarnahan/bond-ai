@@ -204,10 +204,16 @@ async def get_messages(
 
         message_refs = []
         for msg_obj in messages_dict.values():
-            # Skip system messages - they should not be returned to the client
+            # Skip system messages (legacy) and hidden messages (new) from client
             msg_role = getattr(msg_obj, 'role', 'assistant')
-            if msg_role == 'system':
-                LOGGER.debug(f"Filtering out system message: {getattr(msg_obj, 'message_id', 'unknown')}")
+            msg_metadata = getattr(msg_obj, 'metadata', {}) or {}
+            is_hidden = (
+                msg_role == 'system'  # Legacy Bedrock messages stored with role="system"
+                or msg_metadata.get('hidden') in (True, 'true')  # New hidden flag (bool or string)
+                or msg_metadata.get('override_role') == 'system'  # Legacy OpenAI metadata
+            )
+            if is_hidden:
+                LOGGER.debug(f"Filtering out hidden/system message: {getattr(msg_obj, 'message_id', 'unknown')}")
                 continue
 
             actual_content = ""

@@ -535,6 +535,10 @@ class BedrockThreadsProvider(ThreadsProvider):
                 for msg in messages:
                     if msg.role not in ('user', 'assistant'):
                         continue
+                    # Skip hidden messages (introductions) from cross-agent context
+                    msg_meta = msg.message_metadata or {}
+                    if msg_meta.get('hidden') in (True, 'true') or msg_meta.get('override_role') == 'system':
+                        continue
                     if msg.type in ('system', 'error', 'file_link', 'image_file'):
                         continue
 
