@@ -6,7 +6,7 @@ import 'package:flutterui/core/utils/logger.dart';
 
 final groupServiceProvider = Provider<GroupService>((ref) {
   final authService = ref.watch(authServiceProvider);
-  return GroupService(authService);
+  return GroupService(authService: authService);
 });
 
 final groupsProvider = FutureProvider<List<Group>>((ref) async {
