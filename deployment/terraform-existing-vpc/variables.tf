@@ -200,6 +200,12 @@ variable "bedrock_selectable_models" {
   default     = "us.anthropic.claude-opus-4-5-20251101-v1:0,us.anthropic.claude-sonnet-4-5-20250929-v1:0,us.anthropic.claude-haiku-4-5-20251001-v1:0,us.anthropic.claude-sonnet-4-20250514-v1:0"
 }
 
+variable "bedrock_guardrail_version" {
+  description = "Pin a specific published guardrail version. Leave empty to use the Terraform-managed version (recommended for new environments)."
+  type        = string
+  default     = ""
+}
+
 variable "bond_mcp_config" {
   description = "JSON configuration for MCP servers"
   type        = string

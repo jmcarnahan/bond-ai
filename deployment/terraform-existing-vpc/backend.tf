@@ -172,6 +172,10 @@ resource "aws_apprunner_service" "backend" {
 
           # Cookie security: "true" in production (HTTPS), "false" for local dev (HTTP)
           COOKIE_SECURE = "true"
+
+          # Bedrock Guardrails
+          BEDROCK_GUARDRAIL_ID      = var.enable_guardrails ? aws_bedrock_guardrail.main[0].guardrail_id : ""
+          BEDROCK_GUARDRAIL_VERSION = var.enable_guardrails ? (var.bedrock_guardrail_version != "" ? var.bedrock_guardrail_version : aws_bedrock_guardrail_version.main[0].version) : ""
         }
       }
     }
