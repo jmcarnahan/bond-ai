@@ -11,6 +11,7 @@ from botocore.exceptions import ClientError
 from bondable.bond.config import Config
 from bondable.bond.definition import AgentDefinition
 from bondable.bond.providers.bedrock.BedrockMCP import create_mcp_action_groups
+from bondable.bond.providers.bedrock.BedrockGuardrails import get_agent_guardrail_config
 from bondable.bond.providers.bedrock.bond_interactive_registry import append_bond_definitions
 
 
@@ -77,14 +78,20 @@ def create_bedrock_agent(agent_id: str, agent_def: AgentDefinition, owner_user_i
         # Since agent_id is a UUID with format "bedrock_agent_<uuid>", we need to clean it
         bedrock_agent_name = agent_id.replace('-', '_')
 
-        create_response = bedrock_agent_client.create_agent(
-            agentName=bedrock_agent_name,
-            agentResourceRoleArn=agent_role_arn,
-            instruction=instructions,
-            foundationModel=agent_def.model,
-            description=agent_def.description,
-            idleSessionTTLInSeconds=3600,  # 1 hour timeout
-        )
+        create_kwargs = {
+            "agentName": bedrock_agent_name,
+            "agentResourceRoleArn": agent_role_arn,
+            "instruction": instructions,
+            "foundationModel": agent_def.model,
+            "description": agent_def.description,
+            "idleSessionTTLInSeconds": 3600,  # 1 hour timeout
+        }
+        guardrail_config = get_agent_guardrail_config()
+        if guardrail_config:
+            create_kwargs["guardrailConfiguration"] = guardrail_config
+            LOGGER.info(f"Attaching guardrail {guardrail_config['guardrailIdentifier']} to new agent {agent_id}")
+
+        create_response = bedrock_agent_client.create_agent(**create_kwargs)
 
         bedrock_agent_id = create_response['agent']['agentId']
 
@@ -180,15 +187,20 @@ def update_bedrock_agent(agent_def: AgentDefinition, bedrock_agent_id: str, bedr
 
     try:
         # Step 1: Update the agent configuration
-        update_response = bedrock_agent_client.update_agent(
-            agentId=bedrock_agent_id,
-            agentName=bedrock_agent_name,
-            agentResourceRoleArn=agent_role_arn,
-            instruction=instructions,
-            foundationModel=agent_def.model,
-            description=agent_def.description,
-            idleSessionTTLInSeconds=3600,  # 1 hour timeout
-        )
+        update_kwargs = {
+            "agentId": bedrock_agent_id,
+            "agentName": bedrock_agent_name,
+            "agentResourceRoleArn": agent_role_arn,
+            "instruction": instructions,
+            "foundationModel": agent_def.model,
+            "description": agent_def.description,
+            "idleSessionTTLInSeconds": 3600,  # 1 hour timeout
+        }
+        guardrail_config = get_agent_guardrail_config()
+        if guardrail_config:
+            update_kwargs["guardrailConfiguration"] = guardrail_config
+
+        update_response = bedrock_agent_client.update_agent(**update_kwargs)
 
         # Step 2: Wait for agent to be updated
         _wait_for_resource_status('agent', bedrock_agent_id, ['NOT_PREPARED', 'PREPARED'])
