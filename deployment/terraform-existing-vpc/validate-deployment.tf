@@ -1,5 +1,7 @@
 # Validation resource to ensure the combined service is created and running
 resource "null_resource" "validate_deployment" {
+  count = var.enable_apprunner ? 1 : 0
+
   triggers = {
     backend_url = local.backend_url
   }
@@ -74,6 +76,11 @@ resource "null_resource" "validate_deployment" {
   }
 
   depends_on = [
-    null_resource.wait_for_backend_ready  # Wait for service to finish deploying
+    null_resource.wait_for_backend_ready
   ]
+}
+
+moved {
+  from = null_resource.validate_deployment
+  to   = null_resource.validate_deployment[0]
 }

@@ -1,11 +1,15 @@
 # App Runner Combined Service (Backend + Frontend)
+# All App Runner resources gated by var.enable_apprunner (default: true)
 
 locals {
   # When private, service_url is null — use VPC Ingress Connection domain instead
-  backend_url = var.backend_is_private ? aws_apprunner_vpc_ingress_connection.backend[0].domain_name : aws_apprunner_service.backend.service_url
+  backend_url = var.enable_apprunner ? (
+    var.backend_is_private ? aws_apprunner_vpc_ingress_connection.backend[0].domain_name : aws_apprunner_service.backend[0].service_url
+  ) : null
 }
 
 # App Runner VPC Connector for database access
+# Always created — shared by backend and MCP services (including external deployments)
 resource "aws_apprunner_vpc_connector" "backend" {
   vpc_connector_name = "${var.project_name}-${var.environment}-connector"
   subnets            = local.app_runner_subnet_ids
@@ -18,6 +22,8 @@ resource "aws_apprunner_vpc_connector" "backend" {
 
 # App Runner Auto Scaling Configuration
 resource "aws_apprunner_auto_scaling_configuration_version" "backend" {
+  count = var.enable_apprunner ? 1 : 0
+
   auto_scaling_configuration_name = "${var.project_name}-${var.environment}-backend-autoscaling"
 
   min_size = 1
@@ -28,10 +34,23 @@ resource "aws_apprunner_auto_scaling_configuration_version" "backend" {
   }
 }
 
+# State migration: moved blocks for adding count to existing resources
+moved {
+  from = aws_apprunner_vpc_connector.backend[0]
+  to   = aws_apprunner_vpc_connector.backend
+}
+
+moved {
+  from = aws_apprunner_auto_scaling_configuration_version.backend
+  to   = aws_apprunner_auto_scaling_configuration_version.backend[0]
+}
+
 # Wait for App Runner to finish any auto-deployment triggered by the ECR image push.
 # App Runner auto-deploys when it detects a new :latest image, which races with
 # Terraform's UpdateService call. This resource polls until the service is RUNNING.
 resource "null_resource" "wait_for_backend_auto_deploy" {
+  count = var.enable_apprunner ? 1 : 0
+
   depends_on = [null_resource.build_combined_image]
 
   triggers = {
@@ -85,11 +104,13 @@ resource "null_resource" "wait_for_backend_auto_deploy" {
 
 # App Runner Service (combined frontend + backend)
 resource "aws_apprunner_service" "backend" {
+  count = var.enable_apprunner ? 1 : 0
+
   service_name = "${var.project_name}-${var.environment}-backend"
 
   source_configuration {
     authentication_configuration {
-      access_role_arn = aws_iam_role.app_runner_ecr_access.arn
+      access_role_arn = aws_iam_role.app_runner_ecr_access[0].arn
     }
 
     image_repository {
@@ -171,10 +192,10 @@ resource "aws_apprunner_service" "backend" {
   instance_configuration {
     cpu               = "1 vCPU"
     memory            = "2 GB"
-    instance_role_arn = aws_iam_role.app_runner_instance.arn
+    instance_role_arn = aws_iam_role.app_runner_instance[0].arn
   }
 
-  auto_scaling_configuration_arn = aws_apprunner_auto_scaling_configuration_version.backend.arn
+  auto_scaling_configuration_arn = aws_apprunner_auto_scaling_configuration_version.backend[0].arn
 
   health_check_configuration {
     protocol            = "HTTP"
@@ -197,20 +218,27 @@ resource "aws_apprunner_service" "backend" {
   # Note: Database dependency handled via local.database_endpoint
 }
 
+moved {
+  from = aws_apprunner_service.backend
+  to   = aws_apprunner_service.backend[0]
+}
+
 # Wait for App Runner backend to reach RUNNING status before dependent resources proceed
 # This prevents race conditions where WAF/other resources try to update while deploying
 resource "null_resource" "wait_for_backend_ready" {
+  count = var.enable_apprunner ? 1 : 0
+
   depends_on = [aws_apprunner_service.backend]
 
   triggers = {
     # Re-trigger when the backend service changes
-    service_arn = aws_apprunner_service.backend.arn
+    service_arn = aws_apprunner_service.backend[0].arn
   }
 
   provisioner "local-exec" {
     command = <<-EOT
       echo "Waiting for App Runner backend service to be ready..."
-      SERVICE_ARN="${aws_apprunner_service.backend.arn}"
+      SERVICE_ARN="${aws_apprunner_service.backend[0].arn}"
       MAX_ATTEMPTS=30
       ATTEMPT=0
 
@@ -235,4 +263,14 @@ resource "null_resource" "wait_for_backend_ready" {
       exit 0  # Don't fail the deployment, just warn
     EOT
   }
+}
+
+moved {
+  from = null_resource.wait_for_backend_auto_deploy
+  to   = null_resource.wait_for_backend_auto_deploy[0]
+}
+
+moved {
+  from = null_resource.wait_for_backend_ready
+  to   = null_resource.wait_for_backend_ready[0]
 }

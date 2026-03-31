@@ -7,7 +7,7 @@
 #   - Leave custom_domain_name = "" (default) to skip custom domain setup
 
 locals {
-  custom_domain_enabled = var.custom_domain_name != "" && !var.backend_is_private
+  custom_domain_enabled = var.custom_domain_name != "" && !var.backend_is_private && var.enable_apprunner
   # Use hosted_zone_name if provided, otherwise fall back to custom_domain_name (for root domains)
   hosted_zone_name = var.hosted_zone_name != "" ? var.hosted_zone_name : var.custom_domain_name
 }
@@ -28,7 +28,7 @@ data "aws_apprunner_hosted_zone_id" "main" {
 resource "aws_apprunner_custom_domain_association" "frontend" {
   count                = local.custom_domain_enabled ? 1 : 0
   domain_name          = var.custom_domain_name
-  service_arn          = aws_apprunner_service.backend.arn
+  service_arn          = aws_apprunner_service.backend[0].arn
   enable_www_subdomain = var.enable_www_subdomain
 }
 
@@ -48,7 +48,7 @@ resource "null_resource" "cert_validation_records" {
 
       # Get the certificate validation records from the association
       RECORDS=$(aws apprunner describe-custom-domains \
-        --service-arn "${aws_apprunner_service.backend.arn}" \
+        --service-arn "${aws_apprunner_service.backend[0].arn}" \
         --region "${var.aws_region}" \
         --query "CustomDomains[?DomainName=='${var.custom_domain_name}'].CertificateValidationRecords[]" \
         --output json)
@@ -91,7 +91,7 @@ resource "aws_route53_record" "frontend_alias" {
   type    = "A"
 
   alias {
-    name                   = aws_apprunner_service.backend.service_url
+    name                   = aws_apprunner_service.backend[0].service_url
     zone_id                = data.aws_apprunner_hosted_zone_id.main[0].id
     evaluate_target_health = true
   }
@@ -105,7 +105,7 @@ resource "aws_route53_record" "frontend_www_alias" {
   type    = "A"
 
   alias {
-    name                   = aws_apprunner_service.backend.service_url
+    name                   = aws_apprunner_service.backend[0].service_url
     zone_id                = data.aws_apprunner_hosted_zone_id.main[0].id
     evaluate_target_health = true
   }

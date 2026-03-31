@@ -198,12 +198,22 @@ resource "null_resource" "build_combined_image" {
           exit 1
         fi
 
-        # Build and push combined image
-        docker buildx build --platform linux/amd64 \
-          -t ${aws_ecr_repository.backend.repository_url}:${local.combined_image_tag} \
-          -f deployment/Dockerfile.combined --push .
+        # Check if image already exists in ECR (immutable tags — skip push if so)
+        if aws ecr describe-images \
+          --repository-name ${aws_ecr_repository.backend.name} \
+          --region ${var.aws_region} \
+          --image-ids imageTag=${local.combined_image_tag} > /dev/null 2>&1; then
+          echo "========================================="
+          echo "✓ Image tag ${local.combined_image_tag} already exists in ECR — skipping build"
+          echo "========================================="
+        else
+          # Build and push combined image
+          docker buildx build --platform linux/amd64 \
+            -t ${aws_ecr_repository.backend.repository_url}:${local.combined_image_tag} \
+            -f deployment/Dockerfile.combined --push .
+        fi
 
-        # Verify image was pushed
+        # Verify image exists
         aws ecr describe-images \
           --repository-name ${aws_ecr_repository.backend.name} \
           --region ${var.aws_region} \
@@ -211,9 +221,7 @@ resource "null_resource" "build_combined_image" {
 
         if [ $? -eq 0 ]; then
           echo "========================================="
-          echo "✓ Combined image built and pushed successfully!"
-          echo "  - Flutter built locally with API_BASE_URL=/rest"
-          echo "  - Packaged with Nginx + Uvicorn + Supervisord"
+          echo "✓ Combined image verified in ECR!"
           echo "  - Tag: ${local.combined_image_tag}"
           echo "========================================="
         else

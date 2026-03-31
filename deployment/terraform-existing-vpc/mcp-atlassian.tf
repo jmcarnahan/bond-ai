@@ -78,6 +78,7 @@ variable "mcp_atlassian_memory" {
 locals {
   # Only deploy if enabled and required variables are set
   mcp_atlassian_can_deploy = (
+    var.enable_apprunner &&
     var.mcp_atlassian_enabled &&
     var.mcp_atlassian_oauth_cloud_id != "" &&
     var.mcp_atlassian_oauth_client_id != "" &&
@@ -312,6 +313,52 @@ resource "aws_apprunner_auto_scaling_configuration_version" "mcp_atlassian" {
 }
 
 # -----------------------------------------------------------------------------
+# MCP Atlassian VPC Connector (independent from backend connector)
+# -----------------------------------------------------------------------------
+
+resource "aws_apprunner_vpc_connector" "mcp_atlassian" {
+  count = local.mcp_atlassian_can_deploy ? 1 : 0
+
+  vpc_connector_name = "${var.project_name}-${var.environment}-mcp-atl-conn"
+  subnets            = local.app_runner_subnet_ids
+  security_groups    = [aws_security_group.app_runner.id]
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-mcp-atl-connector"
+  }
+}
+
+# -----------------------------------------------------------------------------
+# MCP Atlassian ECR Access Role (independent from backend ECR role)
+# -----------------------------------------------------------------------------
+
+resource "aws_iam_role" "mcp_atlassian_ecr_access" {
+  count = local.mcp_atlassian_can_deploy ? 1 : 0
+
+  name = "${var.project_name}-${var.environment}-mcp-atl-ecr-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "build.apprunner.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "mcp_atlassian_ecr_access" {
+  count = local.mcp_atlassian_can_deploy ? 1 : 0
+
+  role       = aws_iam_role.mcp_atlassian_ecr_access[0].name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess"
+}
+
+# -----------------------------------------------------------------------------
 # App Runner Service for MCP Atlassian (Private - VPC Only)
 # -----------------------------------------------------------------------------
 
@@ -321,7 +368,7 @@ resource "aws_apprunner_service" "mcp_atlassian" {
 
   source_configuration {
     authentication_configuration {
-      access_role_arn = aws_iam_role.app_runner_ecr_access.arn
+      access_role_arn = aws_iam_role.mcp_atlassian_ecr_access[0].arn
     }
 
     image_repository {
@@ -369,7 +416,7 @@ resource "aws_apprunner_service" "mcp_atlassian" {
 
     egress_configuration {
       egress_type       = "VPC"
-      vpc_connector_arn = aws_apprunner_vpc_connector.backend.arn
+      vpc_connector_arn = aws_apprunner_vpc_connector.mcp_atlassian[0].arn
     }
   }
 
