@@ -29,6 +29,7 @@ from bondable.bond.providers.threads import ThreadsProvider
 from bondable.bond.providers.files import FilesProvider
 from bondable.bond.providers.metadata import AgentRecord
 from .BedrockCRUD import create_bedrock_agent, update_bedrock_agent, delete_bedrock_agent, get_bedrock_agent
+from .BedrockGuardrails import get_converse_guardrail_config, GUARDRAIL_BLOCK_MESSAGE
 from xml.sax.saxutils import escape as xml_escape, unescape as xml_unescape  # nosec B406
 from bondable.utils.logging_utils import safe_id
 from .BedrockMCP import (
@@ -594,8 +595,16 @@ Please integrate any relevant insights from the documents with your analysis of 
             error_message = str(e)
             LOGGER.exception(f"Bedrock Agent API error: {error_code} - {error_message} - {e}")
 
+            # Check for guardrail intervention
+            if 'guardrail' in error_message.lower():
+                LOGGER.warning(
+                    f"Guardrail blocked request for agent {self.bedrock_agent_id}: {error_message}"
+                )
+                yield from self._yield_error_message(
+                    thread_id, GUARDRAIL_BLOCK_MESSAGE, "GuardrailIntervention"
+                )
             # Provide helpful message and diagnostics for common issues
-            if error_code == 'internalServerException':
+            elif error_code == 'internalServerException':
                 # Log extensive diagnostics
                 LOGGER.error(
                     f"[Bedrock ISE] Agent: {self.bedrock_agent_id}, "
@@ -1663,13 +1672,19 @@ Please integrate any relevant insights from the documents with your analysis of 
 
         try:
             LOGGER.info(f"Calling Converse API with {images_included} image(s) using model {self.model}")
-            response = self.bond_provider.bedrock_runtime_client.converse(
-                modelId=self.model,
-                messages=[{
-                    "role": "user",
-                    "content": content_blocks
-                }]
-            )
+            converse_kwargs = {
+                "modelId": self.model,
+                "messages": [{"role": "user", "content": content_blocks}],
+            }
+            guardrail_cfg = get_converse_guardrail_config()
+            if guardrail_cfg:
+                converse_kwargs["guardrailConfig"] = guardrail_cfg
+            response = self.bond_provider.bedrock_runtime_client.converse(**converse_kwargs)
+
+            # Check if guardrail blocked the request
+            if response.get('stopReason') == 'guardrail_intervened':
+                LOGGER.warning("Guardrail blocked image analysis converse() call")
+                return "[Image analysis unavailable: content was blocked by guardrail policy.]"
 
             # Extract text from response
             output_message = response.get('output', {}).get('message', {})
@@ -1900,6 +1915,13 @@ Please integrate any relevant insights from the documents with your analysis of 
                                     api_input = inv_input['apiInvocationInput']
                                     api_path = api_input.get('apiPath', 'unknown')
                                     LOGGER.info(f"Agent planning to invoke API: {api_path}")
+
+                        # Log guardrail trace events (details at DEBUG to avoid PII leakage)
+                        if 'guardrailTrace' in event_trace:
+                            gt = event_trace['guardrailTrace']
+                            action = gt.get('action', 'unknown')
+                            LOGGER.info(f"Guardrail trace: action={action}")
+                            LOGGER.debug(f"Guardrail trace details: {gt}")
             except Exception as e:
                 LOGGER.exception(f"Error processing event #{event_count}, type: {last_event_type}")
                 raise
@@ -2147,16 +2169,25 @@ Please integrate any relevant insights from the documents with your analysis of 
             "Keep the summary under 1500 characters. Be factual and precise."
         )
 
-        response = self.bond_provider.bedrock_runtime_client.converse(
-            modelId=self.model,
-            messages=[{
+        converse_kwargs = {
+            "modelId": self.model,
+            "messages": [{
                 "role": "user",
                 "content": [{"text":
                     f"Summarize this conversation concisely:\n\n{conversation_text}"}]
             }],
-            system=[{"text": system_prompt}],
-            inferenceConfig={"maxTokens": MAX_SUMMARY_TOKENS, "temperature": 0.0}
-        )
+            "system": [{"text": system_prompt}],
+            "inferenceConfig": {"maxTokens": MAX_SUMMARY_TOKENS, "temperature": 0.0},
+        }
+        guardrail_cfg = get_converse_guardrail_config()
+        if guardrail_cfg:
+            converse_kwargs["guardrailConfig"] = guardrail_cfg
+        response = self.bond_provider.bedrock_runtime_client.converse(**converse_kwargs)
+
+        # Check if guardrail blocked the summarization request
+        if response.get('stopReason') == 'guardrail_intervened':
+            LOGGER.warning("Guardrail blocked conversation summarization converse() call")
+            return "[Summary unavailable due to content safety policy]"
 
         output = response.get('output', {}).get('message', {})
         parts = [b['text'] for b in output.get('content', []) if 'text' in b]
@@ -2556,15 +2587,24 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
             model_id = os.getenv('BEDROCK_DEFAULT_MODEL', 'us.anthropic.claude-3-5-sonnet-20241022-v2:0')
 
             # Call the converse API
-            response = runtime_client.converse(
-                modelId=model_id,
-                messages=messages,
-                system=[{"text": system_prompt}],
-                inferenceConfig={
+            converse_kwargs = {
+                "modelId": model_id,
+                "messages": messages,
+                "system": [{"text": system_prompt}],
+                "inferenceConfig": {
                     "maxTokens": 512,
-                    "temperature": 0.3  # Lower temperature for more consistent selection
-                }
-            )
+                    "temperature": 0.3,  # Lower temperature for more consistent selection
+                },
+            }
+            guardrail_cfg = get_converse_guardrail_config()
+            if guardrail_cfg:
+                converse_kwargs["guardrailConfig"] = guardrail_cfg
+            response = runtime_client.converse(**converse_kwargs)
+
+            # Check if guardrail blocked the icon selection request
+            if response.get('stopReason') == 'guardrail_intervened':
+                LOGGER.warning(f"Guardrail blocked icon selection converse() call for agent '{name}'")
+                return json.dumps({"icon_name": "smart_toy", "color": "#757575"})
 
             # Extract the response
             response_text = response['output']['message']['content'][0]['text']
