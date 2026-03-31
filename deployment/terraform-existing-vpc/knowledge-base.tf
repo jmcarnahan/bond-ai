@@ -64,13 +64,16 @@ resource "aws_security_group" "aurora_kb" {
   description = "Security group for Aurora PostgreSQL Knowledge Base cluster"
   vpc_id      = data.aws_vpc.existing.id
 
-  # Allow PostgreSQL from App Runner security group
+  # Allow PostgreSQL from App Runner and/or EKS
   ingress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.app_runner.id]
-    description     = "PostgreSQL from App Runner"
+    from_port = 5432
+    to_port   = 5432
+    protocol  = "tcp"
+    security_groups = compact(concat(
+      [aws_security_group.app_runner.id],
+      var.enable_eks ? [module.eks[0].node_security_group_id] : []
+    ))
+    description = "PostgreSQL from compute platforms (App Runner / EKS)"
   }
 
   # Allow PostgreSQL from Bedrock (uses AWS PrivateLink internally)
@@ -503,10 +506,10 @@ resource "aws_bedrockagent_data_source" "s3" {
 # =============================================================================
 
 resource "aws_iam_role_policy" "app_runner_knowledge_base" {
-  count = local.kb_enabled ? 1 : 0
+  count = local.kb_enabled && var.enable_apprunner ? 1 : 0
 
   name = "${var.project_name}-${var.environment}-apprunner-kb-policy"
-  role = aws_iam_role.app_runner_instance.id
+  role = aws_iam_role.app_runner_instance[0].id
 
   policy = jsonencode({
     Version = "2012-10-17"

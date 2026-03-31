@@ -69,5 +69,13 @@ locals {
   any_service_private = var.backend_is_private || var.has_private_mcp_services
 }
 
+# Validate at least one compute platform is enabled
+check "at_least_one_platform" {
+  assert {
+    condition     = var.enable_apprunner || var.enable_eks
+    error_message = "At least one of enable_apprunner or enable_eks must be true."
+  }
+}
+
 # Note: These data sources are informational only - not used in resource creation
 # They help validate the VPC has required networking components

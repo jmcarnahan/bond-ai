@@ -128,7 +128,10 @@ resource "aws_s3_bucket_cors_configuration" "uploads" {
     allowed_methods = ["GET", "PUT", "POST", "DELETE", "HEAD"]
     allowed_origins = concat(
       split(",", var.cors_allowed_origins),
-      var.custom_domain_name != "" ? ["https://${var.custom_domain_name}"] : []
+      var.custom_domain_name != "" ? ["https://${var.custom_domain_name}"] : [],
+      # EKS: add custom domain or NLB hostname for file uploads
+      var.enable_eks && var.eks_custom_domain_name != "" ? ["${local.eks_service_protocol}://${var.eks_custom_domain_name}"] : [],
+      var.enable_eks && var.eks_custom_domain_name == "" && local.eks_service_url != "" && local.eks_service_url != "pending" ? ["${local.eks_service_protocol}://${local.eks_service_url}"] : []
     )
     expose_headers  = ["ETag", "x-amz-server-side-encryption", "x-amz-request-id", "x-amz-id-2"]
     max_age_seconds = 3000
