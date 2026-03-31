@@ -327,3 +327,107 @@ variable "has_private_mcp_services" {
   type        = bool
   default     = false
 }
+
+# =============================================================================
+# Compute Platform Toggles
+# =============================================================================
+
+variable "enable_apprunner" {
+  description = "Deploy on App Runner. Disable to remove App Runner resources (requires enable_eks = true)."
+  type        = bool
+  default     = true
+}
+
+variable "enable_eks" {
+  description = "Deploy on EKS (private-only, VPN access). Can run alongside App Runner."
+  type        = bool
+  default     = false
+}
+
+# =============================================================================
+# EKS Configuration
+# =============================================================================
+
+variable "eks_node_instance_type" {
+  description = "EC2 instance type for EKS managed node group"
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "eks_node_desired_count" {
+  description = "Desired number of EKS worker nodes"
+  type        = number
+  default     = 2
+}
+
+variable "eks_node_min_count" {
+  description = "Minimum number of EKS worker nodes"
+  type        = number
+  default     = 1
+}
+
+variable "eks_node_max_count" {
+  description = "Maximum number of EKS worker nodes"
+  type        = number
+  default     = 3
+}
+
+variable "eks_custom_ami_id" {
+  description = "Company-certified AMI ID for EKS nodes. Empty string uses EKS-optimized default. May be mandatory in environments with SCP restrictions on Amazon-owned AMIs."
+  type        = string
+  default     = ""
+}
+
+variable "eks_kubernetes_version" {
+  description = "Kubernetes version for EKS cluster"
+  type        = string
+  default     = "1.31"
+}
+
+variable "eks_node_tags" {
+  description = "Additional tags for EKS node group EC2 instances. Required by some organizations for SCP/tag policy compliance."
+  type        = map(string)
+  default     = {}
+}
+
+variable "eks_additional_ingress_cidrs" {
+  description = "Additional CIDRs allowed to reach EKS nodes (e.g., corporate VPN ranges outside VPC CIDR). Not needed for Tailscale subnet router (traffic arrives from within VPC)."
+  type        = list(string)
+  default     = []
+}
+
+variable "eks_cluster_endpoint_public_access_cidrs" {
+  description = "CIDRs allowed to reach EKS cluster API public endpoint (kubectl/Terraform). Default allows all. Restrict to office/VPN CIDRs for defense-in-depth. Note: the app NLB is always private regardless of this setting."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+
+  validation {
+    condition     = length(var.eks_cluster_endpoint_public_access_cidrs) > 0
+    error_message = "At least one CIDR must be provided. Use [\"0.0.0.0/0\"] for unrestricted access."
+  }
+}
+
+# EKS TLS/Domain Configuration (flexible for upstream vs downstream)
+variable "eks_custom_domain_name" {
+  description = "Custom domain for EKS service (e.g., 'eks.ai.mydomain.cloud'). Creates ACM cert + Route53 record. Leave empty to skip."
+  type        = string
+  default     = ""
+}
+
+variable "eks_acm_certificate_arn" {
+  description = "Pre-existing ACM certificate ARN for EKS NLB TLS. Takes precedence over eks_custom_domain_name cert creation."
+  type        = string
+  default     = ""
+}
+
+variable "eks_hosted_zone_id" {
+  description = "Route53 hosted zone ID for EKS custom domain DNS validation and alias record. Required when eks_custom_domain_name is set."
+  type        = string
+  default     = ""
+}
+
+variable "eks_oauth_base_url" {
+  description = "Base URL for EKS OAuth redirects (e.g., 'https://my-nlb.elb.amazonaws.com'). Used when eks_custom_domain_name is not set. Ignored if eks_custom_domain_name is provided (custom domain takes precedence)."
+  type        = string
+  default     = ""
+}

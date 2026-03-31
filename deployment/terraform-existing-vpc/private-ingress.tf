@@ -90,10 +90,10 @@ resource "null_resource" "private_ingress_ready" {
 # VPC endpoint. Provides the private domain name used to reach the service.
 
 resource "aws_apprunner_vpc_ingress_connection" "backend" {
-  count = var.backend_is_private ? 1 : 0
+  count = var.backend_is_private && var.enable_apprunner ? 1 : 0
 
   name        = "${var.project_name}-${var.environment}-backend-ingress"
-  service_arn = aws_apprunner_service.backend.arn
+  service_arn = aws_apprunner_service.backend[0].arn
 
   ingress_vpc_configuration {
     vpc_id          = data.aws_vpc.existing.id

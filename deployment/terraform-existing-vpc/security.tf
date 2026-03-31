@@ -8,13 +8,16 @@ resource "aws_security_group" "rds" {
   description = "Security group for RDS database"
   vpc_id      = data.aws_vpc.existing.id
 
-  # Allow PostgreSQL from App Runner security group
+  # Allow PostgreSQL from App Runner and/or EKS
   ingress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.app_runner.id]
-    description     = "PostgreSQL from App Runner"
+    from_port = 5432
+    to_port   = 5432
+    protocol  = "tcp"
+    security_groups = compact(concat(
+      [aws_security_group.app_runner.id],
+      var.enable_eks ? [module.eks[0].node_security_group_id] : []
+    ))
+    description = "PostgreSQL from compute platforms (App Runner / EKS)"
   }
 
   # Allow outbound within VPC
@@ -36,6 +39,7 @@ resource "aws_security_group" "rds" {
 }
 
 # Security Group for App Runner VPC Connector
+# Always created — shared by backend and MCP services (including external deployments)
 resource "aws_security_group" "app_runner" {
   name_prefix = "${var.project_name}-${var.environment}-apprunner-"
   description = "Security group for App Runner VPC connector"
@@ -71,6 +75,11 @@ resource "aws_security_group" "app_runner" {
   }
 }
 
+moved {
+  from = aws_security_group.app_runner[0]
+  to   = aws_security_group.app_runner
+}
+
 # Note: App Runner to RDS access is covered by the port 5432 egress rule above.
 # A separate aws_security_group_rule is not needed and causes drift.
 
@@ -80,13 +89,16 @@ resource "aws_security_group" "vpc_endpoints" {
   description = "Security group for VPC interface endpoints"
   vpc_id      = data.aws_vpc.existing.id
 
-  # Allow HTTPS traffic from App Runner security group
+  # Allow HTTPS traffic from App Runner and/or EKS
   ingress {
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    security_groups = [aws_security_group.app_runner.id]
-    description     = "HTTPS from App Runner"
+    from_port = 443
+    to_port   = 443
+    protocol  = "tcp"
+    security_groups = compact(concat(
+      [aws_security_group.app_runner.id],
+      var.enable_eks ? [module.eks[0].node_security_group_id] : []
+    ))
+    description = "HTTPS from compute platforms (App Runner / EKS)"
   }
 
   # Allow outbound within VPC

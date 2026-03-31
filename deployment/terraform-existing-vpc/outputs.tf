@@ -47,14 +47,18 @@ output "ecr_backend_repository_url" {
   description = "URL of the backend ECR repository"
 }
 
+# =============================================================================
+# App Runner Outputs (conditional on enable_apprunner)
+# =============================================================================
+
 output "app_runner_vpc_connector_arn" {
   value       = aws_apprunner_vpc_connector.backend.arn
-  description = "ARN of the App Runner VPC connector"
+  description = "ARN of the App Runner VPC connector (null if App Runner disabled)"
 }
 
 output "app_runner_service_url" {
-  value       = "https://${local.backend_url}"
-  description = "Combined App Runner service URL (serves both frontend and backend)"
+  value       = local.backend_url != null ? "https://${local.backend_url}" : null
+  description = "App Runner service URL (null if App Runner disabled)"
 }
 
 output "jwt_secret" {
@@ -80,33 +84,27 @@ output "private_subnet_ids" {
 }
 
 output "app_runner_ecr_access_role_arn" {
-  value       = aws_iam_role.app_runner_ecr_access.arn
-  description = "ARN of the IAM role for App Runner ECR access"
+  value       = var.enable_apprunner ? aws_iam_role.app_runner_ecr_access[0].arn : null
+  description = "ARN of the IAM role for App Runner ECR access (null if App Runner disabled)"
 }
 
 output "app_runner_security_group_id" {
   value       = aws_security_group.app_runner.id
-  description = "Security group ID for App Runner VPC connector"
+  description = "Security group ID for App Runner VPC connector (null if App Runner disabled)"
+}
+
+locals {
+  # Safe versions for output interpolation (never null)
+  backend_url_display = coalesce(local.backend_url, "DISABLED")
+  eks_url_display     = local.eks_service_url != "" ? "${local.eks_service_protocol}://${local.eks_service_url}" : "DISABLED"
 }
 
 output "deployment_instructions" {
   value       = <<-EOT
 
     Deployment Complete!
-
-    Service URL: https://${local.backend_url}${var.backend_is_private ? " (PRIVATE — VPN required)" : ""}
-    Frontend:    https://${local.backend_url}/
-    Backend API: https://${local.backend_url}/rest/
-
-    Next Steps:
-    1. Update OAuth provider with callback URL:
-       https://${local.backend_url}/auth/okta/callback
-
-    2. Test the deployment:
-       curl https://${local.backend_url}/health
-
-    3. Access the application:
-       https://${local.backend_url}
+    App Runner: ${var.enable_apprunner ? "https://${local.backend_url_display}${var.backend_is_private ? " (PRIVATE)" : ""}" : "DISABLED"}
+    EKS:        ${var.enable_eks ? "${local.eks_url_display} (PRIVATE — VPN required)" : "DISABLED"}
   EOT
   description = "Post-deployment instructions"
 }
@@ -150,11 +148,54 @@ output "backend_is_private" {
 }
 
 output "backend_private_domain" {
-  description = "Private domain name for the service (via VPC Ingress Connection). Null if public."
-  value       = var.backend_is_private ? aws_apprunner_vpc_ingress_connection.backend[0].domain_name : null
+  description = "Private domain name for the service (via VPC Ingress Connection). Null if public or App Runner disabled."
+  value       = var.backend_is_private && var.enable_apprunner ? aws_apprunner_vpc_ingress_connection.backend[0].domain_name : null
 }
 
 output "apprunner_requests_vpc_endpoint_id" {
   description = "VPC endpoint ID for App Runner requests (shared by all private services). Null if no private services."
   value       = local.any_service_private ? aws_vpc_endpoint.apprunner_requests[0].id : null
+}
+
+# =============================================================================
+# EKS Outputs (conditional on enable_eks)
+# =============================================================================
+
+output "eks_cluster_name" {
+  value       = var.enable_eks ? module.eks[0].cluster_name : null
+  description = "EKS cluster name (null if EKS disabled)"
+}
+
+output "eks_cluster_endpoint" {
+  value       = var.enable_eks ? module.eks[0].cluster_endpoint : null
+  description = "EKS cluster API endpoint (null if EKS disabled)"
+}
+
+output "eks_nlb_url" {
+  value       = var.enable_eks ? "${local.eks_service_protocol}://${local.eks_service_url}" : null
+  description = "EKS NLB URL — private, requires VPN (null if EKS disabled)"
+}
+
+output "eks_custom_domain_url" {
+  value       = var.enable_eks && var.eks_custom_domain_name != "" ? "${local.eks_service_protocol}://${var.eks_custom_domain_name}" : null
+  description = "EKS custom domain URL (null if not configured or EKS disabled)"
+}
+
+output "eks_kubectl_config" {
+  value       = var.enable_eks ? "aws eks update-kubeconfig --name ${module.eks[0].cluster_name} --region ${var.aws_region}" : null
+  description = "Command to configure kubectl for EKS cluster (null if EKS disabled)"
+}
+
+# =============================================================================
+# Platform Status
+# =============================================================================
+
+output "enable_apprunner" {
+  value       = var.enable_apprunner
+  description = "Whether App Runner is enabled"
+}
+
+output "enable_eks" {
+  value       = var.enable_eks
+  description = "Whether EKS is enabled"
 }

@@ -89,3 +89,5 @@ hello_world/
 
 # VPN (Tailscale) - separate Terraform, environment-specific
 vpn/
+
+deployment/eks-hello-world/

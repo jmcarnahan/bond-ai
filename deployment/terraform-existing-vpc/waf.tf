@@ -27,8 +27,11 @@
 # Backend WAF Web ACL (serves combined frontend + backend)
 # -----------------------------------------------------------------------------
 # Protects the combined service with maintenance mode support and special
-# handling for file uploads. The SizeRestrictions_BODY and CrossSiteScripting_BODY
-# rules are overridden to COUNT (not BLOCK) to allow file uploads.
+# handling for file uploads and agent updates. SizeRestrictions_BODY and
+# CrossSiteScripting_BODY are overridden to COUNT to allow file uploads.
+# UNIXShellCommandsVariables_BODY is overridden to COUNT because agent
+# instructions contain Unix-like patterns (paths, variables) that are
+# text prompts, not executed code.
 # -----------------------------------------------------------------------------
 
 resource "aws_wafv2_web_acl" "backend" {
@@ -220,6 +223,16 @@ HTML
       managed_rule_group_statement {
         vendor_name = "AWS"
         name        = "AWSManagedRulesUnixRuleSet"
+
+        # Override: Agent instructions may contain Unix-like patterns
+        # (shell variables, paths, backticks) that trigger false positives
+        # on PUT /rest/agents endpoints. These are text prompts, not executed code.
+        rule_action_override {
+          name = "UNIXShellCommandsVariables_BODY"
+          action_to_use {
+            count {}
+          }
+        }
       }
     }
 
@@ -346,8 +359,8 @@ resource "aws_wafv2_web_acl" "mcp_atlassian" {
 # -----------------------------------------------------------------------------
 
 resource "aws_wafv2_web_acl_association" "backend" {
-  count        = var.waf_enabled ? 1 : 0
-  resource_arn = aws_apprunner_service.backend.arn
+  count        = var.waf_enabled && var.enable_apprunner ? 1 : 0
+  resource_arn = aws_apprunner_service.backend[0].arn
   web_acl_arn  = aws_wafv2_web_acl.backend[0].arn
 
   # Wait for backend service to finish deploying before associating WAF
