@@ -77,7 +77,7 @@ def mock_file_details_own():
     """FileDetails object owned by the test user."""
     from bondable.bond.providers.files import FileDetails
     return FileDetails(
-        file_id="file-abc-123",
+        file_id="s3://bond-bedrock-files-000000000000/files/bond_file_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         file_path="test_document.pdf",
         file_hash="abc123hash",
         mime_type="application/pdf",
@@ -90,7 +90,7 @@ def mock_file_details_other():
     """FileDetails object owned by another user."""
     from bondable.bond.providers.files import FileDetails
     return FileDetails(
-        file_id="file-xyz-789",
+        file_id="s3://bond-bedrock-files-000000000000/files/bond_file_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         file_path="other_document.pdf",
         file_hash="xyz789hash",
         mime_type="application/pdf",
@@ -111,6 +111,7 @@ class TestT13FileDeleteOwnership:
         with patch("bondable.rest.routers.files.get_bond_provider") as mock_get_provider:
             mock_provider = MagicMock()
             mock_provider.files.get_file_details.return_value = [mock_file_details_other]
+            mock_provider.files.bucket_name = "bond-bedrock-files-000000000000"
             mock_get_provider.return_value = mock_provider
 
             # Override the dependency
@@ -121,8 +122,9 @@ class TestT13FileDeleteOwnership:
             ] = lambda: mock_provider
 
             try:
+                # Use opaque file ID (bond_file_xxx) as clients would
                 response = test_client.delete(
-                    f"/files/{mock_file_details_other.file_id}", headers=auth_headers
+                    "/files/bond_file_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", headers=auth_headers
                 )
                 assert response.status_code == 403
                 assert "permission" in response.json()["detail"].lower()
@@ -137,6 +139,7 @@ class TestT13FileDeleteOwnership:
             mock_provider = MagicMock()
             mock_provider.files.get_file_details.return_value = [mock_file_details_own]
             mock_provider.files.delete_file.return_value = True
+            mock_provider.files.bucket_name = "bond-bedrock-files-000000000000"
             mock_get_provider.return_value = mock_provider
 
             from bondable.rest.dependencies.providers import get_bond_provider
@@ -144,14 +147,15 @@ class TestT13FileDeleteOwnership:
             app.dependency_overrides[get_bond_provider] = lambda: mock_provider
 
             try:
+                # Use opaque file ID as clients would
                 response = test_client.delete(
-                    f"/files/{mock_file_details_own.file_id}", headers=auth_headers
+                    "/files/bond_file_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", headers=auth_headers
                 )
                 assert response.status_code == 200
                 data = response.json()
                 assert data["status"] == "deleted"
                 mock_provider.files.delete_file.assert_called_once_with(
-                    file_id=mock_file_details_own.file_id
+                    file_id="s3://bond-bedrock-files-000000000000/files/bond_file_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
                 )
             finally:
                 app.dependency_overrides.clear()

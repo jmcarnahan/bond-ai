@@ -184,7 +184,7 @@ class TestT15FileFiltering:
         """GET /files/details passes user_id to provider.files.get_file_details()."""
         token = _make_token()
         mock_file = MagicMock()
-        mock_file.file_id = "file-1"
+        mock_file.file_id = "s3://bond-bedrock-files-000000000000/files/bond_file_aaaa1111bbbb2222cccc3333dddd4444"
         mock_file.file_path = "test.txt"
         mock_file.file_hash = "abc"
         mock_file.mime_type = "text/plain"
@@ -193,12 +193,13 @@ class TestT15FileFiltering:
 
         mock_provider = MagicMock()
         mock_provider.files.get_file_details.return_value = [mock_file]
+        mock_provider.files.bucket_name = "bond-bedrock-files-000000000000"
 
         from bondable.rest.dependencies.providers import get_bond_provider
         app.dependency_overrides[get_bond_provider] = lambda: mock_provider
         try:
             resp = test_client.get(
-                "/files/details?file_ids=file-1",
+                "/files/details?file_ids=bond_file_aaaa1111bbbb2222cccc3333dddd4444",
                 headers={"Authorization": f"Bearer {token}"},
             )
             assert resp.status_code == 200
@@ -218,12 +219,13 @@ class TestT15FileFiltering:
         mock_provider = MagicMock()
         mock_provider.files.get_file_details.return_value = [mock_file]
         mock_provider.files.delete_file.return_value = True
+        mock_provider.files.bucket_name = "bond-bedrock-files-000000000000"
 
         from bondable.rest.dependencies.providers import get_bond_provider
         app.dependency_overrides[get_bond_provider] = lambda: mock_provider
         try:
             resp = test_client.delete(
-                "/files/file-del-1",
+                "/files/bond_file_bbbb2222cccc3333dddd4444eeee5555",
                 headers={"Authorization": f"Bearer {token}"},
             )
             assert resp.status_code == 200
@@ -237,12 +239,13 @@ class TestT15FileFiltering:
         token = _make_token()
         mock_provider = MagicMock()
         mock_provider.files.get_file_details.return_value = []  # Filtered out
+        mock_provider.files.bucket_name = "bond-bedrock-files-000000000000"
 
         from bondable.rest.dependencies.providers import get_bond_provider
         app.dependency_overrides[get_bond_provider] = lambda: mock_provider
         try:
             resp = test_client.delete(
-                "/files/other-users-file",
+                "/files/bond_file_cccc3333dddd4444eeee5555ffff6666",
                 headers={"Authorization": f"Bearer {token}"},
             )
             assert resp.status_code == 404
@@ -262,12 +265,13 @@ class TestT15FileFiltering:
         mock_provider = MagicMock()
         mock_provider.files.get_file_details.return_value = [mock_file]
         mock_provider.files.get_file_bytes.return_value = io.BytesIO(b"hello")
+        mock_provider.files.bucket_name = "bond-bedrock-files-000000000000"
 
         from bondable.rest.dependencies.providers import get_bond_provider
         app.dependency_overrides[get_bond_provider] = lambda: mock_provider
         try:
             resp = test_client.get(
-                "/files/download/file-dl-1",
+                "/files/download/bond_file_dddd4444eeee5555ffff6666aaaa7777",
                 headers={"Authorization": f"Bearer {token}"},
             )
             assert resp.status_code == 200

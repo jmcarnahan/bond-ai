@@ -13,6 +13,7 @@ from bondable.rest.models.agents import (
 )
 from bondable.rest.dependencies.auth import get_current_user
 from bondable.rest.dependencies.providers import get_bond_provider
+from bondable.rest.routers.files import _to_opaque_id, _resolve_file_id
 
 router = APIRouter(prefix="/agents", tags=["Agent"])
 LOGGER = logging.getLogger(__name__)
@@ -21,11 +22,21 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _process_tool_resources(request_data, provider: Provider, user_id: str) -> dict:
-    """Process tool resources for agent creation/update."""
+    """Process tool resources for agent creation/update.
+
+    Raises:
+        HTTPException(400): If any file ID has an invalid format.
+    """
     tool_resources_payload = {}
 
     if not request_data.tool_resources:
         return tool_resources_payload
+
+    def _resolve_ids(file_ids):
+        try:
+            return [_resolve_file_id(fid, provider) for fid in file_ids]
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     # Handle code interpreter files
     # Note: We check for `is not None` to distinguish between:
@@ -33,8 +44,9 @@ def _process_tool_resources(request_data, provider: Provider, user_id: str) -> d
     # - file_ids=[] (explicitly empty, clear all files)
     if (request_data.tool_resources.code_interpreter and
         request_data.tool_resources.code_interpreter.file_ids is not None):
+        resolved_ids = _resolve_ids(request_data.tool_resources.code_interpreter.file_ids)
         tool_resources_payload["code_interpreter"] = {
-            "file_ids": request_data.tool_resources.code_interpreter.file_ids
+            "file_ids": resolved_ids
         }
 
     # Handle file search files
@@ -43,8 +55,9 @@ def _process_tool_resources(request_data, provider: Provider, user_id: str) -> d
     # - file_ids=[] (explicitly empty, clear all files)
     if (request_data.tool_resources.file_search and
         request_data.tool_resources.file_search.file_ids is not None):
+        resolved_ids = _resolve_ids(request_data.tool_resources.file_search.file_ids)
         tool_resources_payload["file_search"] = {
-            "file_ids": request_data.tool_resources.file_search.file_ids
+            "file_ids": resolved_ids
         }
 
         # fs_file_ids = request_data.tool_resources.file_search.file_ids
@@ -438,7 +451,7 @@ async def get_agent_details(
         if agent_def.tool_resources and "code_interpreter" in agent_def.tool_resources:
             ci_file_ids = agent_def.tool_resources["code_interpreter"].get("file_ids", [])
             if ci_file_ids:
-                response_tool_resources.code_interpreter = ToolResourceFilesList(file_ids=ci_file_ids)
+                response_tool_resources.code_interpreter = ToolResourceFilesList(file_ids=[_to_opaque_id(fid) for fid in ci_file_ids])
 
         # Process file_search files (vector stores)
         if agent_def.tool_resources and "file_search" in agent_def.tool_resources:
@@ -449,7 +462,7 @@ async def get_agent_details(
                 for vector_store_id, file_details_list in all_fs_files_data.items():
                     for file_details in file_details_list:
                         if file_details and file_details.file_id:
-                            processed_file_ids.add(file_details.file_id)
+                            processed_file_ids.add(_to_opaque_id(file_details.file_id))
                 response_tool_resources.file_search = ToolResourceFilesList(file_ids=list(processed_file_ids))
 
         LOGGER.debug(f"Returning agent details - introduction: '{agent_def.introduction[:50] if agent_def.introduction else 'None'}'...")
