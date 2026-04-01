@@ -8,7 +8,7 @@ import os
 import sys
 import uuid
 import pytest
-pytestmark = pytest.mark.skip(reason="Integration test: requires live AWS Bedrock and running MCP servers")
+pytestmark = pytest.mark.integration
 from dotenv import load_dotenv
 import logging
 from dataclasses import dataclass

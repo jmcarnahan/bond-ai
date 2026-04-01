@@ -29,7 +29,7 @@ Test Organization:
 
 import logging
 import pytest
-pytestmark = pytest.mark.skip(reason="Integration test: requires running backend and MCP servers")
+pytestmark = pytest.mark.integration
 import requests
 
 logger = logging.getLogger(__name__)

@@ -6,7 +6,7 @@ Tests file creation, retrieval, and deletion using S3 storage.
 import os
 import io
 import pytest
-pytestmark = pytest.mark.skip(reason="Integration test: requires live AWS Bedrock and S3 file storage")
+pytestmark = pytest.mark.integration
 import tempfile
 from unittest.mock import patch
 from bondable.bond.config import Config
