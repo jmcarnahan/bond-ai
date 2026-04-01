@@ -1450,8 +1450,8 @@ Please integrate any relevant insights from the documents with your analysis of 
         return (
             f'<_bondmessage '
             f'id="{message_id}" '
-            f'thread_id="{thread_id}" '
-            f'agent_id="{agent_id}" '
+            f'thread_id="{xml_escape(str(thread_id))}" '
+            f'agent_id="{xml_escape(str(agent_id))}" '
             f'type="{message_type}" '
             f'role="{role}" '
             f'is_error="{str(is_error).lower()}" '

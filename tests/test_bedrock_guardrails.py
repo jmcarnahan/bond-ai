@@ -465,7 +465,7 @@ class TestConverseGuardrailIntervention:
 # ============================================================
 
 
-@pytest.mark.skip(reason="Integration test: requires live AWS credentials and a deployed guardrail")
+@pytest.mark.integration
 class TestGuardrailIntegration:
     """Live integration tests against a deployed guardrail."""
 

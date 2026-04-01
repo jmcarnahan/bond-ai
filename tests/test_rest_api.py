@@ -55,6 +55,7 @@ def mock_provider():
     provider.agents = MagicMock(spec=AgentProvider)
     provider.threads = MagicMock(spec=ThreadsProvider)
     provider.files = MagicMock(spec=FilesProvider)
+    provider.files.bucket_name = "bond-bedrock-files-000000000000"
     provider.vectorstores = MagicMock(spec=VectorStoresProvider)
     provider.groups = MagicMock(spec=Groups)
     provider.agent_folders = MagicMock(spec=AgentFolders)
@@ -279,7 +280,7 @@ class TestAgents:
             "tools": [{"type": "code_interpreter"}],
             "tool_resources": {
                 "code_interpreter": {
-                    "file_ids": ["file_1", "file_2"]
+                    "file_ids": ["bond_file_1111aaaa2222bbbb3333cccc4444dddd", "bond_file_5555eeee6666ffff7777aaaa8888bbbb"]
                 }
             }
         }
@@ -303,7 +304,7 @@ class TestAgents:
             "tools": [{"type": "file_search"}],
             "tool_resources": {
                 "file_search": {
-                    "file_ids": ["file_1", "file_2"]
+                    "file_ids": ["bond_file_1111aaaa2222bbbb3333cccc4444dddd", "bond_file_5555eeee6666ffff7777aaaa8888bbbb"]
                 }
             }
         }
@@ -455,7 +456,7 @@ class TestAgents:
         mock_definition.model = "gpt-4.1-nano"
         mock_definition.tools = [{"type": "code_interpreter"}]
         mock_definition.tool_resources = {
-            "code_interpreter": {"file_ids": ["file_1"]}
+            "code_interpreter": {"file_ids": ["s3://bond-bedrock-files-000000000000/files/bond_file_1111aaaa2222bbbb3333cccc4444dddd"]}
         }
         mock_definition.metadata = {"detailed": True}
         mock_definition.file_storage = 'direct'
@@ -469,7 +470,7 @@ class TestAgents:
         # Mock file path data
         mock_provider.files.get_file_details.return_value = [
             FileDetails(
-                file_id="file_1",
+                file_id="s3://bond-bedrock-files-000000000000/files/bond_file_1111aaaa2222bbbb3333cccc4444dddd",
                 file_path="/tmp/file1.txt",
                 file_hash="hash1",
                 mime_type="text/plain",
@@ -491,7 +492,7 @@ class TestAgents:
         result = response.json()
         assert result["id"] == "detailed_agent"
         assert result["name"] == "Detailed Agent"
-        assert result["tool_resources"]["code_interpreter"]["file_ids"] == ["file_1"]
+        assert result["tool_resources"]["code_interpreter"]["file_ids"] == ["bond_file_1111aaaa2222bbbb3333cccc4444dddd"]
 
     def test_get_agent_details_not_found(self, authenticated_client):
         """Test getting details for non-existent agent."""
@@ -1100,8 +1101,8 @@ class TestThreadAgentAssociation:
         mock_provider.agents.can_user_access_agent.return_value = True
 
         chat_data = {
-            "thread_id": "test_thread",
-            "agent_id": "agent_123",
+            "thread_id": "thread_aaaa1111bbbb2222cccc3333dddd4444",
+            "agent_id": "bedrock_agent_aaaa1111bbbb2222cccc3333dddd4444",
             "prompt": "Hello"
         }
 
@@ -1109,7 +1110,7 @@ class TestThreadAgentAssociation:
 
         assert response.status_code == 200
         mock_provider.threads.update_thread_last_agent.assert_called_once_with(
-            "test_thread", TEST_USER_ID, "agent_123"
+            "thread_aaaa1111bbbb2222cccc3333dddd4444", TEST_USER_ID, "bedrock_agent_aaaa1111bbbb2222cccc3333dddd4444"
         )
 
     def test_chat_last_agent_update_failure_does_not_block_chat(self, authenticated_client):
@@ -1123,8 +1124,8 @@ class TestThreadAgentAssociation:
         mock_provider.threads.update_thread_last_agent.side_effect = Exception("DB error")
 
         chat_data = {
-            "thread_id": "test_thread",
-            "agent_id": "agent_123",
+            "thread_id": "thread_aaaa1111bbbb2222cccc3333dddd4444",
+            "agent_id": "bedrock_agent_aaaa1111bbbb2222cccc3333dddd4444",
             "prompt": "Hello"
         }
 
@@ -1148,7 +1149,7 @@ class TestThreadAgentAssociation:
 
         chat_data = {
             "thread_id": None,
-            "agent_id": "agent_789",
+            "agent_id": "bedrock_agent_cccc3333dddd4444eeee5555ffff6666",
             "prompt": "Hello",
             "hidden": True
         }
@@ -1157,7 +1158,7 @@ class TestThreadAgentAssociation:
 
         assert response.status_code == 200
         mock_provider.threads.update_thread_last_agent.assert_called_once_with(
-            "new_thread_456", TEST_USER_ID, "agent_789"
+            "new_thread_456", TEST_USER_ID, "bedrock_agent_cccc3333dddd4444eeee5555ffff6666"
         )
 
 # --- Chat Tests ---
@@ -1177,8 +1178,8 @@ class TestChat:
         mock_provider.agents.can_user_access_agent.return_value = True
 
         chat_data = {
-            "thread_id": "test_thread",
-            "agent_id": "test_agent",
+            "thread_id": "thread_bbbb2222cccc3333dddd4444eeee5555",
+            "agent_id": "bedrock_agent_bbbb2222cccc3333dddd4444eeee5555",
             "prompt": "Hello"
         }
 
@@ -1188,7 +1189,7 @@ class TestChat:
         assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
         assert response.text == "".join(mock_chunks)
         mock_agent.stream_response.assert_called_once_with(
-            thread_id="test_thread",
+            thread_id="thread_bbbb2222cccc3333dddd4444eeee5555",
             prompt="Hello",
             attachments=[],
             hidden=False,
@@ -1203,8 +1204,8 @@ class TestChat:
         mock_provider.agents.get_agent.return_value = None
 
         chat_data = {
-            "thread_id": "test_thread",
-            "agent_id": "nonexistent",
+            "thread_id": "thread_dddd4444eeee5555ffff6666aaaa7777",
+            "agent_id": "bedrock_agent_dddd4444eeee5555ffff6666aaaa7777",
             "prompt": "Hello"
         }
 
@@ -1222,8 +1223,8 @@ class TestChat:
         mock_provider.agents.can_user_access_agent.return_value = False
 
         chat_data = {
-            "thread_id": "test_thread",
-            "agent_id": "forbidden_agent",
+            "thread_id": "thread_eeee5555ffff6666aaaa7777bbbb8888",
+            "agent_id": "bedrock_agent_eeee5555ffff6666aaaa7777bbbb8888",
             "prompt": "Hello"
         }
 
@@ -1235,8 +1236,8 @@ class TestChat:
     def test_chat_unauthorized(self, test_client):
         """Test chat without authentication."""
         chat_data = {
-            "thread_id": "test_thread",
-            "agent_id": "test_agent",
+            "thread_id": "thread_bbbb2222cccc3333dddd4444eeee5555",
+            "agent_id": "bedrock_agent_bbbb2222cccc3333dddd4444eeee5555",
             "prompt": "Hello"
         }
 
@@ -1258,12 +1259,12 @@ class TestChat:
 
         # Test with CSV file (should use code_interpreter) and text file (should use file_search)
         chat_data = {
-            "thread_id": "test_thread",
-            "agent_id": "test_agent",
+            "thread_id": "thread_aaaa1111bbbb2222cccc3333dddd4444",
+            "agent_id": "bedrock_agent_aaaa1111bbbb2222cccc3333dddd4444",
             "prompt": "Analyze this data",
             "attachments": [
-                {"file_id": "csv_file_123", "suggested_tool": "code_interpreter"},
-                {"file_id": "text_file_456", "suggested_tool": "file_search"}
+                {"file_id": "bond_file_cccc1111dddd2222eeee3333ffff4444", "suggested_tool": "code_interpreter"},
+                {"file_id": "bond_file_dddd1111eeee2222ffff3333aaaa4444", "suggested_tool": "file_search"}
             ]
         }
 
@@ -1272,13 +1273,13 @@ class TestChat:
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
 
-        # Verify the attachments were passed with correct tool assignments
+        # Verify the attachments were passed with resolved S3 URIs
         expected_attachments = [
-            {"file_id": "csv_file_123", "tools": [{"type": "code_interpreter"}]},
-            {"file_id": "text_file_456", "tools": [{"type": "file_search"}]}
+            {"file_id": "s3://bond-bedrock-files-000000000000/files/bond_file_cccc1111dddd2222eeee3333ffff4444", "tools": [{"type": "code_interpreter"}]},
+            {"file_id": "s3://bond-bedrock-files-000000000000/files/bond_file_dddd1111eeee2222ffff3333aaaa4444", "tools": [{"type": "file_search"}]}
         ]
         mock_agent.stream_response.assert_called_once_with(
-            thread_id="test_thread",
+            thread_id="thread_aaaa1111bbbb2222cccc3333dddd4444",
             prompt="Analyze this data",
             attachments=expected_attachments,
             hidden=False,
@@ -1299,8 +1300,8 @@ class TestChat:
         mock_provider.agents.can_user_access_agent.return_value = True
 
         chat_data = {
-            "thread_id": "test_thread",
-            "agent_id": "test_agent",
+            "thread_id": "thread_bbbb2222cccc3333dddd4444eeee5555",
+            "agent_id": "bedrock_agent_bbbb2222cccc3333dddd4444eeee5555",
             "prompt": "This is the agent introduction",
             "hidden": True
         }
@@ -1310,7 +1311,7 @@ class TestChat:
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
         mock_agent.stream_response.assert_called_once_with(
-            thread_id="test_thread",
+            thread_id="thread_bbbb2222cccc3333dddd4444eeee5555",
             prompt="This is the agent introduction",
             attachments=[],
             hidden=True,
@@ -1337,7 +1338,7 @@ class TestChat:
 
         chat_data = {
             "thread_id": None,
-            "agent_id": "test_agent",
+            "agent_id": "bedrock_agent_ffff6666aaaa7777bbbb8888cccc9999",
             "prompt": "This is the agent introduction",
             "hidden": True
         }
@@ -1373,7 +1374,7 @@ class TestFiles:
 
         # Mock FileDetails object
         mock_file_details = MagicMock()
-        mock_file_details.file_id = "file_123"
+        mock_file_details.file_id = "s3://bond-bedrock-files-000000000000/files/bond_file_aaaa1111bbbb2222cccc3333dddd4444"
         mock_file_details.mime_type = "text/plain"
         mock_provider.files.get_or_create_file_id.return_value = mock_file_details
 
@@ -1384,7 +1385,7 @@ class TestFiles:
 
         assert response.status_code == 200
         result = response.json()
-        assert result["provider_file_id"] == "file_123"
+        assert result["provider_file_id"] == "bond_file_aaaa1111bbbb2222cccc3333dddd4444"
         assert result["file_name"] == "test.txt"
         assert result["mime_type"] == "text/plain"
         assert result["suggested_tool"] == "file_search"  # text/plain should map to file_search
@@ -1408,7 +1409,7 @@ class TestFiles:
 
         # Mock FileDetails object
         mock_file_details = MagicMock()
-        mock_file_details.file_id = "csv_file_123"
+        mock_file_details.file_id = "s3://bond-bedrock-files-000000000000/files/bond_file_cccc1111dddd2222eeee3333ffff4444"
         mock_file_details.mime_type = "text/csv"
         mock_provider.files.get_or_create_file_id.return_value = mock_file_details
 
@@ -1419,7 +1420,7 @@ class TestFiles:
 
         assert response.status_code == 200
         result = response.json()
-        assert result["provider_file_id"] == "csv_file_123"
+        assert result["provider_file_id"] == "bond_file_cccc1111dddd2222eeee3333ffff4444"
         assert result["file_name"] == "data.csv"
         assert result["mime_type"] == "text/csv"
         assert result["suggested_tool"] == "code_interpreter"  # CSV should map to code_interpreter
@@ -1431,7 +1432,7 @@ class TestFiles:
 
         # Mock FileDetails object
         mock_file_details = MagicMock()
-        mock_file_details.file_id = "excel_file_123"
+        mock_file_details.file_id = "s3://bond-bedrock-files-000000000000/files/bond_file_dddd1111eeee2222ffff3333aaaa4444"
         mock_file_details.mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         mock_provider.files.get_or_create_file_id.return_value = mock_file_details
 
@@ -1442,7 +1443,7 @@ class TestFiles:
 
         assert response.status_code == 200
         result = response.json()
-        assert result["provider_file_id"] == "excel_file_123"
+        assert result["provider_file_id"] == "bond_file_dddd1111eeee2222ffff3333aaaa4444"
         assert result["file_name"] == "data.xlsx"
         assert result["mime_type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         assert result["suggested_tool"] == "code_interpreter"  # Excel should map to code_interpreter
@@ -1472,16 +1473,18 @@ class TestFiles:
         """Test deleting file successfully."""
         client, auth_headers, mock_provider = authenticated_client
 
-        self._mock_file_ownership(mock_provider, "file_to_delete")
+        self._mock_file_ownership(mock_provider, "bond_file_eeee1111ffff2222aaaa3333bbbb4444")
         mock_provider.files.delete_file.return_value = True
 
-        response = client.delete("/files/file_to_delete", headers=auth_headers)
+        response = client.delete("/files/bond_file_eeee1111ffff2222aaaa3333bbbb4444", headers=auth_headers)
 
         assert response.status_code == 200
         result = response.json()
-        assert result["provider_file_id"] == "file_to_delete"
+        assert result["provider_file_id"] == "bond_file_eeee1111ffff2222aaaa3333bbbb4444"
         assert result["status"] == "deleted"
-        mock_provider.files.delete_file.assert_called_once_with(file_id="file_to_delete")
+        mock_provider.files.delete_file.assert_called_once_with(
+            file_id="s3://bond-bedrock-files-000000000000/files/bond_file_eeee1111ffff2222aaaa3333bbbb4444"
+        )
 
     def test_delete_file_not_found(self, authenticated_client):
         """Test deleting non-existent file."""
@@ -1489,7 +1492,7 @@ class TestFiles:
 
         mock_provider.files.get_file_details.return_value = []
 
-        response = client.delete("/files/nonexistent", headers=auth_headers)
+        response = client.delete("/files/bond_file_0000111122223333444455556666aaaa", headers=auth_headers)
 
         assert response.status_code == 404
         assert "File not found" in response.json()["detail"]
@@ -1498,7 +1501,7 @@ class TestFiles:
         """Test delete when provider raises API error."""
         client, auth_headers, mock_provider = authenticated_client
 
-        self._mock_file_ownership(mock_provider, "provider_error")
+        self._mock_file_ownership(mock_provider, "bond_file_ffff1111aaaa2222bbbb3333cccc4444")
 
         import openai
         import httpx
@@ -1514,7 +1517,7 @@ class TestFiles:
         )
         mock_provider.files.delete_file.side_effect = api_error
 
-        response = client.delete("/files/provider_error", headers=auth_headers)
+        response = client.delete("/files/bond_file_ffff1111aaaa2222bbbb3333cccc4444", headers=auth_headers)
 
         assert response.status_code == 404
         assert "file not found with provider" in response.json()["detail"].lower()
@@ -1526,14 +1529,14 @@ class TestFiles:
         # Mock file details
         mock_provider.files.get_file_details.return_value = [
             FileDetails(
-                file_id="file_1",
+                file_id="s3://bond-bedrock-files-000000000000/files/bond_file_1111aaaa2222bbbb3333cccc4444dddd",
                 file_path="/tmp/document.pdf",
                 file_hash="hash1",
                 mime_type="application/pdf",
                 owner_user_id=TEST_USER_ID
             ),
             FileDetails(
-                file_id="file_2",
+                file_id="s3://bond-bedrock-files-000000000000/files/bond_file_5555eeee6666ffff7777aaaa8888bbbb",
                 file_path="/tmp/data.csv",
                 file_hash="hash2",
                 mime_type="text/csv",
@@ -1541,17 +1544,26 @@ class TestFiles:
             )
         ]
 
-        response = client.get("/files/details?file_ids=file_1&file_ids=file_2", headers=auth_headers)
+        response = client.get(
+            "/files/details?file_ids=bond_file_1111aaaa2222bbbb3333cccc4444dddd&file_ids=bond_file_5555eeee6666ffff7777aaaa8888bbbb",
+            headers=auth_headers
+        )
 
         assert response.status_code == 200
         result = response.json()
         assert len(result) == 2
-        assert result[0]["file_id"] == "file_1"
+        assert result[0]["file_id"] == "bond_file_1111aaaa2222bbbb3333cccc4444dddd"
         assert result[0]["mime_type"] == "application/pdf"
-        assert result[1]["file_id"] == "file_2"
+        assert result[1]["file_id"] == "bond_file_5555eeee6666ffff7777aaaa8888bbbb"
         assert result[1]["mime_type"] == "text/csv"
 
-        mock_provider.files.get_file_details.assert_called_once_with(["file_1", "file_2"], user_id=TEST_USER_ID)
+        mock_provider.files.get_file_details.assert_called_once_with(
+            [
+                "s3://bond-bedrock-files-000000000000/files/bond_file_1111aaaa2222bbbb3333cccc4444dddd",
+                "s3://bond-bedrock-files-000000000000/files/bond_file_5555eeee6666ffff7777aaaa8888bbbb",
+            ],
+            user_id=TEST_USER_ID
+        )
 
     def test_get_file_details_filters_by_user(self, authenticated_client):
         """Test that file details are filtered by current user at query level."""
@@ -1560,7 +1572,7 @@ class TestFiles:
         # Mock: provider now filters at query level, returning only user's files
         mock_provider.files.get_file_details.return_value = [
             FileDetails(
-                file_id="file_1",
+                file_id="s3://bond-bedrock-files-000000000000/files/bond_file_1111aaaa2222bbbb3333cccc4444dddd",
                 file_path="/tmp/document.pdf",
                 file_hash="hash1",
                 mime_type="application/pdf",
@@ -1568,15 +1580,22 @@ class TestFiles:
             ),
         ]
 
-        response = client.get("/files/details?file_ids=file_1&file_ids=file_2", headers=auth_headers)
+        response = client.get(
+            "/files/details?file_ids=bond_file_1111aaaa2222bbbb3333cccc4444dddd&file_ids=bond_file_5555eeee6666ffff7777aaaa8888bbbb",
+            headers=auth_headers
+        )
 
         assert response.status_code == 200
         result = response.json()
         assert len(result) == 1
-        assert result[0]["file_id"] == "file_1"
+        assert result[0]["file_id"] == "bond_file_1111aaaa2222bbbb3333cccc4444dddd"
         # Verify user_id was passed to the provider for filtering
         mock_provider.files.get_file_details.assert_called_once_with(
-            ["file_1", "file_2"], user_id=TEST_USER_ID
+            [
+                "s3://bond-bedrock-files-000000000000/files/bond_file_1111aaaa2222bbbb3333cccc4444dddd",
+                "s3://bond-bedrock-files-000000000000/files/bond_file_5555eeee6666ffff7777aaaa8888bbbb",
+            ],
+            user_id=TEST_USER_ID
         )
 
     def test_upload_same_content_different_filename(self):
@@ -1669,7 +1688,7 @@ class TestIntegration:
 
         # 1. Upload file
         mock_file_details = MagicMock()
-        mock_file_details.file_id = "uploaded_file"
+        mock_file_details.file_id = "s3://bond-bedrock-files-000000000000/files/bond_file_aabb1122ccdd3344eeff5566aabb7788"
         mock_file_details.mime_type = "text/csv"
         mock_provider.files.get_or_create_file_id.return_value = mock_file_details
 
@@ -1678,7 +1697,7 @@ class TestIntegration:
         upload_response = client.post("/files", headers=auth_headers, files=files)
         assert upload_response.status_code == 200
 
-        # 2. Create agent with file
+        # 2. Create agent with file (using opaque ID from upload response)
         mock_agent = MagicMock(spec=AgentABC)
         mock_agent.get_agent_id.return_value = "workflow_agent"
         mock_agent.get_name.return_value = "Workflow Agent"
@@ -1688,7 +1707,7 @@ class TestIntegration:
             "name": "Workflow Agent",
             "tools": [{"type": "code_interpreter"}],
             "tool_resources": {
-                "code_interpreter": {"file_ids": ["uploaded_file"]}
+                "code_interpreter": {"file_ids": ["bond_file_aabb1122ccdd3344eeff5566aabb7788"]}
             }
         }
 
@@ -1714,8 +1733,8 @@ class TestIntegration:
         mock_agent.stream_response.return_value = iter(["Analysis complete!"])
 
         chat_data = {
-            "thread_id": "workflow_thread",
-            "agent_id": "workflow_agent",
+            "thread_id": "thread_aabb1122ccdd3344eeff5566aabb7788",
+            "agent_id": "bedrock_agent_aabb1122ccdd3344eeff5566aabb7788",
             "prompt": "Analyze the data"
         }
 

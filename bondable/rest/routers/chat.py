@@ -12,6 +12,8 @@ from bondable.rest.models.chat import ChatRequest
 from bondable.rest.dependencies.auth import get_current_user_with_token
 from bondable.rest.dependencies.providers import get_bond_provider
 from bondable.utils.logging_utils import safe_id
+from bondable.rest.routers.files import _resolve_file_id
+from xml.sax.saxutils import escape as xml_escape  # nosec B406 - used for output encoding, not parsing
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 LOGGER = logging.getLogger(__name__)
@@ -126,9 +128,16 @@ async def chat(
     resolved_attachements = []
     if request_body.attachments:
         for attachment in request_body.attachments:
+            try:
+                resolved_fid = _resolve_file_id(attachment.file_id, provider)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid attachment file ID format: {attachment.file_id}"
+                )
             tool_type = attachment.suggested_tool if attachment.suggested_tool in ["file_search", "code_interpreter"] else "file_search"
             resolved_attachements.append({
-                "file_id": attachment.file_id,
+                "file_id": resolved_fid,
                 "tools": [{"type": tool_type}]
             })
 
@@ -226,8 +235,8 @@ async def chat(
                     yield (
                         f'<_bondmessage '
                         f'id="{fallback_id}" '
-                        f'thread_id="{thread_id}" '
-                        f'agent_id="{request_body.agent_id}" '
+                        f'thread_id="{xml_escape(str(thread_id))}" '
+                        f'agent_id="{xml_escape(str(request_body.agent_id))}" '
                         f'type="error" '
                         f'role="system" '
                         f'is_error="true" '
@@ -247,8 +256,8 @@ async def chat(
                     yield (
                         f'<_bondmessage '
                         f'id="{done_id}" '
-                        f'thread_id="{thread_id}" '
-                        f'agent_id="{request_body.agent_id}" '
+                        f'thread_id="{xml_escape(str(thread_id))}" '
+                        f'agent_id="{xml_escape(str(request_body.agent_id))}" '
                         f'type="text" '
                         f'role="system" '
                         f'is_error="false" '
@@ -285,8 +294,8 @@ async def chat(
                     yield (
                         f'<_bondmessage '
                         f'id="{error_id}" '
-                        f'thread_id="{thread_id}" '
-                        f'agent_id="{agent_id}" '
+                        f'thread_id="{xml_escape(str(thread_id))}" '
+                        f'agent_id="{xml_escape(str(agent_id))}" '
                         f'type="error" '
                         f'role="system" '
                         f'is_error="true" '
@@ -304,8 +313,8 @@ async def chat(
                         yield (
                             '<_bondmessage '
                             'id="error-fallback" '
-                            f'thread_id="{thread_id or "unknown"}" '
-                            f'agent_id="{request_body.agent_id or "unknown"}" '
+                            f'thread_id="{xml_escape(str(thread_id or "unknown"))}" '
+                            f'agent_id="{xml_escape(str(request_body.agent_id or "unknown"))}" '
                             'type="error" '
                             'role="system" '
                             'is_error="true" '

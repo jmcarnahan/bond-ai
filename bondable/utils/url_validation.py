@@ -7,11 +7,13 @@ optional environment variable for additional domains.
 
 Default Allowed Domains:
 - localhost, 127.0.0.1 (development)
-- *.awsapprunner.com (AWS App Runner deployments)
+
+All other domains (including App Runner and EKS) must be explicitly listed
+via the ALLOWED_REDIRECT_DOMAINS environment variable.
 
 Environment Variable:
-- ALLOWED_REDIRECT_DOMAINS: Comma-separated list of additional allowed domains
-  Example: "example.com,api.example.com,staging.example.com"
+- ALLOWED_REDIRECT_DOMAINS: Comma-separated list of allowed domains
+  Example: "abc123.us-west-2.awsapprunner.com,ai.example.com"
 
 Usage:
     from bondable.utils.url_validation import is_safe_redirect_url, validate_redirect_url_or_raise
@@ -36,11 +38,6 @@ DEFAULT_LOCALHOST_DOMAINS = frozenset({
     'localhost',
     '127.0.0.1',
     '::1',  # IPv6 localhost (urlparse strips brackets from [::1])
-})
-
-# Default domain suffixes always allowed
-DEFAULT_ALLOWED_SUFFIXES = frozenset({
-    '.awsapprunner.com',  # AWS App Runner deployments
 })
 
 
@@ -76,7 +73,6 @@ def is_safe_redirect_url(url: str) -> bool:
     - It's a relative URL starting with '/' (but not '//')
     - It has http/https scheme AND hostname matches one of:
       - A localhost-like domain (localhost, 127.0.0.1, ::1)
-      - An AWS App Runner domain (*.awsapprunner.com)
       - A domain in ALLOWED_REDIRECT_DOMAINS environment variable
       - A subdomain of any allowed domain
 
@@ -116,15 +112,17 @@ def is_safe_redirect_url(url: str) -> bool:
 
         hostname = hostname.lower()
 
+        # Enforce HTTPS for non-localhost domains
+        is_localhost = hostname in DEFAULT_LOCALHOST_DOMAINS or any(
+            hostname.endswith(f'.{d}') for d in DEFAULT_LOCALHOST_DOMAINS
+        )
+        if parsed.scheme == 'http' and not is_localhost:
+            return False
+
         # Check against explicitly allowed domains
         allowed_domains = get_allowed_redirect_domains()
         if hostname in allowed_domains:
             return True
-
-        # Check against allowed suffixes (e.g., *.awsapprunner.com)
-        for suffix in DEFAULT_ALLOWED_SUFFIXES:
-            if hostname.endswith(suffix):
-                return True
 
         # Check for subdomain matches of allowed domains
         for domain in allowed_domains:
