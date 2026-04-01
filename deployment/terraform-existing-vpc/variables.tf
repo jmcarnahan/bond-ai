@@ -177,7 +177,7 @@ variable "cors_allowed_origins" {
 }
 
 variable "allowed_redirect_domains" {
-  description = "Comma-separated list of allowed redirect domains for OAuth callbacks. Localhost and *.awsapprunner.com are always allowed by default. Add your custom domains here (e.g., 'example.com,api.example.com')"
+  description = "Comma-separated list of allowed redirect domains for OAuth callbacks. Localhost is always allowed by default. Both App Runner and EKS domains must be explicitly listed (no wildcard matching). EKS domains are auto-added from eks_custom_domain_name and eks_oauth_base_url. Example: 'abc123.us-west-2.awsapprunner.com,ai.example.com'"
   type        = string
   default     = ""
 }

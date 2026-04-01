@@ -63,10 +63,10 @@ class TestIsSafeRedirectUrl:
     # --- Allowed: App Runner suffix ---
 
     def test_apprunner_domain(self):
-        assert is_safe_redirect_url("https://abc123.us-west-2.awsapprunner.com/callback") is True
+        assert is_safe_redirect_url("https://abc123.us-west-2.awsapprunner.com/callback") is False
 
     def test_apprunner_no_path(self):
-        assert is_safe_redirect_url("https://abc123.us-west-2.awsapprunner.com") is True
+        assert is_safe_redirect_url("https://abc123.us-west-2.awsapprunner.com") is False
 
     # --- Allowed: relative URLs ---
 
@@ -127,6 +127,34 @@ class TestIsSafeRedirectUrl:
     @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "myapp.internal"})
     def test_env_var_different_domain_rejected(self):
         assert is_safe_redirect_url("https://evil.com/callback") is False
+
+    # --- App Runner / EKS domains via env var ---
+
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "abc123.us-west-2.awsapprunner.com"})
+    def test_apprunner_domain_allowed_when_configured(self):
+        assert is_safe_redirect_url("https://abc123.us-west-2.awsapprunner.com/callback") is True
+
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "eks.ai.mydomain.cloud"})
+    def test_eks_custom_domain_allowed_when_configured(self):
+        assert is_safe_redirect_url("https://eks.ai.mydomain.cloud/callback") is True
+
+    # --- HTTPS enforcement for non-localhost ---
+
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "myapp.internal"})
+    def test_http_rejected_for_non_localhost(self):
+        assert is_safe_redirect_url("http://myapp.internal/callback") is False
+
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "myapp.internal"})
+    def test_https_required_for_configured_domain(self):
+        assert is_safe_redirect_url("https://myapp.internal/callback") is True
+
+    def test_http_still_allowed_for_localhost(self):
+        assert is_safe_redirect_url("http://localhost:3000/callback") is True
+
+    # --- Wildcard suffix no longer matches ---
+
+    def test_wildcard_apprunner_no_longer_matches(self):
+        assert is_safe_redirect_url("https://evil.awsapprunner.com/steal") is False
 
 
 class TestValidateRedirectUrlOrRaise:
