@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Microsoft Graph CLI -- read email and interact with Teams using device code flow.
+Microsoft Graph CLI -- read email and interact with Teams via Microsoft Graph.
 
 Usage:
     export MS_CLIENT_ID=<your-azure-app-client-id>
@@ -16,115 +16,15 @@ Usage:
 """
 
 import argparse
-import json
 import os
-import sys
-from pathlib import Path
 
 from dotenv import load_dotenv
-import msal
 
 load_dotenv()
 
 from ms_graph.graph_client import GraphClient
+from ms_graph.local_auth import get_local_token
 from ms_graph import mail, teams, files
-
-TOKEN_CACHE_PATH = Path.home() / ".ms_graph_tokens.json"
-
-MAIL_SCOPES = [
-    "Mail.Read",
-    "Mail.ReadWrite",
-    "Mail.Send",
-    "MailboxSettings.Read",
-    "User.Read",
-]
-
-TEAMS_SCOPES = [
-    "Team.ReadBasic.All",
-    "Channel.ReadBasic.All",
-    "ChannelMessage.Send",
-]
-
-FILES_SCOPES = [
-    "Files.Read.All",
-]
-
-# Sites.Read.All and Teams scopes only work with organizational (M365) accounts
-SITES_SCOPES = [
-    "Sites.Read.All",
-]
-
-SCOPES = MAIL_SCOPES + FILES_SCOPES + (
-    SITES_SCOPES + TEAMS_SCOPES if os.environ.get("MS_TENANT_ID") else []
-)
-
-
-def _get_msal_app() -> msal.PublicClientApplication:
-    client_id = os.environ.get("MS_CLIENT_ID")
-    if not client_id:
-        print("Error: MS_CLIENT_ID environment variable is required.", file=sys.stderr)
-        sys.exit(1)
-
-    cache = msal.SerializableTokenCache()
-    if TOKEN_CACHE_PATH.exists():
-        cache.deserialize(TOKEN_CACHE_PATH.read_text())
-
-    app = msal.PublicClientApplication(
-        client_id,
-        authority=f"https://login.microsoftonline.com/{os.environ.get('MS_TENANT_ID', 'consumers')}",
-        token_cache=cache,
-    )
-    return app, cache
-
-
-def _get_token() -> str:
-    app, cache = _get_msal_app()
-
-    accounts = app.get_accounts()
-    result = None
-    if accounts:
-        result = app.acquire_token_silent(SCOPES, account=accounts[0])
-
-    if not result:
-        flow = app.initiate_device_flow(scopes=SCOPES)
-        if "user_code" not in flow:
-            print(f"Device flow failed: {json.dumps(flow, indent=2)}", file=sys.stderr)
-            sys.exit(1)
-
-        print(flow["message"])
-        result = app.acquire_token_by_device_flow(flow)
-
-    if "access_token" not in result:
-        print(f"Authentication failed: {result.get('error_description', result)}", file=sys.stderr)
-        sys.exit(1)
-
-    # Persist cache
-    if cache.has_state_changed:
-        TOKEN_CACHE_PATH.write_text(cache.serialize())
-
-    # Debug: show granted scopes and decoded token claims
-    if os.environ.get("MS_DEBUG"):
-        import base64
-        print(f"[DEBUG] Scopes granted: {result.get('scope', 'N/A')}", file=sys.stderr)
-        print(f"[DEBUG] Token type: {result.get('token_type', 'N/A')}", file=sys.stderr)
-        token = result["access_token"]
-        # Decode JWT payload (middle segment)
-        try:
-            parts = token.split(".")
-            if len(parts) == 3:
-                payload_b64 = parts[1]
-                payload_b64 += "=" * (4 - len(payload_b64) % 4)  # pad
-                claims = json.loads(base64.b64decode(payload_b64))
-                print(f"[DEBUG] aud: {claims.get('aud')}", file=sys.stderr)
-                print(f"[DEBUG] iss: {claims.get('iss')}", file=sys.stderr)
-                print(f"[DEBUG] scp: {claims.get('scp')}", file=sys.stderr)
-                print(f"[DEBUG] ver: {claims.get('ver')}", file=sys.stderr)
-            else:
-                print(f"[DEBUG] Opaque token (consumer account)", file=sys.stderr)
-        except Exception as e:
-            print(f"[DEBUG] Could not decode token: {e}", file=sys.stderr)
-
-    return result["access_token"]
 
 
 def _format_message_summary(msg: dict) -> str:
@@ -139,7 +39,7 @@ def _format_message_summary(msg: dict) -> str:
 
 
 def cmd_list(args: argparse.Namespace) -> None:
-    token = _get_token()
+    token = get_local_token()
     with GraphClient(token) as client:
         messages = mail.list_messages(client, folder=args.folder, top=args.top)
 
@@ -155,7 +55,7 @@ def cmd_list(args: argparse.Namespace) -> None:
 
 
 def cmd_read(args: argparse.Namespace) -> None:
-    token = _get_token()
+    token = get_local_token()
     with GraphClient(token) as client:
         msg = mail.get_message(client, args.message_id)
 
@@ -175,7 +75,7 @@ def cmd_read(args: argparse.Namespace) -> None:
 
 
 def cmd_whoami(args: argparse.Namespace) -> None:
-    token = _get_token()
+    token = get_local_token()
     with GraphClient(token) as client:
         profile = mail.get_profile(client)
 
@@ -191,7 +91,7 @@ def cmd_whoami(args: argparse.Namespace) -> None:
 
 
 def cmd_send(args: argparse.Namespace) -> None:
-    token = _get_token()
+    token = get_local_token()
     from_addr = getattr(args, "from_address", None) or os.environ.get("MS_DEFAULT_FROM_ADDRESS") or None
     with GraphClient(token) as client:
         mail.send_message(
@@ -202,7 +102,7 @@ def cmd_send(args: argparse.Namespace) -> None:
 
 
 def cmd_search(args: argparse.Namespace) -> None:
-    token = _get_token()
+    token = get_local_token()
     with GraphClient(token) as client:
         messages = mail.search_messages(client, query=args.query, top=args.top)
 
@@ -218,7 +118,7 @@ def cmd_search(args: argparse.Namespace) -> None:
 
 
 def cmd_teams_list(args: argparse.Namespace) -> None:
-    token = _get_token()
+    token = get_local_token()
     with GraphClient(token) as client:
         team_list = teams.list_joined_teams(client)
 
@@ -232,7 +132,7 @@ def cmd_teams_list(args: argparse.Namespace) -> None:
 
 
 def cmd_teams_channels(args: argparse.Namespace) -> None:
-    token = _get_token()
+    token = get_local_token()
     with GraphClient(token) as client:
         channels = teams.list_channels(client, args.team_id)
 
@@ -246,7 +146,7 @@ def cmd_teams_channels(args: argparse.Namespace) -> None:
 
 
 def cmd_teams_send(args: argparse.Namespace) -> None:
-    token = _get_token()
+    token = get_local_token()
     with GraphClient(token) as client:
         teams.send_channel_message(client, args.team_id, args.channel_id, args.message)
     print("Message sent.")
@@ -275,7 +175,7 @@ def _format_drive_item_cli(item: dict) -> str:
 
 
 def cmd_files_list(args: argparse.Namespace) -> None:
-    token = _get_token()
+    token = get_local_token()
     with GraphClient(token) as client:
         items = files.list_drive_children(client, folder_path=args.path, top=args.top)
 
@@ -290,7 +190,7 @@ def cmd_files_list(args: argparse.Namespace) -> None:
 
 
 def cmd_files_info(args: argparse.Namespace) -> None:
-    token = _get_token()
+    token = get_local_token()
     with GraphClient(token) as client:
         item = files.get_drive_item(client, args.item_id)
 
@@ -309,7 +209,7 @@ def cmd_files_info(args: argparse.Namespace) -> None:
 
 
 def cmd_files_read(args: argparse.Namespace) -> None:
-    token = _get_token()
+    token = get_local_token()
     with GraphClient(token) as client:
         item, content = files.get_drive_item_content(client, args.item_id)
 
@@ -325,7 +225,7 @@ def cmd_files_read(args: argparse.Namespace) -> None:
 
 
 def cmd_files_search(args: argparse.Namespace) -> None:
-    token = _get_token()
+    token = get_local_token()
     with GraphClient(token) as client:
         results = files.search_files_unified(client, query=args.query, top=args.top)
 
@@ -352,7 +252,7 @@ def cmd_files_search(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 def cmd_sites_list(args: argparse.Namespace) -> None:
-    token = _get_token()
+    token = get_local_token()
     with GraphClient(token) as client:
         sites = files.list_sites(client, query=args.query, top=args.top)
 
@@ -370,7 +270,7 @@ def cmd_sites_list(args: argparse.Namespace) -> None:
 
 
 def cmd_sites_files(args: argparse.Namespace) -> None:
-    token = _get_token()
+    token = get_local_token()
     with GraphClient(token) as client:
         items = files.list_drive_children(client, folder_path=args.path, site_id=args.site_id, top=args.top)
 
