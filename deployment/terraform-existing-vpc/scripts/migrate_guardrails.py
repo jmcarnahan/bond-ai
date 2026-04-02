@@ -2,8 +2,8 @@
 """
 Batch migrate existing Bedrock agents to use guardrails.
 
-Reads all agents from the Aurora metadata DB, then calls update_agent
-with guardrailConfiguration for each one.
+Reads all agents from the Aurora metadata DB and/or local SQLite DB,
+then calls update_agent with guardrailConfiguration for each one.
 
 Usage:
     # Dry run - list agents without modifying
@@ -24,6 +24,7 @@ Environment variables:
     AURORA_CLUSTER_ARN         - Aurora cluster ARN for metadata DB
     DATABASE_SECRET_ARN        - Secrets Manager ARN for DB credentials
     DATABASE_NAME              - Database name (default: bondai)
+    METADATA_DB_URL            - SQLite URL for local metadata DB (e.g. sqlite:///.metadata.db)
     AWS_PROFILE                - AWS profile (default: default)
     AWS_REGION                 - AWS region (default: us-west-2)
 """
@@ -63,11 +64,10 @@ def get_session():
     return boto3.Session(profile_name=profile, region_name=region)
 
 
-def get_agent_ids_from_db(session):
+def get_agent_ids_from_aurora(session):
     """Query Aurora for all bedrock_agent_id values."""
     if not CLUSTER_ARN or not SECRET_ARN:
-        LOGGER.error("AURORA_CLUSTER_ARN and DATABASE_SECRET_ARN must be set to query agents from DB")
-        sys.exit(1)
+        return []
     rds_data = session.client('rds-data')
     resp = rds_data.execute_statement(
         resourceArn=CLUSTER_ARN,
@@ -81,6 +81,69 @@ def get_agent_ids_from_db(session):
         if val:
             agent_ids.append(val)
     return agent_ids
+
+
+def get_agent_ids_from_sqlite(db_url):
+    """Query local SQLite for all bedrock_agent_id values."""
+    import sqlite3
+
+    # Extract file path from SQLite URL (sqlite:///path or sqlite:////abs/path)
+    path = db_url
+    if path.startswith('sqlite:///'):
+        path = path[len('sqlite:///'):]
+
+    if not os.path.exists(path):
+        LOGGER.debug(f"SQLite DB not found at {path}, skipping")
+        return []
+
+    try:
+        conn = sqlite3.connect(path)
+        try:
+            cursor = conn.execute(
+                "SELECT bedrock_agent_id FROM bedrock_agent_options "
+                "WHERE bedrock_agent_id IS NOT NULL AND bedrock_agent_id != ''"
+            )
+            return [row[0] for row in cursor.fetchall()]
+        finally:
+            conn.close()
+    except Exception as e:
+        LOGGER.warning(f"Failed to query SQLite DB at {path}: {e}")
+        return []
+
+
+def get_all_agent_ids(session):
+    """Collect agent IDs from all configured metadata sources (Aurora + SQLite).
+
+    Returns a deduplicated list. Agents present in both databases (same
+    bedrock_agent_id) are only migrated once.
+    """
+    all_ids = set()
+
+    # Aurora
+    if CLUSTER_ARN and SECRET_ARN:
+        LOGGER.info("Querying Aurora for agent IDs...")
+        aurora_ids = get_agent_ids_from_aurora(session)
+        LOGGER.info(f"  Aurora: {len(aurora_ids)} agents")
+        all_ids.update(aurora_ids)
+    else:
+        LOGGER.info("Aurora not configured (AURORA_CLUSTER_ARN/DATABASE_SECRET_ARN not set), skipping")
+
+    # Local SQLite
+    sqlite_url = os.environ.get('METADATA_DB_URL', '')
+    if sqlite_url and sqlite_url.startswith('sqlite'):
+        LOGGER.info("Querying local SQLite for agent IDs...")
+        sqlite_ids = get_agent_ids_from_sqlite(sqlite_url)
+        new_ids = set(sqlite_ids) - all_ids
+        LOGGER.info(f"  SQLite: {len(sqlite_ids)} agents ({len(new_ids)} not already in Aurora)")
+        all_ids.update(sqlite_ids)
+    else:
+        LOGGER.debug("METADATA_DB_URL not set or not SQLite, skipping local DB")
+
+    if not all_ids:
+        LOGGER.error("No agent sources configured. Set AURORA_CLUSTER_ARN+DATABASE_SECRET_ARN and/or METADATA_DB_URL.")
+        sys.exit(1)
+
+    return sorted(all_ids)
 
 
 def get_agent_config(client, agent_id):
@@ -243,8 +306,7 @@ def main():
     if args.agent_id:
         agent_ids = [args.agent_id]
     else:
-        LOGGER.info("Querying Aurora for agent IDs...")
-        agent_ids = get_agent_ids_from_db(session)
+        agent_ids = get_all_agent_ids(session)
 
     LOGGER.info(f"Found {len(agent_ids)} agents")
 
