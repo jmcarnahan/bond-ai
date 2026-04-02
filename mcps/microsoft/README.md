@@ -1,6 +1,9 @@
-# Microsoft Graph MCP Server for Bond AI
+# Microsoft Graph MCP Server
 
-MCP server providing Microsoft email, Teams, OneDrive, and SharePoint tools for Bond AI. Uses the user's Microsoft Graph OAuth token, passed through by Bond AI's backend.
+MCP server providing Microsoft email, Teams, OneDrive, and SharePoint tools. Supports two authentication modes:
+
+- **Bond AI backend**: Receives pre-authenticated Bearer tokens (production deployment)
+- **Local auth**: Browser-based OAuth with PKCE for standalone use with Claude Code, other MCP clients, or the CLI
 
 ## Quick Start
 
@@ -54,7 +57,7 @@ poetry run pytest tests/ -v
 2. Set **Allow public client flows** to **Yes**
 3. Click **Save**
 
-This enables the device code flow used by the CLI tool. Not required if you only use the MCP server via Bond AI.
+This enables the device code flow (used as a fallback when the browser-based flow fails). Not required if you only use the MCP server via Bond AI.
 
 ### Step 4: Create a Client Secret (for Bond AI integration)
 
@@ -62,7 +65,7 @@ This enables the device code flow used by the CLI tool. Not required if you only
 2. Add a description and choose an expiration period
 3. Copy the **Value** immediately (it is only shown once)
 
-The client secret is required for the Bond AI OAuth callback flow (web application flow). The CLI uses device code flow and does not need it.
+The client secret is required for the Bond AI OAuth callback flow (web application flow). The CLI and standalone MCP server use public client flows (browser PKCE + device code) and do not need it.
 
 ### Step 5: Add Web Redirect URI (for Bond AI integration)
 
@@ -72,7 +75,7 @@ The client secret is required for the Bond AI OAuth callback flow (web applicati
 3. Click **Configure**
 
 You will have two redirect URIs configured:
-- **Public client/native**: `http://localhost:8400` (for CLI device code flow)
+- **Public client/native**: `http://localhost:8400` (for CLI / standalone MCP)
 - **Web**: `http://localhost:8000/connections/microsoft/callback` (for Bond AI OAuth flow)
 
 ## Authority / Tenant Configuration
@@ -98,7 +101,7 @@ If `MS_TENANT_ID` is not set, the CLI defaults to `consumers`.
 
 ## CLI Usage
 
-The CLI uses MSAL device code flow for authentication. Tokens are cached locally at `~/.ms_graph_tokens.json`.
+The CLI uses MSAL for authentication (browser-based PKCE flow with device code fallback). Tokens are cached locally at `~/.ms_graph_tokens.json`.
 
 ```bash
 export MS_CLIENT_ID=<your-application-client-id>
@@ -146,6 +149,67 @@ Enable debug output to inspect token claims:
 ```bash
 export MS_DEBUG=1
 ```
+
+## Standalone Use with Claude Code
+
+The MCP server can run standalone with local OAuth — no Bond AI backend required. Authentication uses browser-based authorization code + PKCE flow, with device code as a fallback for headless environments.
+
+### Prerequisites
+
+1. An Azure App Registration with the required API permissions (see [Azure App Registration](#azure-app-registration) above)
+2. **Enable public client flows** in the app registration (Authentication -> Advanced settings -> Allow public client flows -> Yes)
+3. Add `http://localhost` as a **Mobile and desktop** redirect URI in the app registration (Authentication -> Add a platform -> Mobile and desktop applications -> `http://localhost`)
+
+### Step 1: Start the MCP Server
+
+```bash
+cd mcps/microsoft
+poetry install
+
+# Set your Azure app client ID
+export MS_CLIENT_ID=<your-application-client-id>
+
+# Optional: set tenant ID for organizational accounts (Teams, SharePoint)
+# Omit for personal Microsoft accounts (defaults to 'consumers')
+export MS_TENANT_ID=<your-tenant-id>
+
+# Start the server
+poetry run fastmcp run ms_graph_mcp.py --transport streamable-http --port 5557
+```
+
+### Step 2: Register with Claude Code
+
+```bash
+claude mcp add-json ms-graph '{"type":"http","url":"http://localhost:5557/mcp"}' --scope local
+```
+
+Then restart Claude Code to pick up the new server.
+
+### Step 3: Authenticate
+
+The first time you use a Microsoft tool in Claude Code (e.g., "list my emails"), the server will:
+
+1. Open your browser to Microsoft's login page
+2. After you sign in and consent, redirect back to a localhost URL
+3. The server captures the authorization code, exchanges it for tokens, and caches them
+
+Subsequent calls use the cached token automatically. MSAL handles token refresh via the `offline_access` scope.
+
+If the browser doesn't open (SSH, headless), the server falls back to device code flow and prints a URL + code to the server terminal.
+
+### Token Cache
+
+Tokens are cached at `~/.ms_graph_tokens.json` (file permissions `0600`). To force re-authentication:
+
+```bash
+rm ~/.ms_graph_tokens.json
+```
+
+### Verify
+
+Run `/mcp` in Claude Code to confirm `ms-graph` shows as connected, then try:
+
+> "What's my Microsoft profile?" or "List my recent emails"
 
 ## MCP Server
 
@@ -445,26 +509,27 @@ By default, all users in the tenant can consent to the application. To restrict 
 ## Architecture
 
 ```
-User Browser
+Mode 1: Bond AI                    Mode 2: Claude Code / Standalone
+========================           ===================================
+User Browser                       Claude Code / MCP Client
+    |                                   |
+    v                                   v
+Bond AI Frontend                   MCP Server (this project)
+    |                                   |-- No Bearer header detected
+    v                                   |-- MS_CLIENT_ID env var set
+Bond AI Backend (FastAPI)               |-- local_auth.py:
+    |-- OAuth flow                      |     1. Try cached token (silent)
+    |-- Token pass-through              |     2. Browser PKCE flow
+    |                                   |     3. Device code fallback
+    v                                   |
+MCP Server (this project)              v
+    |-- Bearer token from header   Microsoft Graph API
     |
     v
-Bond AI Frontend
-    |
-    v
-Bond AI Backend (FastAPI)
-    |-- OAuth flow: authorize -> token exchange -> store encrypted token
-    |-- On chat: retrieve token -> pass as Authorization header
-    |
-    v
-Microsoft Graph MCP Server (this project)
-    |-- Extracts Bearer token from Authorization header
-    |-- Calls Microsoft Graph API with user's token
-    |
-    v
-Microsoft Graph API (https://graph.microsoft.com/v1.0)
+Microsoft Graph API
 ```
 
-The MCP server does **not** manage OAuth. Bond AI's backend handles:
+**Mode 1 (Bond AI):** The MCP server does **not** manage OAuth. Bond AI's backend handles:
 1. **Authorization**: Builds Microsoft OAuth URL with PKCE, redirects user to Microsoft login
 2. **Token exchange**: Exchanges authorization code for access_token + refresh_token
 3. **Token storage**: Encrypts and stores tokens in the database via `MCPTokenCache`
@@ -472,6 +537,8 @@ The MCP server does **not** manage OAuth. Bond AI's backend handles:
 5. **Token pass-through**: Sets `Authorization: Bearer <ms_graph_token>` header when calling the MCP server
 
 The MCP server receives the token and uses it directly to call the Graph API. No token validation or JWT decoding is needed -- the Graph API validates the token itself.
+
+**Mode 2 (Standalone):** When no Bearer header is present and `MS_CLIENT_ID` is set, the server authenticates directly using MSAL's `PublicClientApplication`. See [Standalone Use with Claude Code](#standalone-use-with-claude-code).
 
 ## Development
 
@@ -493,11 +560,12 @@ mcps/microsoft/
 ├── Dockerfile               # Container image for AWS deployment
 ├── .dockerignore            # Exclude tests, .env from Docker builds
 ├── .env.example             # Environment variable template
-├── ms_graph_cli.py          # CLI tool (MSAL device code flow)
+├── ms_graph_cli.py          # CLI tool (browser PKCE + device code fallback)
 ├── ms_graph_mcp.py          # MCP server (FastMCP)
 ├── ms_graph/
 │   ├── __init__.py
-│   ├── auth.py              # Bearer token extraction for MCP server
+│   ├── auth.py              # Token resolution (Bearer header or local MSAL)
+│   ├── local_auth.py        # Local MSAL auth (browser PKCE + device code fallback)
 │   ├── graph_client.py      # httpx-based Graph API client (sync + async)
 │   ├── mail.py              # Mail operations (list, get, send, search)
 │   ├── teams.py             # Teams operations (list teams, channels, send)
@@ -511,6 +579,8 @@ mcps/microsoft/
 │   └── outputs.tf           # Service URL, MCP endpoint
 └── tests/
     ├── conftest.py          # Fixtures and mock Graph API responses
+    ├── test_auth.py         # Token resolution tests (Bearer + local fallback)
+    ├── test_local_auth.py   # Local MSAL auth tests (flows, scopes, cache)
     ├── test_graph_client.py # Client tests (auth headers, error handling)
     ├── test_mail.py         # Mail operation tests (sync + async)
     ├── test_teams.py        # Teams tests (sync + async + 403 handling)
