@@ -58,6 +58,66 @@ poetry run github-cli pulls list <owner> <repo>
 poetry run github-cli user
 ```
 
+## Standalone Use with Claude Code
+
+The MCP server can run standalone with local OAuth — no Bond AI backend required. Authentication uses browser-based authorization code + PKCE flow via a shared OAuth proxy, with device code as a fallback for headless environments.
+
+### Prerequisites
+
+1. A GitHub OAuth App (see [GitHub OAuth App Setup](#github-oauth-app-setup) below)
+2. **Add a callback URL**: `http://localhost:8000/connections/github/callback`
+
+### Step 1: Start the Shared Auth Proxy
+
+The OAuth callback proxy handles browser redirects for all MCP servers. Start it in its own terminal:
+
+```bash
+cd mcps/shared_auth
+poetry install
+poetry run python -m shared_auth
+```
+
+You should see `Bond AI OAuth Proxy — Listening on 127.0.0.1:8000`. Leave this running.
+
+### Step 2: Start the MCP Server
+
+In a second terminal:
+
+```bash
+cd mcps/github
+poetry install
+
+export GITHUB_CLIENT_ID=<your-oauth-app-client-id>
+export GITHUB_CLIENT_SECRET=<your-oauth-app-client-secret>
+
+# Fails fast if the auth proxy isn't running
+poetry run fastmcp run github_mcp.py --transport streamable-http --port 5558
+```
+
+### Step 3: Register with Claude Code
+
+```bash
+claude mcp add-json github '{"type":"http","url":"http://localhost:5558/mcp"}' --scope local
+```
+
+Then restart Claude Code to pick up the new server.
+
+### Step 4: Authenticate
+
+The first time you use a GitHub tool in Claude Code, the server will open your browser to GitHub's authorization page. After you authorize, the token is cached at `~/.bond_ai_tokens/github.json`.
+
+GitHub tokens are long-lived — no refresh needed. To force re-authentication:
+
+```bash
+rm ~/.bond_ai_tokens/github.json
+```
+
+### Verify
+
+Run `/mcp` in Claude Code to confirm `github` shows as connected, then try:
+
+> "What's my GitHub profile?" or "List my repositories"
+
 ## Bond AI Integration
 
 ### BOND_MCP_CONFIG (Local Development)

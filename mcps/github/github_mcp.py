@@ -11,6 +11,8 @@ Run:
 """
 
 import logging
+import os
+from contextlib import asynccontextmanager
 
 from fastmcp import FastMCP
 
@@ -24,7 +26,19 @@ from github import code as code_ops
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("GitHub MCP Server")
+
+@asynccontextmanager
+async def _lifespan(app):
+    """Validate auth proxy is reachable when local auth is configured."""
+    if os.environ.get("GITHUB_CLIENT_ID"):
+        from shared_auth import OAuthProxyClient
+        proxy = OAuthProxyClient()
+        proxy.check_proxy()
+        logger.info("Auth proxy validated for local GitHub auth")
+    yield
+
+
+mcp = FastMCP("GitHub MCP Server", lifespan=_lifespan)
 
 
 def _friendly_error(err: GitHubError) -> str:
