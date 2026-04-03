@@ -1,8 +1,6 @@
 """Tests for local_auth.py -- local MSAL authentication."""
 
-import http.client
 import os
-import threading
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -103,6 +101,29 @@ class TestGetLocalToken:
         mock_browser.assert_called_once()
 
 
+class TestCreateMsalApp:
+    def test_creates_public_app_without_secret(self):
+        import msal
+        from ms_graph.local_auth import _create_msal_app
+
+        cache = msal.SerializableTokenCache()
+        with patch.dict(os.environ, {"MS_TENANT_ID": "consumers"}, clear=True):
+            app = _create_msal_app("test-id", cache)
+        assert isinstance(app, msal.PublicClientApplication)
+
+    def test_creates_confidential_app_with_secret(self):
+        import msal
+        from ms_graph.local_auth import _create_msal_app
+
+        cache = msal.SerializableTokenCache()
+        with patch.dict(os.environ, {
+            "MS_CLIENT_SECRET": "test-secret",
+            "MS_TENANT_ID": "consumers",
+        }, clear=True):
+            app = _create_msal_app("test-id", cache)
+        assert isinstance(app, msal.ConfidentialClientApplication)
+
+
 class TestGetScopes:
     def test_consumer_scopes_without_tenant(self):
         from ms_graph.local_auth import _get_scopes
@@ -124,132 +145,86 @@ class TestGetScopes:
         assert "Sites.Read.All" in scopes
 
 
-def _send_fake_redirect(port: int, code: str = "test-code", state: str = "test-state"):
-    """Send a simulated OAuth redirect to the local callback server."""
-    try:
-        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-        conn.request("GET", f"/?code={code}&state={state}")
-        conn.getresponse()
-        conn.close()
-    except Exception:
-        pass
+class TestAcquireTokenBrowserProxy:
+    """Test _acquire_token_browser() with the shared proxy."""
 
-
-class TestAcquireTokenBrowser:
-    """Test _acquire_token_browser() with a real localhost HTTP server."""
-
-    def test_returns_none_when_initiate_fails(self):
-        from ms_graph.local_auth import _acquire_token_browser
-
-        mock_app = MagicMock()
-        mock_app.initiate_auth_code_flow.return_value = {"error": "invalid_scope"}
-
-        result = _acquire_token_browser(mock_app, ["Mail.Read"])
-        assert result is None
-
-    def test_returns_none_on_exception(self):
-        from ms_graph.local_auth import _acquire_token_browser
-
-        mock_app = MagicMock()
-        mock_app.initiate_auth_code_flow.side_effect = RuntimeError("boom")
-
-        result = _acquire_token_browser(mock_app, ["Mail.Read"])
-        assert result is None
-
-    def test_successful_browser_flow(self):
-        """Full browser flow: server starts, redirect arrives, MSAL exchanges code."""
-        from ms_graph.local_auth import _acquire_token_browser
-
-        mock_app = MagicMock()
-        mock_app.initiate_auth_code_flow.return_value = {
-            "auth_uri": "https://login.microsoftonline.com/authorize?state=test-state",
-            "state": "test-state",
-        }
-        mock_app.acquire_token_by_auth_code_flow.return_value = {
-            "access_token": "browser-tok-123",
-        }
-
-        def fake_open(url):
-            """Instead of opening browser, send redirect to the callback server."""
-            redirect_uri = mock_app.initiate_auth_code_flow.call_args[1]["redirect_uri"]
-            port = int(redirect_uri.rsplit(":", 1)[1])
-            # Send the redirect in a separate thread so handle_request() can process it
-            threading.Thread(
-                target=_send_fake_redirect, args=(port,), daemon=True
-            ).start()
-
-        with patch("ms_graph.local_auth.webbrowser") as mock_wb:
-            mock_wb.open.side_effect = fake_open
-            result = _acquire_token_browser(mock_app, ["Mail.Read"])
-
-        assert result == {"access_token": "browser-tok-123"}
-        mock_app.acquire_token_by_auth_code_flow.assert_called_once()
-        # Verify the auth_response passed to MSAL contains the code
-        exchange_args = mock_app.acquire_token_by_auth_code_flow.call_args
-        auth_response = exchange_args[0][1]
-        assert auth_response["code"] == "test-code"
-        assert auth_response["state"] == "test-state"
-
-    def test_returns_none_when_msal_exchange_fails(self):
-        """MSAL receives the code but token exchange returns an error."""
-        from ms_graph.local_auth import _acquire_token_browser
-
-        mock_app = MagicMock()
-        mock_app.initiate_auth_code_flow.return_value = {
-            "auth_uri": "https://login.microsoftonline.com/authorize?state=s",
-            "state": "s",
-        }
-        mock_app.acquire_token_by_auth_code_flow.return_value = {
-            "error": "invalid_grant",
-            "error_description": "Code expired",
-        }
-
-        def fake_open(url):
-            call_args = mock_app.initiate_auth_code_flow.call_args
-            redirect_uri = call_args[1]["redirect_uri"]
-            port = int(redirect_uri.rsplit(":", 1)[1])
-            threading.Thread(
-                target=_send_fake_redirect, args=(port,), daemon=True
-            ).start()
-
-        with patch("ms_graph.local_auth.webbrowser") as mock_wb:
-            mock_wb.open.side_effect = fake_open
-            result = _acquire_token_browser(mock_app, ["Mail.Read"])
-
-        assert result is None
-
-    def test_returns_none_when_redirect_has_error(self):
-        """Microsoft returns an error instead of a code in the redirect."""
-        from ms_graph.local_auth import _acquire_token_browser
+    def test_uses_proxy_when_available(self):
+        from ms_graph.local_auth import _acquire_token_via_proxy
 
         mock_app = MagicMock()
         mock_app.initiate_auth_code_flow.return_value = {
             "auth_uri": "https://login.microsoftonline.com/authorize",
-            "state": "s",
+            "state": "msal-state-123",
+        }
+        mock_app.acquire_token_by_auth_code_flow.return_value = {
+            "access_token": "proxy-tok",
         }
 
-        def fake_open(url):
-            call_args = mock_app.initiate_auth_code_flow.call_args
-            redirect_uri = call_args[1]["redirect_uri"]
-            port = int(redirect_uri.rsplit(":", 1)[1])
+        mock_proxy = MagicMock()
+        mock_proxy.get_redirect_uri.return_value = "http://localhost:8000/connections/microsoft/callback"
+        mock_proxy.wait_for_callback.return_value = {
+            "code": "authcode", "state": "msal-state-123",
+        }
 
-            def send_error(p):
-                try:
-                    conn = http.client.HTTPConnection("127.0.0.1", p, timeout=5)
-                    conn.request("GET", "/?error=access_denied&error_description=User+cancelled")
-                    conn.getresponse()
-                    conn.close()
-                except Exception:
-                    pass
+        with patch("ms_graph.local_auth.webbrowser"):
+            result = _acquire_token_via_proxy(mock_app, ["Mail.Read"], mock_proxy)
 
-            threading.Thread(target=send_error, args=(port,), daemon=True).start()
+        assert result == {"access_token": "proxy-tok"}
+        mock_proxy.register_auth.assert_called_once_with("msal-state-123", "microsoft")
+        mock_proxy.wait_for_callback.assert_called_once()
 
-        with patch("ms_graph.local_auth.webbrowser") as mock_wb:
-            mock_wb.open.side_effect = fake_open
+    def test_returns_none_when_proxy_not_running(self):
+        """When proxy isn't running, _acquire_token_browser returns None."""
+        from ms_graph.local_auth import _acquire_token_browser
+        import shared_auth
+
+        mock_app = MagicMock()
+
+        with patch.object(shared_auth, "OAuthProxyClient") as MockProxy:
+            MockProxy.return_value.check_proxy.side_effect = RuntimeError("not running")
             result = _acquire_token_browser(mock_app, ["Mail.Read"])
 
         assert result is None
-        mock_app.acquire_token_by_auth_code_flow.assert_not_called()
+
+    def test_proxy_timeout_returns_none(self):
+        from ms_graph.local_auth import _acquire_token_via_proxy
+
+        mock_app = MagicMock()
+        mock_app.initiate_auth_code_flow.return_value = {
+            "auth_uri": "https://login.microsoftonline.com/authorize",
+            "state": "s1",
+        }
+
+        mock_proxy = MagicMock()
+        mock_proxy.get_redirect_uri.return_value = "http://localhost:8000/connections/microsoft/callback"
+        mock_proxy.wait_for_callback.side_effect = TimeoutError("timed out")
+
+        with patch("ms_graph.local_auth.webbrowser"):
+            result = _acquire_token_via_proxy(mock_app, ["Mail.Read"], mock_proxy)
+
+        assert result is None
+
+    def test_proxy_crash_returns_none(self):
+        """RuntimeError from proxy (e.g., proxy crashed mid-flow)."""
+        from ms_graph.local_auth import _acquire_token_browser
+        import shared_auth
+
+        mock_proxy = MagicMock()
+        mock_proxy.check_proxy.return_value = None  # passes
+        mock_proxy.get_redirect_uri.return_value = "http://localhost:8000/connections/microsoft/callback"
+        mock_proxy.wait_for_callback.side_effect = RuntimeError("proxy died")
+
+        mock_app = MagicMock()
+        mock_app.initiate_auth_code_flow.return_value = {
+            "auth_uri": "https://login.microsoftonline.com/authorize",
+            "state": "s1",
+        }
+
+        with patch.object(shared_auth, "OAuthProxyClient", return_value=mock_proxy), \
+             patch("ms_graph.local_auth.webbrowser"):
+            result = _acquire_token_browser(mock_app, ["Mail.Read"])
+
+        assert result is None
 
 
 class TestTokenCacheSecurity:

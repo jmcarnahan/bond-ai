@@ -3,15 +3,16 @@ Local MSAL authentication for standalone use (Claude Code, CLI).
 
 Provides browser-based authorization code + PKCE flow with device code fallback.
 Shared between the MCP server (when no Bearer header is present) and the CLI.
+
+Browser auth requires the shared OAuth callback proxy (shared_auth package)
+to be running. Start it with: cd mcps/shared_auth && poetry run python -m shared_auth
 """
 
 import logging
 import os
 import stat
 import webbrowser
-from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
 
 import msal
 
@@ -67,109 +68,114 @@ def _save_token_cache(cache: msal.SerializableTokenCache) -> None:
 
 def _create_msal_app(
     client_id: str, cache: msal.SerializableTokenCache
-) -> msal.PublicClientApplication:
-    """Create an MSAL PublicClientApplication."""
+) -> msal.ClientApplication:
+    """Create an MSAL app — Confidential if MS_CLIENT_SECRET is set, else Public."""
     authority = (
         f"https://login.microsoftonline.com/"
         f"{os.environ.get('MS_TENANT_ID', 'consumers')}"
     )
+    client_secret = os.environ.get("MS_CLIENT_SECRET")
+    if client_secret:
+        return msal.ConfidentialClientApplication(
+            client_id,
+            client_credential=client_secret,
+            authority=authority,
+            token_cache=cache,
+        )
     return msal.PublicClientApplication(
         client_id, authority=authority, token_cache=cache,
     )
 
 
 def _acquire_token_browser(
-    app: msal.PublicClientApplication, scopes: list[str]
+    app: msal.ClientApplication, scopes: list[str]
 ) -> dict | None:
     """
-    Authorization code flow with PKCE using a localhost redirect.
+    Authorization code flow with PKCE using the shared OAuth callback proxy.
 
-    Opens the user's browser to Microsoft login. A temporary HTTP server
-    on localhost:0 (random free port) catches the redirect with the auth code.
-    Returns the MSAL result dict or None if the flow fails.
+    Requires the proxy to be running. Returns None if the proxy is unavailable
+    (falls through to device code in get_local_token).
     """
-    auth_response = {}
-
-    class CallbackHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            qs = parse_qs(urlparse(self.path).query)
-            # Flatten single-value lists for MSAL compatibility
-            auth_response.update({k: v[0] if len(v) == 1 else v for k, v in qs.items()})
-
-            if "code" in qs:
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html")
-                self.end_headers()
-                self.wfile.write(
-                    b"<html><body><h2>Authentication successful.</h2>"
-                    b"<p>You can close this tab.</p></body></html>"
-                )
-            else:
-                self.send_response(400)
-                self.send_header("Content-Type", "text/html")
-                self.end_headers()
-                self.wfile.write(
-                    b"<html><body><h2>Authentication failed.</h2></body></html>"
-                )
-
-        def log_message(self, format, *args):
-            pass  # suppress HTTP access logs
-
-    server = None
     try:
-        server = HTTPServer(("127.0.0.1", 0), CallbackHandler)
-        port = server.server_address[1]
-        redirect_uri = f"http://localhost:{port}"
-
-        flow = app.initiate_auth_code_flow(
-            scopes=scopes,
-            redirect_uri=redirect_uri,
-        )
-
-        if "auth_uri" not in flow:
-            logger.warning("Failed to initiate auth code flow: %s", flow)
-            return None
-
-        auth_url = flow["auth_uri"]
-        logger.info("Opening browser for Microsoft login...")
+        from shared_auth import OAuthProxyClient
+        proxy = OAuthProxyClient()
+        proxy.check_proxy()
+    except (RuntimeError, ImportError) as e:
+        logger.warning("Auth proxy not available: %s", e)
         print(
-            f"\nOpening browser for Microsoft login...\n"
-            f"If the browser doesn't open, visit:\n{auth_url}\n",
+            "\nAuth proxy is not running. Start it with:\n"
+            "  cd mcps/shared_auth && poetry run python -m shared_auth\n"
+            "Falling back to device code flow...\n",
             flush=True,
         )
-        webbrowser.open(auth_url)
-
-        # Wait for the redirect (with timeout)
-        server.timeout = 120
-        server.handle_request()
-
-        if "code" not in auth_response:
-            error = auth_response.get("error", "timeout or no response")
-            logger.warning("Browser auth failed: %s", error)
-            print(f"Browser login not completed ({error}). Trying device code...",
-                  flush=True)
-            return None
-
-        # Exchange auth code for tokens — pass full auth_response so MSAL
-        # can validate state and use the code
-        result = app.acquire_token_by_auth_code_flow(flow, auth_response)
-        return result if "access_token" in result else None
-
-    except Exception:
-        logger.exception("Browser auth flow failed")
         return None
-    finally:
-        if server:
-            server.server_close()
+
+    try:
+        return _acquire_token_via_proxy(app, scopes, proxy)
+    except Exception:
+        logger.exception("Proxy auth flow failed")
+        return None
+
+
+def _acquire_token_via_proxy(
+    app: msal.ClientApplication,
+    scopes: list[str],
+    proxy: "OAuthProxyClient",
+) -> dict | None:
+    """Browser auth using the shared OAuth callback proxy."""
+    redirect_uri = proxy.get_redirect_uri("microsoft")
+
+    flow = app.initiate_auth_code_flow(
+        scopes=scopes,
+        redirect_uri=redirect_uri,
+    )
+
+    if "auth_uri" not in flow:
+        logger.warning("Failed to initiate auth code flow: %s", flow.get("error", "unknown"))
+        return None
+
+    state = flow.get("state", "")
+    proxy.register_auth(state, "microsoft")
+
+    auth_url = flow["auth_uri"]
+    logger.info("Opening browser for Microsoft login...")
+    print(
+        f"\nOpening browser for Microsoft login...\n"
+        f"If the browser doesn't open, visit:\n{auth_url}\n",
+        flush=True,
+    )
+    webbrowser.open(auth_url)
+
+    try:
+        callback_result = proxy.wait_for_callback(state, timeout=120)
+    except TimeoutError:
+        logger.warning("Browser auth timed out")
+        print("Browser login timed out. Trying device code...", flush=True)
+        return None
+
+    if "code" not in callback_result:
+        error = callback_result.get("error", "unknown")
+        logger.warning("Browser auth failed: %s", error)
+        print(f"Browser login not completed ({error}). Trying device code...",
+              flush=True)
+        return None
+
+    result = app.acquire_token_by_auth_code_flow(flow, callback_result)
+    if "access_token" not in result:
+        logger.warning(
+            "MSAL token exchange failed: %s",
+            result.get("error", "unknown"),
+        )
+    return result if "access_token" in result else None
 
 
 def _acquire_token_device_code(
-    app: msal.PublicClientApplication, scopes: list[str]
+    app: msal.ClientApplication, scopes: list[str]
 ) -> dict | None:
     """Device code flow fallback -- prints a code for the user to enter."""
     flow = app.initiate_device_flow(scopes=scopes)
     if "user_code" not in flow:
-        logger.error("Device flow initiation failed: %s", flow)
+        logger.error("Device flow initiation failed: %s", flow.get("error", "unknown"))
         return None
 
     print(flow["message"], flush=True)
@@ -183,7 +189,7 @@ def get_local_token() -> str:
 
     Resolution order:
     1. Cached token (acquire_token_silent)
-    2. Browser-based authorization code + PKCE flow
+    2. Browser-based authorization code + PKCE flow (via shared proxy)
     3. Device code flow fallback
 
     Raises:
@@ -207,7 +213,7 @@ def get_local_token() -> str:
             _save_token_cache(cache)
             return result["access_token"]
 
-    # 2. Try browser auth code + PKCE
+    # 2. Try browser auth code + PKCE (requires shared proxy)
     result = _acquire_token_browser(app, scopes)
     if result and "access_token" in result:
         _save_token_cache(cache)
