@@ -51,21 +51,21 @@ poetry run pytest tests/ -v
 
 **Corporate environments**: If permissions require admin consent, an Azure AD admin must click **Grant admin consent for [tenant]** on the API permissions page.
 
-### Step 3: Enable Public Client Flows (for CLI)
+### Step 3: Enable Public Client Flows (optional, for device code fallback)
 
 1. Go to **Authentication** -> scroll to **Advanced settings**
 2. Set **Allow public client flows** to **Yes**
 3. Click **Save**
 
-This enables the device code flow (used as a fallback when the browser-based flow fails). Not required if you only use the MCP server via Bond AI.
+This enables the device code flow (used as a fallback when the browser-based flow fails in headless environments). Not required if you only use the MCP server via Bond AI.
 
-### Step 4: Create a Client Secret (for Bond AI integration)
+### Step 4: Create a Client Secret
 
 1. Go to **Certificates & secrets** -> **New client secret**
 2. Add a description and choose an expiration period
 3. Copy the **Value** immediately (it is only shown once)
 
-The client secret is required for the Bond AI OAuth callback flow (web application flow). The CLI and standalone MCP server use public client flows (browser PKCE + device code) and do not need it.
+The client secret is used for the token exchange in both the Bond AI backend and standalone/Claude Code modes (set via `MS_CLIENT_SECRET`). If your app is registered without a secret (public client only), the server uses MSAL's `PublicClientApplication` with PKCE instead.
 
 ### Step 5: Add Web Redirect URI (for Bond AI integration)
 
@@ -152,32 +152,46 @@ export MS_DEBUG=1
 
 ## Standalone Use with Claude Code
 
-The MCP server can run standalone with local OAuth — no Bond AI backend required. Authentication uses browser-based authorization code + PKCE flow, with device code as a fallback for headless environments.
+The MCP server can run standalone with local OAuth — no Bond AI backend required. Authentication uses browser-based authorization code + PKCE flow via a shared OAuth proxy, with device code as a fallback for headless environments.
 
 ### Prerequisites
 
 1. An Azure App Registration with the required API permissions (see [Azure App Registration](#azure-app-registration) above)
-2. **Enable public client flows** in the app registration (Authentication -> Advanced settings -> Allow public client flows -> Yes)
-3. Add `http://localhost` as a **Mobile and desktop** redirect URI in the app registration (Authentication -> Add a platform -> Mobile and desktop applications -> `http://localhost`)
+2. **Add a Web redirect URI**: `http://localhost:8000/connections/microsoft/callback`
+3. **Create a client secret** if your app is registered as a confidential client
+4. **Enable public client flows** (optional, enables device code fallback)
 
-### Step 1: Start the MCP Server
+### Step 1: Start the Shared Auth Proxy
+
+The OAuth callback proxy handles browser redirects for all MCP servers. Start it in its own terminal:
+
+```bash
+cd mcps/shared_auth
+poetry install
+poetry run python -m shared_auth
+```
+
+You should see `Bond AI OAuth Proxy — Listening on 127.0.0.1:8000`. Leave this running.
+
+### Step 2: Start the MCP Server
+
+In a second terminal:
 
 ```bash
 cd mcps/microsoft
 poetry install
 
-# Set your Azure app client ID
 export MS_CLIENT_ID=<your-application-client-id>
+export MS_CLIENT_SECRET=<your-client-secret>
 
-# Optional: set tenant ID for organizational accounts (Teams, SharePoint)
-# Omit for personal Microsoft accounts (defaults to 'consumers')
+# Optional: for organizational accounts (Teams, SharePoint)
 export MS_TENANT_ID=<your-tenant-id>
 
-# Start the server
+# Fails fast if the auth proxy isn't running
 poetry run fastmcp run ms_graph_mcp.py --transport streamable-http --port 5557
 ```
 
-### Step 2: Register with Claude Code
+### Step 3: Register with Claude Code
 
 ```bash
 claude mcp add-json ms-graph '{"type":"http","url":"http://localhost:5557/mcp"}' --scope local
@@ -185,21 +199,13 @@ claude mcp add-json ms-graph '{"type":"http","url":"http://localhost:5557/mcp"}'
 
 Then restart Claude Code to pick up the new server.
 
-### Step 3: Authenticate
+### Step 4: Authenticate
 
-The first time you use a Microsoft tool in Claude Code (e.g., "list my emails"), the server will:
+The first time you use a Microsoft tool in Claude Code, the server will open your browser to Microsoft's login page. After you sign in, the token is cached at `~/.ms_graph_tokens.json`. Subsequent calls use the cached token automatically.
 
-1. Open your browser to Microsoft's login page
-2. After you sign in and consent, redirect back to a localhost URL
-3. The server captures the authorization code, exchanges it for tokens, and caches them
+If the browser doesn't open (SSH, headless), the server falls back to device code flow.
 
-Subsequent calls use the cached token automatically. MSAL handles token refresh via the `offline_access` scope.
-
-If the browser doesn't open (SSH, headless), the server falls back to device code flow and prints a URL + code to the server terminal.
-
-### Token Cache
-
-Tokens are cached at `~/.ms_graph_tokens.json` (file permissions `0600`). To force re-authentication:
+To force re-authentication:
 
 ```bash
 rm ~/.ms_graph_tokens.json
@@ -538,7 +544,7 @@ Microsoft Graph API
 
 The MCP server receives the token and uses it directly to call the Graph API. No token validation or JWT decoding is needed -- the Graph API validates the token itself.
 
-**Mode 2 (Standalone):** When no Bearer header is present and `MS_CLIENT_ID` is set, the server authenticates directly using MSAL's `PublicClientApplication`. See [Standalone Use with Claude Code](#standalone-use-with-claude-code).
+**Mode 2 (Standalone):** When no Bearer header is present and `MS_CLIENT_ID` is set, the server authenticates directly using MSAL. If `MS_CLIENT_SECRET` is also set, it uses `ConfidentialClientApplication`; otherwise, it uses `PublicClientApplication`. Browser auth flows go through a shared OAuth callback proxy on `localhost:8000`. See [Standalone Use with Claude Code](#standalone-use-with-claude-code).
 
 ## Development
 
@@ -598,6 +604,18 @@ Device codes expire after a few minutes. Run the command again and enter the cod
 
 ### CLI: Teams scopes cause device flow failure
 Consumer accounts don't support Teams scopes. Don't set `MS_TENANT_ID` (defaults to `consumers` which excludes Teams scopes), or set it to your organizational tenant ID.
+
+### Claude Code: "AADSTS70002: The provided request must include a 'client_secret'"
+Your Azure app is registered as a confidential client but `MS_CLIENT_SECRET` is not set. Export it before starting the MCP server:
+```bash
+export MS_CLIENT_SECRET=<your-client-secret>
+```
+
+### Claude Code: MCP server fails to start with "auth proxy is not running"
+Start the shared auth proxy first: `cd mcps/shared_auth && poetry run python -m shared_auth`. The MCP server validates the proxy is reachable at startup when `MS_CLIENT_ID` is set.
+
+### Claude Code: Browser auth succeeds but terminal hangs
+Common causes: another service on port 8000, or the redirect URI `http://localhost:8000/connections/microsoft/callback` is not registered in the Azure app. To use a different port, set `BOND_AUTH_PROXY_PORT` before starting both the proxy and MCP server.
 
 ### Graph API returns 401 on mail endpoints
 If `/me` works but `/me/messages` returns 401, you may be authenticated as a guest user in an Azure AD tenant rather than as the mailbox owner. Use the `consumers` authority for personal accounts, or your organization's tenant ID for corporate accounts.

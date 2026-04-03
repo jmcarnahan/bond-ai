@@ -186,6 +186,12 @@ resource "null_resource" "build_mcp_atlassian_image" {
       for f in fileset("${path.module}/../atlassian", "**/*.py") :
       filemd5("${path.module}/../atlassian/${f}")
     ]))
+
+    # Hash of shared_auth package (path dependency)
+    shared_auth_hash = md5(join("", [
+      for f in fileset("${path.module}/../../shared_auth/shared_auth", "**/*.py") :
+      filemd5("${path.module}/../../shared_auth/shared_auth/${f}")
+    ]))
   }
 
   provisioner "local-exec" {
@@ -210,6 +216,13 @@ resource "null_resource" "build_mcp_atlassian_image" {
 
       aws ecr get-login-password --region ${var.aws_region} | \
         docker login --username AWS --password-stdin $ECR_REGISTRY
+
+      # Copy shared_auth into build context (path dependency in pyproject.toml)
+      rm -rf ./_shared_auth_pkg
+      mkdir -p ./_shared_auth_pkg
+      cp -r ../shared_auth/shared_auth ./_shared_auth_pkg/shared_auth
+      cp ../shared_auth/pyproject.toml ./_shared_auth_pkg/pyproject.toml
+      trap 'rm -rf ./_shared_auth_pkg' EXIT
 
       # Build and push
       echo "Building and pushing Atlassian MCP image..."

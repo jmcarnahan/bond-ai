@@ -14,6 +14,7 @@ python-dotenv = "^1.2.2"
 authlib = ">=1.6.9"
 pyjwt = {version = ">=2.12.0", extras = ["crypto"]}
 pygments = ">=2.20.0"
+shared-auth = {path = "../shared_auth", develop = true}
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0"

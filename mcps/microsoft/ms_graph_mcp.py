@@ -10,6 +10,8 @@ Run:
 """
 
 import logging
+import os
+from contextlib import asynccontextmanager
 
 from fastmcp import FastMCP
 
@@ -23,7 +25,19 @@ from ms_graph.teams import TeamsNotAvailableError
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("Microsoft Graph MCP Server")
+
+@asynccontextmanager
+async def _lifespan(app):
+    """Validate auth proxy is reachable when local auth is configured."""
+    if os.environ.get("MS_CLIENT_ID"):
+        from shared_auth import OAuthProxyClient
+        proxy = OAuthProxyClient()
+        proxy.check_proxy()
+        logger.info("Auth proxy validated for local Microsoft auth")
+    yield
+
+
+mcp = FastMCP("Microsoft Graph MCP Server", lifespan=_lifespan)
 
 
 # ---------------------------------------------------------------------------

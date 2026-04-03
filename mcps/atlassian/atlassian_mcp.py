@@ -12,6 +12,8 @@ Run:
 """
 
 import logging
+import os
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastmcp import FastMCP
@@ -25,7 +27,19 @@ from atlassian import user as user_ops
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("Atlassian MCP Server")
+
+@asynccontextmanager
+async def _lifespan(app):
+    """Validate auth proxy is reachable when local auth is configured."""
+    if os.environ.get("ATLASSIAN_CLIENT_ID"):
+        from shared_auth import OAuthProxyClient
+        proxy = OAuthProxyClient()
+        proxy.check_proxy()
+        logger.info("Auth proxy validated for local Atlassian auth")
+    yield
+
+
+mcp = FastMCP("Atlassian MCP Server", lifespan=_lifespan)
 
 
 def _friendly_error(err: AtlassianError, context: str = "") -> str:
