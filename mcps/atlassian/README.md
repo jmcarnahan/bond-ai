@@ -95,6 +95,70 @@ atlassian-cli confluence get 12345
 atlassian-cli user me
 ```
 
+## Standalone Use with Claude Code
+
+The MCP server can run standalone with local OAuth — no Bond AI backend required. Authentication uses browser-based authorization code + PKCE flow via a shared OAuth proxy.
+
+### Prerequisites
+
+1. An Atlassian OAuth 2.0 app (see [Atlassian OAuth App Setup](#atlassian-oauth-app-setup) above)
+2. **Add a callback URL** to your OAuth app: `http://localhost:8000/connections/atlassian_v2/callback`
+
+### Step 1: Start the Shared Auth Proxy
+
+The OAuth callback proxy handles browser redirects for all MCP servers. Start it in its own terminal:
+
+```bash
+cd mcps/shared_auth
+poetry install
+poetry run python -m shared_auth
+```
+
+You should see `Bond AI OAuth Proxy — Listening on 127.0.0.1:8000`. Leave this running.
+
+### Step 2: Start the MCP Server
+
+In a second terminal:
+
+```bash
+cd mcps/atlassian
+poetry install
+
+export ATLASSIAN_CLIENT_ID=<your-oauth-app-client-id>
+export ATLASSIAN_CLIENT_SECRET=<your-oauth-app-client-secret>
+
+# Optional: set cloud ID if you have multiple Atlassian sites
+# Omit to auto-discover (prompts if multiple sites found)
+export ATLASSIAN_CLOUD_ID=<your-cloud-id>
+
+# Fails fast if the auth proxy isn't running
+poetry run fastmcp run atlassian_mcp.py --transport streamable-http --port 9001
+```
+
+### Step 3: Register with Claude Code
+
+```bash
+claude mcp add-json atlassian '{"type":"http","url":"http://localhost:9001/mcp"}' --scope local
+```
+
+Then restart Claude Code to pick up the new server.
+
+### Step 4: Authenticate
+
+The first time you use an Atlassian tool in Claude Code, the server will open your browser to Atlassian's authorization page. After you authorize, the token is cached at `~/.bond_ai_tokens/atlassian.json`.
+
+To force re-authentication:
+
+```bash
+rm ~/.bond_ai_tokens/atlassian.json
+```
+
+### Verify
+
+Run `/mcp` in Claude Code to confirm `atlassian` shows as connected, then try:
+
+> "What's my Atlassian profile?" or "List my Jira projects"
+
 ## Bond AI Integration
 
 Add to `BOND_MCP_CONFIG` in `.env`:

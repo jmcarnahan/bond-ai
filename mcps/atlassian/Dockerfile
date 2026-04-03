@@ -5,6 +5,10 @@ WORKDIR /app
 # Install poetry
 RUN pip install poetry==2.1.3
 
+# Copy shared_auth to /shared_auth/ so the path dependency (../shared_auth)
+# resolves correctly from /app/pyproject.toml
+COPY _shared_auth_pkg/ /shared_auth/
+
 # Copy dependency files
 COPY pyproject.toml poetry.lock ./
 

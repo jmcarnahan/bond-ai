@@ -1,49 +1,92 @@
 """
-Bearer token and cloud ID extraction for MCP server.
+Token and cloud ID resolution for MCP server.
 
-The MCP server does NOT manage OAuth. Bond AI's backend handles authorization,
-token exchange, and storage. The MCP server receives the user's Atlassian OAuth
-access token as an Authorization: Bearer header and the cloud ID as an
-X-Atlassian-Cloud-Id header, then uses them directly.
+Path 1: Bearer header / X-Atlassian-Cloud-Id header (Bond AI backend) -- preferred
+Path 2: Local OAuth (Claude Code / standalone) -- if ATLASSIAN_CLIENT_ID set
+Path 3: PermissionError
 """
 
-from fastmcp.server.dependencies import get_http_headers
+import os
 
 
 def get_atlassian_token() -> str:
     """
-    Extract Atlassian OAuth token from Authorization: Bearer header.
+    Resolve an Atlassian OAuth access token.
+
+    Resolution order:
+    1. Authorization: Bearer header (from Bond AI backend)
+    2. Local OAuth (when ATLASSIAN_CLIENT_ID env var is set)
+    3. Raise PermissionError
 
     Returns:
         The raw access token string.
 
     Raises:
-        PermissionError: If no valid Bearer token is present.
+        PermissionError: If no valid token can be obtained.
     """
-    headers = get_http_headers(include={"authorization"})
-    auth = headers.get("authorization")
-    if not auth or not auth.startswith("Bearer "):
-        raise PermissionError(
-            "Authorization required. Please connect your Atlassian account in Bond AI Settings -> Connections."
-        )
-    return auth[7:]
+    # Path 1: Try Bearer header (works when running behind Bond AI)
+    try:
+        from fastmcp.server.dependencies import get_http_headers
+        headers = get_http_headers(include={"authorization"})
+        auth = headers.get("authorization")
+        if auth and auth.startswith("Bearer "):
+            return auth[7:]
+    except Exception:  # nosec B110
+        pass  # Outside HTTP request context
+
+    # Path 2: Local OAuth
+    if os.environ.get("ATLASSIAN_CLIENT_ID"):
+        from atlassian.local_auth import get_local_token_and_cloud_id
+        token, _ = get_local_token_and_cloud_id()
+        return token
+
+    # Path 3: No auth available
+    raise PermissionError(
+        "Authorization required. Either connect your Atlassian account "
+        "in Bond AI Settings -> Connections, or set ATLASSIAN_CLIENT_ID "
+        "and ATLASSIAN_CLIENT_SECRET for local auth."
+    )
 
 
 def get_cloud_id() -> str:
     """
-    Extract Atlassian cloud ID from X-Atlassian-Cloud-Id header.
+    Resolve an Atlassian cloud ID.
+
+    Resolution order:
+    1. X-Atlassian-Cloud-Id header (from Bond AI backend)
+    2. ATLASSIAN_CLOUD_ID environment variable
+    3. Local OAuth discovery (accessible-resources API)
+    4. Raise PermissionError
 
     Returns:
         The cloud ID string.
 
     Raises:
-        PermissionError: If no cloud ID header is present.
+        PermissionError: If no cloud ID can be obtained.
     """
-    headers = get_http_headers(include={"x-atlassian-cloud-id"})
-    cloud_id = headers.get("x-atlassian-cloud-id")
-    if not cloud_id:
-        raise PermissionError(
-            "Atlassian Cloud ID required. Please ensure your Atlassian connection "
-            "is configured with a cloud_id in Bond AI Settings -> Connections."
-        )
-    return cloud_id
+    # Path 1: Try header (Bond AI backend)
+    try:
+        from fastmcp.server.dependencies import get_http_headers
+        headers = get_http_headers(include={"x-atlassian-cloud-id"})
+        cloud_id = headers.get("x-atlassian-cloud-id")
+        if cloud_id:
+            return cloud_id
+    except Exception:  # nosec B110
+        pass
+
+    # Path 2: Environment variable
+    cloud_id = os.environ.get("ATLASSIAN_CLOUD_ID")
+    if cloud_id:
+        return cloud_id
+
+    # Path 3: Local OAuth discovery
+    if os.environ.get("ATLASSIAN_CLIENT_ID"):
+        from atlassian.local_auth import get_local_token_and_cloud_id
+        _, cloud_id = get_local_token_and_cloud_id()
+        return cloud_id
+
+    # Path 4: No cloud ID available
+    raise PermissionError(
+        "Atlassian Cloud ID required. Either configure it in Bond AI Settings "
+        "-> Connections, or set ATLASSIAN_CLOUD_ID environment variable."
+    )
