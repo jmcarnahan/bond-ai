@@ -29,6 +29,7 @@ from bondable.bond.providers.files import FilesProvider, FileDetails
 from bondable.bond.providers.vectorstores import VectorStoresProvider
 from bondable.bond.groups import Groups
 from bondable.bond.definition import AgentDefinition
+from bondable.bond.providers.metadata import EVERYONE_GROUP_ID
 
 # Test configuration
 jwt_config = Config.config().get_jwt_config()
@@ -357,11 +358,11 @@ class TestUpdateAgentPreservesDefaultGroup:
         )
 
         assert response.status_code == 200
-        # Verify sync_agent_groups was called with the default group in preserve_group_ids
+        # Verify sync_agent_groups was called with the default group + Everyone group in preserve_group_ids
         provider.groups.sync_agent_groups.assert_called_once_with(
             agent_id=agent_id,
             desired_group_ids=[additional_group_id],
-            preserve_group_ids=[default_group_id],
+            preserve_group_ids=[default_group_id, EVERYONE_GROUP_ID],
             group_permissions=None
         )
 
@@ -409,7 +410,7 @@ class TestUpdateAgentPreservesDefaultGroup:
         provider.groups.sync_agent_groups.assert_called_once_with(
             agent_id=agent_id,
             desired_group_ids=[additional_group_id],
-            preserve_group_ids=[default_group_id],
+            preserve_group_ids=[default_group_id, EVERYONE_GROUP_ID],
             group_permissions=None
         )
 
@@ -442,11 +443,11 @@ class TestUpdateAgentPreservesDefaultGroup:
         )
 
         assert response.status_code == 200
-        # preserve_group_ids should be empty when default_group_id is None
+        # preserve_group_ids should only contain Everyone group when default_group_id is None
         provider.groups.sync_agent_groups.assert_called_once_with(
             agent_id=agent_id,
             desired_group_ids=["grp_some_group"],
-            preserve_group_ids=[],
+            preserve_group_ids=[EVERYONE_GROUP_ID],
             group_permissions=None
         )
 

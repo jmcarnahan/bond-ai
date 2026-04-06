@@ -11,6 +11,11 @@ from typing import List, Dict, Any, Optional, Tuple
 
 LOGGER = logging.getLogger(__name__)
 
+# Well-known group ID for the "Everyone" group.
+# Agents associated with this group are accessible to all authenticated users
+# without requiring explicit group_users membership rows.
+EVERYONE_GROUP_ID = "grp_everyone"
+
 
 # These are the default ORM classes
 # All instances of Metadata should use these classes and augment them as needed
@@ -264,6 +269,7 @@ class Metadata(ABC):
         self.engine = create_engine(self.metadata_db_url, echo=False)
         self.create_all()
         self.session = scoped_session(sessionmaker(bind=self.engine))
+        self._ensure_everyone_group()
         LOGGER.info(f"Created Metadata instance using database engine: {self.metadata_db_url}")
 
     def get_engine(self):
@@ -339,11 +345,45 @@ class Metadata(ABC):
                 conn.commit()
             LOGGER.info("Migration: Added last_agent_id column to threads table")
 
+    def _ensure_everyone_group(self):
+        """Create the well-known 'Everyone' group if it doesn't already exist."""
+        session = scoped_session(sessionmaker(bind=self.engine))()
+        try:
+            existing = session.query(Group).filter(Group.id == EVERYONE_GROUP_ID).first()
+            if not existing:
+                system_user = session.query(User).filter(User.email == "system@bondableai.com").first()
+                if not system_user:
+                    import uuid
+                    system_user = User(
+                        id=str(uuid.uuid4()),
+                        email="system@bondableai.com",
+                        name="System",
+                        sign_in_method="system"
+                    )
+                    session.add(system_user)
+                    session.flush()
+
+                everyone_group = Group(
+                    id=EVERYONE_GROUP_ID,
+                    name="Everyone",
+                    description="Agents in this group are accessible to all users",
+                    owner_user_id=system_user.id
+                )
+                session.add(everyone_group)
+                session.commit()
+                LOGGER.info(f"Created 'Everyone' group with id: {EVERYONE_GROUP_ID}")
+        except Exception as e:
+            session.rollback()
+            LOGGER.warning(f"Everyone group could not be created; agents assigned to it will not be globally visible until this is resolved: {e}")
+        finally:
+            session.close()
+
     def drop_and_recreate_all(self):
         """Drop all tables and recreate them. Use with caution - this deletes all data!"""
         LOGGER.warning("Dropping all tables and recreating schema. All data will be lost!")
         Base.metadata.drop_all(self.engine)
         Base.metadata.create_all(self.engine)
+        self._ensure_everyone_group()
         LOGGER.info("Schema recreated successfully")
 
     def get_db_session(self) -> scoped_session:

@@ -14,6 +14,7 @@ from bondable.rest.models.agents import (
 from bondable.rest.dependencies.auth import get_current_user
 from bondable.rest.dependencies.providers import get_bond_provider
 from bondable.rest.routers.files import _to_opaque_id, _resolve_file_id
+from bondable.bond.providers.metadata import EVERYONE_GROUP_ID
 
 router = APIRouter(prefix="/agents", tags=["Agent"])
 LOGGER = logging.getLogger(__name__)
@@ -382,6 +383,7 @@ async def update_agent(
                 # Look up default_group_id from agent record to preserve it
                 updated_agent_record = provider.agents.get_agent_record(agent_instance.get_agent_id())
                 preserve_ids = [updated_agent_record.default_group_id] if updated_agent_record and updated_agent_record.default_group_id else []
+                preserve_ids.append(EVERYONE_GROUP_ID)
 
                 provider.groups.sync_agent_groups(
                     agent_id=agent_instance.get_agent_id(),
