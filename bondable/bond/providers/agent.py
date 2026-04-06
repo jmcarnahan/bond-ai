@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from bondable.bond.definition import AgentDefinition
 from bondable.bond.broker import Broker
-from bondable.bond.providers.metadata import Metadata, AgentRecord, AgentGroup, GroupUser, VectorStore
+from bondable.bond.providers.metadata import Metadata, AgentRecord, AgentGroup, GroupUser, VectorStore, EVERYONE_GROUP_ID
 from sqlalchemy import case, func
 from typing import List, Dict, Optional, Generator
 import logging
@@ -460,19 +460,22 @@ class AgentProvider(ABC):
                     ).label('max_permission_rank')
                 )
                 .join(AgentGroup, AgentRecord.agent_id == AgentGroup.agent_id)
-                .join(GroupUser, AgentGroup.group_id == GroupUser.group_id)
-                .filter(GroupUser.user_id == user_id)
+                .outerjoin(GroupUser, AgentGroup.group_id == GroupUser.group_id)
+                .filter(
+                    (GroupUser.user_id == user_id) | (AgentGroup.group_id == EVERYONE_GROUP_ID)
+                )
             )
             if exclude_ids:
                 shared_query = shared_query.filter(~AgentRecord.agent_id.in_(exclude_ids))
             shared_query = shared_query.group_by(AgentRecord.agent_id).all()
 
+            rank_to_permission = {2: "can_edit", 1: "can_use", 0: "can_use_read_only"}
             shared_agent_records = [
                 {
                     "name": agent.name,
                     "agent_id": agent.agent_id,
                     "owned": False,
-                    "permission": "can_edit" if max_rank == 2 else "can_use"
+                    "permission": rank_to_permission.get(max_rank, "can_use")
                 }
                 for agent, max_rank in shared_query
             ]
@@ -502,8 +505,8 @@ class AgentProvider(ABC):
 
     def can_user_access_agent(self, user_id: str, agent_id: str) -> bool:
         """
-        Validates if a user can access a given agent. The user can either be the owner of the agent
-        or the agent could have been shared with the user via a group.
+        Validates if a user can access a given agent. The user can either be the owner of the agent,
+        the agent could have been shared with the user via a group, or the agent is in the Everyone group.
         """
         with self.metadata.get_db_session() as session:
             access_query = (
@@ -512,7 +515,8 @@ class AgentProvider(ABC):
                 .outerjoin(GroupUser, AgentGroup.group_id == GroupUser.group_id)
                 .filter(
                     (AgentRecord.owner_user_id == user_id) |
-                    (GroupUser.user_id == user_id),
+                    (GroupUser.user_id == user_id) |
+                    (AgentGroup.group_id == EVERYONE_GROUP_ID),
                     AgentRecord.agent_id == agent_id
                 )
                 .exists()
@@ -535,13 +539,13 @@ class AgentProvider(ABC):
             if agent_record.owner_user_id == user_id:
                 return 'owner'
 
-            # Check shared access via groups
+            # Check shared access via groups (including the Everyone group)
             shared_permissions = (
                 session.query(AgentGroup.permission)
-                .join(GroupUser, AgentGroup.group_id == GroupUser.group_id)
+                .outerjoin(GroupUser, AgentGroup.group_id == GroupUser.group_id)
                 .filter(
                     AgentGroup.agent_id == agent_id,
-                    GroupUser.user_id == user_id
+                    (GroupUser.user_id == user_id) | (AgentGroup.group_id == EVERYONE_GROUP_ID)
                 )
                 .all()
             )
