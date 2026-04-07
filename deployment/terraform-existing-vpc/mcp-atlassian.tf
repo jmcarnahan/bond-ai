@@ -313,23 +313,9 @@ resource "aws_apprunner_auto_scaling_configuration_version" "mcp_atlassian" {
 }
 
 # -----------------------------------------------------------------------------
-# MCP Atlassian VPC Connector (independent from backend connector)
-# -----------------------------------------------------------------------------
-
-resource "aws_apprunner_vpc_connector" "mcp_atlassian" {
-  count = local.mcp_atlassian_can_deploy ? 1 : 0
-
-  vpc_connector_name = "${var.project_name}-${var.environment}-mcp-atl-conn"
-  subnets            = local.app_runner_subnet_ids
-  security_groups    = [aws_security_group.app_runner.id]
-
-  tags = {
-    Name = "${var.project_name}-${var.environment}-mcp-atl-connector"
-  }
-}
-
-# -----------------------------------------------------------------------------
 # MCP Atlassian ECR Access Role (independent from backend ECR role)
+# Note: VPC connector reuses aws_apprunner_vpc_connector.backend (App Runner
+# forbids two connectors with the same SG+subnet combination)
 # -----------------------------------------------------------------------------
 
 resource "aws_iam_role" "mcp_atlassian_ecr_access" {
@@ -416,7 +402,7 @@ resource "aws_apprunner_service" "mcp_atlassian" {
 
     egress_configuration {
       egress_type       = "VPC"
-      vpc_connector_arn = aws_apprunner_vpc_connector.mcp_atlassian[0].arn
+      vpc_connector_arn = aws_apprunner_vpc_connector.backend.arn
     }
   }
 
