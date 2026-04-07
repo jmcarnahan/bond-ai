@@ -168,7 +168,8 @@ resource "aws_apprunner_service" "backend" {
           # Email validation: allow all authenticated IdP users (T-O6)
           # Set to "true" when IdP app assignment controls access (e.g., Okta groups)
           # Set to "false" and configure *_VALID_EMAILS to restrict by email list
-          ALLOW_ALL_EMAILS = var.allow_all_emails
+          ALLOW_ALL_EMAILS       = var.allow_all_emails
+          SCHEDULED_JOBS_ENABLED = var.scheduled_jobs_enabled
 
           # Cookie security: "true" in production (HTTPS), "false" for local dev (HTTP)
           COOKIE_SECURE = "true"

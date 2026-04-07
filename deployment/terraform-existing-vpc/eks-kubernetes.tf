@@ -98,10 +98,15 @@ resource "kubernetes_config_map" "backend" {
     ADMIN_EMAIL = var.admin_email
 
     # Email validation
-    ALLOW_ALL_EMAILS = var.allow_all_emails
+    ALLOW_ALL_EMAILS       = var.allow_all_emails
+    SCHEDULED_JOBS_ENABLED = "false"  # Only App Runner runs the scheduler
 
     # Cookie security
     COOKIE_SECURE = "true"
+
+    # Bedrock Guardrails
+    BEDROCK_GUARDRAIL_ID      = var.enable_guardrails ? aws_bedrock_guardrail.main[0].guardrail_id : ""
+    BEDROCK_GUARDRAIL_VERSION = var.enable_guardrails ? (var.bedrock_guardrail_version != "" ? var.bedrock_guardrail_version : aws_bedrock_guardrail_version.main[0].version) : ""
   }
 
   depends_on = [kubernetes_namespace.bond_ai]
