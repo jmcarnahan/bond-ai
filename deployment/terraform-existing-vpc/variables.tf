@@ -255,6 +255,12 @@ variable "allow_all_emails" {
   default     = "true"
 }
 
+variable "scheduled_jobs_enabled" {
+  description = "Enable the background scheduled jobs engine. Set to 'true' to run recurring jobs."
+  type        = string
+  default     = "false"
+}
+
 # CloudTrail (T34)
 variable "enable_cloudtrail" {
   description = "Enable AWS CloudTrail for API audit logging (T34). Creates S3 bucket, CloudWatch Logs group, and trail."
