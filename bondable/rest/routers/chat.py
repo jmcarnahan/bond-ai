@@ -1,6 +1,7 @@
 from typing import Annotated
 import asyncio
 import queue
+import re
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -21,6 +22,10 @@ LOGGER = logging.getLogger(__name__)
 _KEEPALIVE_COMMENT = "<!-- keepalive -->\n"
 _KEEPALIVE_INTERVAL = 15  # seconds
 _SENTINEL = object()
+
+# Agent forwarding via bond://forward/AgentSlug links
+_FORWARD_PATTERN = re.compile(r'\[([^\]]*)\]\(bond://forward/([^)]+)\)')
+_MAX_FORWARD_DEPTH = 5
 
 
 async def async_keepalive_wrapper(sync_gen, keepalive_interval=_KEEPALIVE_INTERVAL):
@@ -75,6 +80,23 @@ async def async_keepalive_wrapper(sync_gen, keepalive_interval=_KEEPALIVE_INTERV
     finally:
         # Wait for the background thread to finish
         await fut
+
+
+def _build_system_message(thread_id, agent_id, text):
+    """Build a system bond message string for forwarding status/errors."""
+    msg_id = str(uuid.uuid4())
+    return (
+        f'<_bondmessage '
+        f'id="{msg_id}" '
+        f'thread_id="{xml_escape(str(thread_id))}" '
+        f'agent_id="{xml_escape(str(agent_id))}" '
+        f'type="text" '
+        f'role="system" '
+        f'is_error="false" '
+        f'is_done="false">'
+        f'{xml_escape(text)}'
+        f'</_bondmessage>'
+    )
 
 
 @router.post("")
@@ -187,45 +209,230 @@ async def chat(
         except Exception as e:
             LOGGER.error(f"Failed to update last_agent_id: {e}", exc_info=True)
 
-        # Stream response generator with safety net to ensure frontend always gets a response
+        # Stream response generator with safety net and agent forwarding support.
+        # When an agent outputs a bond://forward/AgentName link in its response,
+        # the generator resolves the target agent and continues streaming from it
+        # on the same thread, transparently to the user.
         def stream_response_generator():
-            bond_message_open = False
-            has_yielded_bond_message = False
-            has_yielded_done = False
-            has_yielded_assistant_content = False
-            current_is_assistant = False
-            try:
-                for response_chunk in agent_instance.stream_response(
-                    thread_id=thread_id,
-                    prompt=request_body.prompt,
-                    attachments=resolved_attachements,
-                    hidden=request_body.hidden,
-                    current_user=current_user,
-                    jwt_token=jwt_token
-                ):
-                    # Track bond message state for safety net guarantees
-                    if isinstance(response_chunk, str):
-                        if response_chunk.startswith('<_bondmessage '):
-                            bond_message_open = True
-                            has_yielded_bond_message = True
-                            if 'is_done="true"' in response_chunk:
-                                has_yielded_done = True
-                            # Track if this is an assistant content message
-                            current_is_assistant = 'role="assistant"' in response_chunk
-                        elif response_chunk == '</_bondmessage>':
-                            bond_message_open = False
-                            current_is_assistant = False
-                        elif current_is_assistant and response_chunk.strip():
-                            has_yielded_assistant_content = True
-                    yield response_chunk
+            current_agent = agent_instance
+            current_agent_id = request_body.agent_id
+            current_agent_name = agent_instance.get_name()
+            current_prompt = request_body.prompt
+            current_attachments = resolved_attachements
+            current_hidden = request_body.hidden
+            visited_agent_ids = {request_body.agent_id}
+            forward_depth = 0
 
-                # --- Post-stream guarantees (only reached if no exception) ---
+            while True:
+                bond_message_open = False
+                has_yielded_bond_message = False
+                has_yielded_done = False
+                has_yielded_assistant_content = False
+                current_is_assistant = False
+                accumulated_text = ""
+
+                try:
+                    for response_chunk in current_agent.stream_response(
+                        thread_id=thread_id,
+                        prompt=current_prompt,
+                        attachments=current_attachments,
+                        hidden=current_hidden,
+                        current_user=current_user,
+                        jwt_token=jwt_token
+                    ):
+                        # Track bond message state for safety net guarantees
+                        if isinstance(response_chunk, str):
+                            if response_chunk.startswith('<_bondmessage '):
+                                bond_message_open = True
+                                has_yielded_bond_message = True
+                                if 'is_done="true"' in response_chunk:
+                                    has_yielded_done = True
+                                # Track if this is an assistant content message
+                                current_is_assistant = 'role="assistant"' in response_chunk
+                            elif response_chunk == '</_bondmessage>':
+                                bond_message_open = False
+                                current_is_assistant = False
+                            elif current_is_assistant and response_chunk.strip():
+                                has_yielded_assistant_content = True
+                                accumulated_text += response_chunk
+                        yield response_chunk
+
+                except Exception as e:
+                    LOGGER.exception(
+                        f"Error during chat streaming for thread {thread_id}, "
+                        f"agent {current_agent_id}: {e}"
+                    )
+                    try:
+                        # Close any open bond message tag before emitting the error message
+                        if bond_message_open:
+                            yield '</_bondmessage>'
+
+                        error_type = type(e).__name__
+                        error_detail = str(e)
+                        if len(error_detail) > 300:
+                            error_detail = error_detail[:300] + "..."
+                        user_error_msg = (
+                            f"An unexpected error occurred while processing your request "
+                            f"({error_type}: {error_detail}). Please try again."
+                        )
+
+                        error_id = str(uuid.uuid4())
+                        yield (
+                            f'<_bondmessage '
+                            f'id="{error_id}" '
+                            f'thread_id="{xml_escape(str(thread_id))}" '
+                            f'agent_id="{xml_escape(str(current_agent_id))}" '
+                            f'type="error" '
+                            f'role="system" '
+                            f'is_error="true" '
+                            f'is_done="true">'
+                        )
+                        yield user_error_msg
+                        yield '</_bondmessage>'
+                    except Exception as inner_e:
+                        LOGGER.critical(
+                            f"Error handler itself failed for thread {thread_id}: {inner_e}",
+                            exc_info=True
+                        )
+                        try:
+                            yield (
+                                '<_bondmessage '
+                                'id="error-fallback" '
+                                f'thread_id="{xml_escape(str(thread_id or "unknown"))}" '
+                                f'agent_id="{xml_escape(str(current_agent_id or "unknown"))}" '
+                                'type="error" '
+                                'role="system" '
+                                'is_error="true" '
+                                'is_done="true">'
+                            )
+                            yield "An internal error occurred. Please try again."
+                            yield '</_bondmessage>'
+                        except Exception:
+                            LOGGER.critical("All error handlers failed for chat stream")
+                    return  # No forwarding after errors
+
+                # --- Check for agent forwarding before applying safety-net guarantees ---
+                LOGGER.debug(
+                    f"Agent {current_agent_name} ({current_agent_id}) stream complete. "
+                    f"Accumulated assistant text ({len(accumulated_text)} chars): "
+                    f"{accumulated_text[:500]!r}"
+                )
+                forward_match = _FORWARD_PATTERN.search(accumulated_text) if accumulated_text else None
+                LOGGER.debug(
+                    f"Forward pattern match: {bool(forward_match)}, "
+                    f"depth: {forward_depth}/{_MAX_FORWARD_DEPTH}"
+                )
+
+                if forward_match and forward_depth < _MAX_FORWARD_DEPTH:
+                    target_agent_ref = forward_match.group(2).strip()
+                    target_display_name = forward_match.group(1).strip() or target_agent_ref
+                    forward_depth += 1
+                    LOGGER.info(
+                        f"Agent forwarding detected: {current_agent_name} -> {target_agent_ref} "
+                        f"(depth {forward_depth}/{_MAX_FORWARD_DEPTH})"
+                    )
+
+                    # Resolve the target agent by slug
+                    target_agent = None
+                    try:
+                        target_agent = provider.agents.get_agent_by_slug(slug=target_agent_ref)
+                    except Exception as e:
+                        LOGGER.error(f"Error looking up forward target '{target_agent_ref}': {e}", exc_info=True)
+
+                    if not target_agent:
+                        LOGGER.warning(f"Forward target agent '{target_agent_ref}' not found")
+                        yield _build_system_message(
+                            thread_id, current_agent_id,
+                            f"Could not forward: agent '{target_display_name}' not found."
+                        )
+                        # Fall through to safety-net guarantees below
+                    else:
+                        target_agent_id = target_agent.get_agent_id()
+                        target_agent_name = target_agent.get_name()
+
+                        # Circular forwarding check
+                        if target_agent_id in visited_agent_ids:
+                            LOGGER.warning(
+                                f"Circular forwarding detected: {current_agent_name} -> {target_agent_name} "
+                                f"(visited: {visited_agent_ids})"
+                            )
+                            yield _build_system_message(
+                                thread_id, current_agent_id,
+                                "Could not forward: circular forwarding detected."
+                            )
+                        else:
+                            # Access check for target agent
+                            target_accessible = False
+                            try:
+                                default_agent = provider.agents.get_default_agent()
+                                is_target_default = default_agent and default_agent.get_agent_id() == target_agent_id
+                                can_access = provider.agents.can_user_access_agent(
+                                    user_id=current_user.user_id, agent_id=target_agent_id
+                                )
+                                target_accessible = is_target_default or can_access
+                                LOGGER.info(
+                                    f"Forward access check: user={current_user.user_id}, "
+                                    f"target_agent={target_agent_id}, is_default={is_target_default}, "
+                                    f"can_access={can_access}, accessible={target_accessible}"
+                                )
+                            except Exception as e:
+                                LOGGER.error(f"Error checking access for forward target: {e}", exc_info=True)
+
+                            if not target_accessible:
+                                LOGGER.warning(
+                                    f"User {current_user.user_id} lacks access to forward target "
+                                    f"agent '{target_agent_name}' ({target_agent_id})"
+                                )
+                                yield _build_system_message(
+                                    thread_id, current_agent_id,
+                                    f"Could not forward: you do not have access to agent "
+                                    f"'{target_agent_name}'."
+                                )
+                            else:
+                                # T27: Apply read-only permission on forwarded agent
+                                if not is_target_default:
+                                    try:
+                                        target_perm = provider.agents.get_user_agent_permission(
+                                            current_user.user_id, target_agent_id
+                                        )
+                                        if target_perm == 'can_use_read_only':
+                                            if hasattr(target_agent, 'metadata') and isinstance(target_agent.metadata, dict):
+                                                target_agent.metadata['allow_write_tools'] = False
+                                                LOGGER.info(
+                                                    f"Read-only user {current_user.user_id} — MCP tools disabled "
+                                                    f"for forwarded agent {target_agent_id}"
+                                                )
+                                    except Exception as e:
+                                        LOGGER.error(f"Error checking T27 for forward target: {e}", exc_info=True)
+
+                                # Forward is valid — keep last_agent_id as the
+                                # original agent so the frontend doesn't switch
+                                yield _build_system_message(
+                                    thread_id, target_agent_id,
+                                    f"Forwarding to {target_agent_name}..."
+                                )
+
+                                visited_agent_ids.add(target_agent_id)
+                                source_agent_name = current_agent_name
+                                current_agent = target_agent
+                                current_agent_id = target_agent_id
+                                current_agent_name = target_agent_name
+                                current_prompt = (
+                                    f"The previous agent ({source_agent_name}) forwarded this "
+                                    f"conversation to you. The user's original request was: "
+                                    f"{request_body.prompt}"
+                                )
+                                current_attachments = []
+                                current_hidden = False
+                                continue  # Loop to stream the forwarded agent
+
+                # --- Post-stream safety-net guarantees ---
 
                 # Content guarantee: if bond messages were sent but no assistant
                 # text content was delivered, emit a fallback so the UI isn't empty
                 if has_yielded_bond_message and not has_yielded_assistant_content:
                     LOGGER.warning(
-                        f"Stream for thread {thread_id}, agent {request_body.agent_id} "
+                        f"Stream for thread {thread_id}, agent {current_agent_id} "
                         f"completed with bond messages but no assistant content"
                     )
                     if bond_message_open:
@@ -236,7 +443,7 @@ async def chat(
                         f'<_bondmessage '
                         f'id="{fallback_id}" '
                         f'thread_id="{xml_escape(str(thread_id))}" '
-                        f'agent_id="{xml_escape(str(request_body.agent_id))}" '
+                        f'agent_id="{xml_escape(str(current_agent_id))}" '
                         f'type="error" '
                         f'role="system" '
                         f'is_error="true" '
@@ -257,7 +464,7 @@ async def chat(
                         f'<_bondmessage '
                         f'id="{done_id}" '
                         f'thread_id="{xml_escape(str(thread_id))}" '
-                        f'agent_id="{xml_escape(str(request_body.agent_id))}" '
+                        f'agent_id="{xml_escape(str(current_agent_id))}" '
                         f'type="text" '
                         f'role="system" '
                         f'is_error="false" '
@@ -266,64 +473,7 @@ async def chat(
                     yield "Done."
                     yield '</_bondmessage>'
 
-            except Exception as e:
-                LOGGER.exception(
-                    f"Error during chat streaming for thread {thread_id}, "
-                    f"agent {request_body.agent_id}: {e}"
-                )
-                try:
-                    # Close any open bond message tag before emitting the error message
-                    if bond_message_open:
-                        yield '</_bondmessage>'
-
-                    # Build a user-facing error message that includes exception details
-                    # so users can relay what they saw. Details are also logged above.
-                    error_type = type(e).__name__
-                    error_detail = str(e)
-                    # Truncate very long error messages to avoid flooding the UI
-                    if len(error_detail) > 300:
-                        error_detail = error_detail[:300] + "..."
-                    user_error_msg = (
-                        f"An unexpected error occurred while processing your request "
-                        f"({error_type}: {error_detail}). Please try again."
-                    )
-
-                    # Emit a complete error bond message so the frontend always shows something
-                    error_id = str(uuid.uuid4())
-                    agent_id = request_body.agent_id
-                    yield (
-                        f'<_bondmessage '
-                        f'id="{error_id}" '
-                        f'thread_id="{xml_escape(str(thread_id))}" '
-                        f'agent_id="{xml_escape(str(agent_id))}" '
-                        f'type="error" '
-                        f'role="system" '
-                        f'is_error="true" '
-                        f'is_done="true">'
-                    )
-                    yield user_error_msg
-                    yield '</_bondmessage>'
-                except Exception as inner_e:
-                    # Fallback: if even the error handler fails, yield a minimal message
-                    LOGGER.critical(
-                        f"Error handler itself failed for thread {thread_id}: {inner_e}",
-                        exc_info=True
-                    )
-                    try:
-                        yield (
-                            '<_bondmessage '
-                            'id="error-fallback" '
-                            f'thread_id="{xml_escape(str(thread_id or "unknown"))}" '
-                            f'agent_id="{xml_escape(str(request_body.agent_id or "unknown"))}" '
-                            'type="error" '
-                            'role="system" '
-                            'is_error="true" '
-                            'is_done="true">'
-                        )
-                        yield "An internal error occurred. Please try again."
-                        yield '</_bondmessage>'
-                    except Exception:
-                        LOGGER.critical("All error handlers failed for chat stream")
+                break  # Normal exit — no more forwarding
 
         return StreamingResponse(
             async_keepalive_wrapper(stream_response_generator()),

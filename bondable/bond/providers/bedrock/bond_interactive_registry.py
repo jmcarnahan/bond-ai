@@ -24,17 +24,19 @@ The markers are HTML comments that won't render in any markdown viewer:
 
 ## Adding a new bond:// type
 
-1. Implement the new type in the Flutter frontend:
-   - Add handling in `bond_link_builder.dart` (check href scheme)
-   - Create a widget if needed (like `prompt_button.dart`)
-   - Add frontend tests
+For **frontend-rendered** types (like bond://prompt):
+1. Add handling in `bond_link_builder.dart` (check href scheme)
+2. Create a widget if needed (like `prompt_button.dart`)
+3. Add frontend tests
 
+For **server-intercepted** types (like bond://forward):
+1. Add detection and handling in `chat.py`
+
+Then for both:
 2. Update _BOND_DEFINITIONS below to describe the new type.
    Keep descriptions concise — this text is appended to every agent's
    system prompt, so token cost matters.
-
 3. Add the new scheme to BOND_SCHEMES below for cross-referencing.
-
 4. Update tests in `tests/test_bond_interactive_registry.py`.
 
 No migration is needed — existing agents pick up the new definitions
@@ -52,16 +54,23 @@ import re
 _BOND_DEFS_START = "<!-- BOND_INTERACTIVE_DEFS_START -->"
 _BOND_DEFS_END = "<!-- BOND_INTERACTIVE_DEFS_END -->"
 
-# All bond:// schemes the frontend currently handles.
-# Keep in sync with bond_link_builder.dart.
+# All bond:// schemes the system supports.
+# Frontend-rendered schemes (e.g. bond://prompt) are in bond_link_builder.dart.
+# Server-intercepted schemes (e.g. bond://forward) are handled in chat.py.
 # Used by tests to verify definitions text covers all supported schemes.
-BOND_SCHEMES = ["bond://prompt"]
+BOND_SCHEMES = ["bond://prompt", "bond://forward"]
 
 _BOND_DEFINITIONS = (
     "Bond UI supports interactive markdown links. "
     "Use [Label](bond://prompt) when asked to use 'bond prompt'. "
     "The frontend will render this as a clickable prompt button. "
-    "Always use the simple form bond://prompt — the label is the prompt."
+    "Always use the simple form bond://prompt — the label is the prompt.\n\n"
+    "To forward the conversation to another agent, output a link in the form "
+    "[Display Name](bond://forward/AGENT_SLUG) where AGENT_SLUG is the target "
+    "agent's slug (e.g. brave-sailing-fox). The system will seamlessly invoke "
+    "the target agent on the same thread after your response completes. "
+    "Use at most one forward link per response. Follow your specific "
+    "instructions about when to forward."
 )
 
 # Compiled pattern to match the marker-delimited block (including surrounding whitespace)
