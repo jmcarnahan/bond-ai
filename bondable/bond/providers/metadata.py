@@ -36,6 +36,7 @@ class AgentRecord(Base):
     __tablename__ = "agents"
     agent_id = Column(String, primary_key=True)
     name = Column(String, nullable=False)
+    slug = Column(String, nullable=True, unique=True, index=True)
     introduction = Column(String, nullable=True, default="")
     reminder = Column(String, nullable=True, default="")
     owner_user_id = Column(String, ForeignKey('users.id'), nullable=False)
@@ -281,6 +282,8 @@ class Metadata(ABC):
         self._migrate_add_default_group_id()
         self._backfill_default_group_ids()
         self._migrate_add_last_agent_id()
+        self._migrate_add_agent_slug()
+        self._backfill_agent_slugs()
 
     def _migrate_add_default_group_id(self):
         """Add default_group_id column to agents table if it doesn't exist."""
@@ -344,6 +347,63 @@ class Metadata(ABC):
                 ))
                 conn.commit()
             LOGGER.info("Migration: Added last_agent_id column to threads table")
+
+    def _migrate_add_agent_slug(self):
+        """Add slug column to agents table if it doesn't exist."""
+        from sqlalchemy import inspect
+        inspector = inspect(self.engine)
+        columns = [col['name'] for col in inspector.get_columns('agents')]
+        if 'slug' not in columns:
+            with self.engine.connect() as conn:
+                conn.execute(text("ALTER TABLE agents ADD COLUMN slug VARCHAR"))
+                conn.commit()
+            LOGGER.info("Migration: Added slug column to agents table")
+            # Create unique index separately (SQLite doesn't support ADD COLUMN ... UNIQUE)
+            try:
+                with self.engine.connect() as conn:
+                    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_agents_slug ON agents (slug)"))
+                    conn.commit()
+                LOGGER.info("Migration: Created unique index on agents.slug")
+            except Exception as e:
+                LOGGER.warning(f"Could not create unique index on slug (may already exist): {e}")
+
+    def _backfill_agent_slugs(self):
+        """Generate slugs for existing agents that don't have one."""
+        from bondable.bond.slug import generate_slug
+        session = scoped_session(sessionmaker(bind=self.engine))()
+        try:
+            agents_without = session.query(AgentRecord).filter(
+                AgentRecord.slug.is_(None)
+            ).all()
+
+            if not agents_without:
+                return
+
+            LOGGER.info(f"Backfilling slugs for {len(agents_without)} agents")
+            # Collect existing slugs to avoid collisions
+            existing_slugs = {
+                row[0] for row in session.query(AgentRecord.slug).filter(
+                    AgentRecord.slug.isnot(None)
+                ).all()
+            }
+
+            for agent in agents_without:
+                slug = generate_slug()
+                # Retry on collision (extremely unlikely with ~175M combinations)
+                attempts = 0
+                while slug in existing_slugs and attempts < 10:
+                    slug = generate_slug()
+                    attempts += 1
+                agent.slug = slug
+                existing_slugs.add(slug)
+
+            session.commit()
+            LOGGER.info(f"Backfill complete: generated slugs for {len(agents_without)} agents")
+        except Exception as e:
+            session.rollback()
+            LOGGER.error(f"Error during backfill of agent slugs: {e}")
+        finally:
+            session.close()
 
     def _ensure_everyone_group(self):
         """Create the well-known 'Everyone' group if it doesn't already exist."""

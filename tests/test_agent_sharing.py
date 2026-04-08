@@ -126,6 +126,7 @@ def _make_mock_agent_record(agent_id: str, name: str, owner_user_id: str, defaul
     record.name = name
     record.owner_user_id = owner_user_id
     record.default_group_id = default_group_id
+    record.slug = None
     record.is_default = False
     return record
 

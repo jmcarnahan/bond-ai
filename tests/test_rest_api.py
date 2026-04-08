@@ -399,6 +399,7 @@ class TestAgents:
         mock_record = MagicMock()
         mock_record.is_default = False
         mock_record.default_group_id = None
+        mock_record.slug = None
         mock_provider.agents.get_agent_record.return_value = mock_record
         mock_provider.agents.get_user_agent_permission.return_value = 'owner'
 
@@ -482,6 +483,7 @@ class TestAgents:
         mock_provider.groups.get_agent_group_ids.return_value = []
         mock_record = MagicMock()
         mock_record.default_group_id = None
+        mock_record.slug = None
         mock_provider.agents.get_agent_record.return_value = mock_record
         mock_provider.agents.get_user_agent_permission.return_value = 'owner'
         mock_provider.groups.get_agent_group_permissions.return_value = {}
@@ -1904,6 +1906,7 @@ class TestAgentPermissions:
         mock_record = MagicMock()
         mock_record.is_default = False
         mock_record.default_group_id = None
+        mock_record.slug = None
         mock_provider.agents.get_agent_record.return_value = mock_record
         mock_provider.agents.get_user_agent_permission.return_value = 'can_edit'
 
@@ -1937,6 +1940,7 @@ class TestAgentPermissions:
         mock_record = MagicMock()
         mock_record.is_default = False
         mock_record.default_group_id = None
+        mock_record.slug = None
         mock_record.owner_user_id = original_owner_id
         mock_provider.agents.get_agent_record.return_value = mock_record
         mock_provider.agents.get_user_agent_permission.return_value = 'can_edit'
@@ -1991,6 +1995,7 @@ class TestAgentPermissions:
         mock_record = MagicMock()
         mock_record.is_default = True
         mock_record.default_group_id = None
+        mock_record.slug = None
         mock_provider.agents.get_agent_record.return_value = mock_record
 
         mock_agent = MagicMock(spec=AgentABC)
@@ -2107,6 +2112,7 @@ class TestAgentPermissions:
 
         mock_record = MagicMock()
         mock_record.default_group_id = None
+        mock_record.slug = None
         mock_provider.agents.get_agent_record.return_value = mock_record
 
         mock_provider.groups.get_agent_group_ids.return_value = []
@@ -2232,6 +2238,7 @@ class TestAgentPermissions:
 
         mock_record = MagicMock()
         mock_record.default_group_id = "default_grp"
+        mock_record.slug = None
         mock_provider.agents.get_agent_record.return_value = mock_record
 
         mock_provider.groups.get_agent_group_ids.return_value = ["grp_1", "grp_2"]
@@ -2325,6 +2332,7 @@ class TestAgentPermissions:
         mock_record = MagicMock()
         mock_record.is_default = False
         mock_record.default_group_id = "default_grp"
+        mock_record.slug = None
         mock_provider.agents.get_agent_record.return_value = mock_record
         mock_provider.agents.get_user_agent_permission.return_value = 'owner'
 
@@ -2353,7 +2361,7 @@ class TestAgentPermissions:
         mock_provider.groups.sync_agent_groups.assert_called_once()
         call_kwargs = mock_provider.groups.sync_agent_groups.call_args
         assert call_kwargs.kwargs.get('group_permissions') == {"grp_1": "can_edit"}
-        assert call_kwargs.kwargs.get('preserve_group_ids') == ["default_grp"]
+        assert call_kwargs.kwargs.get('preserve_group_ids') == ["default_grp", "grp_everyone"]
 
     def test_get_agents_skips_missing_agent(self, non_admin_client):
         """GET /agents should skip records where get_agent returns None."""

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutterui/core/constants/app_constants.dart';
 import 'package:flutterui/presentation/widgets/common/bondai_widgets.dart';
 
@@ -10,6 +11,7 @@ class AgentFormFields extends StatelessWidget {
   final TextEditingController reminderController;
   final bool enabled;
   final bool readOnly;
+  final String? slug;
   final void Function(String) onNameChanged;
   final void Function(String) onDescriptionChanged;
   final void Function(String) onInstructionsChanged;
@@ -25,6 +27,7 @@ class AgentFormFields extends StatelessWidget {
     required this.reminderController,
     required this.enabled,
     this.readOnly = false,
+    this.slug,
     required this.onNameChanged,
     required this.onDescriptionChanged,
     required this.onInstructionsChanged,
@@ -57,6 +60,45 @@ class AgentFormFields extends StatelessWidget {
           },
           onChanged: readOnly ? null : onNameChanged,
         ),
+        if (slug != null) ...[
+          SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              Text(
+                'Slug: ',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              Expanded(
+                child: SelectableText(
+                  slug!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.copy, size: 16),
+                padding: EdgeInsets.zero,
+                constraints: BoxConstraints(minWidth: 28, minHeight: 28),
+                tooltip: 'Copy slug',
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: slug!));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Slug copied to clipboard'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ],
         SizedBox(height: AppSpacing.xl),
         BondAITextBox(
           controller: descriptionController,

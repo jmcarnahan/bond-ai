@@ -72,6 +72,7 @@ class CreateAgentFormState {
   final String fileStorage; // 'direct' or 'knowledge_base'
   final String? defaultGroupId;
   final Map<String, String> groupPermissions;
+  final String? slug;
 
   CreateAgentFormState({
     this.name = '',
@@ -91,6 +92,7 @@ class CreateAgentFormState {
     this.fileStorage = 'direct',
     this.defaultGroupId,
     this.groupPermissions = const {},
+    this.slug,
   });
 
   CreateAgentFormState copyWith({
@@ -114,6 +116,7 @@ class CreateAgentFormState {
     String? defaultGroupId,
     bool clearDefaultGroupId = false,
     Map<String, String>? groupPermissions,
+    String? slug,
   }) {
     return CreateAgentFormState(
       name: name ?? this.name,
@@ -134,6 +137,7 @@ class CreateAgentFormState {
       fileStorage: fileStorage ?? this.fileStorage,
       defaultGroupId: clearDefaultGroupId ? null : defaultGroupId ?? this.defaultGroupId,
       groupPermissions: groupPermissions ?? this.groupPermissions,
+      slug: slug ?? this.slug,
     );
   }
 }
@@ -449,6 +453,7 @@ class CreateAgentFormNotifier extends StateNotifier<CreateAgentFormState> {
         fileStorage: agentDetail.fileStorage ?? 'direct',
         defaultGroupId: agentDetail.defaultGroupId,
         groupPermissions: agentDetail.groupPermissions ?? {},
+        slug: agentDetail.slug,
         isLoading: false,
       );
 
