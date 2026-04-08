@@ -100,7 +100,7 @@ def _build_system_message(thread_id, agent_id, text):
 
 
 @router.post("")
-async def chat(
+def chat(
     request_body: ChatRequest,
     user_and_token: Annotated[tuple[User, str], Depends(get_current_user_with_token)],
     provider: Provider = Depends(get_bond_provider)
