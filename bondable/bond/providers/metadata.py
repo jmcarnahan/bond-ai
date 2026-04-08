@@ -298,9 +298,10 @@ class Metadata(ABC):
     def _run_migrations(self):
         """Run Alembic migrations programmatically.
 
-        For existing databases without alembic_version table, stamps the current
-        revision as head without executing DDL. For fresh databases, runs all
-        migrations to create the schema.
+        For existing databases without alembic_version table, brings the schema
+        up to date with any columns added by previous manual migrations, then
+        stamps as head. For fresh databases, runs all migrations to create the
+        schema.
         """
         from alembic import command
         from sqlalchemy import inspect
@@ -313,13 +314,62 @@ class Metadata(ABC):
         has_app_tables = 'users' in existing_tables
 
         if has_app_tables and not has_alembic_version:
-            # Existing database without Alembic — stamp as current
+            # Existing database without Alembic — apply any missing columns
+            # from pre-Alembic manual migrations, then stamp as current
+            self._apply_pre_alembic_fixups(inspector)
             LOGGER.info("Existing database detected without alembic_version. Stamping as head.")
             command.stamp(alembic_cfg, "head")
         else:
             # Fresh database or already Alembic-managed — run upgrade
             LOGGER.info("Running Alembic migrations...")
             command.upgrade(alembic_cfg, "head")
+
+    def _apply_pre_alembic_fixups(self, inspector):
+        """Ensure columns added by old manual _migrate_* methods exist.
+
+        These columns were added incrementally over time before Alembic was
+        adopted. If an existing database was created from an older version,
+        it may be missing some of them. This runs once before the initial
+        stamp to bring the schema up to the baseline.
+        """
+        # Check agents table columns
+        if 'agents' in [t for t in inspector.get_table_names()]:
+            agent_cols = {col['name'] for col in inspector.get_columns('agents')}
+
+            if 'default_group_id' not in agent_cols:
+                with self.engine.connect() as conn:
+                    conn.execute(text(
+                        "ALTER TABLE agents ADD COLUMN default_group_id VARCHAR REFERENCES groups(id)"
+                    ))
+                    conn.commit()
+                LOGGER.info("Pre-Alembic fixup: Added default_group_id column to agents table")
+
+            if 'slug' not in agent_cols:
+                with self.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE agents ADD COLUMN slug VARCHAR"))
+                    conn.commit()
+                LOGGER.info("Pre-Alembic fixup: Added slug column to agents table")
+                try:
+                    with self.engine.connect() as conn:
+                        conn.execute(text(
+                            "CREATE UNIQUE INDEX IF NOT EXISTS ix_agents_slug ON agents (slug)"
+                        ))
+                        conn.commit()
+                    LOGGER.info("Pre-Alembic fixup: Created unique index on agents.slug")
+                except Exception as e:
+                    LOGGER.warning(f"Could not create unique index on slug (may already exist): {e}")
+
+        # Check threads table columns
+        if 'threads' in [t for t in inspector.get_table_names()]:
+            thread_cols = {col['name'] for col in inspector.get_columns('threads')}
+
+            if 'last_agent_id' not in thread_cols:
+                with self.engine.connect() as conn:
+                    conn.execute(text(
+                        "ALTER TABLE threads ADD COLUMN last_agent_id VARCHAR"
+                    ))
+                    conn.commit()
+                LOGGER.info("Pre-Alembic fixup: Added last_agent_id column to threads table")
 
     def create_all(self):
         """Create all tables directly from SQLAlchemy models.
