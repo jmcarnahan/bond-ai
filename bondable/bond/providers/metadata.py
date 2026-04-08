@@ -267,7 +267,15 @@ class Metadata(ABC):
 
     def __init__(self, metadata_db_url):
         self.metadata_db_url = metadata_db_url
-        self.engine = create_engine(self.metadata_db_url, echo=False)
+        engine_kwargs = {"echo": False}
+        if not metadata_db_url.startswith("sqlite"):
+            engine_kwargs.update({
+                "pool_size": 20,
+                "max_overflow": 10,
+                "pool_pre_ping": True,
+                "pool_recycle": 3600,
+            })
+        self.engine = create_engine(self.metadata_db_url, **engine_kwargs)
         self.create_all()
         self.session = scoped_session(sessionmaker(bind=self.engine))
         self._ensure_everyone_group()
