@@ -74,7 +74,7 @@ def _process_tool_resources(request_data, provider: Provider, user_id: str) -> d
 
 
 @router.get("", response_model=List[AgentRef])
-async def get_agents(
+def get_agents(
     current_user: Annotated[User, Depends(get_current_user)],
     provider: Provider = Depends(get_bond_provider)
 ):
@@ -118,7 +118,7 @@ async def get_agents(
 
 
 @router.get("/models", response_model=List[ModelInfo])
-async def get_available_models(
+def get_available_models(
     current_user: Annotated[User, Depends(get_current_user)],
     provider: Provider = Depends(get_bond_provider)
 ):
@@ -132,7 +132,7 @@ async def get_available_models(
 
 
 @router.get("/default", response_model=AgentResponse)
-async def get_default_agent(
+def get_default_agent(
     current_user: Annotated[User, Depends(get_current_user)],
     provider: Provider = Depends(get_bond_provider)
 ):
@@ -158,7 +158,7 @@ async def get_default_agent(
 
 
 @router.get("/available-groups", response_model=List[dict])
-async def get_available_groups_for_agent(
+def get_available_groups_for_agent(
     current_user: Annotated[User, Depends(get_current_user)],
     provider: Provider = Depends(get_bond_provider),
     agent_id: str = None  # Optional - for editing existing agents
@@ -176,7 +176,7 @@ async def get_available_groups_for_agent(
 
 
 @router.post("", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
-async def create_agent(
+def create_agent(
     request_data: AgentCreateRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     provider: Provider = Depends(get_bond_provider)
@@ -280,7 +280,7 @@ async def create_agent(
 
 
 @router.put("/{agent_id}", response_model=AgentResponse)
-async def update_agent(
+def update_agent(
     agent_id: str,
     request_data: AgentUpdateRequest,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -423,7 +423,7 @@ async def update_agent(
 
 
 @router.get("/{agent_id}", response_model=AgentDetailResponse)
-async def get_agent_details(
+def get_agent_details(
     agent_id: str,
     current_user: Annotated[User, Depends(get_current_user)],
     provider: Provider = Depends(get_bond_provider)
@@ -513,7 +513,7 @@ async def get_agent_details(
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_agent(
+def delete_agent(
     agent_id: str,
     current_user: Annotated[User, Depends(get_current_user)],
     provider: Provider = Depends(get_bond_provider)
