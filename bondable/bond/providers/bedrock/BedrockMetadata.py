@@ -109,13 +109,6 @@ class BedrockMetadata(Metadata):
         super().__init__(metadata_db_url)
         LOGGER.info("Initialized BedrockMetadata with message storage")
 
-    def create_all(self):
-        """Create all tables including Bedrock-specific ones"""
-        super().create_all()
-        LOGGER.info("Created all Bedrock metadata tables")
-
-
-
     # Knowledge Base Management Methods
 
     # def create_knowledge_base_mapping(self, vector_store_id: str,

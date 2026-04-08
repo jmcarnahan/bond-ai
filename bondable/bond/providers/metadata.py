@@ -276,7 +276,7 @@ class Metadata(ABC):
                 "pool_recycle": 3600,
             })
         self.engine = create_engine(self.metadata_db_url, **engine_kwargs)
-        self.create_all()
+        self._run_migrations()
         self.session = scoped_session(sessionmaker(bind=self.engine))
         self._ensure_everyone_group()
         LOGGER.info(f"Created Metadata instance using database engine: {self.metadata_db_url}")
@@ -284,134 +284,50 @@ class Metadata(ABC):
     def get_engine(self):
         return self.engine
 
+    def _get_alembic_cfg(self):
+        """Create an AlembicConfig pointing at the project's alembic directory."""
+        from alembic.config import Config as AlembicConfig
+        import os
+
+        cfg = AlembicConfig()
+        alembic_dir = os.path.join(os.path.dirname(__file__), '..', 'alembic')
+        cfg.set_main_option('script_location', os.path.abspath(alembic_dir))
+        cfg.set_main_option('sqlalchemy.url', self.metadata_db_url)
+        return cfg
+
+    def _run_migrations(self):
+        """Run Alembic migrations programmatically.
+
+        For existing databases without alembic_version table, stamps the current
+        revision as head without executing DDL. For fresh databases, runs all
+        migrations to create the schema.
+        """
+        from alembic import command
+        from sqlalchemy import inspect
+
+        alembic_cfg = self._get_alembic_cfg()
+
+        inspector = inspect(self.engine)
+        existing_tables = inspector.get_table_names()
+        has_alembic_version = 'alembic_version' in existing_tables
+        has_app_tables = 'users' in existing_tables
+
+        if has_app_tables and not has_alembic_version:
+            # Existing database without Alembic — stamp as current
+            LOGGER.info("Existing database detected without alembic_version. Stamping as head.")
+            command.stamp(alembic_cfg, "head")
+        else:
+            # Fresh database or already Alembic-managed — run upgrade
+            LOGGER.info("Running Alembic migrations...")
+            command.upgrade(alembic_cfg, "head")
+
     def create_all(self):
-        # This method should be overriden by subclasses to create all necessary tables
+        """Create all tables directly from SQLAlchemy models.
+
+        Used by drop_and_recreate_all() for dev/test resets.
+        For normal startup, use _run_migrations() instead.
+        """
         Base.metadata.create_all(self.engine)
-        self._migrate_add_default_group_id()
-        self._backfill_default_group_ids()
-        self._migrate_add_last_agent_id()
-        self._migrate_add_agent_slug()
-        self._backfill_agent_slugs()
-
-    def _migrate_add_default_group_id(self):
-        """Add default_group_id column to agents table if it doesn't exist."""
-        from sqlalchemy import inspect
-        inspector = inspect(self.engine)
-        columns = [col['name'] for col in inspector.get_columns('agents')]
-        if 'default_group_id' not in columns:
-            with self.engine.connect() as conn:
-                conn.execute(text(
-                    "ALTER TABLE agents ADD COLUMN default_group_id VARCHAR REFERENCES groups(id)"
-                ))
-                conn.commit()
-            LOGGER.info("Migration: Added default_group_id column to agents table")
-
-    def _backfill_default_group_ids(self):
-        """Backfill default_group_id for existing agents that don't have it set."""
-        session = scoped_session(sessionmaker(bind=self.engine))()
-        try:
-            agents_without = session.query(AgentRecord).filter(
-                AgentRecord.default_group_id.is_(None),
-                AgentRecord.is_default == False
-            ).all()
-
-            if not agents_without:
-                return
-
-            LOGGER.info(f"Backfilling default_group_id for {len(agents_without)} agents")
-            count = 0
-
-            for agent in agents_without:
-                default_group = session.query(Group).join(
-                    AgentGroup, Group.id == AgentGroup.group_id
-                ).filter(
-                    AgentGroup.agent_id == agent.agent_id,
-                    Group.name.endswith(' Default Group'),
-                    Group.owner_user_id == agent.owner_user_id
-                ).first()
-
-                if default_group:
-                    agent.default_group_id = default_group.id
-                    count += 1
-                    LOGGER.info(f"Backfilled default_group_id='{default_group.id}' for agent '{agent.agent_id}' ({agent.name})")
-
-            session.commit()
-            LOGGER.info(f"Backfill complete: updated {count} of {len(agents_without)} agents")
-        except Exception as e:
-            session.rollback()
-            LOGGER.error(f"Error during backfill of default_group_ids: {e}")
-        finally:
-            session.close()
-
-    def _migrate_add_last_agent_id(self):
-        """Add last_agent_id column to threads table if it doesn't exist."""
-        from sqlalchemy import inspect
-        inspector = inspect(self.engine)
-        columns = [col['name'] for col in inspector.get_columns('threads')]
-        if 'last_agent_id' not in columns:
-            with self.engine.connect() as conn:
-                conn.execute(text(
-                    "ALTER TABLE threads ADD COLUMN last_agent_id VARCHAR"
-                ))
-                conn.commit()
-            LOGGER.info("Migration: Added last_agent_id column to threads table")
-
-    def _migrate_add_agent_slug(self):
-        """Add slug column to agents table if it doesn't exist."""
-        from sqlalchemy import inspect
-        inspector = inspect(self.engine)
-        columns = [col['name'] for col in inspector.get_columns('agents')]
-        if 'slug' not in columns:
-            with self.engine.connect() as conn:
-                conn.execute(text("ALTER TABLE agents ADD COLUMN slug VARCHAR"))
-                conn.commit()
-            LOGGER.info("Migration: Added slug column to agents table")
-            # Create unique index separately (SQLite doesn't support ADD COLUMN ... UNIQUE)
-            try:
-                with self.engine.connect() as conn:
-                    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_agents_slug ON agents (slug)"))
-                    conn.commit()
-                LOGGER.info("Migration: Created unique index on agents.slug")
-            except Exception as e:
-                LOGGER.warning(f"Could not create unique index on slug (may already exist): {e}")
-
-    def _backfill_agent_slugs(self):
-        """Generate slugs for existing agents that don't have one."""
-        from bondable.bond.slug import generate_slug
-        session = scoped_session(sessionmaker(bind=self.engine))()
-        try:
-            agents_without = session.query(AgentRecord).filter(
-                AgentRecord.slug.is_(None)
-            ).all()
-
-            if not agents_without:
-                return
-
-            LOGGER.info(f"Backfilling slugs for {len(agents_without)} agents")
-            # Collect existing slugs to avoid collisions
-            existing_slugs = {
-                row[0] for row in session.query(AgentRecord.slug).filter(
-                    AgentRecord.slug.isnot(None)
-                ).all()
-            }
-
-            for agent in agents_without:
-                slug = generate_slug()
-                # Retry on collision (extremely unlikely with ~175M combinations)
-                attempts = 0
-                while slug in existing_slugs and attempts < 10:
-                    slug = generate_slug()
-                    attempts += 1
-                agent.slug = slug
-                existing_slugs.add(slug)
-
-            session.commit()
-            LOGGER.info(f"Backfill complete: generated slugs for {len(agents_without)} agents")
-        except Exception as e:
-            session.rollback()
-            LOGGER.error(f"Error during backfill of agent slugs: {e}")
-        finally:
-            session.close()
 
     def _ensure_everyone_group(self):
         """Create the well-known 'Everyone' group if it doesn't already exist."""
@@ -448,16 +364,22 @@ class Metadata(ABC):
 
     def drop_and_recreate_all(self):
         """Drop all tables and recreate them. Use with caution - this deletes all data!"""
+        from alembic import command
+
         LOGGER.warning("Dropping all tables and recreating schema. All data will be lost!")
         Base.metadata.drop_all(self.engine)
         Base.metadata.create_all(self.engine)
+
+        # Stamp as head so Alembic knows the schema is current
+        command.stamp(self._get_alembic_cfg(), "head")
+
         self._ensure_everyone_group()
         LOGGER.info("Schema recreated successfully")
 
     def get_db_session(self) -> scoped_session:
         if not self.engine:
             self.engine = create_engine(self.metadata_db_url, echo=False)
-            self.create_all()
+            self._run_migrations()
             self.session = scoped_session(sessionmaker(bind=self.engine))
             LOGGER.info(f"Re-created Metadata instance using database engine: {self.metadata_db_url}")
         return self.session()
