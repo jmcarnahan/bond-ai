@@ -104,6 +104,7 @@ async def get_agents(
             result.append(AgentRef(
                 id=agent_id,
                 name=agent.get_name(),
+                slug=record.get('slug'),
                 description=agent.get_description(),
                 metadata=metadata,
                 user_permission=permission,
@@ -486,6 +487,7 @@ async def get_agent_details(
         return AgentDetailResponse(
             id=agent_instance.get_agent_id(),
             name=agent_def.name,
+            slug=agent_record.slug if agent_record else None,
             description=agent_def.description,
             instructions=agent_def.instructions,
             introduction=agent_def.introduction,

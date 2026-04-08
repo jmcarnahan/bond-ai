@@ -5,6 +5,7 @@ from typing import Optional, List, Dict, Any
 class AgentRef(BaseModel):
     id: str
     name: str
+    slug: Optional[str] = None
     description: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     user_permission: Optional[str] = None
@@ -68,6 +69,7 @@ class AgentResponse(BaseModel):
 class AgentDetailResponse(BaseModel):
     id: str
     name: str
+    slug: Optional[str] = None
     description: Optional[str] = None
     instructions: Optional[str] = None
     introduction: Optional[str] = None
