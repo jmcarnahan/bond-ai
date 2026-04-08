@@ -24,7 +24,7 @@ def _resolve_agent_name(provider: Provider, agent_id: str) -> Optional[str]:
 
 
 @router.get("", response_model=PaginatedThreadsResponse)
-async def get_threads(
+def get_threads(
     current_user: Annotated[User, Depends(get_current_user)],
     provider: Provider = Depends(get_bond_provider),
     offset: int = 0,
@@ -76,7 +76,7 @@ async def get_threads(
 
 
 @router.post("", response_model=ThreadRef, status_code=status.HTTP_201_CREATED)
-async def create_thread(
+def create_thread(
     request_body: CreateThreadRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     provider: Provider = Depends(get_bond_provider)
@@ -100,7 +100,7 @@ async def create_thread(
 
 
 @router.post("/cleanup", status_code=status.HTTP_200_OK)
-async def cleanup_empty_threads(
+def cleanup_empty_threads(
     current_user: Annotated[User, Depends(get_current_user)],
     provider: Provider = Depends(get_bond_provider)
 ):
@@ -115,7 +115,7 @@ async def cleanup_empty_threads(
 
 
 @router.delete("/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_thread(
+def delete_thread(
     thread_id: str,
     current_user: Annotated[User, Depends(get_current_user)],
     provider: Provider = Depends(get_bond_provider)
@@ -139,7 +139,7 @@ async def delete_thread(
 
 
 @router.put("/{thread_id}", response_model=ThreadRef)
-async def update_thread(
+def update_thread(
     thread_id: str,
     request_body: UpdateThreadRequest,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -184,7 +184,7 @@ async def update_thread(
 
 
 @router.get("/{thread_id}/messages", response_model=List[MessageRef])
-async def get_messages(
+def get_messages(
     thread_id: str,
     current_user: Annotated[User, Depends(get_current_user)],
     provider: Provider = Depends(get_bond_provider),
@@ -272,7 +272,7 @@ async def get_messages(
 
 
 @router.put("/{thread_id}/messages/{message_id}/feedback", response_model=MessageFeedbackResponse)
-async def update_message_feedback(
+def update_message_feedback(
     thread_id: str,
     message_id: str,
     request: MessageFeedbackRequest,
@@ -318,7 +318,7 @@ async def update_message_feedback(
 
 
 @router.delete("/{thread_id}/messages/{message_id}/feedback", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_message_feedback(
+def delete_message_feedback(
     thread_id: str,
     message_id: str,
     current_user: Annotated[User, Depends(get_current_user)],
