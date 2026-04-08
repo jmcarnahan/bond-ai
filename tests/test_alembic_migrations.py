@@ -12,6 +12,7 @@ import os
 import tempfile
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker, scoped_session
 
@@ -322,6 +323,65 @@ class TestMetadataInit:
             assert 'alembic_version' in tables
 
             # Verify it's at head
+            rev = _get_current_rev(metadata.engine)
+            assert rev is not None
+
+            metadata.close()
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def test_init_existing_db_missing_columns(self):
+        """Metadata.__init__() should add missing columns before stamping."""
+        fd, path = tempfile.mkstemp(suffix='.db')
+        os.close(fd)
+        os.unlink(path)
+        db_url = f"sqlite:///{path}"
+
+        try:
+            # Create an older schema missing slug, default_group_id, last_agent_id
+            engine = create_engine(db_url)
+            with engine.connect() as conn:
+                conn.execute(sa.text(
+                    "CREATE TABLE users (id VARCHAR PRIMARY KEY, email VARCHAR NOT NULL, "
+                    "sign_in_method VARCHAR NOT NULL, name VARCHAR, is_admin BOOLEAN NOT NULL DEFAULT 0, "
+                    "created_at DATETIME, updated_at DATETIME)"
+                ))
+                conn.execute(sa.text(
+                    "CREATE TABLE groups (id VARCHAR PRIMARY KEY, name VARCHAR NOT NULL, "
+                    "description VARCHAR, owner_user_id VARCHAR REFERENCES users(id), "
+                    "created_at DATETIME, updated_at DATETIME)"
+                ))
+                conn.execute(sa.text(
+                    "CREATE TABLE agents (agent_id VARCHAR PRIMARY KEY, name VARCHAR NOT NULL, "
+                    "introduction VARCHAR, reminder VARCHAR, "
+                    "owner_user_id VARCHAR REFERENCES users(id) NOT NULL, "
+                    "is_default BOOLEAN NOT NULL DEFAULT 0, created_at DATETIME)"
+                ))
+                conn.execute(sa.text(
+                    "CREATE TABLE threads (thread_id VARCHAR NOT NULL, "
+                    "user_id VARCHAR NOT NULL REFERENCES users(id), "
+                    "name VARCHAR, session_id VARCHAR, "
+                    "created_at DATETIME, updated_at DATETIME, "
+                    "PRIMARY KEY (thread_id, user_id))"
+                ))
+                conn.commit()
+            engine.dispose()
+
+            # Init Metadata — should detect missing columns, add them, and stamp
+            from bondable.bond.providers.bedrock.BedrockMetadata import BedrockMetadata
+            metadata = BedrockMetadata(db_url)
+
+            # Verify missing columns were added
+            insp = inspect(metadata.engine)
+            agent_cols = {col['name'] for col in insp.get_columns('agents')}
+            assert 'slug' in agent_cols, "slug column should have been added"
+            assert 'default_group_id' in agent_cols, "default_group_id column should have been added"
+
+            thread_cols = {col['name'] for col in insp.get_columns('threads')}
+            assert 'last_agent_id' in thread_cols, "last_agent_id column should have been added"
+
+            # Verify it was stamped at head
             rev = _get_current_rev(metadata.engine)
             assert rev is not None
 
