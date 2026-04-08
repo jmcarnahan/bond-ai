@@ -184,6 +184,7 @@ class AgentToolResourcesModel {
 class AgentDetailModel {
   final String id;
   final String name;
+  final String? slug;
   final String? description;
   final String? instructions;
   final String? introduction;
@@ -205,6 +206,7 @@ class AgentDetailModel {
   const AgentDetailModel({
     required this.id,
     required this.name,
+    this.slug,
     this.description,
     this.instructions,
     this.introduction,
@@ -227,6 +229,7 @@ class AgentDetailModel {
     return AgentDetailModel(
       id: json['id'] as String,
       name: json['name'] as String,
+      slug: json['slug'] as String?,
       description: json['description'] as String?,
       instructions: json['instructions'] as String?,
       introduction: json['introduction'] as String?,

@@ -256,6 +256,7 @@ class _CreateAgentScreenState extends ConsumerState<CreateAgentScreen> with Erro
                       reminderController: _reminderController,
                       enabled: !formState.isLoading && !widget.viewOnly,
                       readOnly: widget.viewOnly,
+                      slug: formState.slug,
                       onNameChanged: _controller.onNameChanged,
                       onDescriptionChanged: _controller.onDescriptionChanged,
                       onInstructionsChanged: _controller.onInstructionsChanged,
