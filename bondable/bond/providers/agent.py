@@ -341,8 +341,20 @@ class AgentProvider(ABC):
                     agent_record.owner_user_id = user_id
                     session.commit()
                     LOGGER.info(f"Updated existing agent record for agent_id: {agent.get_agent_id()}")
+                # Backfill slug if missing (for agents created before slug support)
+                if not agent_record.slug:
+                    from bondable.bond.slug import generate_slug
+                    agent_record.slug = generate_slug()
+                    try:
+                        session.commit()
+                    except Exception:
+                        session.rollback()
+                        agent_record.slug = generate_slug()
+                        session.commit()
+                    LOGGER.info(f"Backfilled slug '{agent_record.slug}' for agent {agent.get_agent_id()}")
             else:
                 # if it does not exist, create a new record
+                from bondable.bond.slug import generate_slug
                 LOGGER.info(f"Creating new agent record for agent_id: {agent.get_agent_id()}")
                 agent_record = AgentRecord(
                     name=agent.get_name(),
@@ -350,9 +362,18 @@ class AgentProvider(ABC):
                     owner_user_id=user_id,
                     introduction=agent_def.introduction,
                     reminder=agent_def.reminder,
+                    slug=generate_slug(),
                 )
                 session.add(agent_record)
-                session.commit()
+                try:
+                    session.commit()
+                except Exception:
+                    # Slug collision (extremely unlikely) — retry with a new slug
+                    session.rollback()
+                    agent_record.slug = generate_slug()
+                    session.add(agent_record)
+                    session.commit()
+                LOGGER.info(f"Created agent with slug '{agent_record.slug}'")
 
             # at this point we should have a valid agent record in the database with an agent_id
             # Update the default vector store for the agent (for both new and existing agents)
@@ -418,6 +439,7 @@ class AgentProvider(ABC):
                 agent_records.append({
                     "name": default_agent.name,
                     "agent_id": default_agent.agent_id,
+                    "slug": default_agent.slug,
                     "owned": is_owned,
                     "permission": "owner" if is_owned else "can_use",
                     "is_default": True,
@@ -430,7 +452,7 @@ class AgentProvider(ABC):
             results: List[AgentRecord] = query.all()
 
             owned_records = [
-                {"name": record.name, "agent_id": record.agent_id, "owned": True, "permission": "owner"}
+                {"name": record.name, "agent_id": record.agent_id, "slug": record.slug, "owned": True, "permission": "owner"}
                 for record in results
             ]
             agent_records.extend(owned_records)
@@ -474,6 +496,7 @@ class AgentProvider(ABC):
                 {
                     "name": agent.name,
                     "agent_id": agent.agent_id,
+                    "slug": agent.slug,
                     "owned": False,
                     "permission": rank_to_permission.get(max_rank, "can_use")
                 }
@@ -502,6 +525,18 @@ class AgentProvider(ABC):
                 LOGGER.error(f"Error retrieving agents by name '{agent_name}': {e}", exc_info=True)
                 raise e
 
+
+    def get_agent_by_slug(self, slug: str) -> Optional[Agent]:
+        """Look up an agent by its human-readable slug (e.g. 'brave-sailing-fox')."""
+        with self.metadata.get_db_session() as session:
+            try:
+                record = session.query(AgentRecord).filter(AgentRecord.slug == slug).first()
+                if record:
+                    return self.get_agent(agent_id=record.agent_id)
+                return None
+            except Exception as e:
+                LOGGER.error(f"Error retrieving agent by slug '{slug}': {e}", exc_info=True)
+                return None
 
     def can_user_access_agent(self, user_id: str, agent_id: str) -> bool:
         """
