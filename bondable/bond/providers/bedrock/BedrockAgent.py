@@ -82,7 +82,6 @@ MIN_RECORDS_FOR_CSV = 5
 MAX_INVOKE_RETRIES = 2
 INVOKE_RETRY_BASE_DELAY = 1.0  # seconds; exponential backoff (1s, 2s)
 
-
 class BedrockAgent(Agent):
     """Bedrock implementation of the Agent interface"""
 
@@ -2807,6 +2806,7 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                 bedrock_agent_id = agent.bedrock_agent_id
                 bedrock_agent_alias_id = agent.bedrock_agent_alias_id
 
+
             # Delete from metadata
             session = self.metadata.get_db_session()
             try:
@@ -2887,6 +2887,7 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                     agent_def=agent_def,
                     owner_user_id=owner_user_id
                 )
+
                 bedrock_options = BedrockAgentOptions(
                     agent_id=agent_id,
                     bedrock_agent_id=bedrock_agent_id,
@@ -2993,6 +2994,7 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                     bedrock_agent_alias_id=bedrock_agent_alias_id,
                     owner_user_id=owner_user_id
                 )
+
 
             session.commit()
 
