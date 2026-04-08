@@ -61,6 +61,7 @@ build-backend = "poetry.core.masonry.api"
 markers = [
     "integration: marks tests that require a running backend (deselected by default, run with --integration)",
     "docker: marks tests that require Docker daemon (deselected by default, run with --docker)",
+    "investigation: marks concurrency investigation tests (deselected by default, run with --investigation)",
 ]
 
 [tool.bandit]

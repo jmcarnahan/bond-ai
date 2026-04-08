@@ -94,3 +94,6 @@ hello_world/
 vpn/
 
 deployment/eks-hello-world/
+
+# Concurrency investigation tests (temporary, not for CI)
+tests/investigation/

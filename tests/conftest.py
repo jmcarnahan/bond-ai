@@ -14,6 +14,12 @@ def pytest_addoption(parser):
         default=False,
         help="Run Docker-based tests (requires Docker daemon)",
     )
+    parser.addoption(
+        "--investigation",
+        action="store_true",
+        default=False,
+        help="Run concurrency investigation tests",
+    )
 
 
 def pytest_collection_modifyitems(config, items):
@@ -28,3 +34,9 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "docker" in item.keywords:
                 item.add_marker(skip_docker)
+
+    if not config.getoption("--investigation"):
+        skip_investigation = pytest.mark.skip(reason="needs --investigation flag to run")
+        for item in items:
+            if "investigation" in item.keywords:
+                item.add_marker(skip_investigation)
