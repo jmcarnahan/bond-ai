@@ -313,10 +313,13 @@ class Metadata(ABC):
         has_alembic_version = 'alembic_version' in existing_tables
         has_app_tables = 'users' in existing_tables
 
-        if has_app_tables and not has_alembic_version:
-            # Existing database without Alembic — apply any missing columns
-            # from pre-Alembic manual migrations, then stamp as current
+        if has_app_tables:
+            # Existing database — ensure columns from old manual migrations
+            # are present (idempotent, safe to run every time)
             self._apply_pre_alembic_fixups(inspector)
+
+        if has_app_tables and not has_alembic_version:
+            # Existing database without Alembic — stamp as current
             LOGGER.info("Existing database detected without alembic_version. Stamping as head.")
             command.stamp(alembic_cfg, "head")
         else:
