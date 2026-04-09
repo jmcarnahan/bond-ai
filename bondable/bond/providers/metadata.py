@@ -263,6 +263,39 @@ class UserAgentSortOrder(Base):
     __table_args__ = (PrimaryKeyConstraint('user_id', 'agent_id'),)
 
 
+# ============================================================================
+# User-Defined MCP Server Configuration
+# ============================================================================
+
+class UserMcpServer(Base):
+    """
+    User-defined MCP server configurations.
+
+    Allows users to add their own MCP servers (with none, header, or oauth2 auth).
+    Secrets (headers, oauth_config) are encrypted at rest using token_encryption.
+    """
+    __tablename__ = "user_mcp_servers"
+
+    id = Column(String, primary_key=True, nullable=False)  # UUID
+    owner_user_id = Column(String, ForeignKey('users.id'), nullable=False, index=True)
+    server_name = Column(String, nullable=False)  # Unique per user, [a-z][a-z0-9_]{0,63}
+    display_name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    url = Column(String, nullable=False)  # MCP server endpoint URL
+    transport = Column(String, nullable=False, default='streamable-http')  # streamable-http | sse
+    auth_type = Column(String, nullable=False, default='none')  # none | header | oauth2
+    headers_encrypted = Column(String, nullable=True)  # Encrypted JSON for static headers (API keys)
+    oauth_config_encrypted = Column(String, nullable=True)  # Encrypted JSON for OAuth2 config
+    extra_config = Column(JSON, default=dict)  # Arbitrary extra fields (cloud_id, site_url, etc.)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint('owner_user_id', 'server_name', name='_user_mcp_server_name_uc'),
+    )
+
+
 class Metadata(ABC):
 
     def __init__(self, metadata_db_url):
