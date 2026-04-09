@@ -1313,7 +1313,7 @@ Please integrate any relevant insights from the documents with your analysis of 
                     # =============================================================
                     # Get MCP config to resolve server from hash
                     mcp_config = Config.config().get_mcp_config()
-                    target_server = _resolve_server_from_hash(server_hash, mcp_config) if mcp_config else None
+                    target_server = _resolve_server_from_hash(server_hash, mcp_config, owner_user_id=getattr(self, 'owner_user_id', None)) if mcp_config else None
 
                     # T9/T21: Structured audit log for MCP tool invocations
                     user_email = getattr(self._current_user, 'email', 'unknown') if self._current_user else 'unknown'

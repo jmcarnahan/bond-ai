@@ -53,6 +53,8 @@ class MCPServerWithTools(BaseModel):
     connection_status: ConnectionStatusInfo
     tools: List[MCPToolResponse]
     tool_count: int
+    is_user_defined: bool = False
+    user_server_id: Optional[str] = None
 
 
 class MCPToolsGroupedResponse(BaseModel):
@@ -227,6 +229,20 @@ async def list_mcp_tools(
             ))
 
         # =================================================================
+        # Inject User-Defined MCP Servers
+        # =================================================================
+        # User-defined servers from the database appear alongside global servers
+        # =================================================================
+        try:
+            user_servers_result = await _discover_user_mcp_server_tools(
+                current_user, token_cache
+            )
+            server_tools_list.extend(user_servers_result["servers"])
+            all_tools.extend(user_servers_result["tools"])
+        except Exception as e:
+            LOGGER.warning(f"[MCP Tools] Error loading user-defined servers: {e}")
+
+        # =================================================================
         # Inject Admin Tools for Admin Users
         # =================================================================
         # Admin tools are internal tools that appear like a regular MCP server
@@ -327,6 +343,138 @@ async def list_mcp_tools(
         if grouped:
             return MCPToolsGroupedResponse(servers=[], total_servers=0, total_tools=0)
         return []
+
+
+async def _discover_user_mcp_server_tools(
+    current_user: Any,
+    token_cache
+) -> Dict[str, Any]:
+    """
+    Discover tools from user-defined MCP servers.
+
+    Returns dict with 'servers' (list of MCPServerWithTools) and 'tools' (flat list).
+    """
+    from fastmcp.client.transports import SSETransport, StreamableHttpTransport
+    from bondable.bond.providers.metadata import UserMcpServer
+    from bondable.rest.routers.user_mcp_servers import get_user_server_internal_name, _decrypt_headers, _decrypt_oauth_config
+
+    result = {"servers": [], "tools": []}
+
+    db_session = None
+    try:
+        config = Config.config()
+        provider = config.get_provider()
+        if provider and hasattr(provider, 'metadata'):
+            db_session = provider.metadata.get_db_session()
+    except Exception:
+        return result
+
+    if not db_session:
+        return result
+
+    try:
+        user_servers = db_session.query(UserMcpServer).filter(
+            UserMcpServer.owner_user_id == current_user.user_id,
+            UserMcpServer.is_active == True  # noqa: E712
+        ).all()
+    except Exception as e:
+        LOGGER.warning(f"[MCP Tools] Error querying user servers: {e}")
+        return result
+
+    for user_server in user_servers:
+        internal_name = get_user_server_internal_name(current_user.user_id, user_server.server_name)
+        display_name = user_server.display_name
+        description = user_server.description
+        auth_type = user_server.auth_type
+
+        # Determine connection status
+        if auth_type == 'oauth2':
+            connection_name = f"user_{user_server.id}"
+            connection_status = _get_connection_status_for_server(
+                connection_name, {"auth_type": "oauth2"}, current_user.user_id, token_cache
+            )
+        else:
+            # 'none' and 'header' auth don't require OAuth connection
+            connection_status = ConnectionStatusInfo(
+                connected=True, valid=True, requires_authorization=False
+            )
+
+        server_tools: List[MCPToolResponse] = []
+
+        try:
+            # Build auth headers
+            headers = {'User-Agent': 'Bond-AI-MCP-Client/1.0'}
+
+            if auth_type == 'header' and user_server.headers_encrypted:
+                decrypted = _decrypt_headers(user_server.headers_encrypted)
+                if decrypted:
+                    headers.update(decrypted)
+            elif auth_type == 'oauth2':
+                # Use the connection-name-based OAuth flow
+                connection_name = f"user_{user_server.id}"
+                try:
+                    oauth_headers = get_mcp_auth_headers(
+                        connection_name, {"auth_type": "oauth2"}, current_user
+                    )
+                    headers.update(oauth_headers)
+                except (AuthorizationRequiredError, TokenExpiredError):
+                    pass  # Will show as not connected
+
+            server_url = user_server.url
+            transport_type = user_server.transport
+
+            if server_url and connection_status.connected and connection_status.valid:
+                if transport_type == 'sse':
+                    transport = SSETransport(server_url, headers=headers)
+                else:
+                    transport = StreamableHttpTransport(server_url, headers=headers)
+
+                try:
+                    import asyncio
+                    async with Client(transport) as client:
+                        tools = await asyncio.wait_for(client.list_tools(), timeout=15)
+                        server_tools = [
+                            MCPToolResponse(
+                                name=getattr(tool, "name", ""),
+                                description=getattr(tool, "description", ""),
+                                input_schema=getattr(tool, "inputSchema", {})
+                            )
+                            for tool in tools
+                        ]
+                        result["tools"].extend(server_tools)
+                except asyncio.TimeoutError:
+                    LOGGER.warning(f"[MCP Tools] Timeout listing tools from user server '{internal_name}'")
+                except Exception as e:
+                    LOGGER.warning(f"[MCP Tools] Error listing tools from user server '{internal_name}': {e}")
+
+        except AuthorizationRequiredError:
+            connection_status = ConnectionStatusInfo(
+                connected=False, valid=False, requires_authorization=True
+            )
+        except TokenExpiredError:
+            connection_status = ConnectionStatusInfo(
+                connected=True, valid=False, requires_authorization=True
+            )
+        except Exception as e:
+            LOGGER.warning(f"[MCP Tools] Error processing user server '{internal_name}': {e}")
+
+        result["servers"].append(MCPServerWithTools(
+            server_name=internal_name,
+            display_name=display_name,
+            description=description,
+            icon_url=None,
+            auth_type=auth_type,
+            connection_status=connection_status,
+            tools=server_tools,
+            tool_count=len(server_tools),
+            is_user_defined=True,
+            user_server_id=user_server.id
+        ))
+
+    if result["servers"]:
+        LOGGER.info(f"[MCP Tools] Discovered {len(result['servers'])} user-defined servers with {len(result['tools'])} tools")
+
+    return result
 
 
 def _get_connection_status_for_server(
