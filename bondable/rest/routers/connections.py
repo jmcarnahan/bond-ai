@@ -55,6 +55,8 @@ class ConnectionStatusResponse(BaseModel):
     expires_at: Optional[str] = None
     requires_authorization: bool = False
     has_refresh_token: bool = False
+    is_user_defined: bool = False
+    user_server_id: Optional[str] = None
 
 
 class ConnectionsListResponse(BaseModel):
@@ -88,12 +90,12 @@ def _get_db_session():
 # Connection Config Helpers
 # =============================================================================
 
-def _get_connection_configs() -> List[Dict[str, Any]]:
+def _get_connection_configs(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """
-    Get all OAuth2 connection configurations from BOND_MCP_CONFIG environment variable.
+    Get all OAuth2 connection configurations.
 
-    Connection configs are now stored exclusively in the BOND_MCP_CONFIG environment
-    variable (JSON format). The ConnectionConfig database table has been removed.
+    Combines global configs from BOND_MCP_CONFIG with user-defined OAuth servers
+    from the database when user_id is provided.
     """
     configs = []
 
@@ -130,7 +132,8 @@ def _get_connection_configs() -> List[Dict[str, Any]]:
                     "oauth_scopes": oauth_config.get('scopes'),
                     "oauth_redirect_uri": oauth_config.get('redirect_uri'),
                     "icon_url": server_config.get('icon_url'),
-                    "extra_config": extra_config
+                    "extra_config": extra_config,
+                    "is_user_defined": False
                 })
 
         LOGGER.debug(f"Loaded {len(configs)} OAuth2 connection configs from BOND_MCP_CONFIG")
@@ -138,12 +141,75 @@ def _get_connection_configs() -> List[Dict[str, Any]]:
     except Exception as e:
         LOGGER.error(f"Error loading connection configs: {e}")
 
+    # Load user-defined OAuth servers from database
+    if user_id:
+        try:
+            user_oauth_configs = _get_user_oauth_connection_configs(user_id)
+            configs.extend(user_oauth_configs)
+            if user_oauth_configs:
+                LOGGER.debug(f"Loaded {len(user_oauth_configs)} user-defined OAuth2 connections for user")
+        except Exception as e:
+            LOGGER.error(f"Error loading user OAuth connection configs: {e}")
+
     return configs
 
 
-def _get_connection_config(connection_name: str) -> Optional[Dict[str, Any]]:
+def _get_user_oauth_connection_configs(user_id: str) -> List[Dict[str, Any]]:
+    """
+    Get OAuth2 connection configurations from user-defined MCP servers.
+    Returns configs in the same format as global configs.
+    """
+    import json
+    from bondable.bond.providers.metadata import UserMcpServer
+    from bondable.bond.auth.token_encryption import decrypt_token
+
+    session = _get_db_session()
+    if not session:
+        return []
+
+    try:
+        user_servers = session.query(UserMcpServer).filter(
+            UserMcpServer.owner_user_id == user_id,
+            UserMcpServer.auth_type == 'oauth2',
+            UserMcpServer.is_active == True,  # noqa: E712
+            UserMcpServer.oauth_config_encrypted.isnot(None)
+        ).all()
+
+        configs = []
+        for server in user_servers:
+            try:
+                oauth_data = json.loads(decrypt_token(server.oauth_config_encrypted))
+                internal_name = f"user_{server.id}"
+
+                configs.append({
+                    "name": internal_name,
+                    "display_name": server.display_name,
+                    "description": server.description or f"Connect to {server.display_name}",
+                    "url": server.url,
+                    "transport": server.transport,
+                    "auth_type": "oauth2",
+                    "oauth_client_id": oauth_data.get("client_id"),
+                    "oauth_authorize_url": oauth_data.get("authorize_url"),
+                    "oauth_token_url": oauth_data.get("token_url"),
+                    "oauth_scopes": oauth_data.get("scopes"),
+                    "oauth_redirect_uri": oauth_data.get("redirect_uri"),
+                    "icon_url": None,
+                    "extra_config": {"client_secret": oauth_data.get("client_secret")},
+                    "is_user_defined": True,
+                    "user_server_id": server.id,
+                })
+            except Exception as e:
+                LOGGER.warning(f"Error decrypting OAuth config for user server {safe_id(server.id)}: {e}")
+
+        return configs
+    except Exception as e:
+        LOGGER.error(f"Error querying user OAuth servers: {e}")
+        return []
+
+
+def _get_connection_config(connection_name: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Get a specific connection configuration by name."""
-    configs = _get_connection_configs()
+    configs = _get_connection_configs(user_id=user_id)
     for config in configs:
         if config["name"] == connection_name:
             return config
@@ -253,8 +319,8 @@ async def list_connections(
     LOGGER.debug(f"[Connections] Listing connections for user {current_user.email}")
 
 
-    # Get all connection configs
-    configs = _get_connection_configs()
+    # Get all connection configs (including user-defined OAuth servers)
+    configs = _get_connection_configs(user_id=current_user.user_id)
 
     # Get user's connection tokens
     token_cache = get_mcp_token_cache()
@@ -286,7 +352,9 @@ async def list_connections(
             scopes=user_conn.get("scopes"),
             expires_at=user_conn.get("expires_at"),
             requires_authorization=not connected,
-            has_refresh_token=has_refresh_token
+            has_refresh_token=has_refresh_token,
+            is_user_defined=config.get("is_user_defined", False),
+            user_server_id=config.get("user_server_id")
         )
         connections.append(connection_status)
 
@@ -317,7 +385,7 @@ async def authorize_connection(
     Returns:
         Authorization URL to redirect user to
     """
-    config = _get_connection_config(connection_name)
+    config = _get_connection_config(connection_name, user_id=current_user.user_id)
     if config is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -411,8 +479,8 @@ async def oauth_callback(
     code_verifier = state_data["code_verifier"]
     redirect_uri = state_data["redirect_uri"]
 
-    # Get connection configuration
-    config = _get_connection_config(connection_name)
+    # Get connection configuration (include user-defined servers via user_id from state)
+    config = _get_connection_config(connection_name, user_id=user_id)
     if config is None:
         LOGGER.error("Connection config not found during OAuth callback")
         raise HTTPException(
@@ -526,7 +594,7 @@ async def get_connection_status(
     LOGGER.debug(f"[Connections] Checking status of {connection_name} for user {current_user.email}")
 
 
-    config = _get_connection_config(connection_name)
+    config = _get_connection_config(connection_name, user_id=current_user.user_id)
     if config is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

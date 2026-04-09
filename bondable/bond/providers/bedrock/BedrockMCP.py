@@ -161,22 +161,137 @@ def _build_common_tool_path(tool_name: str) -> str:
     return f"/b.{COMMON_SERVER_HASH}.{tool_name}"
 
 
-def _resolve_server_from_hash(server_hash: str, mcp_config: Dict[str, Any]) -> Optional[str]:
+def _resolve_server_from_hash(server_hash: str, mcp_config: Dict[str, Any], owner_user_id: Optional[str] = None) -> Optional[str]:
     """
     Resolve server hash to server name.
+
+    Checks global servers first, then user-defined servers if owner_user_id is provided.
 
     Args:
         server_hash: 6-character hash from tool path
         mcp_config: MCP configuration dict with mcpServers
+        owner_user_id: Agent owner's user_id for resolving user-defined servers
 
     Returns:
-        Server name if found, None otherwise
+        Server name if found (or "__user_server__{id}" for user servers), None otherwise
     """
     servers = mcp_config.get('mcpServers', {})
     for server_name in servers:
         if _hash_server_name(server_name) == server_hash:
             return server_name
+
+    # Check user-defined servers
+    if owner_user_id:
+        user_server = _resolve_user_server_by_hash(server_hash, owner_user_id)
+        if user_server:
+            return f"__user_server__{user_server.id}"
+
     return None
+
+
+def _resolve_user_server_by_hash(server_hash: str, owner_user_id: str):
+    """
+    Resolve a server hash to a UserMcpServer record.
+
+    Args:
+        server_hash: 6-character hash from tool path
+        owner_user_id: Owner user ID to scope the lookup
+
+    Returns:
+        UserMcpServer record if found, None otherwise
+    """
+    try:
+        from bondable.bond.providers.metadata import UserMcpServer
+        from bondable.rest.routers.user_mcp_servers import get_user_server_internal_name
+        from bondable.bond.config import Config
+
+        config = Config.config()
+        provider = config.get_provider()
+        if not provider or not hasattr(provider, 'metadata'):
+            return None
+
+        db_session = provider.metadata.get_db_session()
+        if not db_session:
+            return None
+
+        user_servers = db_session.query(UserMcpServer).filter(
+            UserMcpServer.owner_user_id == owner_user_id,
+            UserMcpServer.is_active == True  # noqa: E712
+        ).all()
+
+        for server in user_servers:
+            internal_name = get_user_server_internal_name(owner_user_id, server.server_name)
+            if _hash_server_name(internal_name) == server_hash:
+                return server
+
+    except Exception as e:
+        LOGGER.warning("[MCP] Error resolving user server from hash: %s", e)
+
+    return None
+
+
+def _get_user_server_config(server_id: str) -> Optional[Tuple[str, Dict[str, Any]]]:
+    """
+    Load a user-defined MCP server config from the database and build a server_config dict.
+
+    Returns:
+        Tuple of (connection_name, server_config_dict) or None
+    """
+    try:
+        import json as _json
+        from bondable.bond.providers.metadata import UserMcpServer
+        from bondable.bond.auth.token_encryption import decrypt_token
+        from bondable.bond.config import Config
+
+        config = Config.config()
+        provider = config.get_provider()
+        if not provider or not hasattr(provider, 'metadata'):
+            return None
+
+        db_session = provider.metadata.get_db_session()
+        if not db_session:
+            return None
+
+        server = db_session.query(UserMcpServer).filter(
+            UserMcpServer.id == server_id,
+            UserMcpServer.is_active == True  # noqa: E712
+        ).first()
+        if not server:
+            return None
+
+        connection_name = f"user_{server.id}"
+        server_config = {
+            "url": server.url,
+            "transport": server.transport,
+            "auth_type": server.auth_type,
+        }
+
+        # Decrypt headers for 'header' auth
+        if server.auth_type == 'header' and server.headers_encrypted:
+            try:
+                server_config["headers"] = _json.loads(decrypt_token(server.headers_encrypted))
+            except Exception as e:
+                LOGGER.warning("[MCP] Failed to decrypt headers for user server %s: %s", server_id, e)
+
+        # Decrypt OAuth config for 'oauth2' auth
+        if server.auth_type == 'oauth2' and server.oauth_config_encrypted:
+            try:
+                oauth_data = _json.loads(decrypt_token(server.oauth_config_encrypted))
+                server_config["oauth_config"] = oauth_data
+            except Exception as e:
+                LOGGER.warning("[MCP] Failed to decrypt oauth_config for user server %s: %s", server_id, e)
+
+        # Merge extra_config fields (cloud_id, site_url, etc.)
+        if server.extra_config:
+            for key, value in server.extra_config.items():
+                if key not in server_config:
+                    server_config[key] = value
+
+        return connection_name, server_config
+
+    except Exception as e:
+        LOGGER.warning("[MCP] Error loading user server config: %s", e)
+        return None
 
 
 # =============================================================================
@@ -1196,11 +1311,20 @@ async def execute_mcp_tool(
         this will return an error with authorization_required flag.
     """
     servers = mcp_config.get('mcpServers', {})
-    if not servers:
-        return {"success": False, "error": "No MCP servers configured"}
 
-    # If target_server is specified, only check that server (direct routing)
-    if target_server:
+    # Handle user-defined server (sentinel prefix from _resolve_server_from_hash)
+    if target_server and target_server.startswith("__user_server__"):
+        server_id = target_server[len("__user_server__"):]
+        user_config = _get_user_server_config(server_id)
+        if user_config is None:
+            return {"success": False, "error": f"User-defined server '{server_id}' not found or inactive"}
+        connection_name, user_server_config = user_config
+        # Execute against this user-defined server using a synthetic config
+        servers_to_check = {connection_name: user_server_config}
+        LOGGER.debug("[MCP Execute] Direct routing to user server '%s' for tool '%s'", safe_id(server_id), safe_id(tool_name))
+    elif target_server:
+        if not servers:
+            return {"success": False, "error": "No MCP servers configured"}
         if target_server in servers:
             servers_to_check = {target_server: servers[target_server]}
             LOGGER.debug("[MCP Execute] Direct routing to server '%s' for tool '%s'", safe_id(target_server), safe_id(tool_name))
@@ -1208,6 +1332,8 @@ async def execute_mcp_tool(
             LOGGER.error("[MCP Execute] Target server '%s' not found in config", safe_id(target_server))
             return {"success": False, "error": f"Target server '{target_server}' not found in MCP configuration"}
     else:
+        if not servers:
+            return {"success": False, "error": "No MCP servers configured"}
         servers_to_check = servers
         LOGGER.debug("[MCP Execute] Searching %d servers for tool '%s'", len(servers), safe_id(tool_name))
 
