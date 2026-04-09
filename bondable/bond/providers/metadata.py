@@ -352,9 +352,14 @@ class Metadata(ABC):
             self._apply_pre_alembic_fixups(inspector)
 
         if has_app_tables and not has_alembic_version:
-            # Existing database without Alembic — stamp as current
-            LOGGER.info("Existing database detected without alembic_version. Stamping as head.")
-            command.stamp(alembic_cfg, "head")
+            # Legacy: pre-Alembic database. Determine the correct revision
+            # based on which tables/columns already exist, then upgrade
+            # to run any remaining migrations.
+            stamp_rev = self._detect_schema_revision(existing_tables, inspector)
+            LOGGER.info(f"Existing database without alembic_version. "
+                        f"Stamping at {stamp_rev} and upgrading to head.")
+            command.stamp(alembic_cfg, stamp_rev)
+            command.upgrade(alembic_cfg, "head")
         else:
             # Fresh database or already Alembic-managed — run upgrade
             LOGGER.info("Running Alembic migrations...")
@@ -406,6 +411,29 @@ class Metadata(ABC):
                     ))
                     conn.commit()
                 LOGGER.info("Pre-Alembic fixup: Added last_agent_id column to threads table")
+
+    def _detect_schema_revision(self, existing_tables, inspector):
+        """Determine which Alembic revision matches the current schema state.
+
+        Checks for the presence of tables and columns added by known
+        migrations to find the most recent revision already reflected in
+        the database. Returns a revision identifier suitable for stamping.
+
+        NOTE: This method must be updated if new migrations are added
+        that create tables or columns used as detection markers.
+        """
+        has_user_mcp_servers = 'user_mcp_servers' in existing_tables
+        if has_user_mcp_servers:
+            # Check for extra_config column (migration b7e2d4f1a093)
+            mcp_cols = {col['name'] for col in inspector.get_columns('user_mcp_servers')}
+            if 'extra_config' in mcp_cols:
+                return "head"
+            # Has table but not extra_config → at a3f1c8d92b4e
+            return "a3f1c8d92b4e"
+        # No user_mcp_servers table → at initial schema
+        from alembic.script import ScriptDirectory
+        script = ScriptDirectory.from_config(self._get_alembic_cfg())
+        return script.get_base()
 
     def create_all(self):
         """Create all tables directly from SQLAlchemy models.

@@ -385,6 +385,86 @@ class TestMetadataInit:
             rev = _get_current_rev(metadata.engine)
             assert rev is not None
 
+            # Verify new tables from subsequent migrations were created
+            tables = insp.get_table_names()
+            assert 'user_mcp_servers' in tables, \
+                "user_mcp_servers table should be created by post-initial-schema migration"
+
+            metadata.close()
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def test_init_existing_db_with_user_mcp_servers(self):
+        """Metadata.__init__() should detect user_mcp_servers without extra_config and upgrade."""
+        fd, path = tempfile.mkstemp(suffix='.db')
+        os.close(fd)
+        os.unlink(path)
+        db_url = f"sqlite:///{path}"
+
+        try:
+            # Create a schema that has the initial tables + user_mcp_servers
+            # but WITHOUT the extra_config column (simulates being at a3f1c8d92b4e)
+            engine = create_engine(db_url)
+            with engine.connect() as conn:
+                # Core tables (minimal for detection)
+                conn.execute(sa.text(
+                    "CREATE TABLE users (id VARCHAR PRIMARY KEY, email VARCHAR NOT NULL, "
+                    "sign_in_method VARCHAR NOT NULL, name VARCHAR, is_admin BOOLEAN NOT NULL DEFAULT 0, "
+                    "created_at DATETIME, updated_at DATETIME)"
+                ))
+                conn.execute(sa.text(
+                    "CREATE TABLE groups (id VARCHAR PRIMARY KEY, name VARCHAR NOT NULL, "
+                    "description VARCHAR, owner_user_id VARCHAR REFERENCES users(id), "
+                    "created_at DATETIME, updated_at DATETIME)"
+                ))
+                conn.execute(sa.text(
+                    "CREATE TABLE agents (agent_id VARCHAR PRIMARY KEY, name VARCHAR NOT NULL, "
+                    "introduction VARCHAR, reminder VARCHAR, slug VARCHAR, "
+                    "default_group_id VARCHAR REFERENCES groups(id), "
+                    "owner_user_id VARCHAR REFERENCES users(id) NOT NULL, "
+                    "is_default BOOLEAN NOT NULL DEFAULT 0, created_at DATETIME)"
+                ))
+                conn.execute(sa.text(
+                    "CREATE TABLE threads (thread_id VARCHAR NOT NULL, "
+                    "user_id VARCHAR NOT NULL REFERENCES users(id), "
+                    "name VARCHAR, session_id VARCHAR, last_agent_id VARCHAR, "
+                    "created_at DATETIME, updated_at DATETIME, "
+                    "PRIMARY KEY (thread_id, user_id))"
+                ))
+                # user_mcp_servers WITHOUT extra_config column
+                conn.execute(sa.text(
+                    "CREATE TABLE user_mcp_servers (id VARCHAR PRIMARY KEY, "
+                    "owner_user_id VARCHAR NOT NULL REFERENCES users(id), "
+                    "server_name VARCHAR NOT NULL, display_name VARCHAR NOT NULL, "
+                    "description VARCHAR, url VARCHAR NOT NULL, "
+                    "transport VARCHAR NOT NULL DEFAULT 'streamable-http', "
+                    "auth_type VARCHAR NOT NULL DEFAULT 'none', "
+                    "headers_encrypted VARCHAR, oauth_config_encrypted VARCHAR, "
+                    "is_active BOOLEAN NOT NULL DEFAULT 1, "
+                    "created_at DATETIME, updated_at DATETIME)"
+                ))
+                conn.commit()
+            engine.dispose()
+
+            # Init Metadata — should detect at a3f1c8d92b4e and upgrade to add extra_config
+            from bondable.bond.providers.bedrock.BedrockMetadata import BedrockMetadata
+            metadata = BedrockMetadata(db_url)
+
+            # Verify extra_config column was added by the upgrade
+            insp = inspect(metadata.engine)
+            mcp_cols = {col['name'] for col in insp.get_columns('user_mcp_servers')}
+            assert 'extra_config' in mcp_cols, \
+                "extra_config column should be added by migration b7e2d4f1a093"
+
+            # Verify stamped at head
+            rev = _get_current_rev(metadata.engine)
+            assert rev is not None
+
+            cfg = _get_alembic_cfg(db_url)
+            script = ScriptDirectory.from_config(cfg)
+            assert rev == script.get_current_head()
+
             metadata.close()
         finally:
             if os.path.exists(path):
