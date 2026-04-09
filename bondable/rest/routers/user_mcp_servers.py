@@ -56,11 +56,23 @@ class OAuthConfigInput(BaseModel):
     @field_validator('authorize_url', 'token_url')
     @classmethod
     def validate_https_urls(cls, v, info):
+        import ipaddress as _ipaddress
         parsed = urlparse(v)
         if parsed.scheme not in ('http', 'https'):
             raise ValueError(f"{info.field_name} must use http or https scheme")
-        if not parsed.hostname:
+        hostname = (parsed.hostname or '').lower()
+        if not hostname:
             raise ValueError(f"{info.field_name} must have a valid hostname")
+        # SSRF protection: block cloud metadata endpoints in OAuth URLs
+        if hostname in _MCP_SSRF_BLOCKED:
+            raise ValueError(f"{info.field_name} hostname is blocked for security reasons")
+        try:
+            addr = _ipaddress.ip_address(hostname)
+            if addr.is_link_local:
+                raise ValueError(f"{info.field_name} hostname is blocked for security reasons")
+        except ValueError as ve:
+            if "blocked" in str(ve):
+                raise
         return v
 
 

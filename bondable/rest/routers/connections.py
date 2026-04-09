@@ -500,6 +500,18 @@ async def oauth_callback(
             detail="No token URL configured for this connection"
         )
 
+    # Defense-in-depth SSRF check on token_url before making server-side request
+    if config.get("is_user_defined"):
+        from bondable.rest.routers.user_mcp_servers import _validate_url_ssrf
+        try:
+            _validate_url_ssrf(token_url)
+        except HTTPException:
+            LOGGER.warning("SSRF check failed for user-defined token_url")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Token URL is blocked for security reasons"
+            )
+
     # Exchange code for token
     token_data = {
         "grant_type": "authorization_code",

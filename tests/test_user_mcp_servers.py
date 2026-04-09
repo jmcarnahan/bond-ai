@@ -211,6 +211,44 @@ class TestValidation:
         assert response.status_code == 400
         assert "blocked" in response.json()["detail"].lower()
 
+    def test_ssrf_blocked_oauth_token_url(self, test_client, auth_headers):
+        """OAuth token_url must also be SSRF-checked (prevents server-side request to metadata)."""
+        data = {
+            "server_name": "ssrf_oauth_test",
+            "display_name": "X",
+            "url": "http://localhost:5555/mcp",
+            "auth_type": "oauth2",
+            "oauth_config": {
+                "client_id": "x",
+                "client_secret": "x",
+                "authorize_url": "https://auth.example.com/authorize",
+                "token_url": "http://169.254.169.254/latest/meta-data/",
+                "redirect_uri": "http://localhost:8000/cb"
+            }
+        }
+        response = test_client.post("/user-mcp-servers", json=data, headers=auth_headers)
+        assert response.status_code == 422  # Pydantic validation error
+        assert "blocked" in response.text.lower()
+
+    def test_ssrf_blocked_oauth_authorize_url(self, test_client, auth_headers):
+        """OAuth authorize_url must also be SSRF-checked."""
+        data = {
+            "server_name": "ssrf_authz_test",
+            "display_name": "X",
+            "url": "http://localhost:5555/mcp",
+            "auth_type": "oauth2",
+            "oauth_config": {
+                "client_id": "x",
+                "client_secret": "x",
+                "authorize_url": "http://169.254.169.254/authorize",
+                "token_url": "https://auth.example.com/token",
+                "redirect_uri": "http://localhost:8000/cb"
+            }
+        }
+        response = test_client.post("/user-mcp-servers", json=data, headers=auth_headers)
+        assert response.status_code == 422
+        assert "blocked" in response.text.lower()
+
     def test_header_auth_requires_headers(self, test_client, auth_headers):
         data = {"server_name": "header_test", "display_name": "X", "url": "http://localhost:5555/mcp", "auth_type": "header"}
         response = test_client.post("/user-mcp-servers", json=data, headers=auth_headers)
