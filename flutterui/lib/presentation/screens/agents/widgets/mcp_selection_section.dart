@@ -382,6 +382,23 @@ class _McpSelectionSectionState extends ConsumerState<McpSelectionSection> {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
+                            if (server.isUserDefined) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.tertiary.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  'Personal',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: theme.colorScheme.tertiary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
                             if (selectedCount > 0) ...[
                               const SizedBox(width: AppSpacing.sm),
                               Container(

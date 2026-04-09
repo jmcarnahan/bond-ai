@@ -285,6 +285,8 @@ class McpServerWithTools {
   final McpConnectionStatusInfo connectionStatus;
   final List<McpToolModel> tools;
   final int toolCount;
+  final bool isUserDefined;
+  final String? userServerId;
 
   const McpServerWithTools({
     required this.serverName,
@@ -295,6 +297,8 @@ class McpServerWithTools {
     required this.connectionStatus,
     required this.tools,
     required this.toolCount,
+    this.isUserDefined = false,
+    this.userServerId,
   });
 
   factory McpServerWithTools.fromJson(Map<String, dynamic> json) {
@@ -311,6 +315,8 @@ class McpServerWithTools {
           .map((item) => McpToolModel.fromJson(item as Map<String, dynamic>))
           .toList(),
       toolCount: json['tool_count'] as int,
+      isUserDefined: json['is_user_defined'] as bool? ?? false,
+      userServerId: json['user_server_id'] as String?,
     );
   }
 
@@ -324,6 +330,8 @@ class McpServerWithTools {
       'connection_status': connectionStatus.toJson(),
       'tools': tools.map((t) => t.toJson()).toList(),
       'tool_count': toolCount,
+      'is_user_defined': isUserDefined,
+      'user_server_id': userServerId,
     };
   }
 
