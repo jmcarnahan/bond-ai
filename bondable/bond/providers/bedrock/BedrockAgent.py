@@ -2781,6 +2781,12 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                 owner_user_id=agent_record.owner_user_id,
                 bedrock_options=bedrock_options
             )
+        except ValueError as e:
+            if "not found" in str(e):
+                LOGGER.warning(f"Agent {agent_id} not found (may have been deleted): {e}")
+            else:
+                LOGGER.error(f"Error getting agent {agent_id}: {e}")
+            return None
         except Exception as e:
             LOGGER.error(f"Error getting agent {agent_id}: {e}")
             return None
