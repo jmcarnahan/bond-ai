@@ -2885,7 +2885,7 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                         owner_user_id=owner_user_id
                     )
                     session.add(agent_record)
-                    session.flush()  # Flush to ensure the record exists before creating child records
+                    session.commit()  # Commit to persist before long-running AWS operations
                     LOGGER.info(f"Created AgentRecord for {agent_id}")
 
                 bedrock_agent_id, bedrock_agent_alias_id = create_bedrock_agent(
@@ -3035,6 +3035,16 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
             return bedrock_agent
         except Exception as e:
             session.rollback()
+            # Clean up the committed AgentRecord if this was a new agent and AWS operations failed
+            if not agent_def.id:  # Only for new agents (not updates)
+                try:
+                    orphaned = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
+                    if orphaned:
+                        session.delete(orphaned)
+                        session.commit()
+                        LOGGER.info(f"Cleaned up orphaned AgentRecord {agent_id} after failed agent creation")
+                except Exception as cleanup_error:
+                    LOGGER.warning(f"Failed to clean up orphaned AgentRecord {agent_id}: {cleanup_error}")
             LOGGER.error(f"Error storing agent record: {e}")
             raise
         finally:
