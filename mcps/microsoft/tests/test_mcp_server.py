@@ -19,6 +19,12 @@ from .conftest import (
     SAMPLE_TEAMS_RESPONSE,
     SAMPLE_CHANNELS_RESPONSE,
     SAMPLE_CHANNEL_MESSAGE,
+    SAMPLE_CHANNEL_MESSAGE_USER,
+    SAMPLE_CHANNEL_MESSAGE_BOT,
+    SAMPLE_CHANNEL_MESSAGES_RESPONSE,
+    SAMPLE_CHATS_RESPONSE,
+    SAMPLE_CHAT_MESSAGES_RESPONSE,
+    SAMPLE_CHAT_MESSAGE_SENT,
     SAMPLE_DRIVE_CHILDREN_RESPONSE,
     SAMPLE_DRIVE_ITEM_FILE,
     SAMPLE_DRIVE_ITEM_BINARY,
@@ -410,6 +416,255 @@ class TestMCPTeamsTools:
         text = _get_text(result)
         assert "not available" in text.lower()
 
+    @respx.mock
+    async def test_read_channel_messages(self, mcp_server):
+        respx.get(f"{GRAPH_BASE_URL}/teams/t1/channels/c1/messages").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CHANNEL_MESSAGES_RESPONSE)
+        )
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool(
+                    "read_channel_messages",
+                    {"team_id": "t1", "channel_id": "c1"},
+                )
+
+        text = _get_text(result)
+        assert "Alice Smith" in text
+        assert "Hello team!" in text
+        assert "Power Automate" in text
+        assert "Build completed successfully" in text
+
+    @respx.mock
+    async def test_read_channel_messages_empty(self, mcp_server):
+        respx.get(f"{GRAPH_BASE_URL}/teams/t1/channels/c1/messages").mock(
+            return_value=httpx.Response(200, json={"value": []})
+        )
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool(
+                    "read_channel_messages",
+                    {"team_id": "t1", "channel_id": "c1"},
+                )
+
+        text = _get_text(result)
+        assert "No messages" in text
+
+    @respx.mock
+    async def test_read_channel_messages_403(self, mcp_server):
+        respx.get(f"{GRAPH_BASE_URL}/teams/t1/channels/c1/messages").mock(
+            return_value=httpx.Response(403, json=GRAPH_ERROR_403)
+        )
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool(
+                    "read_channel_messages",
+                    {"team_id": "t1", "channel_id": "c1"},
+                )
+
+        text = _get_text(result)
+        assert "not available" in text.lower()
+
+    @respx.mock
+    async def test_list_chats(self, mcp_server):
+        respx.get(f"{GRAPH_BASE_URL}/me/chats").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CHATS_RESPONSE)
+        )
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool("list_chats", {})
+
+        text = _get_text(result)
+        assert "3 chat(s)" in text
+        assert "oneOnOne" in text
+        assert "Project Standup" in text
+        assert "Sprint Review" in text
+
+    @respx.mock
+    async def test_list_chats_empty(self, mcp_server):
+        respx.get(f"{GRAPH_BASE_URL}/me/chats").mock(
+            return_value=httpx.Response(200, json={"value": []})
+        )
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool("list_chats", {})
+
+        text = _get_text(result)
+        assert "No chats found" in text
+
+    async def test_list_chats_invalid_type(self, mcp_server):
+        # Should reject without hitting Graph API
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool("list_chats", {"chat_type": "bogus"})
+
+        text = _get_text(result)
+        assert "Invalid chat_type" in text
+
+    @respx.mock
+    async def test_list_chats_403(self, mcp_server):
+        respx.get(f"{GRAPH_BASE_URL}/me/chats").mock(
+            return_value=httpx.Response(403, json=GRAPH_ERROR_403)
+        )
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool("list_chats", {})
+
+        text = _get_text(result)
+        assert "not available" in text.lower()
+
+    @respx.mock
+    async def test_read_chat_messages(self, mcp_server):
+        respx.get(f"{GRAPH_BASE_URL}/me/chats/chat-1/messages").mock(
+            return_value=httpx.Response(200, json=SAMPLE_CHAT_MESSAGES_RESPONSE)
+        )
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool(
+                    "read_chat_messages", {"chat_id": "chat-1"},
+                )
+
+        text = _get_text(result)
+        assert "Alice Smith" in text
+        assert "Hello team!" in text
+
+    @respx.mock
+    async def test_read_chat_messages_empty(self, mcp_server):
+        respx.get(f"{GRAPH_BASE_URL}/me/chats/chat-1/messages").mock(
+            return_value=httpx.Response(200, json={"value": []})
+        )
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool(
+                    "read_chat_messages", {"chat_id": "chat-1"},
+                )
+
+        text = _get_text(result)
+        assert "No messages" in text
+
+    @respx.mock
+    async def test_read_chat_messages_403(self, mcp_server):
+        respx.get(f"{GRAPH_BASE_URL}/me/chats/c1/messages").mock(
+            return_value=httpx.Response(403, json=GRAPH_ERROR_403)
+        )
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool(
+                    "read_chat_messages", {"chat_id": "c1"},
+                )
+
+        text = _get_text(result)
+        assert "not available" in text.lower()
+
+    @respx.mock
+    async def test_send_chat_message(self, mcp_server):
+        respx.post(f"{GRAPH_BASE_URL}/me/chats/chat-1/messages").mock(
+            return_value=httpx.Response(201, json=SAMPLE_CHAT_MESSAGE_SENT)
+        )
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool(
+                    "send_chat_message",
+                    {"chat_id": "chat-1", "message": "Hello!"},
+                )
+
+        text = _get_text(result)
+        assert "sent" in text.lower()
+
+    @respx.mock
+    async def test_send_chat_message_403(self, mcp_server):
+        respx.post(f"{GRAPH_BASE_URL}/me/chats/c1/messages").mock(
+            return_value=httpx.Response(403, json=GRAPH_ERROR_403)
+        )
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool(
+                    "send_chat_message",
+                    {"chat_id": "c1", "message": "Hello!"},
+                )
+
+        text = _get_text(result)
+        assert "not available" in text.lower()
+
+    @respx.mock
+    async def test_get_teams_activity(self, mcp_server):
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        recent_ts = now.isoformat()
+
+        respx.get(f"{GRAPH_BASE_URL}/me/joinedTeams").mock(
+            return_value=httpx.Response(200, json={"value": [
+                {"id": "t1", "displayName": "TestTeam"}
+            ]})
+        )
+        respx.get(f"{GRAPH_BASE_URL}/me/chats").mock(
+            return_value=httpx.Response(200, json={"value": [
+                {
+                    "id": "chat-1", "chatType": "oneOnOne", "topic": None,
+                    "members": [{"displayName": "Alice"}],
+                    "lastMessagePreview": {
+                        "createdDateTime": recent_ts,
+                        "body": {"content": "Hey!"},
+                        "from": {"user": {"displayName": "Alice"}},
+                    },
+                }
+            ]})
+        )
+        respx.get(f"{GRAPH_BASE_URL}/teams/t1/channels").mock(
+            return_value=httpx.Response(200, json={"value": [
+                {"id": "c1", "displayName": "General"}
+            ]})
+        )
+        respx.get(f"{GRAPH_BASE_URL}/teams/t1/channels/c1/messages").mock(
+            return_value=httpx.Response(200, json={"value": [
+                {
+                    "id": "m1", "createdDateTime": recent_ts,
+                    "from": {"user": {"displayName": "Bob"}, "application": None},
+                    "body": {"contentType": "text", "content": "Update"},
+                    "attachments": [],
+                }
+            ]})
+        )
+
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool("get_teams_activity", {"hours": 24})
+
+        text = _get_text(result)
+        assert "Activity in the last 24 hours" in text
+        assert "source,source_name,sender,timestamp,preview" in text
+        assert "channel" in text
+        assert "chat" in text
+
+    @respx.mock
+    async def test_get_teams_activity_empty(self, mcp_server):
+        respx.get(f"{GRAPH_BASE_URL}/me/joinedTeams").mock(
+            return_value=httpx.Response(200, json={"value": []})
+        )
+        respx.get(f"{GRAPH_BASE_URL}/me/chats").mock(
+            return_value=httpx.Response(200, json={"value": []})
+        )
+
+        with _mock_token():
+            from fastmcp import Client
+            async with Client(mcp_server) as client:
+                result = await client.call_tool("get_teams_activity", {"hours": 24})
+
+        text = _get_text(result)
+        assert "No Teams activity" in text
+
 
 class TestMCPFileTools:
     """Test file/OneDrive/SharePoint MCP tools via in-process FastMCP client."""
@@ -658,6 +913,11 @@ class TestMCPAuth:
             ("list_teams", {}),
             ("list_team_channels", {"team_id": "t1"}),
             ("send_teams_message", {"team_id": "t1", "channel_id": "c1", "message": "Hi"}),
+            ("read_channel_messages", {"team_id": "t1", "channel_id": "c1"}),
+            ("list_chats", {}),
+            ("read_chat_messages", {"chat_id": "c1"}),
+            ("send_chat_message", {"chat_id": "c1", "message": "Hi"}),
+            ("get_teams_activity", {}),
             ("list_onedrive_files", {}),
             ("get_file_info", {"item_id": "x"}),
             ("read_file_content", {"item_id": "x"}),

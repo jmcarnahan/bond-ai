@@ -20,7 +20,7 @@ from ms_graph.graph_client import AsyncGraphClient, GraphError
 from ms_graph import mail as mail_ops
 from ms_graph import teams as teams_ops
 from ms_graph import files as files_ops
-from ms_graph.teams import TeamsNotAvailableError
+from ms_graph.teams import TeamsNotAvailableError, extract_message_text, extract_message_sender
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -257,6 +257,185 @@ async def send_teams_message(team_id: str, channel_id: str, message: str) -> str
         return "Microsoft Teams is not available for this account."
 
     return "Message sent to Teams channel."
+
+
+@mcp.tool()
+async def read_channel_messages(team_id: str, channel_id: str, top: int = 20) -> str:
+    """
+    Read recent messages from a Teams channel.
+
+    Args:
+        team_id: The team ID (from list_teams output).
+        channel_id: The channel ID (from list_team_channels output).
+        top: Maximum number of messages to return (default: 20).
+    """
+    token = get_graph_token()
+    try:
+        async with AsyncGraphClient(token) as client:
+            messages = await teams_ops.alist_channel_messages(
+                client, team_id, channel_id, top=top,
+            )
+    except TeamsNotAvailableError:
+        return "Microsoft Teams is not available for this account."
+
+    if not messages:
+        return "No messages found in this channel."
+
+    lines = [f"Found {len(messages)} message(s):\n"]
+    for i, msg in enumerate(messages, 1):
+        sender = extract_message_sender(msg)
+        content = extract_message_text(msg)
+        lines.append(
+            f"{i}. **{sender}** ({msg.get('createdDateTime', '?')})\n"
+            f"   {content or '(empty)'}\n"
+            f"   ID: `{msg.get('id', '?')}`"
+        )
+    return "\n\n".join(lines)
+
+
+@mcp.tool()
+async def list_chats(chat_type: str = "", top: int = 20) -> str:
+    """
+    List Teams chats (1:1, group, meeting) with last message preview.
+
+    Args:
+        chat_type: Filter by type: oneOnOne, group, or meeting. Empty for all.
+        top: Maximum number of chats to return (default: 20).
+    """
+    valid_types = {"", "oneOnOne", "group", "meeting"}
+    if chat_type not in valid_types:
+        return f"Invalid chat_type: {chat_type}. Must be one of: oneOnOne, group, meeting (or empty for all)."
+
+    token = get_graph_token()
+    try:
+        async with AsyncGraphClient(token) as client:
+            chats = await teams_ops.alist_chats(client, chat_type=chat_type, top=top)
+    except TeamsNotAvailableError:
+        return "Microsoft Teams is not available for this account."
+
+    if not chats:
+        return "No chats found."
+
+    lines = [f"Found {len(chats)} chat(s):\n"]
+    for i, chat in enumerate(chats, 1):
+        ct = chat.get("chatType", "?")
+        topic = chat.get("topic")
+        members = chat.get("members") or []
+        member_names = [m.get("displayName", "?") for m in members if m.get("displayName")]
+        members_str = ", ".join(member_names[:5])
+        if len(member_names) > 5:
+            members_str += f" (+{len(member_names) - 5} more)"
+
+        preview = chat.get("lastMessagePreview") or {}
+        preview_text = (preview.get("body") or {}).get("content", "")
+        preview_sender = ((preview.get("from") or {}).get("user") or {}).get("displayName", "")
+        preview_date = preview.get("createdDateTime", "")
+
+        label = topic or members_str or "(unnamed)"
+        lines.append(
+            f"{i}. **{label}** (type: {ct})\n"
+            f"   Members: {members_str or '(unknown)'}\n"
+            f"   Last: {preview_sender}: {preview_text[:100]}" + (f" ({preview_date})" if preview_date else "") + "\n"
+            f"   ID: `{chat.get('id', '?')}`"
+        )
+    return "\n\n".join(lines)
+
+
+@mcp.tool()
+async def read_chat_messages(chat_id: str, top: int = 20) -> str:
+    """
+    Read recent messages from a Teams chat (1:1, group, or meeting).
+
+    Args:
+        chat_id: The chat ID (from list_chats output).
+        top: Maximum number of messages to return (default: 20).
+    """
+    token = get_graph_token()
+    try:
+        async with AsyncGraphClient(token) as client:
+            messages = await teams_ops.alist_chat_messages(client, chat_id, top=top)
+    except TeamsNotAvailableError:
+        return "Microsoft Teams is not available for this account."
+
+    if not messages:
+        return "No messages found in this chat."
+
+    lines = [f"Found {len(messages)} message(s):\n"]
+    for i, msg in enumerate(messages, 1):
+        sender = extract_message_sender(msg)
+        content = extract_message_text(msg)
+        lines.append(
+            f"{i}. **{sender}** ({msg.get('createdDateTime', '?')})\n"
+            f"   {content or '(empty)'}\n"
+            f"   ID: `{msg.get('id', '?')}`"
+        )
+    return "\n\n".join(lines)
+
+
+@mcp.tool()
+async def send_chat_message(chat_id: str, message: str) -> str:
+    """
+    Send a message to a Teams chat (1:1, group, or meeting).
+
+    Args:
+        chat_id: The chat ID (from list_chats output).
+        message: Message content to send.
+    """
+    token = get_graph_token()
+    try:
+        async with AsyncGraphClient(token) as client:
+            await teams_ops.asend_chat_message(client, chat_id, message)
+    except TeamsNotAvailableError:
+        return "Microsoft Teams is not available for this account."
+
+    return "Message sent to Teams chat."
+
+
+@mcp.tool()
+async def get_teams_activity(hours: int = 24) -> str:
+    """
+    Get recent Teams activity across all channels and chats as a CSV digest.
+
+    Scans joined teams' channels and recent chats for messages within the
+    specified time window. Ideal for catching up on what you missed.
+
+    Args:
+        hours: Look back this many hours (default: 24).
+    """
+    import csv
+    import io
+
+    token = get_graph_token()
+    try:
+        async with AsyncGraphClient(token) as client:
+            activity = await teams_ops.aget_teams_activity(client, hours=hours)
+    except TeamsNotAvailableError:
+        return "Microsoft Teams is not available for this account."
+
+    if not activity:
+        return f"No Teams activity in the last {hours} hours."
+
+    # Count unique sources
+    sources = {row["source_name"] for row in activity}
+
+    output = io.StringIO()
+    output.write(
+        f"Activity in the last {hours} hours: "
+        f"{len(activity)} messages across {len(sources)} sources\n\n"
+    )
+
+    writer = csv.writer(output)
+    writer.writerow(["source", "source_name", "sender", "timestamp", "preview"])
+    for row in activity:
+        writer.writerow([
+            row["source"],
+            row["source_name"],
+            row["sender"],
+            row["timestamp"],
+            row["preview"],
+        ])
+
+    return output.getvalue()
 
 
 # ---------------------------------------------------------------------------

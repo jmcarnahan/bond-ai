@@ -255,3 +255,102 @@ SAMPLE_SEARCH_RESPONSE_EMPTY = {
         }
     ]
 }
+
+
+# ---------------------------------------------------------------------------
+# Teams channel message payloads
+# ---------------------------------------------------------------------------
+
+SAMPLE_CHANNEL_MESSAGE_USER = {
+    "id": "msg-user-001",
+    "messageType": "message",
+    "createdDateTime": "2025-12-15T12:00:00Z",
+    "from": {"user": {"displayName": "Alice Smith"}, "application": None},
+    "body": {"contentType": "text", "content": "Hello team!"},
+    "attachments": [],
+}
+
+SAMPLE_CHANNEL_MESSAGE_BOT = {
+    "id": "msg-bot-001",
+    "messageType": "message",
+    "createdDateTime": "2025-12-15T11:00:00Z",
+    "from": {"application": {"displayName": "Power Automate"}, "user": None},
+    "body": {"contentType": "html", "content": ""},
+    "attachments": [
+        {
+            "contentType": "application/vnd.microsoft.card.adaptive",
+            "content": '{"type":"AdaptiveCard","body":[{"type":"TextBlock","text":"Build completed successfully"},{"type":"TextBlock","text":"Pipeline: main-deploy"}]}',
+        }
+    ],
+}
+
+SAMPLE_CHANNEL_MESSAGES_RESPONSE = {
+    "value": [SAMPLE_CHANNEL_MESSAGE_USER, SAMPLE_CHANNEL_MESSAGE_BOT]
+}
+
+
+# ---------------------------------------------------------------------------
+# Chat payloads
+# ---------------------------------------------------------------------------
+
+SAMPLE_CHAT_ONEONONE = {
+    "id": "chat-1on1-001",
+    "chatType": "oneOnOne",
+    "topic": None,
+    "lastUpdatedDateTime": "2025-12-15T14:00:00Z",
+    "members": [
+        {"displayName": "Alice Smith"},
+        {"displayName": "Bob Jones"},
+    ],
+    "lastMessagePreview": {
+        "createdDateTime": "2025-12-15T14:00:00Z",
+        "body": {"content": "Sounds good!"},
+        "from": {"user": {"displayName": "Alice Smith"}},
+    },
+}
+
+SAMPLE_CHAT_GROUP = {
+    "id": "chat-group-001",
+    "chatType": "group",
+    "topic": "Project Standup",
+    "lastUpdatedDateTime": "2025-12-15T13:00:00Z",
+    "members": [
+        {"displayName": "Alice Smith"},
+        {"displayName": "Bob Jones"},
+        {"displayName": "Charlie Brown"},
+    ],
+    "lastMessagePreview": {
+        "createdDateTime": "2025-12-15T13:00:00Z",
+        "body": {"content": "Meeting at 3pm"},
+        "from": {"user": {"displayName": "Bob Jones"}},
+    },
+}
+
+SAMPLE_CHAT_MEETING = {
+    "id": "chat-meeting-001",
+    "chatType": "meeting",
+    "topic": "Sprint Review",
+    "lastUpdatedDateTime": "2025-12-15T10:00:00Z",
+    "members": [
+        {"displayName": "Alice Smith"},
+        {"displayName": "Bob Jones"},
+    ],
+    "lastMessagePreview": {
+        "createdDateTime": "2025-12-15T10:00:00Z",
+        "body": {"content": "Notes attached"},
+        "from": {"user": {"displayName": "Alice Smith"}},
+    },
+}
+
+SAMPLE_CHATS_RESPONSE = {
+    "value": [SAMPLE_CHAT_ONEONONE, SAMPLE_CHAT_GROUP, SAMPLE_CHAT_MEETING]
+}
+
+SAMPLE_CHAT_MESSAGES_RESPONSE = {
+    "value": [SAMPLE_CHANNEL_MESSAGE_USER]
+}
+
+SAMPLE_CHAT_MESSAGE_SENT = {
+    "id": "chat-msg-sent-001",
+    "body": {"content": "Hello!"},
+}
