@@ -97,3 +97,4 @@ deployment/eks-hello-world/
 
 # Concurrency investigation tests (temporary, not for CI)
 tests/investigation/
+tests/compression_efficacy/
