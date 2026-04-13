@@ -17,7 +17,14 @@ RUN pip install poetry==2.1.3
 COPY pyproject.toml poetry.lock ./
 
 # Install dependencies, then remove gcc (only needed for building C extensions)
+# POETRY_HTTP_TIMEOUT raised from default 15s to handle slow Docker Desktop buildx
+# networking under QEMU emulation (Docker Desktop 4.68+ on Apple Silicon)
+# Docker Desktop 4.68+ throttles concurrent connections under QEMU emulation;
+# sequential downloads (max-workers=1) prevent connection pool exhaustion
+ENV POETRY_HTTP_TIMEOUT=300
+ENV POETRY_REQUESTS_TIMEOUT=300
 RUN poetry config virtualenvs.create false && \
+    poetry config installer.max-workers 1 && \
     poetry install --only main --no-interaction --no-ansi --no-root && \
     apt-get purge -y gcc
 
