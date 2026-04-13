@@ -32,6 +32,8 @@ TEAMS_SCOPES = [
     "Team.ReadBasic.All",
     "Channel.ReadBasic.All",
     "ChannelMessage.Send",
+    "ChannelMessage.Read.All",
+    "Chat.ReadWrite",
 ]
 
 FILES_SCOPES = [
