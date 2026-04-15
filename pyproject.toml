@@ -10,7 +10,7 @@ homepage = "https://github.com/jmcarnahan/bond-ai"
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
-pytest = "^8.3.4"
+pytest = "^9.0.3"
 sqlalchemy = "^2.0.36"
 python-dotenv = "^1.0.1"
 pygments = ">=2.20.0"
