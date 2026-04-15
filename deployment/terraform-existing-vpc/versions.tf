@@ -25,5 +25,9 @@ terraform {
       source  = "hashicorp/external"
       version = "~> 2.3"
     }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.17"
+    }
   }
 }

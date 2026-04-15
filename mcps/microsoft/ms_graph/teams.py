@@ -11,9 +11,16 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
+from urllib.parse import quote
+
 from .graph_client import GraphClient, AsyncGraphClient, GraphError
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_id(value: str) -> str:
+    """URL-encode an ID to prevent path traversal in Graph API URLs."""
+    return quote(value, safe="")
 
 
 class TeamsNotAvailableError(Exception):
@@ -118,7 +125,7 @@ def list_joined_teams(client: GraphClient) -> List[Dict[str, Any]]:
 def list_channels(client: GraphClient, team_id: str) -> List[Dict[str, Any]]:
     """List channels in a team."""
     try:
-        data = client.get(f"/teams/{team_id}/channels")
+        data = client.get(f"/teams/{_safe_id(team_id)}/channels")
     except GraphError as e:
         _check_teams_access(e)
     return data.get("value", [])
@@ -133,7 +140,7 @@ def send_channel_message(
     """Send a message to a Teams channel."""
     try:
         result = client.post(
-            f"/teams/{team_id}/channels/{channel_id}/messages",
+            f"/teams/{_safe_id(team_id)}/channels/{_safe_id(channel_id)}/messages",
             json_data={"body": {"content": content}},
         )
     except GraphError as e:
@@ -150,7 +157,7 @@ def list_channel_messages(
     """List recent messages in a Teams channel."""
     try:
         data = client.get(
-            f"/teams/{team_id}/channels/{channel_id}/messages",
+            f"/teams/{_safe_id(team_id)}/channels/{_safe_id(channel_id)}/messages",
             params={"$top": top},
         )
     except GraphError as e:
@@ -170,7 +177,8 @@ def list_chats(
         "$orderby": "lastMessagePreview/createdDateTime desc",
     }
     if chat_type:
-        params["$filter"] = f"chatType eq '{chat_type}'"
+        escaped = chat_type.replace("'", "''")
+        params["$filter"] = f"chatType eq '{escaped}'"
     try:
         data = client.get("/me/chats", params=params)
     except GraphError as e:
@@ -186,7 +194,7 @@ def list_chat_messages(
     """List recent messages in a chat."""
     try:
         data = client.get(
-            f"/me/chats/{chat_id}/messages",
+            f"/chats/{_safe_id(chat_id)}/messages",
             params={"$top": top},
         )
     except GraphError as e:
@@ -202,7 +210,7 @@ def send_chat_message(
     """Send a message to a chat."""
     try:
         result = client.post(
-            f"/me/chats/{chat_id}/messages",
+            f"/chats/{_safe_id(chat_id)}/messages",
             json_data={"body": {"content": content}},
         )
     except GraphError as e:
@@ -226,7 +234,7 @@ async def alist_joined_teams(client: AsyncGraphClient) -> List[Dict[str, Any]]:
 async def alist_channels(client: AsyncGraphClient, team_id: str) -> List[Dict[str, Any]]:
     """List channels in a team (async)."""
     try:
-        data = await client.get(f"/teams/{team_id}/channels")
+        data = await client.get(f"/teams/{_safe_id(team_id)}/channels")
     except GraphError as e:
         _check_teams_access(e)
     return data.get("value", [])
@@ -241,7 +249,7 @@ async def asend_channel_message(
     """Send a message to a Teams channel (async)."""
     try:
         result = await client.post(
-            f"/teams/{team_id}/channels/{channel_id}/messages",
+            f"/teams/{_safe_id(team_id)}/channels/{_safe_id(channel_id)}/messages",
             json_data={"body": {"content": content}},
         )
     except GraphError as e:
@@ -258,7 +266,7 @@ async def alist_channel_messages(
     """List recent messages in a Teams channel (async)."""
     try:
         data = await client.get(
-            f"/teams/{team_id}/channels/{channel_id}/messages",
+            f"/teams/{_safe_id(team_id)}/channels/{_safe_id(channel_id)}/messages",
             params={"$top": top},
         )
     except GraphError as e:
@@ -278,7 +286,8 @@ async def alist_chats(
         "$orderby": "lastMessagePreview/createdDateTime desc",
     }
     if chat_type:
-        params["$filter"] = f"chatType eq '{chat_type}'"
+        escaped = chat_type.replace("'", "''")
+        params["$filter"] = f"chatType eq '{escaped}'"
     try:
         data = await client.get("/me/chats", params=params)
     except GraphError as e:
@@ -294,7 +303,7 @@ async def alist_chat_messages(
     """List recent messages in a chat (async)."""
     try:
         data = await client.get(
-            f"/me/chats/{chat_id}/messages",
+            f"/chats/{_safe_id(chat_id)}/messages",
             params={"$top": top},
         )
     except GraphError as e:
@@ -310,7 +319,7 @@ async def asend_chat_message(
     """Send a message to a chat (async)."""
     try:
         result = await client.post(
-            f"/me/chats/{chat_id}/messages",
+            f"/chats/{_safe_id(chat_id)}/messages",
             json_data={"body": {"content": content}},
         )
     except GraphError as e:
@@ -345,6 +354,12 @@ async def aget_teams_activity(
         _safe(alist_chats(client, top=50)),
         return_exceptions=True,
     )
+
+    # Re-raise TeamsNotAvailableError so callers can distinguish "no activity" from "Teams not licensed"
+    if isinstance(teams_result, TeamsNotAvailableError):
+        raise teams_result
+    if isinstance(chats_result, TeamsNotAvailableError):
+        raise chats_result
 
     teams_list = teams_result if isinstance(teams_result, list) else []
     chats_list = chats_result if isinstance(chats_result, list) else []

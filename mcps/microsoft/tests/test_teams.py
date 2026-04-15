@@ -170,7 +170,7 @@ class TestTeamsSync:
 
     @respx.mock
     def test_list_chat_messages(self):
-        respx.get(f"{GRAPH_BASE_URL}/me/chats/chat-1/messages").mock(
+        respx.get(f"{GRAPH_BASE_URL}/chats/chat-1/messages").mock(
             return_value=httpx.Response(200, json=SAMPLE_CHAT_MESSAGES_RESPONSE)
         )
         with GraphClient("tok") as client:
@@ -180,7 +180,7 @@ class TestTeamsSync:
 
     @respx.mock
     def test_send_chat_message(self):
-        respx.post(f"{GRAPH_BASE_URL}/me/chats/chat-1/messages").mock(
+        respx.post(f"{GRAPH_BASE_URL}/chats/chat-1/messages").mock(
             return_value=httpx.Response(201, json=SAMPLE_CHAT_MESSAGE_SENT)
         )
         with GraphClient("tok") as client:
@@ -235,7 +235,7 @@ class TestTeamsSync:
 
     @respx.mock
     def test_list_chat_messages_403(self):
-        respx.get(f"{GRAPH_BASE_URL}/me/chats/c1/messages").mock(
+        respx.get(f"{GRAPH_BASE_URL}/chats/c1/messages").mock(
             return_value=httpx.Response(403, json=GRAPH_ERROR_403)
         )
         with GraphClient("tok") as client:
@@ -244,7 +244,7 @@ class TestTeamsSync:
 
     @respx.mock
     def test_send_chat_message_403(self):
-        respx.post(f"{GRAPH_BASE_URL}/me/chats/c1/messages").mock(
+        respx.post(f"{GRAPH_BASE_URL}/chats/c1/messages").mock(
             return_value=httpx.Response(403, json=GRAPH_ERROR_403)
         )
         with GraphClient("tok") as client:
@@ -321,7 +321,7 @@ class TestTeamsAsync:
 
     @respx.mock
     async def test_alist_chat_messages(self):
-        respx.get(f"{GRAPH_BASE_URL}/me/chats/chat-1/messages").mock(
+        respx.get(f"{GRAPH_BASE_URL}/chats/chat-1/messages").mock(
             return_value=httpx.Response(200, json=SAMPLE_CHAT_MESSAGES_RESPONSE)
         )
         async with AsyncGraphClient("tok") as client:
@@ -331,7 +331,7 @@ class TestTeamsAsync:
 
     @respx.mock
     async def test_asend_chat_message(self):
-        respx.post(f"{GRAPH_BASE_URL}/me/chats/chat-1/messages").mock(
+        respx.post(f"{GRAPH_BASE_URL}/chats/chat-1/messages").mock(
             return_value=httpx.Response(201, json=SAMPLE_CHAT_MESSAGE_SENT)
         )
         async with AsyncGraphClient("tok") as client:
@@ -386,7 +386,7 @@ class TestTeamsAsync:
 
     @respx.mock
     async def test_async_chat_messages_403(self):
-        respx.get(f"{GRAPH_BASE_URL}/me/chats/c1/messages").mock(
+        respx.get(f"{GRAPH_BASE_URL}/chats/c1/messages").mock(
             return_value=httpx.Response(403, json=GRAPH_ERROR_403)
         )
         async with AsyncGraphClient("tok") as client:
@@ -395,7 +395,7 @@ class TestTeamsAsync:
 
     @respx.mock
     async def test_async_send_chat_message_403(self):
-        respx.post(f"{GRAPH_BASE_URL}/me/chats/c1/messages").mock(
+        respx.post(f"{GRAPH_BASE_URL}/chats/c1/messages").mock(
             return_value=httpx.Response(403, json=GRAPH_ERROR_403)
         )
         async with AsyncGraphClient("tok") as client:
@@ -503,8 +503,8 @@ class TestTeamsActivity:
         assert activity == []
 
     @respx.mock
-    async def test_aget_teams_activity_handles_failures(self):
-        """Activity aggregator gracefully handles partial failures."""
+    async def test_aget_teams_activity_raises_when_teams_unavailable(self):
+        """Activity aggregator raises TeamsNotAvailableError when Teams is not licensed (403)."""
         respx.get(f"{GRAPH_BASE_URL}/me/joinedTeams").mock(
             return_value=httpx.Response(403, json=GRAPH_ERROR_403)
         )
@@ -513,7 +513,5 @@ class TestTeamsActivity:
         )
 
         async with AsyncGraphClient("tok") as client:
-            activity = await teams.aget_teams_activity(client, hours=24)
-
-        # Should return empty, not raise
-        assert activity == []
+            with pytest.raises(teams.TeamsNotAvailableError):
+                await teams.aget_teams_activity(client, hours=24)

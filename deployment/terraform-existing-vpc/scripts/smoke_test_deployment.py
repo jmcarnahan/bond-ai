@@ -39,7 +39,7 @@ except ImportError:
 class DeploymentSmokeTest:
     def __init__(self, env, region, project="bond-ai",
                  apprunner_url="", test_eks=False, skip_apprunner=False,
-                 eks_cluster_name=""):
+                 eks_cluster_name="", eks_alb_hostname=""):
         self.env = env
         self.region = region
         self.project = project
@@ -47,6 +47,7 @@ class DeploymentSmokeTest:
         self.test_eks = test_eks
         self.skip_apprunner = skip_apprunner
         self.eks_cluster_name = eks_cluster_name or f"{project}-{env}-eks"
+        self.eks_alb_hostname = eks_alb_hostname
         self.results = []
 
         self.apprunner_client = boto3.client("apprunner", region_name=region)
@@ -227,30 +228,33 @@ class DeploymentSmokeTest:
             f"{len(running)}/{len(phases)} pods Running"
         )
 
-    def test_eks_nlb_endpoint(self):
-        """Get NLB hostname from Kubernetes service."""
-        rc, out, err = self._run_cmd(
-            "kubectl get svc -n bond-ai bond-ai-backend "
-            "-o jsonpath='{.status.loadBalancer.ingress[0].hostname}'",
-            timeout=15
-        )
-        if rc != 0 or not out or out == "''":
-            self._record("EKS NLB endpoint", False, f"No NLB hostname: {err}")
+    def test_eks_alb_endpoint(self):
+        """Get ALB hostname — from --eks-alb-hostname arg or AWS API."""
+        if self.eks_alb_hostname:
+            self._record("EKS ALB endpoint", True, self.eks_alb_hostname)
+            return self.eks_alb_hostname
+
+        # Fall back to looking up the ALB by name
+        try:
+            elbv2 = boto3.client("elbv2", region_name=self.region)
+            alb_name = f"{self.project}-{self.env}-eks-alb"
+            lbs = elbv2.describe_load_balancers(Names=[alb_name])
+            hostname = lbs["LoadBalancers"][0]["DNSName"]
+            self._record("EKS ALB endpoint", True, hostname)
+            return hostname
+        except Exception as e:
+            self._record("EKS ALB endpoint", False, str(e))
             return None
 
-        hostname = out.strip("'")
-        self._record("EKS NLB endpoint", True, hostname)
-        return hostname
-
-    def test_eks_health(self, nlb_hostname):
-        """Hit /health on EKS NLB (requires VPN)."""
-        if not nlb_hostname:
-            self._record("EKS health check", False, "No NLB hostname available")
+    def test_eks_health(self, alb_hostname):
+        """Hit /health on EKS ALB (requires VPN)."""
+        if not alb_hostname:
+            self._record("EKS health check", False, "No ALB hostname available")
             return
 
         # Try HTTPS first, fall back to HTTP
         for proto in ["https", "http"]:
-            url = f"{proto}://{nlb_hostname}/health"
+            url = f"{proto}://{alb_hostname}/health"
             code, body = self._http_get(url, timeout=10, verify_ssl=False)
             if code == 200:
                 self._record("EKS health check", True, f"HTTP {code} from {url}")
@@ -261,24 +265,24 @@ class DeploymentSmokeTest:
 
         self._record(
             "EKS health check", False,
-            f"NLB unreachable at {nlb_hostname} (are you on VPN?)"
+            f"ALB unreachable at {alb_hostname} (are you on VPN?)"
         )
 
-    def test_eks_frontend(self, nlb_hostname):
-        """Verify frontend loads from EKS NLB (requires VPN)."""
-        if not nlb_hostname:
-            self._record("EKS frontend loads", False, "No NLB hostname")
+    def test_eks_frontend(self, alb_hostname):
+        """Verify frontend loads from EKS ALB (requires VPN)."""
+        if not alb_hostname:
+            self._record("EKS frontend loads", False, "No ALB hostname")
             return
 
         for proto in ["https", "http"]:
-            url = f"{proto}://{nlb_hostname}/"
+            url = f"{proto}://{alb_hostname}/"
             code, body = self._http_get(url, timeout=10, verify_ssl=False)
             if code == 200:
                 has_html = "<!DOCTYPE" in body or "<html" in body
                 self._record("EKS frontend loads", has_html, f"HTTP {code}, HTML: {has_html}")
                 return
 
-        self._record("EKS frontend loads", False, f"Unreachable (are you on VPN?)")
+        self._record("EKS frontend loads", False, "Unreachable (are you on VPN?)")
 
     def test_eks_irsa(self):
         """Verify IRSA role exists for EKS pods."""
@@ -308,6 +312,81 @@ class DeploymentSmokeTest:
         role_line = [l for l in out.split("\n") if "AWS_ROLE_ARN=" in l]
         detail = role_line[0] if role_line else "AWS_ROLE_ARN not found"
         self._record("EKS IRSA in pod", passed, detail)
+
+    # =========================================================================
+    # EKS Load Balancer Controller Tests
+    # =========================================================================
+
+    def test_eks_lb_controller_running(self):
+        """Verify AWS Load Balancer Controller pods are Running."""
+        rc, out, err = self._run_cmd(
+            "kubectl get pods -n kube-system "
+            "-l app.kubernetes.io/name=aws-load-balancer-controller "
+            "-o jsonpath='{.items[*].status.phase}'",
+            timeout=15
+        )
+        if rc != 0:
+            self._record("EKS LB controller running", False, f"kubectl failed: {err}")
+            return
+
+        phases = out.strip("'").split() if out.strip("'") else []
+        running = [p for p in phases if p == "Running"]
+        passed = len(running) > 0
+        self._record(
+            "EKS LB controller running", passed,
+            f"{len(running)} controller pod(s) Running" if passed else "No controller pods found"
+        )
+
+    def test_eks_alb_tls(self, alb_hostname):
+        """Verify HTTPS works on the ALB (port 443)."""
+        if not alb_hostname:
+            self._record("EKS ALB TLS", False, "No ALB hostname available")
+            return
+
+        url = f"https://{alb_hostname}/health"
+        code, body = self._http_get(url, timeout=10, verify_ssl=False)
+        passed = code == 200
+        self._record(
+            "EKS ALB TLS", passed,
+            f"HTTPS {code} from {url}" if code > 0 else f"Connection failed: {body}"
+        )
+
+    def test_eks_acm_cert_attached(self):
+        """Verify the ALB HTTPS listener has the expected ACM certificate attached."""
+        try:
+            elbv2 = boto3.client("elbv2", region_name=self.region)
+
+            # Find ALB by name
+            alb_name = f"{self.project}-{self.env}-eks-alb"
+            try:
+                lbs = elbv2.describe_load_balancers(Names=[alb_name])
+                alb_arn = lbs["LoadBalancers"][0]["LoadBalancerArn"]
+            except Exception as e:
+                self._record("EKS ACM cert attached", False, f"ALB '{alb_name}' lookup failed: {e}")
+                return
+            listeners = elbv2.describe_listeners(LoadBalancerArn=alb_arn)
+
+            tls_listeners = [
+                l for l in listeners.get("Listeners", [])
+                if l.get("Protocol") == "HTTPS"
+            ]
+
+            if not tls_listeners:
+                ports = [f"{l['Port']}/{l['Protocol']}" for l in listeners.get("Listeners", [])]
+                self._record("EKS ACM cert attached", False,
+                             f"No HTTPS listener found. Listeners: {', '.join(ports) or 'none'}")
+                return
+
+            certs = tls_listeners[0].get("Certificates", [])
+            if certs:
+                cert_arn = certs[0].get("CertificateArn", "")
+                self._record("EKS ACM cert attached", True,
+                             f"TLS on port {tls_listeners[0]['Port']}, cert: ...{cert_arn[-40:]}")
+            else:
+                self._record("EKS ACM cert attached", False, "TLS listener has no certificate")
+
+        except Exception as e:
+            self._record("EKS ACM cert attached", False, str(e))
 
     # =========================================================================
     # Guardrail Tests
@@ -422,16 +501,16 @@ class DeploymentSmokeTest:
     # Cross-Platform Tests
     # =========================================================================
 
-    def test_both_same_database(self, nlb_hostname):
+    def test_both_same_database(self, alb_hostname):
         """Verify both platforms hit the same database (health responses match)."""
-        if not self.apprunner_url or not nlb_hostname:
+        if not self.apprunner_url or not alb_hostname:
             self._record("Cross-platform: same DB", False, "Need both URLs")
             return
 
         ar_code, ar_body = self._http_get(f"{self.apprunner_url}/health")
         for proto in ["https", "http"]:
             eks_code, eks_body = self._http_get(
-                f"{proto}://{nlb_hostname}/health", verify_ssl=False
+                f"{proto}://{alb_hostname}/health", verify_ssl=False
             )
             if eks_code == 200:
                 break
@@ -473,26 +552,26 @@ class DeploymentSmokeTest:
         except Exception as e:
             self._record("Aurora SG check", False, str(e))
 
-    def test_eks_nlb_internal(self, nlb_hostname):
-        """Verify NLB is internal (resolves to private IPs)."""
-        if not nlb_hostname:
-            self._record("EKS NLB is internal", False, "No hostname")
+    def test_eks_alb_internal(self, alb_hostname):
+        """Verify ALB is internal (resolves to private IPs)."""
+        if not alb_hostname:
+            self._record("EKS ALB is internal", False, "No hostname")
             return
 
         import socket
         try:
-            ips = socket.getaddrinfo(nlb_hostname, 443, socket.AF_INET)
+            ips = socket.getaddrinfo(alb_hostname, 443, socket.AF_INET)
             ip_addrs = list(set(addr[4][0] for addr in ips))
             all_private = all(
                 ip.startswith("10.") or ip.startswith("172.") or ip.startswith("192.168.")
                 for ip in ip_addrs
             )
             self._record(
-                "EKS NLB is internal", all_private,
+                "EKS ALB is internal", all_private,
                 f"IPs: {', '.join(ip_addrs)} ({'private' if all_private else 'PUBLIC!'})"
             )
         except socket.gaierror as e:
-            self._record("EKS NLB is internal", False, f"DNS resolution failed: {e}")
+            self._record("EKS ALB is internal", False, f"DNS resolution failed: {e}")
 
     # =========================================================================
     # Run
@@ -516,7 +595,7 @@ class DeploymentSmokeTest:
             self.test_apprunner_waf()
 
         # --- EKS ---
-        nlb_hostname = None
+        alb_hostname = None
         if self.test_eks:
             print("\n--- EKS Tests ---")
 
@@ -534,18 +613,23 @@ class DeploymentSmokeTest:
                 self.test_eks_nodegroup_active()
                 self.test_eks_pods_running()
                 self.test_eks_irsa()
-                nlb_hostname = self.test_eks_nlb_endpoint()
-                self.test_eks_health(nlb_hostname)
-                self.test_eks_frontend(nlb_hostname)
+                alb_hostname = self.test_eks_alb_endpoint()
+                self.test_eks_health(alb_hostname)
+                self.test_eks_frontend(alb_hostname)
                 self.test_eks_irsa_in_pod()
 
+                print("\n--- EKS LB Controller & TLS Tests ---")
+                self.test_eks_lb_controller_running()
+                self.test_eks_alb_tls(alb_hostname)
+                self.test_eks_acm_cert_attached()
+
                 print("\n--- EKS Security Tests ---")
-                self.test_eks_nlb_internal(nlb_hostname)
+                self.test_eks_alb_internal(alb_hostname)
 
         # --- Cross-Platform ---
-        if not self.skip_apprunner and self.test_eks and nlb_hostname:
+        if not self.skip_apprunner and self.test_eks and alb_hostname:
             print("\n--- Cross-Platform Tests ---")
-            self.test_both_same_database(nlb_hostname)
+            self.test_both_same_database(alb_hostname)
 
         # --- Guardrails ---
         print("\n--- Guardrail Tests ---")
@@ -585,6 +669,7 @@ def main():
     parser.add_argument("--test-eks", action="store_true", help="Include EKS tests")
     parser.add_argument("--skip-apprunner", action="store_true", help="Skip App Runner tests")
     parser.add_argument("--eks-cluster-name", default="", help="EKS cluster name (default: {project}-{env}-eks)")
+    parser.add_argument("--eks-alb-hostname", default="", help="ALB DNS hostname for EKS (auto-detected if empty)")
 
     args = parser.parse_args()
 
@@ -596,6 +681,7 @@ def main():
         test_eks=args.test_eks,
         skip_apprunner=args.skip_apprunner,
         eks_cluster_name=args.eks_cluster_name,
+        eks_alb_hostname=args.eks_alb_hostname,
     )
     sys.exit(runner.run())
 

@@ -58,6 +58,13 @@ module "eks" {
   # Control plane logging
   cluster_enabled_log_types = ["api", "audit", "authenticator"]
 
+  # EKS managed addons
+  cluster_addons = {
+    metrics-server = {
+      most_recent = true
+    }
+  }
+
   # Secrets envelope encryption
   cluster_encryption_config = {
     provider_key_arn = aws_kms_key.eks[0].arn
@@ -66,8 +73,8 @@ module "eks" {
 
   # Node security group rules
   node_security_group_additional_rules = {
-    ingress_nlb = {
-      description = "NLB health checks and traffic from VPC (NodePort range)"
+    ingress_nodeport = {
+      description = "Health checks and traffic from VPC (NodePort range)"
       protocol    = "tcp"
       from_port   = 30000
       to_port     = 32767
@@ -75,7 +82,7 @@ module "eks" {
       cidr_blocks = [data.aws_vpc.existing.cidr_block]
     }
     ingress_app = {
-      description = "App traffic from VPC (NLB to pods on port 8080)"
+      description = "App traffic from VPC to pods on port 8080"
       protocol    = "tcp"
       from_port   = 8080
       to_port     = 8080
@@ -166,7 +173,34 @@ provider "kubernetes" {
 }
 
 # =============================================================================
-# Subnet Tagging (required for internal NLB to discover subnets)
+# Helm Provider (for AWS Load Balancer Controller)
+#
+# Same three-mode auth as the kubernetes provider above:
+# 1. enable_eks=true  → uses module.eks outputs (normal operation)
+# 2. enable_eks=false, cluster still exists → uses data source lookup (teardown)
+# 3. enable_eks=false, cluster gone → dummy values (no Helm resources to manage)
+# =============================================================================
+
+provider "helm" {
+  kubernetes {
+    host = var.enable_eks ? module.eks[0].cluster_endpoint : (
+      data.external.eks_endpoint[0].result.endpoint
+    )
+    cluster_ca_certificate = var.enable_eks ? base64decode(module.eks[0].cluster_certificate_authority_data) : (
+      data.external.eks_endpoint[0].result.ca != "" ? base64decode(data.external.eks_endpoint[0].result.ca) : ""
+    )
+    exec {
+      api_version = "client.authentication.k8s.io/v1beta1"
+      command     = "bash"
+      args = ["-c",
+        "aws eks get-token --cluster-name '${local.eks_cluster_name}' --region '${var.aws_region}' 2>/dev/null || echo '{\"kind\":\"ExecCredential\",\"apiVersion\":\"client.authentication.k8s.io/v1beta1\",\"status\":{\"token\":\"\"}}'"
+      ]
+    }
+  }
+}
+
+# =============================================================================
+# Subnet Tagging (required for internal load balancers to discover subnets)
 # EKS is always private — only tag private subnets for internal-elb.
 # Tags are additive and do not affect App Runner.
 # =============================================================================

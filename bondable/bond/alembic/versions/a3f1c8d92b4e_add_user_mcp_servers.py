@@ -30,7 +30,7 @@ def upgrade() -> None:
         sa.Column('auth_type', sa.String(), nullable=False, server_default='none'),
         sa.Column('headers_encrypted', sa.String(), nullable=True),
         sa.Column('oauth_config_encrypted', sa.String(), nullable=True),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('1')),
+        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('true')),
         sa.Column('created_at', sa.DateTime(), nullable=True),
         sa.Column('updated_at', sa.DateTime(), nullable=True),
         sa.ForeignKeyConstraint(['owner_user_id'], ['users.id'], ),

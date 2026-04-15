@@ -10,7 +10,7 @@
 # =============================================================================
 
 locals {
-  # Whether TLS is available on the NLB
+  # Whether TLS is available (cert ARN provided or custom domain triggers cert creation)
   eks_has_tls = var.eks_acm_certificate_arn != "" || var.eks_custom_domain_name != ""
 
   # Resolved certificate ARN (bring-your-own takes precedence)
@@ -18,10 +18,12 @@ locals {
     var.enable_eks && var.eks_custom_domain_name != "" ? aws_acm_certificate.eks[0].arn : ""
   )
 
-  # The URL for the EKS service (custom domain or NLB hostname)
+  # The URL for the EKS service (custom domain > ALB DNS > service load balancer hostname)
   eks_service_url = var.enable_eks ? (
     var.eks_custom_domain_name != "" ? var.eks_custom_domain_name : (
-      try(kubernetes_service.backend[0].status[0].load_balancer[0].ingress[0].hostname, "pending")
+      var.eks_alb_dns_name != "" ? var.eks_alb_dns_name : (
+        try(kubernetes_service.backend[0].status[0].load_balancer[0].ingress[0].hostname, "pending")
+      )
     )
   ) : ""
 
@@ -30,7 +32,7 @@ locals {
 
   # EKS OAuth base URL — used for redirect URIs in the K8s configmap.
   # Precedence: custom domain > eks_oauth_base_url > empty (wildcard fallback)
-  # This avoids a dependency cycle (can't reference NLB hostname in configmap).
+  # This avoids a dependency cycle (can't reference ALB hostname in configmap).
   eks_oauth_base_url = (
     var.eks_custom_domain_name != "" ? "https://${var.eks_custom_domain_name}" :
     var.eks_oauth_base_url != "" ? var.eks_oauth_base_url :
@@ -86,29 +88,32 @@ resource "aws_acm_certificate_validation" "eks" {
 }
 
 # =============================================================================
-# Route53 Alias Record (points custom domain to NLB)
+# Route53 Alias Record (points custom domain to ALB)
 # =============================================================================
 
-data "aws_lb" "eks_nlb" {
-  count = var.enable_eks && var.eks_custom_domain_name != "" && var.eks_hosted_zone_id != "" ? 1 : 0
+data "aws_lb" "eks_alb" {
+  # Only active when the LB Controller creates the ALB (no external ALB provided).
+  # When eks_alb_dns_name is set, DNS is managed externally — skip this lookup.
+  count = var.enable_eks && var.eks_custom_domain_name != "" && var.eks_hosted_zone_id != "" && var.eks_alb_dns_name == "" ? 1 : 0
 
   tags = {
-    "kubernetes.io/cluster/${local.eks_cluster_name}" = "owned"
+    "elbv2.k8s.aws/cluster" = local.eks_cluster_name
   }
 
   depends_on = [kubernetes_service.backend]
 }
 
 resource "aws_route53_record" "eks_alias" {
-  count = var.enable_eks && var.eks_custom_domain_name != "" && var.eks_hosted_zone_id != "" ? 1 : 0
+  # Only when LB Controller manages the ALB; external ALB users handle DNS themselves.
+  count = var.enable_eks && var.eks_custom_domain_name != "" && var.eks_hosted_zone_id != "" && var.eks_alb_dns_name == "" ? 1 : 0
 
   zone_id = var.eks_hosted_zone_id
   name    = var.eks_custom_domain_name
   type    = "A"
 
   alias {
-    name                   = data.aws_lb.eks_nlb[0].dns_name
-    zone_id                = data.aws_lb.eks_nlb[0].zone_id
+    name                   = data.aws_lb.eks_alb[0].dns_name
+    zone_id                = data.aws_lb.eks_alb[0].zone_id
     evaluate_target_health = true
   }
 }
