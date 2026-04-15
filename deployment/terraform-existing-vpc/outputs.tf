@@ -176,6 +176,12 @@ output "eks_url" {
   description = "EKS service URL — private, requires VPN (null if EKS disabled)"
 }
 
+# Deprecated: kept for backward compatibility with downstream consumers
+output "eks_nlb_url" {
+  value       = var.enable_eks ? "${local.eks_service_protocol}://${local.eks_service_url}" : null
+  description = "Deprecated — use eks_url instead"
+}
+
 output "eks_alb_dns_name" {
   value       = var.enable_eks && var.eks_alb_dns_name != "" ? var.eks_alb_dns_name : null
   description = "Externally-managed ALB DNS name for EKS (null if not configured)"

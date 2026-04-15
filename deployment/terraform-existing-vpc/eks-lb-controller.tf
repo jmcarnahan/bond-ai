@@ -1,8 +1,7 @@
 # =============================================================================
 # AWS Load Balancer Controller (Helm)
 #
-# Manages NLBs/ALBs for Kubernetes Services and Ingress resources.
-# Manages load balancer lifecycle for Kubernetes Ingress and LoadBalancer services.
+# Manages load balancer lifecycle for Kubernetes Services and Ingress resources.
 # All resources gated by var.enable_eks (default: false)
 #
 # IAM policy pinned to aws-load-balancer-controller v2.11.0
