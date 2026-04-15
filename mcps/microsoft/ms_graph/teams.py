@@ -170,7 +170,8 @@ def list_chats(
         "$orderby": "lastMessagePreview/createdDateTime desc",
     }
     if chat_type:
-        params["$filter"] = f"chatType eq '{chat_type}'"
+        escaped = chat_type.replace("'", "''")
+        params["$filter"] = f"chatType eq '{escaped}'"
     try:
         data = client.get("/me/chats", params=params)
     except GraphError as e:
@@ -186,7 +187,7 @@ def list_chat_messages(
     """List recent messages in a chat."""
     try:
         data = client.get(
-            f"/me/chats/{chat_id}/messages",
+            f"/chats/{chat_id}/messages",
             params={"$top": top},
         )
     except GraphError as e:
@@ -202,7 +203,7 @@ def send_chat_message(
     """Send a message to a chat."""
     try:
         result = client.post(
-            f"/me/chats/{chat_id}/messages",
+            f"/chats/{chat_id}/messages",
             json_data={"body": {"content": content}},
         )
     except GraphError as e:
@@ -278,7 +279,8 @@ async def alist_chats(
         "$orderby": "lastMessagePreview/createdDateTime desc",
     }
     if chat_type:
-        params["$filter"] = f"chatType eq '{chat_type}'"
+        escaped = chat_type.replace("'", "''")
+        params["$filter"] = f"chatType eq '{escaped}'"
     try:
         data = await client.get("/me/chats", params=params)
     except GraphError as e:
@@ -294,7 +296,7 @@ async def alist_chat_messages(
     """List recent messages in a chat (async)."""
     try:
         data = await client.get(
-            f"/me/chats/{chat_id}/messages",
+            f"/chats/{chat_id}/messages",
             params={"$top": top},
         )
     except GraphError as e:
@@ -310,7 +312,7 @@ async def asend_chat_message(
     """Send a message to a chat (async)."""
     try:
         result = await client.post(
-            f"/me/chats/{chat_id}/messages",
+            f"/chats/{chat_id}/messages",
             json_data={"body": {"content": content}},
         )
     except GraphError as e:
@@ -345,6 +347,12 @@ async def aget_teams_activity(
         _safe(alist_chats(client, top=50)),
         return_exceptions=True,
     )
+
+    # Re-raise TeamsNotAvailableError so callers can distinguish "no activity" from "Teams not licensed"
+    if isinstance(teams_result, TeamsNotAvailableError):
+        raise teams_result
+    if isinstance(chats_result, TeamsNotAvailableError):
+        raise chats_result
 
     teams_list = teams_result if isinstance(teams_result, list) else []
     chats_list = chats_result if isinstance(chats_result, list) else []

@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from fastmcp import FastMCP
 
 from ms_graph.auth import get_graph_token
-from ms_graph.graph_client import AsyncGraphClient, GraphError
+from ms_graph.graph_client import AsyncGraphClient
 from ms_graph import mail as mail_ops
 from ms_graph import teams as teams_ops
 from ms_graph import files as files_ops

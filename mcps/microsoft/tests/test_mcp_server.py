@@ -521,7 +521,7 @@ class TestMCPTeamsTools:
 
     @respx.mock
     async def test_read_chat_messages(self, mcp_server):
-        respx.get(f"{GRAPH_BASE_URL}/me/chats/chat-1/messages").mock(
+        respx.get(f"{GRAPH_BASE_URL}/chats/chat-1/messages").mock(
             return_value=httpx.Response(200, json=SAMPLE_CHAT_MESSAGES_RESPONSE)
         )
         with _mock_token():
@@ -537,7 +537,7 @@ class TestMCPTeamsTools:
 
     @respx.mock
     async def test_read_chat_messages_empty(self, mcp_server):
-        respx.get(f"{GRAPH_BASE_URL}/me/chats/chat-1/messages").mock(
+        respx.get(f"{GRAPH_BASE_URL}/chats/chat-1/messages").mock(
             return_value=httpx.Response(200, json={"value": []})
         )
         with _mock_token():
@@ -552,7 +552,7 @@ class TestMCPTeamsTools:
 
     @respx.mock
     async def test_read_chat_messages_403(self, mcp_server):
-        respx.get(f"{GRAPH_BASE_URL}/me/chats/c1/messages").mock(
+        respx.get(f"{GRAPH_BASE_URL}/chats/c1/messages").mock(
             return_value=httpx.Response(403, json=GRAPH_ERROR_403)
         )
         with _mock_token():
@@ -567,7 +567,7 @@ class TestMCPTeamsTools:
 
     @respx.mock
     async def test_send_chat_message(self, mcp_server):
-        respx.post(f"{GRAPH_BASE_URL}/me/chats/chat-1/messages").mock(
+        respx.post(f"{GRAPH_BASE_URL}/chats/chat-1/messages").mock(
             return_value=httpx.Response(201, json=SAMPLE_CHAT_MESSAGE_SENT)
         )
         with _mock_token():
@@ -583,7 +583,7 @@ class TestMCPTeamsTools:
 
     @respx.mock
     async def test_send_chat_message_403(self, mcp_server):
-        respx.post(f"{GRAPH_BASE_URL}/me/chats/c1/messages").mock(
+        respx.post(f"{GRAPH_BASE_URL}/chats/c1/messages").mock(
             return_value=httpx.Response(403, json=GRAPH_ERROR_403)
         )
         with _mock_token():

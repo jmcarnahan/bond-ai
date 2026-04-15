@@ -3004,8 +3004,12 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
 
             session.commit()
 
-            # Refresh bedrock_options to prevent DetachedInstanceError when accessing its attributes later
-            session.refresh(bedrock_options)
+            # Re-query bedrock_options to get fresh state after commit.
+            # Using refresh() is unreliable here because the scoped session is shared across concurrent
+            # requests — another request's finally: session.close() can detach objects mid-flight.
+            bedrock_options = session.query(BedrockAgentOptions).filter_by(agent_id=agent_id).first()
+            if bedrock_options is None:
+                raise RuntimeError(f"BedrockAgentOptions not found for {agent_id} immediately after commit — unexpected DB state")
 
             # If file_storage is 'knowledge_base' and files are attached, upload to KB
             file_storage_mode = getattr(agent_def, 'file_storage', 'direct')
@@ -3035,8 +3039,12 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
             return bedrock_agent
         except Exception as e:
             session.rollback()
-            # Clean up the committed AgentRecord if this was a new agent and AWS operations failed
-            if not agent_def.id:  # Only for new agents (not updates)
+            # Clean up the committed AgentRecord only if this was a new agent AND the Bedrock agent
+            # was never created (bedrock_agent_id is None). If Bedrock creation succeeded but a later
+            # step failed, leave both the AgentRecord and the Bedrock agent in place. The Bedrock agent
+            # is an AWS orphan that will need manual cleanup — no retry can recover it since each retry
+            # generates a fresh agent_id via uuid4().
+            if not agent_def.id and bedrock_agent_id is None:  # Only for new agents where Bedrock creation failed
                 try:
                     orphaned = session.query(AgentRecord).filter_by(agent_id=agent_id).first()
                     if orphaned:
