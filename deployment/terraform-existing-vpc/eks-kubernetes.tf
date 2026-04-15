@@ -76,17 +76,17 @@ resource "kubernetes_config_map" "backend" {
     JWT_REDIRECT_URI = local.eks_oauth_base_url != "" ? local.eks_oauth_base_url : "*"
 
     # CORS — include both App Runner and EKS origins
-    CORS_ALLOWED_ORIGINS = join(",", compact(concat(
+    CORS_ALLOWED_ORIGINS = join(",", distinct(compact(concat(
       split(",", var.cors_allowed_origins),
       local.eks_oauth_base_url != "" ? [local.eks_oauth_base_url] : []
-    )))
+    ))))
 
     # Allowed redirect domains for OAuth callbacks
-    ALLOWED_REDIRECT_DOMAINS = join(",", compact(concat(
+    ALLOWED_REDIRECT_DOMAINS = join(",", distinct(compact(concat(
       split(",", var.allowed_redirect_domains),
       var.eks_custom_domain_name != "" ? [var.eks_custom_domain_name] : [],
       var.eks_oauth_base_url != "" ? [replace(replace(trimsuffix(var.eks_oauth_base_url, "/"), "https://", ""), "http://", "")] : []
-    )))
+    ))))
 
     # Knowledge Base configuration
     BEDROCK_KNOWLEDGE_BASE_ID = try(aws_bedrockagent_knowledge_base.main[0].id, "")
@@ -240,9 +240,23 @@ resource "kubernetes_deployment" "backend" {
 }
 
 # =============================================================================
-# Service — Internal NLB (always private, VPN-only access)
-# TLS strategy: ACM cert if available, otherwise HTTP-only
+# Service
+#
+# Two modes based on whether an externally-managed ALB target group is provided:
+#
+# 1. eks_target_group_arn set (ALB via TargetGroupBinding):
+#    type = ClusterIP — no cloud load balancer created; the AWS Load Balancer
+#    Controller keeps pod IPs registered in the external target group directly.
+#
+# 2. eks_target_group_arn empty (fallback — self-managed load balancer):
+#    type = LoadBalancer with AWS Load Balancer Controller annotations to create
+#    an internal NLB (IP target mode). Requires ALB creation to NOT be blocked
+#    by SCP, or use a policy that allows NLB creation via the LB Controller.
 # =============================================================================
+
+locals {
+  eks_use_external_alb = var.eks_target_group_arn != ""
+}
 
 resource "kubernetes_service" "backend" {
   count = var.enable_eks ? 1 : 0
@@ -250,13 +264,13 @@ resource "kubernetes_service" "backend" {
   metadata {
     name      = "bond-ai-backend"
     namespace = kubernetes_namespace.bond_ai[0].metadata[0].name
-    annotations = merge(
+    annotations = local.eks_use_external_alb ? {} : merge(
       {
-        "service.beta.kubernetes.io/aws-load-balancer-type"     = "nlb"
-        "service.beta.kubernetes.io/aws-load-balancer-internal" = "true"
-        "service.beta.kubernetes.io/aws-load-balancer-subnets"  = join(",", local.app_runner_subnet_ids)
+        "service.beta.kubernetes.io/aws-load-balancer-type"            = "external"
+        "service.beta.kubernetes.io/aws-load-balancer-nlb-target-type" = "ip"
+        "service.beta.kubernetes.io/aws-load-balancer-scheme"          = "internal"
+        "service.beta.kubernetes.io/aws-load-balancer-subnets"         = join(",", local.app_runner_subnet_ids)
       },
-      # TLS annotations only when a certificate is available
       local.eks_has_tls ? {
         "service.beta.kubernetes.io/aws-load-balancer-ssl-cert"              = local.eks_cert_arn
         "service.beta.kubernetes.io/aws-load-balancer-ssl-ports"             = "443"
@@ -270,16 +284,44 @@ resource "kubernetes_service" "backend" {
       app = "bond-ai-backend"
     }
 
-    type = "LoadBalancer"
+    type = local.eks_use_external_alb ? "ClusterIP" : "LoadBalancer"
 
     port {
-      port        = local.eks_has_tls ? 443 : 80
+      port        = local.eks_use_external_alb ? 8080 : (local.eks_has_tls ? 443 : 80)
       target_port = 8080
       protocol    = "TCP"
     }
   }
 
   depends_on = [kubernetes_deployment.backend]
+}
+
+# =============================================================================
+# TargetGroupBinding — Wires pod IPs into the externally-managed ALB target group.
+# The LB Controller watches Service endpoints and keeps the target group in sync
+# as pods restart or scale. Requires eks_target_group_arn to be set.
+# =============================================================================
+
+resource "kubernetes_manifest" "target_group_binding" {
+  count = var.enable_eks && var.eks_target_group_arn != "" ? 1 : 0
+
+  manifest = {
+    apiVersion = "elbv2.k8s.aws/v1beta1"
+    kind       = "TargetGroupBinding"
+    metadata = {
+      name      = "bond-ai-backend"
+      namespace = kubernetes_namespace.bond_ai[0].metadata[0].name
+    }
+    spec = {
+      serviceRef = {
+        name = kubernetes_service.backend[0].metadata[0].name
+        port = 8080
+      }
+      targetGroupARN = var.eks_target_group_arn
+    }
+  }
+
+  depends_on = [helm_release.lb_controller, kubernetes_service.backend]
 }
 
 # =============================================================================
@@ -327,7 +369,7 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "backend" {
 # on traffic. Enforcement requires installing Calico or Cilium as a CNI addon.
 #
 # Future work: Install Calico/Cilium, then add NetworkPolicy restricting:
-#   - Ingress: port 8080 only (from NLB)
+#   - Ingress: port 8080 only (from ALB)
 #   - Egress: DNS (53), HTTPS (443), PostgreSQL (5432)
 #   - Note: 443 egress must be unrestricted (OAuth providers + MCP servers have dynamic IPs)
 # =============================================================================

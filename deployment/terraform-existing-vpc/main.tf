@@ -129,7 +129,7 @@ resource "aws_s3_bucket_cors_configuration" "uploads" {
     allowed_origins = concat(
       split(",", var.cors_allowed_origins),
       var.custom_domain_name != "" ? ["https://${var.custom_domain_name}"] : [],
-      # EKS: add custom domain or NLB hostname for file uploads
+      # EKS: add custom domain or ALB hostname for file uploads
       var.enable_eks && var.eks_custom_domain_name != "" ? ["${local.eks_service_protocol}://${var.eks_custom_domain_name}"] : [],
       var.enable_eks && var.eks_custom_domain_name == "" && local.eks_service_url != "" && local.eks_service_url != "pending" ? ["${local.eks_service_protocol}://${local.eks_service_url}"] : []
     )

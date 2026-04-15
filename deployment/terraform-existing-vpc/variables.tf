@@ -409,7 +409,7 @@ variable "eks_additional_ingress_cidrs" {
 }
 
 variable "eks_cluster_endpoint_public_access_cidrs" {
-  description = "CIDRs allowed to reach EKS cluster API public endpoint (kubectl/Terraform). Default allows all. Restrict to office/VPN CIDRs for defense-in-depth. Note: the app NLB is always private regardless of this setting."
+  description = "CIDRs allowed to reach EKS cluster API public endpoint (kubectl/Terraform). Default allows all. Restrict to office/VPN CIDRs for defense-in-depth. Note: the app load balancer is always internal regardless of this setting."
   type        = list(string)
   default     = ["0.0.0.0/0"]
 
@@ -427,7 +427,7 @@ variable "eks_custom_domain_name" {
 }
 
 variable "eks_acm_certificate_arn" {
-  description = "Pre-existing ACM certificate ARN for EKS NLB TLS. Takes precedence over eks_custom_domain_name cert creation."
+  description = "Pre-existing ACM certificate ARN for EKS ALB HTTPS. Takes precedence over eks_custom_domain_name cert creation."
   type        = string
   default     = ""
 }
@@ -439,7 +439,19 @@ variable "eks_hosted_zone_id" {
 }
 
 variable "eks_oauth_base_url" {
-  description = "Base URL for EKS OAuth redirects (e.g., 'https://my-nlb.elb.amazonaws.com'). Used when eks_custom_domain_name is not set. Ignored if eks_custom_domain_name is provided (custom domain takes precedence)."
+  description = "Base URL for EKS OAuth redirects (e.g., 'https://my-alb.elb.amazonaws.com'). Used when eks_custom_domain_name is not set. Ignored if eks_custom_domain_name is provided (custom domain takes precedence)."
+  type        = string
+  default     = ""
+}
+
+variable "eks_target_group_arn" {
+  description = "ARN of an externally-managed ALB target group (IP type, port 8080) for TargetGroupBinding. When set, the Kubernetes Service is ClusterIP and the LB Controller keeps pod IPs registered in this target group."
+  type        = string
+  default     = ""
+}
+
+variable "eks_alb_dns_name" {
+  description = "DNS hostname of the externally-managed ALB. Used for outputs and CORS config when eks_target_group_arn is set."
   type        = string
   default     = ""
 }
