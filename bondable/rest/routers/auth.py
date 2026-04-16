@@ -3,6 +3,7 @@ from datetime import timedelta, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import RedirectResponse, JSONResponse
 import logging
+import hashlib
 import uuid
 import os
 import secrets
@@ -33,6 +34,12 @@ AUTH_CODE_CLEANUP_MINUTES = 5
 
 class TokenExchangeRequest(BaseModel):
     code: str
+
+
+class ProvisionRequest(BaseModel):
+    email: str
+    name: str
+    provider: str = "external"
 
 
 def _save_auth_oauth_state(
@@ -515,6 +522,38 @@ async def read_users_me(current_user: Annotated[User, Depends(get_current_user)]
     """Get current authenticated user information."""
     LOGGER.info(f"Access granted to /users/me for user: {current_user.user_id} ({current_user.email})")
     return current_user
+
+
+@router.post("/auth/provision")
+async def provision_user(
+    body: ProvisionRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    bond_provider=Depends(get_bond_provider),
+):
+    """Provision a user account by email (admin only).
+
+    Creates the user if they don't exist, returns existing user_id if they do.
+    The returned user_id may differ from the generated hash if the user was
+    previously created via OAuth (preserves existing FK relationships).
+    """
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin users can provision accounts",
+        )
+
+    generated_id = hashlib.sha256(body.email.encode()).hexdigest()
+
+    user_id, is_new = bond_provider.users.get_or_create_user(
+        user_id=generated_id,
+        email=body.email,
+        name=body.name,
+        sign_in_method=body.provider,
+    )
+
+    LOGGER.info(f"Admin {current_user.user_id} provisioned user {user_id} (is_new={is_new})")
+
+    return {"user_id": user_id, "email": body.email, "is_new": is_new}
 
 
 @router.delete("/users/{email}", status_code=status.HTTP_204_NO_CONTENT)
