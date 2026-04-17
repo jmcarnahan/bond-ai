@@ -2,7 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutterui/providers/thread_chat/thread_chat_providers.dart';
-import 'package:flutterui/presentation/screens/chat/widgets/chat_message_item.dart';
+import 'package:flutterui/presentation/screens/chat/widgets/bond_chat_message_item.dart';
 
 class ChatMessagesList extends ConsumerStatefulWidget {
   final ScrollController scrollController;
@@ -86,7 +86,7 @@ class _ChatMessagesListState extends ConsumerState<ChatMessagesList> {
         final message = chatState.messages[index];
         final isLastMessage = index == chatState.messages.length - 1;
 
-        return ChatMessageItem(
+        return BondChatMessageItem(
           message: message,
           isSendingMessage: chatState.isSendingMessage,
           isLastMessage: isLastMessage,
