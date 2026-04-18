@@ -2994,6 +2994,12 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                     LOGGER.debug(f"No icon update needed - name and description unchanged")
                     current_icon = bedrock_options.agent_metadata.get('icon_svg', 'none')
                     LOGGER.debug(f"Current icon for agent '{agent_def.name}': '{current_icon}'")
+                # Commit DB changes before calling update_bedrock_agent.
+                # update_bedrock_agent → create_mcp_action_groups → _get_mcp_tool_definitions
+                # triggers OAuth token lookups that open/close sessions on the shared SQLite
+                # connection, causing an implicit ROLLBACK of any uncommitted changes.
+                session.commit()
+
                 bedrock_agent_id, bedrock_agent_alias_id = update_bedrock_agent(
                     agent_def=agent_def,
                     bedrock_agent_id=bedrock_agent_id,

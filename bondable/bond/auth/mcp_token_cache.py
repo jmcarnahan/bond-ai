@@ -250,8 +250,6 @@ class MCPTokenCache:
         except Exception as e:
             LOGGER.error(f"Error loading token from database: {e}")
             return None
-        finally:
-            session.close()
 
     def _save_to_database(
         self,
@@ -320,8 +318,6 @@ class MCPTokenCache:
             LOGGER.error(f"Error saving token to database: {e}")
             session.rollback()
             return False
-        finally:
-            session.close()
 
     def _delete_from_database(self, user_id: str, connection_name: str) -> bool:
         """
@@ -355,8 +351,6 @@ class MCPTokenCache:
             LOGGER.error(f"Error deleting token from database: {e}")
             session.rollback()
             return False
-        finally:
-            session.close()
 
     def _refresh_token(
         self,
@@ -673,8 +667,6 @@ class MCPTokenCache:
             LOGGER.error(f"Error clearing user tokens from database: {e}")
             session.rollback()
             return 0
-        finally:
-            session.close()
 
     def has_token(self, user_id: str, connection_name: str) -> bool:
         """
@@ -747,8 +739,6 @@ class MCPTokenCache:
                     }
             except Exception as e:
                 LOGGER.error(f"Error getting user connections from database: {e}")
-            finally:
-                session.close()
 
         return connections
 

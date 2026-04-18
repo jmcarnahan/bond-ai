@@ -9,7 +9,7 @@ from bondable.bond.config import Config
 from bondable.bond.auth.mcp_token_cache import get_mcp_token_cache
 from bondable.bond.providers.bedrock.BedrockMCP import _get_auth_headers_for_server as get_mcp_auth_headers, AuthorizationRequiredError, TokenExpiredError
 from bondable.rest.models.auth import User
-from bondable.rest.dependencies.auth import get_current_user
+from bondable.rest.dependencies.auth import get_current_user, get_current_user_with_token
 
 router = APIRouter(prefix="/mcp", tags=["MCP"])
 LOGGER = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ class MCPToolsGroupedResponse(BaseModel):
 
 @router.get("/tools")
 async def list_mcp_tools(
-    current_user: Annotated[User, Depends(get_current_user)],
+    user_and_token: Annotated[tuple[User, str], Depends(get_current_user_with_token)],
     grouped: bool = Query(False, description="Return tools grouped by server with connection status")
 ) -> Union[List[MCPToolResponse], MCPToolsGroupedResponse]:
     """
@@ -82,6 +82,7 @@ async def list_mcp_tools(
     from fastmcp.client.transports import SSETransport
     from fastmcp.client.transports import StreamableHttpTransport  # Use fastmcp's wrapper which works with fastmcp.Client
 
+    current_user, jwt_token = user_and_token
     LOGGER.info(f"[MCP Tools] Request received from user: {current_user.user_id} ({current_user.email}), grouped={grouped}")
 
     try:
@@ -128,7 +129,7 @@ async def list_mcp_tools(
 
             try:
                 # Get authentication headers (handles oauth2, bond_jwt, static)
-                auth_headers = get_mcp_auth_headers(server_name, server_config, current_user)
+                auth_headers = get_mcp_auth_headers(server_name, server_config, current_user, jwt_token=jwt_token)
                 LOGGER.info(f"[MCP Tools] Server '{server_name}' authenticated, headers: {list(auth_headers.keys())}")
 
                 # Get server URL and transport type
