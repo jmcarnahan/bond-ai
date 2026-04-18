@@ -10,6 +10,7 @@ Verifies that:
 import pytest
 from unittest.mock import MagicMock, patch
 from bondable.bond.providers.bedrock.BedrockAgent import BedrockAgentProvider, BedrockAgent
+from bondable.bond.providers.bedrock.BedrockMetadata import BedrockAgentOptions
 from bondable.bond.providers.metadata import AgentRecord
 
 
@@ -67,8 +68,17 @@ class TestAgentRecordCommitBeforeBedrockCalls:
         provider, session = _make_provider()
         agent_def = MockAgentDef(id=None)  # New agent
 
-        # First query (line 2878 check for existing AgentRecord) returns None
-        session.query.return_value.filter_by.return_value.first.return_value = None
+        # Mock the query chain to return None for the initial AgentRecord check,
+        # then return a mock BedrockAgentOptions for the post-commit re-query.
+        mock_bedrock_options = MagicMock(spec=BedrockAgentOptions)
+        mock_bedrock_options.bedrock_agent_id = "bedrock-id-123"
+        mock_bedrock_options.bedrock_agent_alias_id = "alias-id-456"
+        mock_bedrock_options.mcp_tools = []
+        mock_bedrock_options.agent_metadata = {}
+        session.query.return_value.filter_by.return_value.first.side_effect = [
+            None,              # line 2878: no existing AgentRecord
+            mock_bedrock_options,  # line 3016: re-query BedrockAgentOptions after commit
+        ]
 
         provider.create_or_update_agent_resource(agent_def, owner_user_id="user-1")
 
