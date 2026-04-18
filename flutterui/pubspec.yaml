@@ -32,6 +32,9 @@ dependencies:
   firebase_auth: ^5.3.2
   # Deep linking for OAuth callbacks
   app_links: ^6.3.2
+  # Shared chat UI package
+  bond_chat_ui:
+    path: ../packages/bond_chat_ui
 dev_dependencies:
   flutter_test:
     sdk: flutter

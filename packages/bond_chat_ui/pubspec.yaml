@@ -1,0 +1,20 @@
+name: bond_chat_ui
+description: Reusable chat message rendering widgets for Bond AI
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_markdown: ^0.7.3
+  markdown: ^7.3.0
+  url_launcher: ^6.3.0
+  xml: ^6.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
