@@ -306,10 +306,10 @@ class TestGuardrailErrorHandling:
 # ============================================================
 
 
-class TestConverseGuardrailIntervention:
-    """Test that converse() calls handle stopReason='guardrail_intervened'."""
+class TestConverseUtilityMethods:
+    """Test that utility converse() calls (image analysis, summarization, icon selection) work correctly."""
 
-    def _make_agent_with_image(self, converse_return_value, guardrail_cfg=None):
+    def _make_agent_with_image(self, converse_return_value):
         """Helper to create a mocked agent that can process one fake image."""
         from bondable.bond.providers.bedrock.BedrockAgent import BedrockAgent
         from io import BytesIO
@@ -330,28 +330,9 @@ class TestConverseGuardrailIntervention:
 
         return agent
 
-    @patch('bondable.bond.providers.bedrock.BedrockAgent.get_converse_guardrail_config')
     @patch('bondable.bond.providers.bedrock.BedrockAgent.get_converse_image_format', return_value='png')
-    def test_image_analysis_guardrail_blocked(self, mock_img_fmt, mock_guardrail_cfg):
-        """Image analysis returns fallback when guardrail blocks."""
-        mock_guardrail_cfg.return_value = {
-            'guardrailIdentifier': 'test-id',
-            'guardrailVersion': '1',
-            'trace': 'enabled',
-        }
-        agent = self._make_agent_with_image({
-            'stopReason': 'guardrail_intervened',
-            'output': {'message': {'content': [{'text': 'Sorry, blocked.'}]}},
-        })
-
-        result = agent._analyze_images_via_converse([{'file_id': 'f1'}], "test prompt")
-        assert 'blocked by guardrail' in result.lower()
-
-    @patch('bondable.bond.providers.bedrock.BedrockAgent.get_converse_guardrail_config')
-    @patch('bondable.bond.providers.bedrock.BedrockAgent.get_converse_image_format', return_value='png')
-    def test_image_analysis_normal_response(self, mock_img_fmt, mock_guardrail_cfg):
-        """Image analysis returns normal text when guardrail allows."""
-        mock_guardrail_cfg.return_value = None
+    def test_image_analysis_normal_response(self, mock_img_fmt):
+        """Image analysis returns normal text."""
         agent = self._make_agent_with_image({
             'stopReason': 'end_turn',
             'output': {'message': {'content': [{'text': 'The image shows a chart.'}]}},
@@ -360,32 +341,8 @@ class TestConverseGuardrailIntervention:
         result = agent._analyze_images_via_converse([{'file_id': 'f1'}], "describe this image")
         assert result == 'The image shows a chart.'
 
-    @patch('bondable.bond.providers.bedrock.BedrockAgent.get_converse_guardrail_config')
-    def test_summarization_guardrail_blocked(self, mock_guardrail_cfg):
-        """Summarization returns fallback when guardrail blocks."""
-        mock_guardrail_cfg.return_value = {
-            'guardrailIdentifier': 'test-id',
-            'guardrailVersion': '1',
-            'trace': 'enabled',
-        }
-        from bondable.bond.providers.bedrock.BedrockAgent import BedrockAgent
-
-        agent = MagicMock(spec=BedrockAgent)
-        agent._generate_summary = BedrockAgent._generate_summary.__get__(agent)
-        agent.model = 'us.anthropic.claude-sonnet-4-6'
-        agent.bond_provider = MagicMock()
-        agent.bond_provider.bedrock_runtime_client.converse.return_value = {
-            'stopReason': 'guardrail_intervened',
-            'output': {'message': {'content': [{'text': 'Blocked.'}]}},
-        }
-
-        result = agent._generate_summary("User: tell me about PII\nAssistant: ...")
-        assert 'content safety policy' in result.lower()
-
-    @patch('bondable.bond.providers.bedrock.BedrockAgent.get_converse_guardrail_config')
-    def test_summarization_normal_response(self, mock_guardrail_cfg):
-        """Summarization returns normal summary when guardrail allows."""
-        mock_guardrail_cfg.return_value = None
+    def test_summarization_normal_response(self):
+        """Summarization returns normal summary."""
         from bondable.bond.providers.bedrock.BedrockAgent import BedrockAgent
 
         agent = MagicMock(spec=BedrockAgent)
@@ -400,39 +357,6 @@ class TestConverseGuardrailIntervention:
         result = agent._generate_summary("User: What were our Q4 numbers?\nAssistant: Revenue was up 15%.")
         assert result == 'User discussed Q4 metrics.'
 
-    @patch('bondable.bond.providers.bedrock.BedrockAgent.get_converse_guardrail_config')
-    @patch('bondable.bond.providers.bedrock.BedrockAgent.Config')
-    @patch('builtins.open', MagicMock(return_value=MagicMock(
-        __enter__=MagicMock(return_value=iter([
-            'name,category,tag1,tag2,tag3\n',
-            'smart_toy,action,toy,smart,ai\n',
-        ])),
-        __exit__=MagicMock(return_value=False),
-    )))
-    def test_icon_selection_guardrail_blocked(self, mock_config, mock_guardrail_cfg):
-        """Icon selection returns default when guardrail blocks."""
-        mock_guardrail_cfg.return_value = {
-            'guardrailIdentifier': 'test-id',
-            'guardrailVersion': '1',
-            'trace': 'enabled',
-        }
-        # Mock the Config -> provider -> runtime_client chain
-        mock_runtime = MagicMock()
-        mock_runtime.converse.return_value = {
-            'stopReason': 'guardrail_intervened',
-            'output': {'message': {'content': [{'text': 'Blocked.'}]}},
-        }
-        mock_config.config.return_value.get_provider.return_value.bedrock_runtime_client = mock_runtime
-
-        from bondable.bond.providers.bedrock.BedrockAgent import BedrockAgentProvider
-        provider = BedrockAgentProvider.__new__(BedrockAgentProvider)
-        result = provider.select_material_icon("Test Agent", "A test agent")
-        import json
-        parsed = json.loads(result)
-        assert parsed['icon_name'] == 'smart_toy'
-        assert parsed['color'] == '#757575'
-
-    @patch('bondable.bond.providers.bedrock.BedrockAgent.get_converse_guardrail_config')
     @patch('bondable.bond.providers.bedrock.BedrockAgent.Config')
     @patch('builtins.open', MagicMock(return_value=MagicMock(
         __enter__=MagicMock(return_value=iter([
@@ -441,9 +365,8 @@ class TestConverseGuardrailIntervention:
         ])),
         __exit__=MagicMock(return_value=False),
     )))
-    def test_icon_selection_normal_response(self, mock_config, mock_guardrail_cfg):
-        """Icon selection returns LLM-chosen icon when guardrail allows."""
-        mock_guardrail_cfg.return_value = None
+    def test_icon_selection_normal_response(self, mock_config):
+        """Icon selection returns LLM-chosen icon."""
         mock_runtime = MagicMock()
         mock_runtime.converse.return_value = {
             'stopReason': 'end_turn',

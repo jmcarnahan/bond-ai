@@ -38,35 +38,35 @@ module "eks" {
   count = var.enable_eks ? 1 : 0
 
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 20.31"
+  version = "~> 21.0"
 
-  cluster_name    = local.eks_cluster_name
-  cluster_version = var.eks_kubernetes_version
+  name               = local.eks_cluster_name
+  kubernetes_version = var.eks_kubernetes_version
 
   # Networking — reuse same private subnets as App Runner VPC connector
   vpc_id     = data.aws_vpc.existing.id
   subnet_ids = local.app_runner_subnet_ids
 
   # Endpoint access — public needed for Terraform/kubectl from outside VPC
-  cluster_endpoint_public_access       = true
-  cluster_endpoint_private_access      = true
-  cluster_endpoint_public_access_cidrs = var.eks_cluster_endpoint_public_access_cidrs
+  endpoint_public_access       = true
+  endpoint_private_access      = true
+  endpoint_public_access_cidrs = var.eks_cluster_endpoint_public_access_cidrs
 
   # Grant admin to whoever runs Terraform (EKS access entries API)
   enable_cluster_creator_admin_permissions = true
 
   # Control plane logging
-  cluster_enabled_log_types = ["api", "audit", "authenticator"]
+  enabled_log_types = ["api", "audit", "authenticator"]
 
   # EKS managed addons
-  cluster_addons = {
+  addons = {
     metrics-server = {
       most_recent = true
     }
   }
 
   # Secrets envelope encryption
-  cluster_encryption_config = {
+  encryption_config = {
     provider_key_arn = aws_kms_key.eks[0].arn
     resources        = ["secrets"]
   }
@@ -112,6 +112,9 @@ module "eks" {
       ami_id                     = var.eks_custom_ami_id != "" ? var.eks_custom_ami_id : null
       ami_type                   = var.eks_custom_ami_id != "" ? "CUSTOM" : "AL2023_x86_64_STANDARD"
       enable_bootstrap_user_data = var.eks_custom_ami_id != "" ? true : false
+
+      # v21 changed default from true to false — keep enabled for prod observability
+      enable_monitoring = true
 
       # Additional tags for SCP/tag policy compliance
       tags = var.eks_node_tags

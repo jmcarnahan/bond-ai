@@ -29,7 +29,7 @@ from bondable.bond.providers.threads import ThreadsProvider
 from bondable.bond.providers.files import FilesProvider
 from bondable.bond.providers.metadata import AgentRecord
 from .BedrockCRUD import create_bedrock_agent, update_bedrock_agent, delete_bedrock_agent, get_bedrock_agent
-from .BedrockGuardrails import get_converse_guardrail_config, GUARDRAIL_BLOCK_MESSAGE
+from .BedrockGuardrails import GUARDRAIL_BLOCK_MESSAGE
 from xml.sax.saxutils import escape as xml_escape, unescape as xml_unescape  # nosec B406
 from bondable.utils.logging_utils import safe_id
 from .BedrockMCP import (
@@ -1675,15 +1675,7 @@ Please integrate any relevant insights from the documents with your analysis of 
                 "modelId": self.model,
                 "messages": [{"role": "user", "content": content_blocks}],
             }
-            guardrail_cfg = get_converse_guardrail_config()
-            if guardrail_cfg:
-                converse_kwargs["guardrailConfig"] = guardrail_cfg
             response = self.bond_provider.bedrock_runtime_client.converse(**converse_kwargs)
-
-            # Check if guardrail blocked the request
-            if response.get('stopReason') == 'guardrail_intervened':
-                LOGGER.warning("Guardrail blocked image analysis converse() call")
-                return "[Image analysis unavailable: content was blocked by guardrail policy.]"
 
             # Extract text from response
             output_message = response.get('output', {}).get('message', {})
@@ -2178,15 +2170,7 @@ Please integrate any relevant insights from the documents with your analysis of 
             "system": [{"text": system_prompt}],
             "inferenceConfig": {"maxTokens": MAX_SUMMARY_TOKENS, "temperature": 0.0},
         }
-        guardrail_cfg = get_converse_guardrail_config()
-        if guardrail_cfg:
-            converse_kwargs["guardrailConfig"] = guardrail_cfg
         response = self.bond_provider.bedrock_runtime_client.converse(**converse_kwargs)
-
-        # Check if guardrail blocked the summarization request
-        if response.get('stopReason') == 'guardrail_intervened':
-            LOGGER.warning("Guardrail blocked conversation summarization converse() call")
-            return "[Summary unavailable due to content safety policy]"
 
         output = response.get('output', {}).get('message', {})
         parts = [b['text'] for b in output.get('content', []) if 'text' in b]
@@ -2595,15 +2579,7 @@ Remember: Return ONLY the icon name that exists in the above list, and a valid h
                     "temperature": 0.3,  # Lower temperature for more consistent selection
                 },
             }
-            guardrail_cfg = get_converse_guardrail_config()
-            if guardrail_cfg:
-                converse_kwargs["guardrailConfig"] = guardrail_cfg
             response = runtime_client.converse(**converse_kwargs)
-
-            # Check if guardrail blocked the icon selection request
-            if response.get('stopReason') == 'guardrail_intervened':
-                LOGGER.warning(f"Guardrail blocked icon selection converse() call for agent '{name}'")
-                return json.dumps({"icon_name": "smart_toy", "color": "#757575"})
 
             # Extract the response
             response_text = response['output']['message']['content'][0]['text']

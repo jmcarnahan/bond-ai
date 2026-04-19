@@ -46,7 +46,7 @@ patches/
 *.tfstate.*
 *.tfplan
 *.tfvars.local
-.terraform.lock.hcl
+# .terraform.lock.hcl is committed per HashiCorp recommendation (consistent provider versions)
 crash.log
 crash.*.log
 override.tf
