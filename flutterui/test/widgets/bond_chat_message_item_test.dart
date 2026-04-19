@@ -1,3 +1,4 @@
+// ignore_for_file: must_be_immutable
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,7 +13,6 @@ import 'package:flutterui/data/services/file_service.dart';
 import 'package:flutterui/data/services/auth_service.dart';
 import 'package:flutterui/data/models/thread_model.dart';
 import 'package:flutterui/data/models/message_model.dart';
-import 'package:flutterui/data/models/agent_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ---------------------------------------------------------------------------

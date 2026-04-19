@@ -1,4 +1,6 @@
 @TestOn('browser')
+library;
+
 // ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:html' as html;
 import 'dart:js_interop';
@@ -6,7 +8,7 @@ import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutterui/presentation/screens/chat/widgets/clipboard_helper_web.dart'
+import 'package:bond_chat_ui/src/widgets/clipboard_helper_web.dart'
     as clipboard;
 
 void main() {

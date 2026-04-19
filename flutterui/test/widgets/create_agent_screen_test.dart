@@ -83,9 +83,8 @@ class MockMcpService implements McpService {
 // ---------------------------------------------------------------------------
 
 Future<ProviderContainer> _pumpCreateAgentScreen(
-  WidgetTester tester, {
-  CreateAgentFormState? initialState,
-}) async {
+  WidgetTester tester,
+) async {
   final mockAgent = MockAgentService();
   final mockFile = MockFileService();
 

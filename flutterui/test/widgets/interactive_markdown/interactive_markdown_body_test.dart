@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutterui/presentation/screens/chat/widgets/interactive_markdown/interactive_markdown_body.dart';
-import 'package:flutterui/presentation/screens/chat/widgets/interactive_markdown/prompt_button.dart';
+import 'package:bond_chat_ui/bond_chat_ui.dart';
 
 void main() {
   group('sanitizeBondLinks', () {
@@ -106,14 +105,12 @@ void main() {
     });
 
     testWidgets('onTapLink fires for regular links', (tester) async {
-      String? capturedHref;
-
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: InteractiveMarkdownBody(
               data: '[Example](https://example.com)',
-              onTapLink: (_, href, __) => capturedHref = href,
+              onTapLink: (_, __, ___) {},
               onPromptButtonTap: (_) {},
             ),
           ),
