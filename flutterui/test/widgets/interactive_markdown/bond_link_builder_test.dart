@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:flutterui/presentation/screens/chat/widgets/interactive_markdown/bond_link_builder.dart';
-import 'package:flutterui/presentation/screens/chat/widgets/interactive_markdown/prompt_button.dart';
+import 'package:bond_chat_ui/bond_chat_ui.dart';
 
 void main() {
   group('BondLinkBuilder', () {

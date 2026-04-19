@@ -31,10 +31,9 @@ void main() {
 
   group('MoveToFolderSheet', () {
     testWidgets('shows Main Screen option and all folders', (tester) async {
-      String? result;
       await tester.pumpWidget(buildTestApp(
         folders: testFolders,
-        onResult: (r) => result = r,
+        onResult: (_) {},
       ));
       await tester.pumpAndSettle();
 
@@ -83,10 +82,9 @@ void main() {
     });
 
     testWidgets('shows message when no folders exist', (tester) async {
-      String? result;
       await tester.pumpWidget(buildTestApp(
         folders: [],
-        onResult: (r) => result = r,
+        onResult: (_) {},
       ));
       await tester.pumpAndSettle();
 
