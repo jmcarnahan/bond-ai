@@ -299,8 +299,8 @@ void main() {
 
       expect(find.text('report.pdf'), findsOneWidget);
 
-      // Tap the file card to trigger download
-      await tester.tap(find.text('report.pdf'));
+      // Tap the download icon to trigger download
+      await tester.tap(find.byIcon(Icons.download));
       await tester.pumpAndSettle();
 
       expect(mockFileService.downloadFileCalled, true);

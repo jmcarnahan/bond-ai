@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:bond_chat_ui/bond_chat_ui.dart' as bond;
 
+import 'package:flutterui/data/services/web_preview_stub.dart'
+    if (dart.library.html) 'package:flutterui/data/services/web_preview_web.dart'
+    as preview;
 import 'package:flutterui/providers/cached_agent_details_provider.dart';
 import 'package:flutterui/providers/services/service_providers.dart';
 import 'package:flutterui/presentation/widgets/agent_icon.dart';
@@ -64,11 +67,18 @@ class BondChatMessageItem extends ConsumerWidget {
         );
       },
       fileCardBuilder: (context, fileDataJson) {
-        return bond.FileCard(
+        return bond.FilePreviewCard(
           fileDataJson: fileDataJson,
+          onPreviewUrl: (fileId) async {
+            final fileService = ref.read(fileServiceProvider);
+            return fileService.getPreviewUrl(fileId);
+          },
           onDownload: (fileId, fileName) async {
             final fileService = ref.read(fileServiceProvider);
             await fileService.downloadFile(fileId, fileName);
+          },
+          onPreviewUrlDispose: (url) {
+            preview.revokeBlobUrl(url);
           },
         );
       },
