@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 
 import 'web_download_stub.dart'
     if (dart.library.html) 'web_download_web.dart' as download;
+import 'web_preview_stub.dart'
+    if (dart.library.html) 'web_preview_web.dart' as preview;
 import 'package:http_parser/http_parser.dart';
 
 import 'package:flutterui/core/constants/api_constants.dart';
@@ -193,6 +195,29 @@ class FileService {
     } catch (e) {
       logger.e("[FileService] Error in downloadFile for $fileId: ${e.toString()}");
       throw Exception('Failed to download file: ${e.toString()}');
+    }
+  }
+
+  /// Fetch file bytes and return a blob URL for inline preview.
+  /// Returns null if the file cannot be fetched.
+  /// Caller is responsible for revoking the URL when done via [revokeBlobUrl].
+  Future<String?> getPreviewUrl(String fileId) async {
+    logger.i("[FileService] getPreviewUrl called for ID: $fileId");
+    try {
+      final url = '${ApiConstants.baseUrl}${ApiConstants.filesEndpoint}/download/$fileId';
+      final response = await _httpClient.get(url);
+
+      if (response.statusCode == 200) {
+        final contentType = response.headers['content-type'] ?? 'application/octet-stream';
+        logger.i("[FileService] Creating preview blob URL for $fileId (type: $contentType)");
+        return preview.createBlobUrl(response.bodyBytes, contentType);
+      } else {
+        logger.e("[FileService] Failed to fetch preview for $fileId: ${response.statusCode}");
+        return null;
+      }
+    } catch (e) {
+      logger.e("[FileService] Error getting preview URL for $fileId: ${e.toString()}");
+      return null;
     }
   }
 

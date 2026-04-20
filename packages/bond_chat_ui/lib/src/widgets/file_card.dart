@@ -1,5 +1,6 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
+
+import 'file_utils.dart';
 
 class FileCard extends StatefulWidget {
   final String fileDataJson;
@@ -17,65 +18,6 @@ class FileCard extends StatefulWidget {
 
 class _FileCardState extends State<FileCard> {
   bool _isDownloading = false;
-
-  Map<String, dynamic> _parseFileData() {
-    try {
-      return json.decode(widget.fileDataJson) as Map<String, dynamic>;
-    } catch (e) {
-      return {};
-    }
-  }
-
-  IconData _getFileIcon(String? mimeType) {
-    if (mimeType == null) return Icons.insert_drive_file;
-
-    if (mimeType.startsWith('image/')) return Icons.image;
-    if (mimeType.startsWith('video/')) return Icons.video_file;
-    if (mimeType.startsWith('audio/')) return Icons.audio_file;
-    if (mimeType == 'application/pdf') return Icons.picture_as_pdf;
-    if (mimeType.contains('text/')) return Icons.description;
-    if (mimeType.contains('spreadsheet') || mimeType.contains('excel') || mimeType == 'text/csv') {
-      return Icons.table_chart;
-    }
-    if (mimeType.contains('document') || mimeType.contains('word')) {
-      return Icons.article;
-    }
-    if (mimeType.contains('zip') || mimeType.contains('archive')) {
-      return Icons.folder_zip;
-    }
-    if (mimeType.contains('json') || mimeType.contains('xml')) {
-      return Icons.code;
-    }
-
-    return Icons.insert_drive_file;
-  }
-
-  String _formatFileSize(int? bytes) {
-    if (bytes == null) return 'Unknown size';
-
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  }
-
-  String _getFileTypeLabel(String? mimeType) {
-    if (mimeType == null) return 'File';
-
-    if (mimeType == 'application/pdf') return 'PDF';
-    if (mimeType == 'text/csv') return 'CSV';
-    if (mimeType.contains('spreadsheet') || mimeType.contains('excel')) return 'Excel';
-    if (mimeType.contains('document') || mimeType.contains('word')) return 'Word';
-    if (mimeType.contains('zip')) return 'ZIP';
-    if (mimeType.startsWith('image/')) return 'Image';
-    if (mimeType.startsWith('video/')) return 'Video';
-    if (mimeType.startsWith('audio/')) return 'Audio';
-    if (mimeType.startsWith('text/')) return 'Text';
-
-    return 'File';
-  }
 
   Future<void> _downloadFile(String fileId, String fileName) async {
     if (widget.onDownload == null) return;
@@ -115,7 +57,7 @@ class _FileCardState extends State<FileCard> {
 
   @override
   Widget build(BuildContext context) {
-    final fileData = _parseFileData();
+    final fileData = parseFileDataJson(widget.fileDataJson);
     final fileName = fileData['file_name'] as String? ?? 'Unknown File';
     final fileSize = fileData['file_size'] as int?;
     final mimeType = fileData['mime_type'] as String?;
@@ -154,7 +96,7 @@ class _FileCardState extends State<FileCard> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
-                    _getFileIcon(mimeType),
+                    getFileIcon(mimeType),
                     color: colorScheme.onPrimaryContainer,
                     size: 28,
                   ),
@@ -189,7 +131,7 @@ class _FileCardState extends State<FileCard> {
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              _getFileTypeLabel(mimeType),
+                              getFileTypeLabel(mimeType),
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w500,
@@ -199,7 +141,7 @@ class _FileCardState extends State<FileCard> {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            _formatFileSize(fileSize),
+                            formatFileSize(fileSize),
                             style: TextStyle(
                               fontSize: 12,
                               color: colorScheme.onSurfaceVariant,
