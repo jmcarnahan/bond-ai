@@ -25,6 +25,10 @@ locals {
       for f in fileset("${path.module}/../../flutterui/lib", "**/*.dart") :
       filemd5("${path.module}/../../flutterui/lib/${f}")
     ])),
+    md5(join("", [
+      for f in fileset("${path.module}/../../packages/bond_chat_ui/lib", "**/*.dart") :
+      filemd5("${path.module}/../../packages/bond_chat_ui/lib/${f}")
+    ])),
     var.maintenance_mode ? "maintenance" : "normal",
     var.maintenance_message,
     var.theme_config_path,
