@@ -8,6 +8,7 @@ import os
 import re
 
 from bondable.bond.providers.provider import Provider
+from bondable.bond.providers.files import to_opaque_id as _to_opaque_id  # re-export for backward compat
 from bondable.rest.models.auth import User
 from bondable.rest.models.files import FileUploadResponse, FileDeleteResponse, FileDetailsResponse
 from bondable.rest.dependencies.auth import get_current_user
@@ -46,17 +47,6 @@ BLOCKED_EXTENSIONS = {
     '.exe', '.dll', '.so', '.dylib', '.bat', '.cmd', '.sh', '.bash',
     '.ps1', '.vbs', '.msi', '.com', '.scr', '.pif', '.jar', '.app',
 }
-
-def _to_opaque_id(s3_uri: str) -> str:
-    """Extract the opaque file identifier from a full S3 URI.
-
-    Example: 's3://bond-bedrock-files-123/files/bond_file_abc' -> 'bond_file_abc'
-    """
-    match = re.search(r'(bond_file_[0-9a-f]+)$', s3_uri)
-    if match:
-        return match.group(1)
-    # Fallback: return the last path component
-    return s3_uri.rsplit('/', 1)[-1] if '/' in s3_uri else s3_uri
 
 
 def _resolve_file_id(file_id: str, provider) -> str:

@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 import io
+import os
+import re
 from bondable.bond.providers.metadata import Metadata, FileRecord
 from typing import List, Dict, Any, Optional, Tuple
 import logging
@@ -9,6 +11,48 @@ from dataclasses import dataclass
 import openpyxl
 
 LOGGER = logging.getLogger(__name__)
+
+
+def to_opaque_id(s3_uri: str) -> str:
+    """Extract the opaque file identifier from a full S3 URI.
+
+    Example: 's3://bond-bedrock-files-123/files/bond_file_abc' -> 'bond_file_abc'
+    """
+    match = re.search(r'(bond_file_[0-9a-f]+)$', s3_uri)
+    if match:
+        return match.group(1)
+    # Fallback: return the last path component
+    return s3_uri.rsplit('/', 1)[-1] if '/' in s3_uri else s3_uri
+
+# File extension to MIME type fallback for when Magika classifies as text/plain
+_EXTENSION_MIME_OVERRIDES = {
+    '.html': 'text/html',
+    '.htm': 'text/html',
+    '.css': 'text/css',
+    '.js': 'application/javascript',
+    '.json': 'application/json',
+    '.xml': 'application/xml',
+    '.csv': 'text/csv',
+    '.md': 'text/markdown',
+    '.yaml': 'application/x-yaml',
+    '.yml': 'application/x-yaml',
+}
+
+
+def _apply_mime_override(mime_type: str, file_path: str) -> str:
+    """Apply file-extension override when Magika returns text/plain.
+
+    Magika's content-based detection can misclassify simple files (e.g. a
+    minimal HTML page) as text/plain.  When that happens, fall back to the
+    file extension if it maps to a well-known MIME type.
+    """
+    if mime_type == 'text/plain':
+        ext = os.path.splitext(file_path)[1].lower()
+        override = _EXTENSION_MIME_OVERRIDES.get(ext)
+        if override:
+            LOGGER.info(f"MIME override: Magika returned text/plain for {file_path}, using {override} based on extension")
+            return override
+    return mime_type
 
 
 def convert_xlsm_to_xlsx(file_bytes: io.BytesIO, original_filename: str) -> Tuple[io.BytesIO, str, str]:
@@ -138,6 +182,10 @@ class FilesProvider(ABC):
         result = magika.identify_bytes(content)
         mime_type = result.output.mime_type
 
+        # Fallback: when Magika returns text/plain but file extension suggests
+        # a more specific type (e.g., simple .html files misclassified as plain text)
+        mime_type = _apply_mime_override(mime_type, file_path)
+
         # Check if file is XLSM by MIME type OR extension and convert to XLSX
         is_xlsm = (
             mime_type == "application/vnd.ms-excel.sheet.macroEnabled.12" or
@@ -169,8 +217,10 @@ class FilesProvider(ABC):
 
             if exact_match:
                 LOGGER.info(f"Exact file match found for {file_path}. Reusing existing record with file_id: {exact_match.file_id}")
-                # Update mime_type if it was not set before
-                if not exact_match.mime_type:
+                # Update mime_type if it was not set or if a more specific type was detected
+                # (e.g., cached text/plain corrected to text/html via extension override)
+                if exact_match.mime_type != mime_type:
+                    LOGGER.debug(f"Updating mime_type for {file_path}: {exact_match.mime_type} -> {mime_type}")
                     exact_match.mime_type = mime_type
                     session.commit()
                 return FileDetails.from_file_record(exact_match)
