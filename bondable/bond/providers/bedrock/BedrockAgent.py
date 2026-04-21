@@ -22,6 +22,7 @@ from botocore.exceptions import ClientError, ConnectionClosedError, EventStreamE
 from urllib3.exceptions import ReadTimeoutError as Urllib3ReadTimeoutError
 from typing_extensions import override
 from bondable.bond.providers.agent import Agent, AgentProvider
+from bondable.bond.providers.files import to_opaque_id
 from bondable.bond.definition import AgentDefinition
 from bondable.bond.config import Config
 from bondable.bond.providers.provider import Provider
@@ -72,8 +73,13 @@ COMPACTION_THRESHOLD_RATIO = float(os.environ.get('BEDROCK_COMPACTION_THRESHOLD'
 MIN_INSTRUCTION_LENGTH = 40
 DEFAULT_INSTRUCTION = "You are a helpful AI assistant. Be helpful, accurate, and concise in your responses."
 # Maximum size (in bytes) for tool result payloads sent back to Bedrock.
-# Bedrock's invoke_agent API closes the connection when payloads exceed ~25KB.
-MAX_TOOL_RESULT_BYTES = 20_000
+# Override via BEDROCK_MAX_TOOL_RESULT_BYTES env var.
+# There is no documented API payload limit for returnControlInvocationResults.
+# The actual constraint is the model's context window (e.g., ~8MB for 1M-token models).
+# 1MB default provides ample headroom while keeping tool results well within context budget.
+MAX_TOOL_RESULT_BYTES = int(os.environ.get('BEDROCK_MAX_TOOL_RESULT_BYTES', '1000000'))
+if os.environ.get('BEDROCK_MAX_TOOL_RESULT_BYTES'):
+    LOGGER.info(f"[Config] BEDROCK_MAX_TOOL_RESULT_BYTES={MAX_TOOL_RESULT_BYTES}")
 # Minimum number of records in a list-of-dicts to trigger CSV conversion for token efficiency.
 # Even when results are under the byte limit, CSV uses ~50-70% fewer tokens than JSON,
 # which reduces LLM latency and cost on every continuation call.
@@ -258,8 +264,10 @@ class BedrockAgent(Agent):
                 )
 
                 # Create message content with file metadata as JSON
+                # Use opaque ID (bond_file_xxx) instead of full S3 URI to avoid
+                # nginx merge_slashes breaking s3:// in download URLs
                 message_content = json.dumps({
-                    'file_id': file_details.file_id,
+                    'file_id': to_opaque_id(file_details.file_id),
                     'file_name': file_details.file_path,
                     'file_size': file_details.file_size,
                     'mime_type': file_details.mime_type
@@ -2303,6 +2311,7 @@ Please integrate any relevant insights from the documents with your analysis of 
                 invoke_elapsed = time.monotonic() - invoke_start
                 LOGGER.info(
                     f"[Continuation] invoke_agent succeeded at depth={depth} in {invoke_elapsed:.3f}s, "
+                    f"payload={total_result_bytes} bytes, "
                     f"stream={'present' if continuation_stream else 'absent'}"
                     f"{f', attempt={attempt + 1}' if attempt > 0 else ''}"
                 )
@@ -2312,21 +2321,18 @@ Please integrate any relevant insights from the documents with your analysis of 
                 invoke_elapsed = time.monotonic() - invoke_start
                 LOGGER.warning(
                     f"[Continuation] Connection error on attempt {attempt + 1}/"
-                    f"{MAX_INVOKE_RETRIES + 1} at depth={depth} after {invoke_elapsed:.3f}s: "
-                    f"{type(e).__name__}: {e}"
+                    f"{MAX_INVOKE_RETRIES + 1} at depth={depth} after {invoke_elapsed:.3f}s, "
+                    f"payload={total_result_bytes} bytes: {type(e).__name__}: {e}"
                 )
                 if attempt == MAX_INVOKE_RETRIES:
-                    total_result_size = sum(
-                        len(json.dumps(tr).encode('utf-8')) for tr in tool_results
-                    )
                     LOGGER.error(
                         f"[Continuation] All {MAX_INVOKE_RETRIES + 1} attempts failed. "
-                        f"Tool result payload size: {total_result_size} bytes. "
-                        f"This may indicate the payload exceeds Bedrock's size limit despite compaction."
+                        f"Tool result payload size: {total_result_bytes} bytes. "
+                        f"This may indicate the payload exceeds the model's context window or a transient network issue."
                     )
                     yield (
                         f"\n\nI was unable to send the tool results back to the agent because "
-                        f"the response was too large ({total_result_size} bytes), even after compaction. "
+                        f"the response was too large ({total_result_bytes} bytes), even after compaction. "
                         f"Please try a more specific query to get fewer results.\n"
                     )
                     return
