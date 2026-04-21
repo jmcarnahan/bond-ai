@@ -3,7 +3,7 @@ Unit tests for tool result compaction in BedrockAgent.
 
 Tests the pipeline that:
 - Converts list-of-dicts (5+ records) to CSV for token efficiency, even below the byte limit
-- Truncates results that exceed Bedrock's ~25KB payload limit
+- Truncates results that exceed the configurable payload limit (default 1MB)
 - Filters out low-value columns (nulls, constants, API artifacts)
 - Row-boundary-aware CSV truncation
 - Pagination metadata extraction
@@ -393,13 +393,14 @@ class TestCompactToolResult:
         # CSV should be smaller than JSON
         assert len(result.encode('utf-8')) < len(json_result.encode('utf-8'))
 
+    @patch('bondable.bond.providers.bedrock.BedrockAgent.MAX_TOOL_RESULT_BYTES', 20_000)
     def test_large_json_list_of_dicts_converts_to_csv(self):
         agent = _make_agent()
         data = _make_jira_issues(50)
         large_result = json.dumps(data)
 
-        # Verify it's actually over the limit
-        assert len(large_result.encode('utf-8')) > MAX_TOOL_RESULT_BYTES
+        # Verify it's actually over the test limit (20KB)
+        assert len(large_result.encode('utf-8')) > 20_000
 
         compacted = agent._compact_tool_result(large_result, "jira_search")
 
@@ -408,33 +409,37 @@ class TestCompactToolResult:
         # Should contain CSV-like content (commas, headers)
         assert "EIN-" in compacted
 
+    @patch('bondable.bond.providers.bedrock.BedrockAgent.MAX_TOOL_RESULT_BYTES', 20_000)
     def test_large_json_wrapped_in_issues_key(self):
         """Jira-style {"issues": [...]} structure should be detected and converted."""
         agent = _make_agent()
         data = _make_jira_issues(50)
         large_result = json.dumps(data)
         compacted = agent._compact_tool_result(large_result, "jira_search")
-        assert len(compacted.encode('utf-8')) <= MAX_TOOL_RESULT_BYTES
+        assert len(compacted.encode('utf-8')) <= 20_000
 
+    @patch('bondable.bond.providers.bedrock.BedrockAgent.MAX_TOOL_RESULT_BYTES', 20_000)
     def test_non_json_result_truncated(self):
         agent = _make_agent()
         large_text = "This is plain text. " * 2000
-        assert len(large_text.encode('utf-8')) > MAX_TOOL_RESULT_BYTES
+        assert len(large_text.encode('utf-8')) > 20_000
 
         result = agent._compact_tool_result(large_text, "text_tool")
-        assert len(result.encode('utf-8')) <= MAX_TOOL_RESULT_BYTES
+        assert len(result.encode('utf-8')) <= 20_000
         assert "[TRUNCATED" in result
 
+    @patch('bondable.bond.providers.bedrock.BedrockAgent.MAX_TOOL_RESULT_BYTES', 20_000)
     def test_json_non_list_result_uses_compact_or_truncate(self):
         """Large JSON object that isn't a list-of-dicts should be compacted or truncated."""
         agent = _make_agent()
         data = {f"key_{i}": "x" * 500 for i in range(100)}
         large_result = json.dumps(data)
-        assert len(large_result.encode('utf-8')) > MAX_TOOL_RESULT_BYTES
+        assert len(large_result.encode('utf-8')) > 20_000
 
         result = agent._compact_tool_result(large_result, "big_dict_tool")
-        assert len(result.encode('utf-8')) <= MAX_TOOL_RESULT_BYTES
+        assert len(result.encode('utf-8')) <= 20_000
 
+    @patch('bondable.bond.providers.bedrock.BedrockAgent.MAX_TOOL_RESULT_BYTES', 20_000)
     def test_csv_still_too_large_gets_truncated(self):
         """If CSV conversion is still over limit, result should be truncated."""
         agent = _make_agent()
@@ -449,10 +454,30 @@ class TestCompactToolResult:
             })
         data = {"issues": issues}
         large_result = json.dumps(data)
-        assert len(large_result.encode('utf-8')) > MAX_TOOL_RESULT_BYTES
+        assert len(large_result.encode('utf-8')) > 20_000
 
         result = agent._compact_tool_result(large_result, "huge_result")
-        assert len(result.encode('utf-8')) <= MAX_TOOL_RESULT_BYTES
+        assert len(result.encode('utf-8')) <= 20_000
+
+    def test_medium_text_passes_through_at_default_limit(self):
+        """Results under the 1MB default should not be truncated.
+        This is the key behavioral change from the old 20KB limit."""
+        agent = _make_agent()
+        # 108KB of plain text — was truncated at old 20KB, should pass through now
+        large_text = "This is important data. " * 4500
+        assert len(large_text.encode('utf-8')) > 100_000
+        result = agent._compact_tool_result(large_text, "medium_tool")
+        assert result == large_text
+        assert "[TRUNCATED" not in result
+
+    def test_medium_json_not_truncated_at_default_limit(self):
+        """Large JSON (non-list) under 1MB should be returned as-is."""
+        agent = _make_agent()
+        data = {f"key_{i}": "x" * 500 for i in range(200)}
+        json_result = json.dumps(data)
+        assert len(json_result.encode('utf-8')) > 100_000
+        result = agent._compact_tool_result(json_result, "medium_json_tool")
+        assert result == json_result
 
     def test_compaction_ratio_for_jira_data(self):
         """CSV compaction should achieve significant reduction for typical Jira data."""
@@ -606,13 +631,14 @@ class TestContinuationRetryLogic:
 class TestCompactionIntegration:
     """Integration tests for compaction within _handle_return_control."""
 
+    @patch('bondable.bond.providers.bedrock.BedrockAgent.MAX_TOOL_RESULT_BYTES', 20_000)
     def test_large_mcp_result_gets_compacted(self):
         """A large MCP tool result should be compacted before being sent to Bedrock."""
         agent = _make_agent()
 
         # Generate a large Jira result
         large_result = json.dumps(_make_jira_issues(50))
-        assert len(large_result.encode('utf-8')) > MAX_TOOL_RESULT_BYTES
+        assert len(large_result.encode('utf-8')) > 20_000
 
         # Test _compact_tool_result directly on the large result
         compacted = agent._compact_tool_result(large_result, "jira_search")
@@ -621,7 +647,7 @@ class TestCompactionIntegration:
         response_body = json.dumps({"result": compacted})
 
         # The response body should fit within the limit (with some tolerance for wrapper)
-        assert len(response_body.encode('utf-8')) <= MAX_TOOL_RESULT_BYTES + 100
+        assert len(response_body.encode('utf-8')) <= 20_000 + 100
 
 
 # ---------------------------------------------------------------------------
@@ -932,6 +958,7 @@ class TestPaginationMetadata:
         wrapped_size = len(json.dumps({"result": result}).encode('utf-8'))
         assert wrapped_size <= MAX_TOOL_RESULT_BYTES
 
+    @patch('bondable.bond.providers.bedrock.BedrockAgent.MAX_TOOL_RESULT_BYTES', 20_000)
     def test_pagination_does_not_break_truncated_csv(self):
         """Pagination header must come BEFORE CSV header, even when CSV is truncated."""
         agent = _make_agent()
@@ -947,7 +974,7 @@ class TestPaginationMetadata:
             ],
         }
         json_result = json.dumps(data)
-        assert len(json_result.encode('utf-8')) > MAX_TOOL_RESULT_BYTES
+        assert len(json_result.encode('utf-8')) > 20_000
 
         result = agent._compact_tool_result(json_result, "jira_search")
         lines = result.strip().split("\n")

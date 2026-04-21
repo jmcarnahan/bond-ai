@@ -125,6 +125,7 @@ resource "aws_apprunner_service" "backend" {
           BOND_PROVIDER_CLASS    = "bondable.bond.providers.bedrock.BedrockProvider.BedrockProvider"
           DATABASE_SECRET_ARN    = aws_secretsmanager_secret.db_credentials.arn
           S3_BUCKET_NAME         = aws_s3_bucket.uploads.id
+          BEDROCK_S3_BUCKET      = aws_s3_bucket.uploads.id
           BEDROCK_AGENT_ROLE_ARN = aws_iam_role.bedrock_agent.arn
           BEDROCK_DEFAULT_MODEL      = var.bedrock_default_model
           BEDROCK_SELECTABLE_MODELS  = var.bedrock_selectable_models
