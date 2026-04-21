@@ -75,9 +75,11 @@ class BedrockFilesProvider(FilesProvider):
         super().__init__(metadata)
 
         self.s3_client = s3_client
-        default_bucket_id = os.getenv('AWS_ACCOUNT_ID', uuid.uuid4().hex)
-        default_bucket = f"bond-bedrock-files-{default_bucket_id}"
-        self.bucket_name = os.getenv('BEDROCK_S3_BUCKET', default_bucket)
+        self.bucket_name = os.getenv('BEDROCK_S3_BUCKET') or os.getenv('S3_BUCKET_NAME')
+        if not self.bucket_name:
+            default_bucket_id = os.getenv('AWS_ACCOUNT_ID', uuid.uuid4().hex)
+            self.bucket_name = f"bond-bedrock-files-{default_bucket_id}"
+            LOGGER.warning(f"Neither BEDROCK_S3_BUCKET nor S3_BUCKET_NAME set, using generated bucket: {self.bucket_name}")
         self.bond_provider: Provider = provider
 
         # Ensure bucket exists
