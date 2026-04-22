@@ -109,9 +109,21 @@ module "eks" {
       desired_size = var.eks_node_desired_count
 
       # Custom AMI support for company-certified images
-      ami_id                     = var.eks_custom_ami_id != "" ? var.eks_custom_ami_id : null
-      ami_type                   = var.eks_custom_ami_id != "" ? "CUSTOM" : "AL2023_x86_64_STANDARD"
-      enable_bootstrap_user_data = var.eks_custom_ami_id != "" ? true : false
+      # The golden AMI is AL2-based (CIS hardened) and needs the AL2 bootstrap script,
+      # not the AL2023 NodeConfig YAML format. We set ami_type to CUSTOM and point
+      # user_data_template_path to the AL2 template to satisfy v21's requirement.
+      ami_id                         = var.eks_custom_ami_id != "" ? var.eks_custom_ami_id : null
+      ami_type                       = var.eks_custom_ami_id != "" ? "CUSTOM" : "AL2023_x86_64_STANDARD"
+      enable_bootstrap_user_data     = var.eks_custom_ami_id != "" ? true : false
+      use_latest_ami_release_version = var.eks_custom_ami_id != "" ? false : true
+      user_data_template_path        = var.eks_custom_ami_id != "" ? "${path.module}/templates/al2_user_data.tpl" : null
+
+      # Force node group updates through even if pod eviction fails (e.g. PDB deadlock).
+      # Without this, rolling updates fail after ~30 min with PodEvictionFailure.
+      force_update_version = true
+      update_config = {
+        max_unavailable = 1
+      }
 
       # v21 changed default from true to false — keep enabled for prod observability
       enable_monitoring = true

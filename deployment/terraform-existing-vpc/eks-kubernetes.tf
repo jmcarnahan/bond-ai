@@ -387,7 +387,7 @@ resource "kubernetes_pod_disruption_budget_v1" "backend" {
   }
 
   spec {
-    min_available = "1"
+    max_unavailable = "1"
 
     selector {
       match_labels = {
