@@ -48,10 +48,14 @@ SITES_SCOPES = [
     "Sites.ReadWrite.All",
 ]
 
+CALENDAR_SCOPES = [
+    "Calendars.ReadWrite",
+]
+
 
 def _get_scopes() -> list[str]:
     """Return scopes based on whether a tenant ID is set (org vs consumer)."""
-    scopes = MAIL_SCOPES + FILES_SCOPES
+    scopes = MAIL_SCOPES + FILES_SCOPES + CALENDAR_SCOPES
     if os.environ.get("MS_TENANT_ID"):
         scopes += SITES_SCOPES + TEAMS_SCOPES
     return scopes

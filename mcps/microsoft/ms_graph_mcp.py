@@ -2,16 +2,17 @@
 """
 Microsoft Graph MCP Server for Bond AI.
 
-Provides email, Teams, file, and Power BI tools. Graph tools use the user's
-Microsoft Graph OAuth token; Power BI tools use a PBI-scoped token — both
+Provides email, calendar, Teams, file, and Power BI tools. Graph tools use the
+user's Microsoft Graph OAuth token; Power BI tools use a PBI-scoped token — both
 passed by Bond AI's backend as Authorization: Bearer headers (via separate
 connection entries in bond_mcp_config).
 
 Run:
     fastmcp run ms_graph_mcp.py --transport streamable-http --port 5557
 
-Tool summary (19 tools):
+Tool summary (23 tools):
   Email     : get_user_profile, list_emails, read_email, send_email
+  Calendar  : list_calendar_events, get_calendar_event, create_calendar_event, check_availability
   Teams     : list_teams, list_chats, read_teams_messages, send_teams_message, get_teams_activity
   Files     : list_sharepoint_sites, list_files, inspect_file, upload_file, copy_or_rename_file
   Power BI  : list_powerbi_workspaces, list_powerbi_content, query_dataset, refresh_dataset, export_report
@@ -26,6 +27,7 @@ from fastmcp import FastMCP
 from ms_graph.auth import get_graph_token, get_powerbi_token
 from ms_graph.graph_client import AsyncGraphClient
 from ms_graph import mail as mail_ops
+from ms_graph import calendar as calendar_ops
 from ms_graph import teams as teams_ops
 from ms_graph import files as files_ops
 from ms_graph import power_bi as pbi_ops
@@ -194,6 +196,257 @@ async def send_email(to: str, subject: str, body: str, body_type: str = "auto", 
 
     cc_note = f" (CC: {cc})" if cc else ""
     return f"Email sent to {to}{cc_note}."
+
+
+# ---------------------------------------------------------------------------
+# Calendar
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def list_calendar_events(
+    start_date: str = "",
+    end_date: str = "",
+    top: int = 10,
+) -> str:
+    """
+    List calendar events in a date range.
+
+    Returns events from the user's primary calendar within the specified range.
+    If no range is specified, defaults to the next 7 days.
+
+    Args:
+        start_date: Start date/time in ISO 8601 format (e.g., "2026-05-07T00:00:00Z").
+                    Defaults to now.
+        end_date: End date/time in ISO 8601 format (e.g., "2026-05-14T00:00:00Z").
+                  Defaults to 7 days from start_date.
+        top: Maximum number of events to return (default: 10).
+    """
+    from datetime import datetime, timedelta, timezone as tz
+
+    if not start_date:
+        now = datetime.now(tz.utc)
+        start_date = now.isoformat()
+    if not end_date:
+        start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+        end_date = (start_dt + timedelta(days=7)).isoformat()
+
+    token = get_graph_token()
+    async with AsyncGraphClient(token) as client:
+        events = await calendar_ops.alist_calendar_events(
+            client, start_datetime=start_date, end_datetime=end_date, top=top
+        )
+
+    if not events:
+        return "No calendar events found in the specified date range."
+
+    lines = [f"Found {len(events)} event(s):\n"]
+    for i, event in enumerate(events, 1):
+        subject = event.get("subject", "(no subject)")
+        start = event.get("start", {})
+        end = event.get("end", {})
+        start_str = start.get("dateTime", "?")
+        end_str = end.get("dateTime", "?")
+        start_tz = start.get("timeZone", "")
+        location = event.get("location", {}).get("displayName", "")
+        organizer = event.get("organizer", {}).get("emailAddress", {}).get("name", "")
+        is_all_day = event.get("isAllDay", False)
+        is_cancelled = event.get("isCancelled", False)
+        online_url = event.get("onlineMeetingUrl", "")
+
+        time_str = "All day" if is_all_day else f"{start_str} - {end_str} ({start_tz})"
+        status = " [CANCELLED]" if is_cancelled else ""
+
+        entry = (
+            f"{i}. **{subject}**{status}\n"
+            f"   Time: {time_str}\n"
+        )
+        if organizer:
+            entry += f"   Organizer: {organizer}\n"
+        if location:
+            entry += f"   Location: {location}\n"
+        if online_url:
+            entry += f"   Online: {online_url}\n"
+        entry += f"   ID: `{event.get('id', '?')}`"
+        lines.append(entry)
+
+    return "\n\n".join(lines)
+
+
+@mcp.tool()
+async def get_calendar_event(event_id: str) -> str:
+    """
+    Get detailed information about a specific calendar event.
+
+    Args:
+        event_id: The event ID (from list_calendar_events output).
+    """
+    token = get_graph_token()
+    async with AsyncGraphClient(token) as client:
+        event = await calendar_ops.aget_calendar_event(client, event_id)
+
+    subject = event.get("subject", "(no subject)")
+    start = event.get("start", {})
+    end = event.get("end", {})
+    start_str = f"{start.get('dateTime', '?')} ({start.get('timeZone', '?')})"
+    end_str = f"{end.get('dateTime', '?')} ({end.get('timeZone', '?')})"
+    location = event.get("location", {}).get("displayName", "")
+    organizer = event.get("organizer", {}).get("emailAddress", {})
+    body = event.get("body", {})
+    body_content = body.get("content", "")
+    if body.get("contentType") != "text":
+        body_content = f"[HTML content, {len(body_content)} chars]\n{body_content[:3000]}"
+
+    attendees = event.get("attendees", [])
+    attendee_lines = []
+    for att in attendees:
+        email = att.get("emailAddress", {})
+        status = att.get("status", {}).get("response", "none")
+        attendee_lines.append(f"  - {email.get('name', '?')} <{email.get('address', '?')}> ({status})")
+
+    is_all_day = event.get("isAllDay", False)
+    online_url = event.get("onlineMeetingUrl", "")
+    recurrence = event.get("recurrence")
+
+    lines = [
+        f"**Subject:** {subject}",
+        f"**Time:** {'All day' if is_all_day else f'{start_str} to {end_str}'}",
+    ]
+    if organizer:
+        lines.append(f"**Organizer:** {organizer.get('name', '?')} <{organizer.get('address', '?')}>")
+    if location:
+        lines.append(f"**Location:** {location}")
+    if online_url:
+        lines.append(f"**Online Meeting:** {online_url}")
+    if recurrence:
+        pattern = recurrence.get("pattern", {})
+        lines.append(f"**Recurrence:** {pattern.get('type', 'unknown')} (every {pattern.get('interval', 1)} {pattern.get('type', '')})")
+    if attendee_lines:
+        lines.append(f"**Attendees ({len(attendee_lines)}):**")
+        lines.extend(attendee_lines)
+    lines.append(f"**ID:** `{event.get('id', '?')}`")
+    if body_content:
+        lines.append(f"\n---\n{body_content}")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def create_calendar_event(
+    subject: str,
+    start_datetime: str,
+    end_datetime: str,
+    timezone: str = "UTC",
+    attendees: str = "",
+    location: str = "",
+    body: str = "",
+    is_online_meeting: bool = False,
+    is_all_day: bool = False,
+) -> str:
+    """
+    Create a new calendar event.
+
+    Args:
+        subject: Event title/subject.
+        start_datetime: Start date and time in ISO 8601 format (e.g., "2026-05-08T10:00:00").
+        end_datetime: End date and time in ISO 8601 format (e.g., "2026-05-08T11:00:00").
+        timezone: IANA timezone for start/end times (e.g., "America/New_York", "UTC"). Default: UTC.
+        attendees: Comma-separated list of attendee email addresses (optional).
+        location: Event location (optional).
+        body: Event description/body text (optional).
+        is_online_meeting: Whether to create a Teams online meeting link (default: false).
+        is_all_day: Whether this is an all-day event (default: false).
+    """
+    attendee_list = [addr.strip() for addr in attendees.split(",") if addr.strip()] if attendees else None
+
+    token = get_graph_token()
+    async with AsyncGraphClient(token) as client:
+        event = await calendar_ops.acreate_calendar_event(
+            client,
+            subject=subject,
+            start_datetime=start_datetime,
+            start_timezone=timezone,
+            end_datetime=end_datetime,
+            end_timezone=timezone,
+            body=body,
+            attendees=attendee_list,
+            location=location,
+            is_online_meeting=is_online_meeting,
+            is_all_day=is_all_day,
+        )
+
+    result = f"Event '{subject}' created successfully."
+    start = event.get("start", {})
+    result += f"\nTime: {start.get('dateTime', '?')} ({start.get('timeZone', '?')})"
+    if event.get("onlineMeetingUrl"):
+        result += f"\nMeeting link: {event['onlineMeetingUrl']}"
+    result += f"\nID: `{event.get('id', '?')}`"
+    return result
+
+
+@mcp.tool()
+async def check_availability(
+    emails: str,
+    start_datetime: str,
+    end_datetime: str,
+    timezone: str = "UTC",
+) -> str:
+    """
+    Check free/busy availability for one or more people.
+
+    Useful for finding meeting times. Returns availability status for each
+    person in the specified time range.
+
+    Args:
+        emails: Comma-separated email addresses to check availability for.
+        start_datetime: Start of the time range in ISO 8601 format (e.g., "2026-05-08T09:00:00").
+        end_datetime: End of the time range in ISO 8601 format (e.g., "2026-05-08T17:00:00").
+        timezone: IANA timezone (e.g., "America/New_York", "UTC"). Default: UTC.
+    """
+    email_list = [addr.strip() for addr in emails.split(",") if addr.strip()]
+    if not email_list:
+        return "No email addresses provided."
+
+    token = get_graph_token()
+    async with AsyncGraphClient(token) as client:
+        result = await calendar_ops.acheck_availability(
+            client,
+            schedules=email_list,
+            start_datetime=start_datetime,
+            start_timezone=timezone,
+            end_datetime=end_datetime,
+            end_timezone=timezone,
+        )
+
+    schedules = result.get("value", [])
+    if not schedules:
+        return "No availability information returned."
+
+    lines = [f"Availability for {len(schedules)} schedule(s):\n"]
+    for sched in schedules:
+        email = sched.get("scheduleId", "?")
+        avail_view = sched.get("availabilityView", "")
+        schedule_items = sched.get("scheduleItems", [])
+
+        free_count = avail_view.count("0")
+        total_slots = len(avail_view)
+        if total_slots > 0:
+            free_pct = int((free_count / total_slots) * 100)
+            summary = f"{free_pct}% free ({free_count}/{total_slots} slots)"
+        else:
+            summary = "No slots"
+
+        entry = f"**{email}** — {summary}"
+        if schedule_items:
+            entry += "\n   Busy times:"
+            for item in schedule_items[:10]:
+                item_subject = item.get("subject", "(private)")
+                item_start = item.get("start", {}).get("dateTime", "?")
+                item_end = item.get("end", {}).get("dateTime", "?")
+                item_status = item.get("status", "?")
+                entry += f"\n   - {item_start} to {item_end}: {item_subject} ({item_status})"
+        lines.append(entry)
+
+    return "\n\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

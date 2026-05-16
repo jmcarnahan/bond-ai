@@ -2,7 +2,7 @@
 """
 Microsoft Graph CLI -- test all ms_graph_mcp tools from the command line.
 
-Mirrors the 14 consolidated MCP tools exactly so you can test them locally
+Mirrors the 23 consolidated MCP tools exactly so you can test them locally
 with the shared auth proxy already running.
 
 Usage:
@@ -16,6 +16,12 @@ Usage:
     ms-graph-cli email list --query "budget report" [--top 10]
     ms-graph-cli email read <message_id>
     ms-graph-cli email send <to> <subject> <body> [--from <address>] [--cc <address>]
+
+    # Calendar
+    ms-graph-cli calendar list [--start <iso8601>] [--end <iso8601>] [--top 10]
+    ms-graph-cli calendar get <event_id>
+    ms-graph-cli calendar create <subject> <start> <end> [--timezone UTC] [--attendees a@x,b@x] [--location Room] [--online]
+    ms-graph-cli calendar availability <emails> <start> <end> [--timezone UTC]
 
     # Teams
     ms-graph-cli teams list
@@ -53,7 +59,7 @@ load_dotenv()
 
 from ms_graph.graph_client import GraphClient
 from ms_graph.local_auth import get_local_token, get_local_powerbi_token
-from ms_graph import mail, teams, files
+from ms_graph import mail, calendar, teams, files
 from ms_graph.power_bi import PowerBIClient
 from ms_graph import power_bi as pbi_ops
 
@@ -174,6 +180,171 @@ def cmd_email_send(args: argparse.Namespace) -> None:
         )
     cc_note = f" (CC: {args.cc})" if args.cc else ""
     print(f"Email sent to {args.to}{cc_note}.")
+
+
+# ---------------------------------------------------------------------------
+# Calendar
+# ---------------------------------------------------------------------------
+
+def cmd_calendar_list(args: argparse.Namespace) -> None:
+    from datetime import datetime, timedelta, timezone as tz
+
+    start = args.start
+    end = args.end
+    if not start:
+        start = datetime.now(tz.utc).isoformat()
+    if not end:
+        start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+        end = (start_dt + timedelta(days=7)).isoformat()
+
+    token = get_local_token()
+    with GraphClient(token) as client:
+        events = calendar.list_calendar_events(
+            client, start_datetime=start, end_datetime=end, top=args.top
+        )
+
+    if not events:
+        print("No calendar events found in the specified date range.")
+        return
+
+    print(f"Calendar events ({len(events)}):\n")
+    for i, event in enumerate(events, 1):
+        subject = event.get("subject", "(no subject)")
+        start_info = event.get("start", {})
+        end_info = event.get("end", {})
+        is_all_day = event.get("isAllDay", False)
+        is_cancelled = event.get("isCancelled", False)
+        location = event.get("location", {}).get("displayName", "")
+        organizer = event.get("organizer", {}).get("emailAddress", {}).get("name", "")
+
+        status = " [CANCELLED]" if is_cancelled else ""
+        time_str = "All day" if is_all_day else f"{start_info.get('dateTime', '?')} - {end_info.get('dateTime', '?')}"
+
+        print(f"[{i}] {subject}{status}")
+        print(f"     Time: {time_str}")
+        if organizer:
+            print(f"     Organizer: {organizer}")
+        if location:
+            print(f"     Location: {location}")
+        print(f"     ID: {event.get('id', '?')}")
+        print()
+
+
+def cmd_calendar_get(args: argparse.Namespace) -> None:
+    token = get_local_token()
+    with GraphClient(token) as client:
+        event = calendar.get_calendar_event(client, args.event_id)
+
+    subject = event.get("subject", "(no subject)")
+    start = event.get("start", {})
+    end = event.get("end", {})
+    is_all_day = event.get("isAllDay", False)
+    location = event.get("location", {}).get("displayName", "")
+    organizer = event.get("organizer", {}).get("emailAddress", {})
+    online_url = event.get("onlineMeetingUrl", "")
+    recurrence = event.get("recurrence")
+
+    print(f"Subject:    {subject}")
+    if is_all_day:
+        print("Time:       All day")
+    else:
+        print(f"Start:      {start.get('dateTime', '?')} ({start.get('timeZone', '?')})")
+        print(f"End:        {end.get('dateTime', '?')} ({end.get('timeZone', '?')})")
+    if organizer:
+        print(f"Organizer:  {organizer.get('name', '?')} <{organizer.get('address', '?')}>")
+    if location:
+        print(f"Location:   {location}")
+    if online_url:
+        print(f"Online:     {online_url}")
+    if recurrence:
+        pattern = recurrence.get("pattern", {})
+        print(f"Recurrence: {pattern.get('type', '?')} (every {pattern.get('interval', 1)})")
+
+    attendees = event.get("attendees", [])
+    if attendees:
+        print(f"\nAttendees ({len(attendees)}):")
+        for att in attendees:
+            email = att.get("emailAddress", {})
+            status = att.get("status", {}).get("response", "none")
+            print(f"  {email.get('name', '?')} <{email.get('address', '?')}> ({status})")
+
+    body = event.get("body", {})
+    content = body.get("content", "")
+    if content:
+        print(f"\n--- body ---\n{content[:3000]}")
+
+
+def cmd_calendar_create(args: argparse.Namespace) -> None:
+    attendee_list = [a.strip() for a in args.attendees.split(",") if a.strip()] if args.attendees else None
+
+    token = get_local_token()
+    with GraphClient(token) as client:
+        event = calendar.create_calendar_event(
+            client,
+            subject=args.subject,
+            start_datetime=args.start,
+            start_timezone=args.timezone,
+            end_datetime=args.end,
+            end_timezone=args.timezone,
+            body=args.body,
+            attendees=attendee_list,
+            location=args.location,
+            is_online_meeting=args.online,
+            is_all_day=args.all_day,
+        )
+
+    print(f"Event '{args.subject}' created successfully.")
+    start = event.get("start", {})
+    print(f"Time: {start.get('dateTime', '?')} ({start.get('timeZone', '?')})")
+    if event.get("onlineMeetingUrl"):
+        print(f"Meeting link: {event['onlineMeetingUrl']}")
+    print(f"ID: {event.get('id', '?')}")
+
+
+def cmd_calendar_availability(args: argparse.Namespace) -> None:
+    email_list = [a.strip() for a in args.emails.split(",") if a.strip()]
+    if not email_list:
+        print("No email addresses provided.")
+        return
+
+    token = get_local_token()
+    with GraphClient(token) as client:
+        result = calendar.check_availability(
+            client,
+            schedules=email_list,
+            start_datetime=args.start,
+            start_timezone=args.timezone,
+            end_datetime=args.end,
+            end_timezone=args.timezone,
+        )
+
+    schedules = result.get("value", [])
+    if not schedules:
+        print("No availability information returned.")
+        return
+
+    print(f"Availability ({len(schedules)} schedule(s)):\n")
+    for sched in schedules:
+        email = sched.get("scheduleId", "?")
+        avail_view = sched.get("availabilityView", "")
+        schedule_items = sched.get("scheduleItems", [])
+
+        free_count = avail_view.count("0")
+        total_slots = len(avail_view)
+        if total_slots > 0:
+            free_pct = int((free_count / total_slots) * 100)
+            summary = f"{free_pct}% free ({free_count}/{total_slots} slots)"
+        else:
+            summary = "No slots"
+
+        print(f"  {email} — {summary}")
+        for item in schedule_items[:10]:
+            item_start = item.get("start", {}).get("dateTime", "?")
+            item_end = item.get("end", {}).get("dateTime", "?")
+            item_subject = item.get("subject", "(private)")
+            item_status = item.get("status", "?")
+            print(f"    {item_start} to {item_end}: {item_subject} ({item_status})")
+        print()
 
 
 # ---------------------------------------------------------------------------
@@ -535,7 +706,7 @@ def cmd_pbi_export(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Microsoft Graph CLI — mirrors the 14 consolidated MCP tools",
+        description="Microsoft Graph CLI — mirrors the 23 consolidated MCP tools",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = parser.add_subparsers(dest="command", required=True)
@@ -565,6 +736,39 @@ def main() -> None:
     p.add_argument("--from", dest="from_address", default=None, help="Sender alias address")
     p.add_argument("--cc", default="", help="CC recipients (comma-separated)")
     p.set_defaults(func=cmd_email_send)
+
+    # calendar
+    p_cal = sub.add_parser("calendar", help="Calendar operations")
+    cal_sub = p_cal.add_subparsers(dest="calendar_command", required=True)
+
+    p = cal_sub.add_parser("list", help="List calendar events in a date range")
+    p.add_argument("--start", default="", help="Start datetime ISO 8601 (default: now)")
+    p.add_argument("--end", default="", help="End datetime ISO 8601 (default: +7 days)")
+    p.add_argument("--top", type=int, default=10)
+    p.set_defaults(func=cmd_calendar_list)
+
+    p = cal_sub.add_parser("get", help="Get full details of a calendar event")
+    p.add_argument("event_id", help="Event ID (from calendar list)")
+    p.set_defaults(func=cmd_calendar_get)
+
+    p = cal_sub.add_parser("create", help="Create a new calendar event")
+    p.add_argument("subject", help="Event title")
+    p.add_argument("start", help="Start datetime ISO 8601 (e.g. 2026-05-08T10:00:00)")
+    p.add_argument("end", help="End datetime ISO 8601 (e.g. 2026-05-08T11:00:00)")
+    p.add_argument("--timezone", default="UTC", help="IANA timezone (default: UTC)")
+    p.add_argument("--attendees", default="", help="Comma-separated email addresses")
+    p.add_argument("--location", default="", help="Event location")
+    p.add_argument("--body", default="", help="Event description")
+    p.add_argument("--online", action="store_true", help="Create Teams meeting link")
+    p.add_argument("--all-day", dest="all_day", action="store_true", help="All-day event")
+    p.set_defaults(func=cmd_calendar_create)
+
+    p = cal_sub.add_parser("availability", help="Check free/busy for people")
+    p.add_argument("emails", help="Comma-separated email addresses")
+    p.add_argument("start", help="Start datetime ISO 8601")
+    p.add_argument("end", help="End datetime ISO 8601")
+    p.add_argument("--timezone", default="UTC", help="IANA timezone (default: UTC)")
+    p.set_defaults(func=cmd_calendar_availability)
 
     # teams
     p_teams = sub.add_parser("teams", help="Teams operations")

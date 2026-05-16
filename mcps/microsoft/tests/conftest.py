@@ -512,6 +512,83 @@ SAMPLE_PBI_DAX_EMPTY = {
     "results": [{"tables": [{"rows": []}]}]
 }
 
+
+# ---------------------------------------------------------------------------
+# Calendar sample payloads
+# ---------------------------------------------------------------------------
+
+SAMPLE_CALENDAR_EVENT = {
+    "id": "AAMkAGI2-event-001",
+    "subject": "Sprint Planning",
+    "start": {"dateTime": "2026-05-08T10:00:00.0000000", "timeZone": "UTC"},
+    "end": {"dateTime": "2026-05-08T11:00:00.0000000", "timeZone": "UTC"},
+    "location": {"displayName": "Conference Room A"},
+    "organizer": {"emailAddress": {"name": "Alice Smith", "address": "alice@example.com"}},
+    "isAllDay": False,
+    "isCancelled": False,
+    "isOnlineMeeting": True,
+    "onlineMeetingUrl": "https://teams.microsoft.com/meet/123",
+    "bodyPreview": "Let's plan the sprint.",
+    "attendees": [
+        {
+            "emailAddress": {"name": "Bob Jones", "address": "bob@example.com"},
+            "type": "required",
+            "status": {"response": "accepted"},
+        }
+    ],
+    "body": {"contentType": "text", "content": "Let's plan the sprint.\n\nAgenda:\n1. Review backlog"},
+    "recurrence": None,
+}
+
+SAMPLE_CALENDAR_EVENT_ALLDAY = {
+    "id": "AAMkAGI2-event-002",
+    "subject": "Company Holiday",
+    "start": {"dateTime": "2026-05-25T00:00:00.0000000", "timeZone": "UTC"},
+    "end": {"dateTime": "2026-05-26T00:00:00.0000000", "timeZone": "UTC"},
+    "location": {"displayName": ""},
+    "organizer": {"emailAddress": {"name": "HR Team", "address": "hr@example.com"}},
+    "isAllDay": True,
+    "isCancelled": False,
+    "isOnlineMeeting": False,
+    "onlineMeetingUrl": "",
+    "bodyPreview": "",
+    "attendees": [],
+    "body": {"contentType": "text", "content": ""},
+    "recurrence": None,
+}
+
+SAMPLE_CALENDAR_EVENTS_RESPONSE = {"value": [SAMPLE_CALENDAR_EVENT, SAMPLE_CALENDAR_EVENT_ALLDAY]}
+
+SAMPLE_SCHEDULE_RESPONSE = {
+    "value": [
+        {
+            "scheduleId": "alice@example.com",
+            "availabilityView": "0000220000220000",
+            "scheduleItems": [
+                {
+                    "subject": "Sprint Planning",
+                    "start": {"dateTime": "2026-05-08T10:00:00.0000000", "timeZone": "UTC"},
+                    "end": {"dateTime": "2026-05-08T11:00:00.0000000", "timeZone": "UTC"},
+                    "status": "busy",
+                },
+            ],
+        },
+        {
+            "scheduleId": "bob@example.com",
+            "availabilityView": "0000000000000000",
+            "scheduleItems": [],
+        },
+    ]
+}
+
+SAMPLE_CREATED_EVENT = {
+    "id": "AAMkAGI2-event-new-001",
+    "subject": "Design Review",
+    "start": {"dateTime": "2026-05-09T14:00:00.0000000", "timeZone": "America/Los_Angeles"},
+    "end": {"dateTime": "2026-05-09T15:00:00.0000000", "timeZone": "America/Los_Angeles"},
+    "onlineMeetingUrl": "https://teams.microsoft.com/meet/789",
+}
+
 SAMPLE_PBI_REFRESH_HISTORY = {
     "value": [
         {
