@@ -38,12 +38,15 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def _lifespan(app):
-    """Validate auth proxy is reachable when local auth is configured."""
+    """Warn if auth proxy is unreachable when local auth is configured."""
     if os.environ.get("MS_CLIENT_ID"):
         from shared_auth import OAuthProxyClient
         proxy = OAuthProxyClient()
-        proxy.check_proxy()
-        logger.info("Auth proxy validated for local Microsoft auth")
+        try:
+            proxy.check_proxy()
+            logger.info("Auth proxy validated for local Microsoft auth")
+        except RuntimeError as e:
+            logger.warning("Auth proxy not available: %s", e)
     yield
 
 

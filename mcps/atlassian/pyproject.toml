@@ -13,6 +13,7 @@ authlib = ">=1.6.11"
 pyjwt = {version = ">=2.12.0", extras = ["crypto"]}
 pygments = ">=2.20.0"
 shared-auth = {path = "../shared_auth", develop = true}
+python-dotenv = ">=1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0"
@@ -29,3 +30,6 @@ build-backend = "poetry.core.masonry.api"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: marks tests that hit real Atlassian APIs (run with --integration)",
+]
