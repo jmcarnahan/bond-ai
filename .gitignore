@@ -83,6 +83,7 @@ scripts/test-vpc-availability.sh
 scripts/oauth_mcp_server.py
 
 bundles/
+samples/
 
 # Local todos
 todos/
@@ -95,6 +96,18 @@ vpn/
 
 deployment/eks-hello-world/
 
+illustrations/
+scripts/analysis_output/
+poc/
+
+scripts/aurora_query.py
+scripts/test_aurora_connection.py
+scripts/usage_analysis.py
+
 # Concurrency investigation tests (temporary, not for CI)
 tests/investigation/
 tests/compression_efficacy/
+
+# Local dev docs
+LOCAL_DEV_COMMANDS.md
+mcps/microsoft/QUICKSTART.txt
