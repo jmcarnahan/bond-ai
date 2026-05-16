@@ -25,6 +25,10 @@ resource "aws_ecr_repository" "mcp_atlassian" {
 
   image_tag_mutability = "MUTABLE"
 
+  encryption_configuration {
+    encryption_type = "KMS"
+  }
+
   image_scanning_configuration {
     scan_on_push = true
   }
@@ -121,7 +125,7 @@ resource "aws_iam_role_policy_attachment" "mcp_atlassian_ecr_access" {
 
 resource "aws_iam_role" "mcp_atlassian_instance" {
   count = var.mcp_atlassian_v2_enabled ? 1 : 0
-  name  = "${var.project_name}-${var.environment}-mcp-atl-role"
+  name  = "${var.project_name}-${var.environment}-mcp-atlassian-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -137,18 +141,25 @@ resource "aws_iam_role" "mcp_atlassian_instance" {
   })
 
   tags = {
-    Name = "${var.project_name}-${var.environment}-mcp-atl-role"
+    Name = "${var.project_name}-${var.environment}-mcp-atlassian-role"
   }
 }
 
 resource "aws_iam_role_policy" "mcp_atlassian_instance" {
   count = var.mcp_atlassian_v2_enabled ? 1 : 0
-  name  = "${var.project_name}-${var.environment}-mcp-atl-policy"
+  name  = "${var.project_name}-${var.environment}-mcp-atlassian-policy"
   role  = aws_iam_role.mcp_atlassian_instance[0].id
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = var.atlassian_oauth_secret_arn
+      },
       {
         Effect = "Allow"
         Action = [

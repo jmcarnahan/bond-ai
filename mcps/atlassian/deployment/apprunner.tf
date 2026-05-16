@@ -81,10 +81,24 @@ resource "aws_apprunner_service" "mcp_atlassian" {
       image_repository_type = "ECR"
 
       image_configuration {
-        port = "8000"
+        port          = "8000"
+        start_command = "--transport streamable-http --port 8000"
 
         runtime_environment_variables = {
-          PYTHONUNBUFFERED = "1"
+          PYTHONUNBUFFERED            = "1"
+          ATLASSIAN_OAUTH_CLOUD_ID    = var.atlassian_oauth_cloud_id
+          ATLASSIAN_OAUTH_REDIRECT_URI = var.atlassian_oauth_redirect_uri
+          ATLASSIAN_OAUTH_SCOPE       = var.atlassian_oauth_scope
+          CONFLUENCE_SSL_VERIFY       = "true"
+          CONFLUENCE_URL              = "https://api.atlassian.com/ex/confluence/${var.atlassian_oauth_cloud_id}"
+          JIRA_SSL_VERIFY             = "true"
+          JIRA_URL                    = "https://api.atlassian.com/ex/jira/${var.atlassian_oauth_cloud_id}"
+          MCP_LOGGING_LEVEL           = "INFO"
+        }
+
+        runtime_environment_secrets = {
+          ATLASSIAN_OAUTH_CLIENT_ID     = "${var.atlassian_oauth_secret_arn}:client_id::"
+          ATLASSIAN_OAUTH_CLIENT_SECRET = "${var.atlassian_oauth_secret_arn}:client_secret::"
         }
       }
     }
