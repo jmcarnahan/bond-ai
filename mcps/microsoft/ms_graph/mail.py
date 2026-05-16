@@ -13,6 +13,40 @@ from .graph_client import GraphClient, AsyncGraphClient, GraphError
 
 logger = logging.getLogger(__name__)
 
+# Whitelist of standard HTML element names. Using a whitelist (rather than
+# matching any word after <) prevents false positives on patterns like
+# "Dear <FirstName>," or "if x<y and z>w" being mis-classified as HTML.
+_HTML_TAG_NAMES = frozenset({
+    'html', 'head', 'body', 'div', 'span', 'section', 'article',
+    'header', 'footer', 'main', 'nav', 'aside', 'pre', 'blockquote',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'p', 'br', 'hr', 'wbr',
+    'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+    'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption', 'colgroup', 'col',
+    'a', 'strong', 'em', 'b', 'i', 'u', 's', 'del', 'ins', 'mark', 'small',
+    'code', 'kbd', 'samp', 'sup', 'sub', 'abbr',
+    'img', 'figure', 'figcaption', 'picture', 'source',
+    'form', 'input', 'button', 'label', 'select', 'option', 'textarea',
+    'script', 'style', 'link', 'meta', 'title',
+    'font', 'center', 'nobr',
+})
+_HTML_TAG_RE = re.compile(
+    r'</?(?:' + '|'.join(sorted(_HTML_TAG_NAMES, key=len, reverse=True)) + r')\b',
+    re.IGNORECASE,
+)
+
+_VALID_BODY_TYPES = frozenset({"HTML", "Text", "auto"})
+
+
+def _detect_body_type(body: str) -> str:
+    """Detect whether a body string is HTML or plain text.
+
+    Searches for known HTML element names to classify the body. A whitelist
+    avoids false positives on patterns like 'Dear <FirstName>,' or
+    'if x<y and z>w' that contain angle brackets but are not HTML.
+    """
+    return "HTML" if _HTML_TAG_RE.search(body) else "Text"
+
 
 def _extract_mailbox_address(odata_context: str) -> Optional[str]:
     """Extract the mailbox email from an @odata.context URL.
@@ -98,15 +132,19 @@ def send_message(
     body: str,
     cc: Optional[List[str]] = None,
     from_address: Optional[str] = None,
+    body_type: str = "auto",
 ) -> None:
     """Send an email message."""
+    if body_type not in _VALID_BODY_TYPES:
+        raise ValueError(f"body_type must be 'HTML', 'Text', or 'auto'; got {body_type!r}")
     to_recipients = [{"emailAddress": {"address": addr}} for addr in to]
     cc_recipients = [{"emailAddress": {"address": addr}} for addr in (cc or [])]
+    effective_type = _detect_body_type(body) if body_type == "auto" else body_type
 
     payload: Dict[str, Any] = {
         "message": {
             "subject": subject,
-            "body": {"contentType": "Text", "content": body},
+            "body": {"contentType": effective_type, "content": body},
             "toRecipients": to_recipients,
         },
         "saveToSentItems": True,
@@ -161,15 +199,19 @@ async def asend_message(
     body: str,
     cc: Optional[List[str]] = None,
     from_address: Optional[str] = None,
+    body_type: str = "auto",
 ) -> None:
     """Send an email message (async)."""
+    if body_type not in _VALID_BODY_TYPES:
+        raise ValueError(f"body_type must be 'HTML', 'Text', or 'auto'; got {body_type!r}")
     to_recipients = [{"emailAddress": {"address": addr}} for addr in to]
     cc_recipients = [{"emailAddress": {"address": addr}} for addr in (cc or [])]
+    effective_type = _detect_body_type(body) if body_type == "auto" else body_type
 
     payload: Dict[str, Any] = {
         "message": {
             "subject": subject,
-            "body": {"contentType": "Text", "content": body},
+            "body": {"contentType": effective_type, "content": body},
             "toRecipients": to_recipients,
         },
         "saveToSentItems": True,
