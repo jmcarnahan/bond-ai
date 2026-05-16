@@ -39,17 +39,17 @@ class GoogleOAuth2Provider(OAuth2Provider):
 
         LOGGER.debug(f"Google OAuth2 initialized: redirect_uri={config['redirect_uri']} scopes={config['scopes']}")
 
-    def _get_flow(self) -> Flow:
+    def _get_flow(self, redirect_uri: str = None) -> Flow:
         """Create and configure Google OAuth2 flow."""
         return Flow.from_client_config(
             client_config=self.config["auth_creds"],
             scopes=self.config["scopes"],
-            redirect_uri=self.config["redirect_uri"]
+            redirect_uri=redirect_uri or self.config["redirect_uri"]
         )
 
-    def get_auth_url(self, state: str = None, code_challenge: str = None, code_challenge_method: str = None) -> str:
+    def get_auth_url(self, state: str = None, code_challenge: str = None, code_challenge_method: str = None, redirect_uri: str = None) -> str:
         """Generate Google OAuth2 authorization URL."""
-        flow = self._get_flow()
+        flow = self._get_flow(redirect_uri=redirect_uri)
 
         kwargs = {
             'access_type': 'offline',
@@ -70,9 +70,9 @@ class GoogleOAuth2Provider(OAuth2Provider):
         LOGGER.debug(f"Generated Google auth URL")
         return authorization_url
 
-    def _fetch_google_token(self, auth_code: str, code_verifier: str = None):
+    def _fetch_google_token(self, auth_code: str, code_verifier: str = None, redirect_uri: str = None):
         """Exchange authorization code for Google OAuth2 credentials."""
-        flow = self._get_flow()
+        flow = self._get_flow(redirect_uri=redirect_uri)
         # T-O4: Pass code_verifier for PKCE token exchange
         if code_verifier:
             flow.fetch_token(code=auth_code, code_verifier=code_verifier)
@@ -90,13 +90,14 @@ class GoogleOAuth2Provider(OAuth2Provider):
         )
         return user_info
 
-    def get_user_info_from_code(self, auth_code: str, code_verifier: str = None) -> Dict[str, Any]:
+    def get_user_info_from_code(self, auth_code: str, code_verifier: str = None, redirect_uri: str = None) -> Dict[str, Any]:
         """
         Exchange authorization code for user information.
 
         Args:
             auth_code: Google OAuth2 authorization code
             code_verifier: PKCE code verifier for token exchange (T-O4)
+            redirect_uri: Override redirect URI (must match the one used in get_auth_url)
 
         Returns:
             Dictionary with user information including email, name, etc.
@@ -109,7 +110,7 @@ class GoogleOAuth2Provider(OAuth2Provider):
             LOGGER.info(f"Authenticating with Google auth code: {auth_code[:10]}...")
 
             # Exchange code for credentials (with PKCE code_verifier if provided)
-            creds = self._fetch_google_token(auth_code, code_verifier=code_verifier)
+            creds = self._fetch_google_token(auth_code, code_verifier=code_verifier, redirect_uri=redirect_uri)
 
             # Extract user info from ID token
             user_info = self._get_google_user_info(creds)
