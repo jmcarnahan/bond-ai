@@ -297,3 +297,24 @@ resource "aws_iam_role_policy" "bedrock_agent_pass_role" {
     ]
   })
 }
+
+# KMS decrypt so Bedrock agent runtime can read CMK-encrypted S3 objects (attached files).
+# The uploads bucket uses aws:kms encryption; AmazonS3FullAccess alone is not sufficient.
+resource "aws_iam_role_policy" "bedrock_agent_kms" {
+  name = "BondAIBedrockAgentKMSPolicy"
+  role = aws_iam_role.bedrock_agent.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey"
+        ]
+        Resource = [aws_kms_key.s3.arn]
+      }
+    ]
+  })
+}

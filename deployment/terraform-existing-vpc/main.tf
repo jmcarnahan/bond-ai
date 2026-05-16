@@ -139,6 +139,9 @@ resource "aws_s3_bucket_cors_configuration" "uploads" {
 }
 
 # SA-6: Deny non-SSL access to uploads bucket (matching access-logs bucket policy)
+# Bedrock agent runtime calls S3 as bedrock.amazonaws.com (not as agentResourceRoleArn),
+# so it needs an explicit Allow here — IAM identity policies alone are insufficient when
+# a bucket policy exists. aws:SourceAccount prevents confused deputy attacks.
 resource "aws_s3_bucket_policy" "uploads" {
   bucket     = aws_s3_bucket.uploads.id
   depends_on = [aws_s3_bucket_public_access_block.uploads]
@@ -146,6 +149,26 @@ resource "aws_s3_bucket_policy" "uploads" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      {
+        Sid    = "AllowBedrockAgentS3Access"
+        Effect = "Allow"
+        Principal = {
+          Service = "bedrock.amazonaws.com"
+        }
+        Action = [
+          "s3:GetObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          aws_s3_bucket.uploads.arn,
+          "${aws_s3_bucket.uploads.arn}/*"
+        ]
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      },
       {
         Sid       = "DenyNonSSL"
         Effect    = "Deny"
