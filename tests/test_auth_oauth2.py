@@ -461,69 +461,69 @@ class TestGetValidatedOriginHost:
         }
         return Request(scope)
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "agentstudio.dev.mcafee.com,agentstudio.zpa.mcafee.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com,app.zpa.example.com"})
     def test_returns_host_when_in_allowed_domains(self):
         from bondable.rest.routers.auth import _get_validated_origin_host
-        req = self._make_request({"host": "agentstudio.zpa.mcafee.com"})
-        assert _get_validated_origin_host(req) == "agentstudio.zpa.mcafee.com"
+        req = self._make_request({"host": "app.zpa.example.com"})
+        assert _get_validated_origin_host(req) == "app.zpa.example.com"
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "agentstudio.dev.mcafee.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
     def test_returns_none_for_unknown_domain(self):
         from bondable.rest.routers.auth import _get_validated_origin_host
         req = self._make_request({"host": "evil.com"})
         assert _get_validated_origin_host(req) is None
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "agentstudio.dev.mcafee.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
     def test_returns_none_for_localhost(self):
         from bondable.rest.routers.auth import _get_validated_origin_host
         req = self._make_request({"host": "localhost"})
         assert _get_validated_origin_host(req) is None
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "agentstudio.dev.mcafee.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
     def test_returns_none_for_127_0_0_1(self):
         from bondable.rest.routers.auth import _get_validated_origin_host
         req = self._make_request({"host": "127.0.0.1"})
         assert _get_validated_origin_host(req) is None
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "agentstudio.dev.mcafee.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
     def test_returns_none_for_empty_headers(self):
         from bondable.rest.routers.auth import _get_validated_origin_host
         req = self._make_request({})
         assert _get_validated_origin_host(req) is None
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "agentstudio.zpa.mcafee.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.zpa.example.com"})
     def test_x_forwarded_host_takes_precedence(self):
         """X-Forwarded-Host should be used over Host header."""
         from bondable.rest.routers.auth import _get_validated_origin_host
         req = self._make_request({
             "host": "internal-alb-123.amazonaws.com",
-            "x-forwarded-host": "agentstudio.zpa.mcafee.com",
+            "x-forwarded-host": "app.zpa.example.com",
         })
-        assert _get_validated_origin_host(req) == "agentstudio.zpa.mcafee.com"
+        assert _get_validated_origin_host(req) == "app.zpa.example.com"
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "agentstudio.zpa.mcafee.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.zpa.example.com"})
     def test_comma_separated_x_forwarded_host_uses_first(self):
         """When X-Forwarded-Host has multiple values, use the first."""
         from bondable.rest.routers.auth import _get_validated_origin_host
         req = self._make_request({
-            "x-forwarded-host": "agentstudio.zpa.mcafee.com, proxy.internal",
+            "x-forwarded-host": "app.zpa.example.com, proxy.internal",
         })
-        assert _get_validated_origin_host(req) == "agentstudio.zpa.mcafee.com"
+        assert _get_validated_origin_host(req) == "app.zpa.example.com"
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "agentstudio.dev.mcafee.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
     def test_strips_port_from_host(self):
         from bondable.rest.routers.auth import _get_validated_origin_host
-        req = self._make_request({"host": "agentstudio.dev.mcafee.com:443"})
-        assert _get_validated_origin_host(req) == "agentstudio.dev.mcafee.com"
+        req = self._make_request({"host": "app.dev.example.com:443"})
+        assert _get_validated_origin_host(req) == "app.dev.example.com"
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "agentstudio.dev.mcafee.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
     def test_case_insensitive_matching_returns_lowercase(self):
         """Host header with mixed case should match and return lowercase."""
         from bondable.rest.routers.auth import _get_validated_origin_host
-        req = self._make_request({"host": "AgentStudio.Dev.McAfee.COM"})
-        assert _get_validated_origin_host(req) == "agentstudio.dev.mcafee.com"
+        req = self._make_request({"host": "App.Dev.Example.COM"})
+        assert _get_validated_origin_host(req) == "app.dev.example.com"
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "agentstudio.dev.mcafee.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
     def test_localhost_with_port_returns_none(self):
         from bondable.rest.routers.auth import _get_validated_origin_host
         req = self._make_request({"host": "localhost:8080"})
@@ -542,19 +542,19 @@ class TestDynamicRedirectLogin:
         yield mock_bp
         app.dependency_overrides.pop(get_bond_provider, None)
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "agentstudio.zpa.mcafee.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.zpa.example.com"})
     def test_login_with_zpa_host_uses_dynamic_redirect(self, test_client):
         """Login from ZPA domain should build auth URL with ZPA redirect URI."""
         with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create, \
              patch('bondable.rest.routers.auth._save_auth_oauth_state') as mock_save:
             mock_provider = MagicMock()
-            mock_provider.get_auth_url.return_value = "https://mcafee.okta.com/oauth2/v1/authorize?redirect_uri=https://agentstudio.zpa.mcafee.com/auth/cognito/callback"
+            mock_provider.get_auth_url.return_value = "https://idp.example.com/oauth2/v1/authorize?redirect_uri=https://app.zpa.example.com/auth/cognito/callback"
             mock_create.return_value = mock_provider
             mock_save.return_value = True
 
             response = test_client.get(
                 "/login/cognito",
-                headers={"host": "agentstudio.zpa.mcafee.com"},
+                headers={"host": "app.zpa.example.com"},
                 follow_redirects=False,
             )
 
@@ -562,18 +562,18 @@ class TestDynamicRedirectLogin:
 
             # Verify get_auth_url was called with the ZPA redirect URI
             call_kwargs = mock_provider.get_auth_url.call_args
-            assert call_kwargs.kwargs["redirect_uri"] == "https://agentstudio.zpa.mcafee.com/auth/cognito/callback"
+            assert call_kwargs.kwargs["redirect_uri"] == "https://app.zpa.example.com/auth/cognito/callback"
 
             # Verify origin_host was saved in OAuth state
             save_kwargs = mock_save.call_args
-            assert save_kwargs.kwargs["origin_host"] == "agentstudio.zpa.mcafee.com"
+            assert save_kwargs.kwargs["origin_host"] == "app.zpa.example.com"
 
     def test_login_without_matching_host_uses_default(self, test_client):
         """Login from unrecognized host should use default redirect URI (None)."""
         with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create, \
              patch('bondable.rest.routers.auth._save_auth_oauth_state') as mock_save:
             mock_provider = MagicMock()
-            mock_provider.get_auth_url.return_value = "https://mcafee.okta.com/oauth2/v1/authorize"
+            mock_provider.get_auth_url.return_value = "https://idp.example.com/oauth2/v1/authorize"
             mock_create.return_value = mock_provider
             mock_save.return_value = True
 
@@ -593,13 +593,13 @@ class TestDynamicRedirectLogin:
             save_kwargs = mock_save.call_args
             assert save_kwargs.kwargs["origin_host"] == ""
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "agentstudio.dev.mcafee.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
     def test_login_with_x_forwarded_host(self, test_client):
         """Login with X-Forwarded-Host should use that over Host."""
         with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create, \
              patch('bondable.rest.routers.auth._save_auth_oauth_state') as mock_save:
             mock_provider = MagicMock()
-            mock_provider.get_auth_url.return_value = "https://mcafee.okta.com/oauth2/v1/authorize"
+            mock_provider.get_auth_url.return_value = "https://idp.example.com/oauth2/v1/authorize"
             mock_create.return_value = mock_provider
             mock_save.return_value = True
 
@@ -607,7 +607,7 @@ class TestDynamicRedirectLogin:
                 "/login/cognito",
                 headers={
                     "host": "internal-alb-123.amazonaws.com",
-                    "x-forwarded-host": "agentstudio.dev.mcafee.com",
+                    "x-forwarded-host": "app.dev.example.com",
                 },
                 follow_redirects=False,
             )
@@ -615,7 +615,7 @@ class TestDynamicRedirectLogin:
             assert response.status_code == 307
 
             call_kwargs = mock_provider.get_auth_url.call_args
-            assert call_kwargs.kwargs["redirect_uri"] == "https://agentstudio.dev.mcafee.com/auth/cognito/callback"
+            assert call_kwargs.kwargs["redirect_uri"] == "https://app.dev.example.com/auth/cognito/callback"
 
 
 class TestDynamicRedirectCallback:
@@ -648,7 +648,7 @@ class TestDynamicRedirectCallback:
                 "redirect_uri": "",
                 "provider_name": "cognito",
                 "platform": "",
-                "origin_host": "agentstudio.zpa.mcafee.com",
+                "origin_host": "app.zpa.example.com",
             }
 
             response = test_client.get(
@@ -662,7 +662,7 @@ class TestDynamicRedirectCallback:
             mock_provider.get_user_info_from_code.assert_called_once_with(
                 "test_code",
                 code_verifier="test_verifier",
-                redirect_uri="https://agentstudio.zpa.mcafee.com/auth/cognito/callback",
+                redirect_uri="https://app.zpa.example.com/auth/cognito/callback",
             )
 
     def test_callback_with_origin_host_redirects_to_origin_domain(self, test_client):
@@ -682,7 +682,7 @@ class TestDynamicRedirectCallback:
                 "redirect_uri": "",
                 "provider_name": "cognito",
                 "platform": "",
-                "origin_host": "agentstudio.zpa.mcafee.com",
+                "origin_host": "app.zpa.example.com",
             }
 
             response = test_client.get(
@@ -693,7 +693,7 @@ class TestDynamicRedirectCallback:
             assert response.status_code == 307
             location = response.headers["location"]
             # Should redirect to the ZPA domain with hash routing
-            assert location.startswith("https://agentstudio.zpa.mcafee.com/#/auth-callback?code=")
+            assert location.startswith("https://app.zpa.example.com/#/auth-callback?code=")
 
     def test_callback_without_origin_host_uses_default_redirect(self, test_client):
         """When origin_host is empty/None, should fall back to JWT_REDIRECT_URI."""

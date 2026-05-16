@@ -296,7 +296,7 @@ class TestConnectionDynamicRedirect:
         yield
         app.dependency_overrides.pop(get_current_user, None)
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "agentstudio.zpa.mcafee.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.zpa.example.com"})
     def test_authorize_with_zpa_host_uses_dynamic_redirect(self, test_client, auth_headers):
         """When Host is a ZPA domain and no config redirect_uri, should build dynamic redirect."""
         # Mock the connection config to have NO redirect_uri
@@ -312,7 +312,7 @@ class TestConnectionDynamicRedirect:
              patch("bondable.rest.routers.connections._save_oauth_state", return_value=True) as mock_save:
             response = test_client.get(
                 "/connections/microsoft/authorize",
-                headers={**auth_headers, "host": "agentstudio.zpa.mcafee.com"},
+                headers={**auth_headers, "host": "app.zpa.example.com"},
             )
 
             assert response.status_code == 200
@@ -323,15 +323,15 @@ class TestConnectionDynamicRedirect:
             from urllib.parse import urlparse, parse_qs
             parsed = urlparse(auth_url)
             params = parse_qs(parsed.query)
-            assert params["redirect_uri"][0] == "https://agentstudio.zpa.mcafee.com/connections/microsoft/callback"
+            assert params["redirect_uri"][0] == "https://app.zpa.example.com/connections/microsoft/callback"
 
             # Verify origin_host was passed to _save_oauth_state
             mock_save.assert_called_once()
             call_kwargs = mock_save.call_args
             # origin_host is a keyword arg
-            assert call_kwargs.kwargs.get("origin_host") == "agentstudio.zpa.mcafee.com"
+            assert call_kwargs.kwargs.get("origin_host") == "app.zpa.example.com"
 
-    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "agentstudio.dev.mcafee.com"})
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
     def test_authorize_with_configured_redirect_uri_takes_precedence(self, test_client, auth_headers):
         """When config has explicit redirect_uri, it should be used over dynamic."""
         mock_config = {
@@ -346,7 +346,7 @@ class TestConnectionDynamicRedirect:
              patch("bondable.rest.routers.connections._save_oauth_state", return_value=True):
             response = test_client.get(
                 "/connections/special/authorize",
-                headers={**auth_headers, "host": "agentstudio.dev.mcafee.com"},
+                headers={**auth_headers, "host": "app.dev.example.com"},
             )
 
             assert response.status_code == 200
@@ -419,8 +419,8 @@ class TestConnectionDynamicRedirect:
                 "user_id": TEST_USER_ID,
                 "connection_name": "microsoft",
                 "code_verifier": "test_verifier",
-                "redirect_uri": "https://agentstudio.zpa.mcafee.com/connections/microsoft/callback",
-                "origin_host": "agentstudio.zpa.mcafee.com",
+                "redirect_uri": "https://app.zpa.example.com/connections/microsoft/callback",
+                "origin_host": "app.zpa.example.com",
             }
 
             mock_ctx = MagicMock()
@@ -436,7 +436,7 @@ class TestConnectionDynamicRedirect:
             assert response.status_code == 302
             location = response.headers["location"]
             # Should redirect to ZPA domain
-            assert location.startswith("https://agentstudio.zpa.mcafee.com/connections?connection_success=")
+            assert location.startswith("https://app.zpa.example.com/connections?connection_success=")
 
     def test_callback_without_origin_host_uses_default_frontend(self, test_client):
         """When no origin_host in state, should redirect to JWT_REDIRECT_URI."""
