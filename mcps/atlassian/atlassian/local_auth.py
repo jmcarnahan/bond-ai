@@ -24,13 +24,9 @@ TOKEN_URL = "https://auth.atlassian.com/oauth/token"  # nosec B105
 RESOURCES_URL = "https://api.atlassian.com/oauth/token/accessible-resources"
 
 SCOPES = [
+    "read:jira-user",
     "read:jira-work",
     "write:jira-work",
-    "read:jira-user",
-    "read:confluence-content.all",
-    "write:confluence-content",
-    "read:confluence-space.summary",
-    "read:me",
     "offline_access",
 ]
 
@@ -111,7 +107,7 @@ def _do_browser_auth(client_id: str, client_secret: str) -> dict | None:
 
     state = secrets.token_urlsafe(32)
     code_verifier, code_challenge = _generate_pkce()
-    redirect_uri = proxy.get_redirect_uri("atlassian_v2")
+    redirect_uri = proxy.get_redirect_uri("atlassian")
 
     auth_params = {
         "audience": "api.atlassian.com",
@@ -127,7 +123,7 @@ def _do_browser_auth(client_id: str, client_secret: str) -> dict | None:
     auth_url = f"{AUTH_URL}?{urlencode(auth_params)}"
 
     try:
-        proxy.register_auth(state, "atlassian_v2")
+        proxy.register_auth(state, "atlassian")
     except Exception:
         logger.exception("Failed to register auth with proxy")
         return None

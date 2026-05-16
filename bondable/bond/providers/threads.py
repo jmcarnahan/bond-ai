@@ -3,7 +3,7 @@ from bondable.bond.providers.metadata import Metadata, Thread
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
-from sqlalchemy import exists, column, table
+from sqlalchemy import exists, column, table, or_, case, JSON
 from bondable.bond.broker import BondMessage
 
 LOGGER = logging.getLogger(__name__)
@@ -131,11 +131,37 @@ class ThreadsProvider(ABC):
             session.close()
 
     def _user_message_exists_clause(self):
-        """Return an exists() clause checking for user messages in bedrock_messages."""
-        bm = table('bedrock_messages', column('thread_id'), column('role'))
+        """Return an exists() clause checking for visible user messages in bedrock_messages.
+
+        Excludes hidden messages (agent introductions) which have:
+        - message_metadata.hidden == true (bool or string)
+        - message_metadata.override_role == 'system' (legacy)
+        """
+        bm = table('bedrock_messages',
+                    column('thread_id'),
+                    column('role'),
+                    column('message_metadata', JSON))
+
+        # A message is hidden if any of these metadata conditions match.
+        # Use .as_boolean()/.as_string() for cross-database JSON comparison
+        # (SQLite json_extract vs PostgreSQL -> operators).
+        # NULL metadata or missing keys produce NULL comparisons, which
+        # don't match in the CASE, falling through to ELSE True (visible).
+        is_hidden = or_(
+            bm.c.message_metadata['hidden'].as_boolean() == True,
+            bm.c.message_metadata['hidden'].as_string() == 'true',
+            bm.c.message_metadata['override_role'].as_string() == 'system',
+        )
+
+        is_visible = case(
+            (is_hidden, False),
+            else_=True
+        )
+
         return exists().where(
             (bm.c.thread_id == Thread.thread_id) &
-            (bm.c.role == 'user')
+            (bm.c.role == 'user') &
+            is_visible
         )
 
     def _build_threads_query(self, session, user_id: str, exclude_empty: bool = False):
