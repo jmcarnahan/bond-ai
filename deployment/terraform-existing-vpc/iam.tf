@@ -1,10 +1,5 @@
 # IAM Roles and Policies
 
-# Data source for MCP Atlassian OAuth secret (for backend access)
-data "aws_secretsmanager_secret" "mcp_atlassian_oauth_backend" {
-  count = var.mcp_atlassian_enabled ? 1 : 0
-  name  = var.mcp_atlassian_oauth_secret_name
-}
 
 # IAM Role for App Runner Instance
 resource "aws_iam_role" "app_runner_instance" {
@@ -57,12 +52,9 @@ locals {
           data.aws_secretsmanager_secret.okta_secret.arn,
           aws_secretsmanager_secret.app_config.arn
         ],
-        var.mcp_atlassian_enabled ? [
-          data.aws_secretsmanager_secret.mcp_atlassian_oauth_backend[0].arn
-        ] : [],
-        # Add Databricks secret access
+        # MCP secret access (pattern-based to avoid coupling to mcp_atlassian_enabled)
+        ["arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}-${var.environment}-atlassian-mcp-secret-*"],
         ["arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}-${var.environment}-databricks-secret-*"],
-        # Add Microsoft MCP secret access
         ["arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}-${var.environment}-microsoft-mcp-secret-*"]
       )
     },

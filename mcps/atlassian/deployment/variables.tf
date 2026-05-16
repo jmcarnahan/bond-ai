@@ -78,31 +78,3 @@ variable "force_rebuild" {
   type        = string
   default     = ""
 }
-
-# -----------------------------------------------------------------------------
-# Atlassian OAuth / Secrets
-# -----------------------------------------------------------------------------
-
-variable "atlassian_oauth_cloud_id" {
-  description = "Atlassian Cloud ID for OAuth"
-  type        = string
-  default     = "55de5903-f98d-499f-967a-32673b683dc8"
-}
-
-variable "atlassian_oauth_redirect_uri" {
-  description = "OAuth redirect URI for the Atlassian MCP service"
-  type        = string
-  default     = "https://fa3vbibtmu.us-west-2.awsapprunner.com/connections/atlassian/callback"
-}
-
-variable "atlassian_oauth_scope" {
-  description = "OAuth scopes for Atlassian access"
-  type        = string
-  default     = "read:jira-user read:jira-work write:jira-work read:confluence-space.summary write:confluence-content offline_access"
-}
-
-variable "atlassian_oauth_secret_arn" {
-  description = "ARN of the Secrets Manager secret containing Atlassian OAuth credentials"
-  type        = string
-  default     = "arn:aws:secretsmanager:us-west-2:019593708315:secret:bond-ai-dev-atlassian-mcp-secret-gKEcvc"
-}
