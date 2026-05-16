@@ -50,7 +50,7 @@ variable "mcp_atlassian_oauth_secret_name" {
 variable "mcp_atlassian_oauth_scopes" {
   description = "OAuth scopes for Atlassian APIs"
   type        = string
-  default     = "read:jira-user read:jira-work write:jira-work read:confluence-space.summary write:confluence-content offline_access"
+  default     = "read:jira-user read:jira-work write:jira-work manage:jira-project read:content:confluence read:content-details:confluence write:content:confluence read:space:confluence read:space-details:confluence read:page:confluence write:page:confluence offline_access"
 }
 
 variable "mcp_atlassian_logging_level" {

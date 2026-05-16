@@ -157,7 +157,9 @@ class BedrockFilesProvider(FilesProvider):
             # Reset BytesIO position
             file_bytes.seek(0)
 
-            # Upload to S3 (metadata values must be ASCII-only)
+            # Upload to S3 with SSE-S3 (AES256) instead of the bucket's default SSE-KMS.
+            # Bedrock's invoke_agent sessionState file passing cannot decrypt KMS-encrypted
+            # objects, so files passed via S3 URI must use SSE-S3.
             self.s3_client.upload_fileobj(
                 file_bytes,
                 self.bucket_name,
@@ -166,7 +168,8 @@ class BedrockFilesProvider(FilesProvider):
                     'Metadata': {
                         'original_path': _sanitize_ascii(file_path),
                         'file_id': file_id
-                    }
+                    },
+                    'ServerSideEncryption': 'AES256'
                 }
             )
 

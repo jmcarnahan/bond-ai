@@ -6,6 +6,7 @@ Search uses the new /search/jql endpoint (the old /search is deprecated).
 Count uses the dedicated /search/approximate-count endpoint.
 """
 
+import re
 from typing import Any, Dict, List, Optional
 
 from .atlassian_client import AtlassianClient, AsyncAtlassianClient
@@ -16,17 +17,47 @@ def _cap(value: int, maximum: int = 100) -> int:
     return min(max(value, 1), maximum)
 
 
+# Matches @{accountId} mention syntax in comment/description text.
+_MENTION_RE = re.compile(r"@\{([^}]+)\}")
+
+
+def _line_to_adf_content(line: str) -> List[Dict[str, Any]]:
+    """Convert a single line of text (possibly with @{accountId} mentions) to ADF content nodes."""
+    if not line:
+        return []
+
+    content: List[Dict[str, Any]] = []
+    last_end = 0
+    for match in _MENTION_RE.finditer(line):
+        if match.start() > last_end:
+            content.append({"type": "text", "text": line[last_end:match.start()]})
+        account_id = match.group(1)
+        content.append({
+            "type": "mention",
+            "attrs": {
+                "id": account_id,
+                "text": f"@{account_id}",
+                "accessLevel": "SITE",
+            },
+        })
+        last_end = match.end()
+    if last_end < len(line):
+        content.append({"type": "text", "text": line[last_end:]})
+    return content
+
+
 def _text_to_adf(text: str) -> Dict[str, Any]:
     """Wrap plain text in minimal Atlassian Document Format.
 
     Splits on newlines to produce multiple paragraphs.
+    Supports @{accountId} syntax for user mentions.
     Empty input produces a doc with a single empty paragraph.
     """
     lines = text.split("\n") if text else [""]
     paragraphs = [
         {
             "type": "paragraph",
-            "content": [{"type": "text", "text": line}] if line else [],
+            "content": _line_to_adf_content(line),
         }
         for line in lines
     ]
@@ -392,15 +423,34 @@ async def aupdate_issue(
 # Add Issue Comment
 # ---------------------------------------------------------------------------
 
+def _build_comment_adf(body: str, author_label: str = "") -> Dict[str, Any]:
+    """Build an ADF comment body, optionally prefixed with an author label."""
+    adf = _text_to_adf(body)
+    if author_label:
+        prefix = {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"\U0001f916 {author_label} (Bond AI):",
+                    "marks": [{"type": "strong"}, {"type": "em"}],
+                }
+            ],
+        }
+        adf["content"] = [prefix] + adf["content"]
+    return adf
+
+
 def add_issue_comment(
     client: AtlassianClient,
     issue_key: str,
     body: str,
+    author_label: str = "",
 ) -> Dict[str, Any]:
-    """Add a comment to an issue."""
+    """Add a comment to an issue. Supports @{accountId} mentions and optional author label."""
     return client.post(
         f"{client.jira_base}/issue/{issue_key}/comment",
-        json_data={"body": _text_to_adf(body)},
+        json_data={"body": _build_comment_adf(body, author_label)},
     )
 
 
@@ -408,11 +458,12 @@ async def aadd_issue_comment(
     client: AsyncAtlassianClient,
     issue_key: str,
     body: str,
+    author_label: str = "",
 ) -> Dict[str, Any]:
-    """Add a comment to an issue (async)."""
+    """Add a comment to an issue (async). Supports @{accountId} mentions and optional author label."""
     return await client.post(
         f"{client.jira_base}/issue/{issue_key}/comment",
-        json_data={"body": _text_to_adf(body)},
+        json_data={"body": _build_comment_adf(body, author_label)},
     )
 
 
@@ -507,3 +558,123 @@ def _find_transition(
         if t.get("name", "").lower() == lower:
             return t
     return None
+
+
+# ---------------------------------------------------------------------------
+# Get Project Versions
+# ---------------------------------------------------------------------------
+
+def get_project_versions(
+    client: AtlassianClient,
+    project_key: str,
+    query: str = "",
+    status: str = "",
+    max_results: int = 50,
+) -> List[Dict[str, Any]]:
+    """Get versions for a Jira project, optionally filtered by name pattern and status."""
+    params: Dict[str, Any] = {"maxResults": _cap(max_results)}
+    if query:
+        params["query"] = query
+    if status:
+        params["status"] = status
+    data = client.get(
+        f"{client.jira_base}/project/{project_key}/version",
+        params=params,
+    )
+    return data.get("values", [])
+
+
+async def aget_project_versions(
+    client: AsyncAtlassianClient,
+    project_key: str,
+    query: str = "",
+    status: str = "",
+    max_results: int = 50,
+) -> List[Dict[str, Any]]:
+    """Get versions for a Jira project (async), optionally filtered by name pattern and status."""
+    params: Dict[str, Any] = {"maxResults": _cap(max_results)}
+    if query:
+        params["query"] = query
+    if status:
+        params["status"] = status
+    data = await client.get(
+        f"{client.jira_base}/project/{project_key}/version",
+        params=params,
+    )
+    return data.get("values", [])
+
+
+# ---------------------------------------------------------------------------
+# Create Version
+# ---------------------------------------------------------------------------
+
+def create_version(
+    client: AtlassianClient,
+    project_key: str,
+    name: str,
+    description: str = "",
+    release_date: str = "",
+    released: bool = False,
+) -> Dict[str, Any]:
+    """Create a new version for a Jira project."""
+    payload: Dict[str, Any] = {
+        "project": project_key,
+        "name": name,
+        "released": released,
+    }
+    if description:
+        payload["description"] = description
+    if release_date:
+        payload["releaseDate"] = release_date
+    return client.post(f"{client.jira_base}/version", json_data=payload)
+
+
+async def acreate_version(
+    client: AsyncAtlassianClient,
+    project_key: str,
+    name: str,
+    description: str = "",
+    release_date: str = "",
+    released: bool = False,
+) -> Dict[str, Any]:
+    """Create a new version for a Jira project (async)."""
+    payload: Dict[str, Any] = {
+        "project": project_key,
+        "name": name,
+        "released": released,
+    }
+    if description:
+        payload["description"] = description
+    if release_date:
+        payload["releaseDate"] = release_date
+    return await client.post(f"{client.jira_base}/version", json_data=payload)
+
+
+# ---------------------------------------------------------------------------
+# Search Users
+# ---------------------------------------------------------------------------
+
+def search_users(
+    client: AtlassianClient,
+    query: str,
+    max_results: int = 10,
+) -> List[Dict[str, Any]]:
+    """Search for Jira users by name or email."""
+    data = client.get(
+        f"{client.jira_base}/user/search",
+        params={"query": query, "maxResults": _cap(max_results)},
+    )
+    return data if isinstance(data, list) else []
+
+
+async def asearch_users(
+    client: AsyncAtlassianClient,
+    query: str,
+    max_results: int = 10,
+) -> List[Dict[str, Any]]:
+    """Search for Jira users by name or email (async)."""
+    data = await client.get(
+        f"{client.jira_base}/user/search",
+        params={"query": query, "maxResults": _cap(max_results)},
+    )
+    return data if isinstance(data, list) else []

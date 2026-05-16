@@ -18,6 +18,9 @@ from .conftest import (
     SAMPLE_COMMENTS_RESPONSE,
     SAMPLE_CREATED_ISSUE,
     SAMPLE_TRANSITIONS,
+    SAMPLE_VERSIONS_RESPONSE,
+    SAMPLE_CREATED_VERSION,
+    SAMPLE_USERS_RESPONSE,
 )
 
 TOKEN = "test-token"
@@ -301,6 +304,126 @@ class TestSearchAllIssues:
         async with AsyncAtlassianClient(TOKEN, CLOUD_ID) as client:
             issues = await jira.asearch_all_issues(client, "project = PROJ")
         assert len(issues) == 0
+
+
+# ---------------------------------------------------------------------------
+# Project Versions
+# ---------------------------------------------------------------------------
+
+class TestGetProjectVersions:
+    @respx.mock
+    async def test_get_all_versions(self):
+        respx.get(f"{JIRA_BASE}/project/PROJ/version").mock(
+            return_value=httpx.Response(200, json=SAMPLE_VERSIONS_RESPONSE)
+        )
+        from atlassian import jira
+        async with AsyncAtlassianClient(TOKEN, CLOUD_ID) as client:
+            versions = await jira.aget_project_versions(client, "PROJ")
+        assert len(versions) == 2
+        assert versions[0]["name"] == "1.0.0"
+        assert versions[1]["name"] == "1.1.0"
+
+    @respx.mock
+    async def test_get_versions_status_filter(self):
+        route = respx.get(f"{JIRA_BASE}/project/PROJ/version").mock(
+            return_value=httpx.Response(200, json={"values": [SAMPLE_VERSIONS_RESPONSE["values"][0]], "isLast": True})
+        )
+        from atlassian import jira
+        async with AsyncAtlassianClient(TOKEN, CLOUD_ID) as client:
+            versions = await jira.aget_project_versions(client, "PROJ", status="released")
+        assert len(versions) == 1
+        assert "status=released" in str(route.calls[0].request.url)
+
+
+class TestCreateVersion:
+    @respx.mock
+    async def test_create_version(self):
+        route = respx.post(f"{JIRA_BASE}/version").mock(
+            return_value=httpx.Response(201, json=SAMPLE_CREATED_VERSION)
+        )
+        from atlassian import jira
+        async with AsyncAtlassianClient(TOKEN, CLOUD_ID) as client:
+            result = await jira.acreate_version(
+                client,
+                project_key="PROJ",
+                name="2.0.0",
+                description="Major release",
+                release_date="2026-12-01",
+            )
+        assert result["id"] == "10302"
+        assert result["name"] == "2.0.0"
+        body = route.calls[0].request.content
+        assert b"PROJ" in body
+        assert b"2.0.0" in body
+
+
+# ---------------------------------------------------------------------------
+# Search Users
+# ---------------------------------------------------------------------------
+
+class TestSearchUsers:
+    @respx.mock
+    async def test_search_users(self):
+        respx.get(f"{JIRA_BASE}/user/search").mock(
+            return_value=httpx.Response(200, json=SAMPLE_USERS_RESPONSE)
+        )
+        from atlassian import jira
+        async with AsyncAtlassianClient(TOKEN, CLOUD_ID) as client:
+            users = await jira.asearch_users(client, "alice")
+        assert len(users) == 2
+        assert users[0]["displayName"] == "Alice Smith"
+        assert users[0]["accountId"] == "5b10ac8d82e05b22cc7d4ef5"
+
+    @respx.mock
+    async def test_search_users_empty(self):
+        respx.get(f"{JIRA_BASE}/user/search").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        from atlassian import jira
+        async with AsyncAtlassianClient(TOKEN, CLOUD_ID) as client:
+            users = await jira.asearch_users(client, "nobody")
+        assert users == []
+
+
+# ---------------------------------------------------------------------------
+# ADF mention support
+# ---------------------------------------------------------------------------
+
+class TestTextToAdfMentions:
+    def test_plain_text_unchanged(self):
+        from atlassian.jira import _text_to_adf
+        adf = _text_to_adf("Hello world")
+        content = adf["content"][0]["content"]
+        assert len(content) == 1
+        assert content[0]["type"] == "text"
+        assert content[0]["text"] == "Hello world"
+
+    def test_mention_produces_mention_node(self):
+        from atlassian.jira import _text_to_adf
+        adf = _text_to_adf("Hi @{abc123} please review")
+        content = adf["content"][0]["content"]
+        assert len(content) == 3
+        assert content[0] == {"type": "text", "text": "Hi "}
+        assert content[1]["type"] == "mention"
+        assert content[1]["attrs"]["id"] == "abc123"
+        assert content[2] == {"type": "text", "text": " please review"}
+
+    def test_multiple_mentions(self):
+        from atlassian.jira import _text_to_adf
+        adf = _text_to_adf("@{user1} and @{user2}")
+        content = adf["content"][0]["content"]
+        mention_nodes = [c for c in content if c["type"] == "mention"]
+        assert len(mention_nodes) == 2
+        assert mention_nodes[0]["attrs"]["id"] == "user1"
+        assert mention_nodes[1]["attrs"]["id"] == "user2"
+
+    def test_mention_only(self):
+        from atlassian.jira import _text_to_adf
+        adf = _text_to_adf("@{onlyuser}")
+        content = adf["content"][0]["content"]
+        assert len(content) == 1
+        assert content[0]["type"] == "mention"
+        assert content[0]["attrs"]["id"] == "onlyuser"
 
 
 # ---------------------------------------------------------------------------

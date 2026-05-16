@@ -1,6 +1,15 @@
 """Shared fixtures and mock data for Microsoft Graph tests."""
 
+from unittest.mock import AsyncMock
+
 import pytest
+
+
+@pytest.fixture
+def no_sleep(monkeypatch):
+    """Patch time.sleep and asyncio.sleep in ms_graph.files to avoid real waits in copy tests."""
+    monkeypatch.setattr("ms_graph.files.time.sleep", lambda _: None)
+    monkeypatch.setattr("ms_graph.files.asyncio.sleep", AsyncMock(return_value=None))
 
 # ---------------------------------------------------------------------------
 # Sample Graph API response payloads
@@ -353,4 +362,277 @@ SAMPLE_CHAT_MESSAGES_RESPONSE = {
 SAMPLE_CHAT_MESSAGE_SENT = {
     "id": "chat-msg-sent-001",
     "body": {"content": "Hello!"},
+}
+
+
+# ---------------------------------------------------------------------------
+# File write / copy / rename payloads
+# ---------------------------------------------------------------------------
+
+SAMPLE_DRIVE_ITEM_WORD = {
+    "id": "file-id-word-001",
+    "name": "template.docx",
+    "size": 25_600,
+    "file": {"mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+    "lastModifiedDateTime": "2025-12-15T10:00:00Z",
+    "lastModifiedBy": {"user": {"displayName": "Alice Smith", "id": "user-001"}},
+    "webUrl": "https://contoso.sharepoint.com/sites/engineering/template.docx",
+    "parentReference": {
+        "driveId": "drive-site-001",
+        "id": "folder-id-root",
+        "path": "/drive/root:",
+    },
+}
+
+SAMPLE_UPLOADED_FILE = {
+    "id": "file-id-uploaded-001",
+    "name": "report.md",
+    "size": 1024,
+    "file": {"mimeType": "text/markdown"},
+    "lastModifiedDateTime": "2025-12-15T11:00:00Z",
+    "lastModifiedBy": {"user": {"displayName": "Bob Jones", "id": "user-002"}},
+    "webUrl": "https://onedrive.live.com/edit.aspx?resid=file-id-uploaded-001",
+    "parentReference": {"driveId": "drive-001", "id": "folder-id-001"},
+}
+
+SAMPLE_COPY_IN_PROGRESS = {
+    "status": "inProgress",
+    "percentageComplete": 50.0,
+    "operation": "ItemCopy",
+}
+
+SAMPLE_COPY_COMPLETED = {
+    "status": "completed",
+    "percentageComplete": 100.0,
+    "resourceId": "file-id-copy-001",
+    "operation": "ItemCopy",
+}
+
+SAMPLE_COPY_FAILED = {
+    "status": "failed",
+    "percentageComplete": 0.0,
+    "error": {
+        "code": "accessDenied",
+        "message": "Insufficient privileges to copy the file.",
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Power BI sample payloads
+# ---------------------------------------------------------------------------
+
+SAMPLE_PBI_WORKSPACE = {
+    "id": "ws-id-001",
+    "name": "Analytics Hub",
+    "type": "Workspace",
+    "isReadOnly": False,
+    "isOnDedicatedCapacity": True,
+}
+
+SAMPLE_PBI_WORKSPACE_2 = {
+    "id": "ws-id-002",
+    "name": "Finance Reports",
+    "type": "Workspace",
+    "isReadOnly": False,
+    "isOnDedicatedCapacity": False,
+}
+
+SAMPLE_PBI_WORKSPACES_RESPONSE = {"value": [SAMPLE_PBI_WORKSPACE, SAMPLE_PBI_WORKSPACE_2]}
+
+SAMPLE_PBI_DATASET = {
+    "id": "ds-id-001",
+    "name": "Sales",
+    "webUrl": "https://app.powerbi.com/datasets/ds-id-001",
+    "addRowsAPIEnabled": False,
+    "configuredBy": "alice@example.com",
+    "isRefreshable": True,
+    "isOnPremGatewayRequired": False,
+}
+
+SAMPLE_PBI_DATASET_2 = {
+    "id": "ds-id-002",
+    "name": "Marketing KPIs",
+    "webUrl": "https://app.powerbi.com/datasets/ds-id-002",
+    "addRowsAPIEnabled": False,
+    "configuredBy": "bob@example.com",
+    "isRefreshable": True,
+    "isOnPremGatewayRequired": False,
+}
+
+SAMPLE_PBI_DATASETS_RESPONSE = {"value": [SAMPLE_PBI_DATASET, SAMPLE_PBI_DATASET_2]}
+
+SAMPLE_PBI_REPORT = {
+    "id": "rpt-id-001",
+    "name": "Q4 Dashboard",
+    "datasetId": "ds-id-001",
+    "webUrl": "https://app.powerbi.com/reports/rpt-id-001",
+    "embedUrl": "https://app.powerbi.com/reportEmbed?reportId=rpt-id-001",
+    "reportType": "PowerBIReport",
+}
+
+SAMPLE_PBI_REPORT_2 = {
+    "id": "rpt-id-002",
+    "name": "Monthly Revenue",
+    "datasetId": "ds-id-002",
+    "webUrl": "https://app.powerbi.com/reports/rpt-id-002",
+    "embedUrl": "https://app.powerbi.com/reportEmbed?reportId=rpt-id-002",
+    "reportType": "PowerBIReport",
+}
+
+SAMPLE_PBI_REPORTS_RESPONSE = {"value": [SAMPLE_PBI_REPORT, SAMPLE_PBI_REPORT_2]}
+
+SAMPLE_PBI_DASHBOARD = {
+    "id": "dash-id-001",
+    "displayName": "Executive Overview",
+    "webUrl": "https://app.powerbi.com/dashboards/dash-id-001",
+    "embedUrl": "https://app.powerbi.com/dashboardEmbed?dashboardId=dash-id-001",
+    "isReadOnly": False,
+}
+
+SAMPLE_PBI_DASHBOARDS_RESPONSE = {"value": [SAMPLE_PBI_DASHBOARD]}
+
+SAMPLE_PBI_DAX_RESULT = {
+    "results": [
+        {
+            "tables": [
+                {
+                    "rows": [
+                        {"[Region]": "West", "[Sales Amount]": 1234567.89, "[Units]": 4200},
+                        {"[Region]": "East", "[Sales Amount]": 987654.32, "[Units]": 3100},
+                        {"[Region]": "Central", "[Sales Amount]": 543210.00, "[Units]": 1800},
+                    ]
+                }
+            ]
+        }
+    ]
+}
+
+SAMPLE_PBI_DAX_EMPTY = {
+    "results": [{"tables": [{"rows": []}]}]
+}
+
+
+# ---------------------------------------------------------------------------
+# Calendar sample payloads
+# ---------------------------------------------------------------------------
+
+SAMPLE_CALENDAR_EVENT = {
+    "id": "AAMkAGI2-event-001",
+    "subject": "Sprint Planning",
+    "start": {"dateTime": "2026-05-08T10:00:00.0000000", "timeZone": "UTC"},
+    "end": {"dateTime": "2026-05-08T11:00:00.0000000", "timeZone": "UTC"},
+    "location": {"displayName": "Conference Room A"},
+    "organizer": {"emailAddress": {"name": "Alice Smith", "address": "alice@example.com"}},
+    "isAllDay": False,
+    "isCancelled": False,
+    "isOnlineMeeting": True,
+    "onlineMeetingUrl": "https://teams.microsoft.com/meet/123",
+    "bodyPreview": "Let's plan the sprint.",
+    "attendees": [
+        {
+            "emailAddress": {"name": "Bob Jones", "address": "bob@example.com"},
+            "type": "required",
+            "status": {"response": "accepted"},
+        }
+    ],
+    "body": {"contentType": "text", "content": "Let's plan the sprint.\n\nAgenda:\n1. Review backlog"},
+    "recurrence": None,
+}
+
+SAMPLE_CALENDAR_EVENT_ALLDAY = {
+    "id": "AAMkAGI2-event-002",
+    "subject": "Company Holiday",
+    "start": {"dateTime": "2026-05-25T00:00:00.0000000", "timeZone": "UTC"},
+    "end": {"dateTime": "2026-05-26T00:00:00.0000000", "timeZone": "UTC"},
+    "location": {"displayName": ""},
+    "organizer": {"emailAddress": {"name": "HR Team", "address": "hr@example.com"}},
+    "isAllDay": True,
+    "isCancelled": False,
+    "isOnlineMeeting": False,
+    "onlineMeetingUrl": "",
+    "bodyPreview": "",
+    "attendees": [],
+    "body": {"contentType": "text", "content": ""},
+    "recurrence": None,
+}
+
+SAMPLE_CALENDAR_EVENTS_RESPONSE = {"value": [SAMPLE_CALENDAR_EVENT, SAMPLE_CALENDAR_EVENT_ALLDAY]}
+
+SAMPLE_SCHEDULE_RESPONSE = {
+    "value": [
+        {
+            "scheduleId": "alice@example.com",
+            "availabilityView": "0000220000220000",
+            "scheduleItems": [
+                {
+                    "subject": "Sprint Planning",
+                    "start": {"dateTime": "2026-05-08T10:00:00.0000000", "timeZone": "UTC"},
+                    "end": {"dateTime": "2026-05-08T11:00:00.0000000", "timeZone": "UTC"},
+                    "status": "busy",
+                },
+            ],
+        },
+        {
+            "scheduleId": "bob@example.com",
+            "availabilityView": "0000000000000000",
+            "scheduleItems": [],
+        },
+    ]
+}
+
+SAMPLE_CREATED_EVENT = {
+    "id": "AAMkAGI2-event-new-001",
+    "subject": "Design Review",
+    "start": {"dateTime": "2026-05-09T14:00:00.0000000", "timeZone": "America/Los_Angeles"},
+    "end": {"dateTime": "2026-05-09T15:00:00.0000000", "timeZone": "America/Los_Angeles"},
+    "onlineMeetingUrl": "https://teams.microsoft.com/meet/789",
+}
+
+SAMPLE_PBI_REFRESH_HISTORY = {
+    "value": [
+        {
+            "refreshType": "OnDemand",
+            "startTime": "2026-05-04T10:00:00Z",
+            "endTime": "2026-05-04T10:05:30Z",
+            "status": "Completed",
+        },
+        {
+            "refreshType": "Scheduled",
+            "startTime": "2026-05-04T06:00:00Z",
+            "endTime": "2026-05-04T06:04:15Z",
+            "status": "Completed",
+        },
+    ]
+}
+
+SAMPLE_PBI_EXPORT_IN_PROGRESS = {
+    "id": "export-id-001",
+    "createdDateTime": "2026-05-04T10:00:00Z",
+    "lastActionDateTime": "2026-05-04T10:00:05Z",
+    "reportId": "rpt-id-001",
+    "status": "Running",
+    "percentComplete": 40,
+    "resourceFileExtension": ".pdf",
+}
+
+SAMPLE_PBI_EXPORT_SUCCEEDED = {
+    "id": "export-id-001",
+    "createdDateTime": "2026-05-04T10:00:00Z",
+    "lastActionDateTime": "2026-05-04T10:00:15Z",
+    "reportId": "rpt-id-001",
+    "status": "Succeeded",
+    "percentComplete": 100,
+    "resourceFileExtension": ".pdf",
+    "resourceLocation": "https://api.powerbi.com/v1.0/myorg/groups/ws-id-001/reports/rpt-id-001/exports/export-id-001/file",
+}
+
+SAMPLE_PBI_EXPORT_FAILED = {
+    "id": "export-id-002",
+    "status": "Failed",
+    "percentComplete": 0,
+    "error": {
+        "code": "PowerBIEntityNotFound",
+        "message": "Report not found.",
+    },
 }

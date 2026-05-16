@@ -55,13 +55,13 @@ class OktaOAuth2Provider(OAuth2Provider):
 
         LOGGER.debug(f"Okta OAuth2 initialized: domain={self.domain} auth_server_path={self.auth_server_path} redirect_uri={config['redirect_uri']} scopes={config['scopes']}")
 
-    def get_auth_url(self, state: str = None, code_challenge: str = None, code_challenge_method: str = None) -> str:
+    def get_auth_url(self, state: str = None, code_challenge: str = None, code_challenge_method: str = None, redirect_uri: str = None) -> str:
         """Generate Okta OAuth2 authorization URL."""
         auth_params = {
             'client_id': self.config["client_id"],
             'response_type': 'code',
             'scope': ' '.join(self.config["scopes"]),
-            'redirect_uri': self.config["redirect_uri"],
+            'redirect_uri': redirect_uri or self.config["redirect_uri"],
         }
 
         # Use provided state or generate one (T-O2: no more hardcoded state)
@@ -77,14 +77,14 @@ class OktaOAuth2Provider(OAuth2Provider):
         LOGGER.debug(f"Generated Okta auth URL")
         return auth_url
 
-    def _exchange_code_for_tokens(self, auth_code: str, code_verifier: str = None) -> Dict[str, Any]:
+    def _exchange_code_for_tokens(self, auth_code: str, code_verifier: str = None, redirect_uri: str = None) -> Dict[str, Any]:
         """Exchange authorization code for access and ID tokens."""
         token_url = f"{self.domain}{self.auth_server_path}/v1/token"
 
         token_data = {
             'grant_type': 'authorization_code',
             'code': auth_code,
-            'redirect_uri': self.config["redirect_uri"],
+            'redirect_uri': redirect_uri or self.config["redirect_uri"],
             'client_id': self.config["client_id"],
             'client_secret': self.config["client_secret"]
         }
@@ -131,13 +131,14 @@ class OktaOAuth2Provider(OAuth2Provider):
 
         return response.json()
 
-    def get_user_info_from_code(self, auth_code: str, code_verifier: str = None) -> Dict[str, Any]:
+    def get_user_info_from_code(self, auth_code: str, code_verifier: str = None, redirect_uri: str = None) -> Dict[str, Any]:
         """
         Exchange authorization code for user information.
 
         Args:
             auth_code: Okta OAuth2 authorization code
             code_verifier: PKCE code verifier for token exchange (T-O4)
+            redirect_uri: Override redirect URI (must match the one used in get_auth_url)
 
         Returns:
             Dictionary with user information including email, name, etc.
@@ -150,7 +151,7 @@ class OktaOAuth2Provider(OAuth2Provider):
             LOGGER.info(f"Authenticating with Okta auth code: {auth_code[:10]}...")
 
             # Exchange code for tokens (with PKCE code_verifier if provided)
-            tokens = self._exchange_code_for_tokens(auth_code, code_verifier=code_verifier)
+            tokens = self._exchange_code_for_tokens(auth_code, code_verifier=code_verifier, redirect_uri=redirect_uri)
             access_token = tokens.get('access_token')
 
             if not access_token:

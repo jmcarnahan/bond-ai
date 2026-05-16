@@ -51,11 +51,13 @@ def search_content(
     query: str,
     max_results: int = 25,
 ) -> List[Dict[str, Any]]:
-    """Search Confluence pages and blogs using CQL."""
-    # Confluence v2 search uses /search endpoint which takes CQL
-    # The v1 compatible search via /wiki/rest/api/search is more reliable for CQL
+    """Search Confluence pages and blogs using CQL.
+
+    Uses v1 content/search (still active) because v2 /search requires an
+    unavailable scope. The v1 endpoint works with granular Confluence scopes.
+    """
     data = client.get(
-        f"{client.confluence_v1_base}/search",
+        f"{client.confluence_v1_base}/content/search",
         params={"cql": query, "limit": _cap(max_results)},
     )
     return data.get("results", [])
@@ -68,7 +70,7 @@ async def asearch_content(
 ) -> List[Dict[str, Any]]:
     """Search Confluence pages and blogs using CQL (async)."""
     data = await client.get(
-        f"{client.confluence_v1_base}/search",
+        f"{client.confluence_v1_base}/content/search",
         params={"cql": query, "limit": _cap(max_results)},
     )
     return data.get("results", [])

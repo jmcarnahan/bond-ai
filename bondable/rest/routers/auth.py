@@ -18,7 +18,7 @@ from bondable.rest.models.auth import User
 from bondable.rest.dependencies.auth import get_current_user
 from bondable.rest.dependencies.providers import get_bond_provider
 from bondable.rest.utils.auth import create_access_token
-from bondable.utils.url_validation import is_safe_redirect_url
+from bondable.utils.url_validation import is_safe_redirect_url, get_allowed_redirect_domains
 from pydantic import BaseModel
 
 router = APIRouter(tags=["Authentication"])
@@ -30,6 +30,26 @@ limiter = Limiter(key_func=get_remote_address)
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").lower() != "false"
 AUTH_CODE_TTL_SECONDS = 60
 AUTH_CODE_CLEANUP_MINUTES = 5
+
+
+def _get_validated_origin_host(request: Request) -> str | None:
+    """Extract and validate the origin host from request headers.
+
+    Checks X-Forwarded-Host first (set by reverse proxies / ALBs), then Host.
+    Returns the hostname only if it is in the ALLOWED_REDIRECT_DOMAINS list.
+    Returns None otherwise, signalling callers to fall back to env-var defaults.
+    """
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
+    host = host.split(",")[0].strip()  # Take first value if comma-separated
+    host = host.split(":")[0].strip()  # Strip port
+    if not host or host == "localhost" or host == "127.0.0.1":
+        return None
+    allowed = get_allowed_redirect_domains()
+    host_lower = host.lower()
+    if host_lower in allowed:
+        return host_lower
+    LOGGER.warning(f"Origin host '{host}' not in allowed redirect domains, using default redirect URIs")
+    return None
 
 
 class TokenExchangeRequest(BaseModel):
@@ -48,7 +68,8 @@ def _save_auth_oauth_state(
     provider_name: str,
     code_verifier: str,
     redirect_uri: str = "",
-    platform: str = ""
+    platform: str = "",
+    origin_host: str = "",
 ) -> bool:
     """Save OAuth state for primary auth flow.
 
@@ -70,6 +91,7 @@ def _save_auth_oauth_state(
                 code_verifier=code_verifier,
                 redirect_uri=redirect_uri,
                 platform=platform,
+                origin_host=origin_host,
             )
             session.add(oauth_state)
             session.commit()
@@ -97,6 +119,7 @@ def _get_and_delete_auth_oauth_state(bond_provider, state: str):
                 "code_verifier": oauth_state.code_verifier,
                 "redirect_uri": oauth_state.redirect_uri,
                 "platform": oauth_state.platform,
+                "origin_host": oauth_state.origin_host,
             }
 
             session.delete(oauth_state)
@@ -298,20 +321,33 @@ async def login_provider(provider: str, request: Request, bond_provider=Depends(
                 detail="Invalid redirect_uri: domain not in allowed list"
             )
 
+        # Resolve origin host for multi-domain support (e.g. ZPA Clientless vs VPN)
+        origin_host = _get_validated_origin_host(request)
+        dynamic_redirect_uri = f"https://{origin_host}/auth/{provider}/callback" if origin_host else None
+
+        LOGGER.info(
+            f"Login initiated for {provider} - "
+            f"Host: {request.headers.get('host')}, "
+            f"X-Forwarded-Host: {request.headers.get('x-forwarded-host')}, "
+            f"origin_host: {origin_host}, "
+            f"dynamic_redirect_uri: {dynamic_redirect_uri}"
+        )
+
         # T-O2: Generate secure OAuth state (replaces hardcoded 'bond-ai-auth')
         oauth_state = generate_oauth_state(provider)
 
         # T-O4: Generate PKCE code verifier and challenge
         code_verifier, code_challenge = generate_pkce_pair()
 
-        # Store state, PKCE verifier, and mobile params in database
+        # Store state, PKCE verifier, mobile params, and origin host in database
         _save_auth_oauth_state(
             bond_provider=bond_provider,
             state=oauth_state,
             provider_name=provider,
             code_verifier=code_verifier,
             redirect_uri=redirect_uri or "",
-            platform=platform or ""
+            platform=platform or "",
+            origin_host=origin_host or "",
         )
 
         # Create the provider and get auth URL with PKCE and state
@@ -319,7 +355,8 @@ async def login_provider(provider: str, request: Request, bond_provider=Depends(
         authorization_url = oauth_provider.get_auth_url(
             state=oauth_state,
             code_challenge=code_challenge,
-            code_challenge_method="S256"
+            code_challenge_method="S256",
+            redirect_uri=dynamic_redirect_uri,
         )
 
         LOGGER.info(f"Redirecting user to {provider} for authentication")
@@ -373,6 +410,15 @@ async def auth_callback_provider(provider: str, request: Request, bond_provider 
     code_verifier = state_data.get("code_verifier")
     platform = state_data.get("platform")
     redirect_uri = state_data.get("redirect_uri")
+    origin_host = state_data.get("origin_host")
+
+    # Reconstruct the dynamic redirect URI that was used in the auth request
+    dynamic_redirect_uri = f"https://{origin_host}/auth/{provider}/callback" if origin_host else None
+
+    LOGGER.info(
+        f"Auth callback for {provider} - origin_host: {origin_host}, "
+        f"dynamic_redirect_uri: {dynamic_redirect_uri}"
+    )
 
     try:
         config = Config.config()
@@ -381,7 +427,10 @@ async def auth_callback_provider(provider: str, request: Request, bond_provider 
         oauth_provider = OAuth2ProviderFactory.create_provider(provider, provider_config)
 
         # T-O4: Pass code_verifier for PKCE token exchange
-        user_info = oauth_provider.get_user_info_from_code(auth_code, code_verifier=code_verifier)
+        # Pass dynamic_redirect_uri so token exchange uses the same URI as the auth request
+        user_info = oauth_provider.get_user_info_from_code(
+            auth_code, code_verifier=code_verifier, redirect_uri=dynamic_redirect_uri
+        )
 
         LOGGER.info(f"Successfully authenticated user with {provider}: {user_info.get('email')}")
 
@@ -452,16 +501,19 @@ async def auth_callback_provider(provider: str, request: Request, bond_provider 
             flutter_redirect_url = f"{decoded_redirect_uri}?code={opaque_code}&platform=mobile"
             LOGGER.info(f"Mobile redirect")
         else:
+            # Use origin host for frontend redirect if available, otherwise fall back to env var
+            frontend_base = f"https://{origin_host}" if origin_host else jwt_config.JWT_REDIRECT_URI
+
             # Check if this is a web app request (no hash routing)
             user_agent = request.headers.get("user-agent", "").lower()
 
             # For mobile app or when hash routing is not needed
-            if "flutter" in user_agent or jwt_config.JWT_REDIRECT_URI.endswith(":3000"):
+            if "flutter" in user_agent or frontend_base.startswith("http://localhost:"):
                 # Use regular routing for mobile app
-                flutter_redirect_url = f"{jwt_config.JWT_REDIRECT_URI}/auth-callback?code={opaque_code}"
+                flutter_redirect_url = f"{frontend_base}/auth-callback?code={opaque_code}"
             else:
                 # Use hash routing for web app
-                flutter_redirect_url = f"{jwt_config.JWT_REDIRECT_URI}/#/auth-callback?code={opaque_code}"
+                flutter_redirect_url = f"{frontend_base}/#/auth-callback?code={opaque_code}"
 
         LOGGER.info(f"Redirecting to auth callback")
         return RedirectResponse(url=flutter_redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)

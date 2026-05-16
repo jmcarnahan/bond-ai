@@ -24,13 +24,19 @@ TOKEN_URL = "https://auth.atlassian.com/oauth/token"  # nosec B105
 RESOURCES_URL = "https://api.atlassian.com/oauth/token/accessible-resources"
 
 SCOPES = [
+    # Jira — classic scopes (required by Jira REST API v3)
+    "read:jira-user",
     "read:jira-work",
     "write:jira-work",
-    "read:jira-user",
-    "read:confluence-content.all",
-    "write:confluence-content",
-    "read:confluence-space.summary",
-    "read:me",
+    "manage:jira-project",
+    # Confluence — granular scopes (v2 API for pages/spaces; v1 content/search still works)
+    "read:content:confluence",
+    "read:content-details:confluence",
+    "write:content:confluence",
+    "read:space:confluence",
+    "read:space-details:confluence",
+    "read:page:confluence",
+    "write:page:confluence",
     "offline_access",
 ]
 
@@ -111,7 +117,7 @@ def _do_browser_auth(client_id: str, client_secret: str) -> dict | None:
 
     state = secrets.token_urlsafe(32)
     code_verifier, code_challenge = _generate_pkce()
-    redirect_uri = proxy.get_redirect_uri("atlassian_v2")
+    redirect_uri = proxy.get_redirect_uri("atlassian")
 
     auth_params = {
         "audience": "api.atlassian.com",
@@ -127,7 +133,7 @@ def _do_browser_auth(client_id: str, client_secret: str) -> dict | None:
     auth_url = f"{AUTH_URL}?{urlencode(auth_params)}"
 
     try:
-        proxy.register_auth(state, "atlassian_v2")
+        proxy.register_auth(state, "atlassian")
     except Exception:
         logger.exception("Failed to register auth with proxy")
         return None
@@ -209,11 +215,17 @@ def _discover_cloud_id(access_token: str) -> str:
             "to at least one Atlassian site."
         )
 
-    if len(resources) == 1:
-        return resources[0]["id"]
+    # Deduplicate by cloud ID — Atlassian returns one entry per product (Jira + Confluence)
+    seen = {}
+    for r in resources:
+        seen[r["id"]] = r
+    unique = list(seen.values())
 
-    # Multiple sites — need ATLASSIAN_CLOUD_ID env var
-    site_names = [f"  {r.get('name', '?')} (id: {r['id']})" for r in resources]
+    if len(unique) == 1:
+        return unique[0]["id"]
+
+    # Genuinely multiple sites — need ATLASSIAN_CLOUD_ID env var
+    site_names = [f"  {r.get('name', '?')} (id: {r['id']})" for r in unique]
     raise PermissionError(
         f"Multiple Atlassian sites found. Set ATLASSIAN_CLOUD_ID to one of:\n"
         + "\n".join(site_names)

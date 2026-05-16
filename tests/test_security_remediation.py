@@ -529,6 +529,12 @@ class TestTO1OpenRedirect:
 class TestTO2OAuthStateValidation:
     """T-O2: Callback must validate the OAuth state parameter to prevent CSRF."""
 
+    @pytest.fixture(autouse=True)
+    def reset_rate_limiter(self):
+        """Reset rate limiter between tests to avoid 429 from earlier tests."""
+        from bondable.rest.routers.auth import limiter
+        limiter.reset()
+
     def test_callback_without_state_returns_400(self, test_client):
         """Missing state parameter in callback must return 400."""
         response = test_client.get("/auth/cognito/callback?code=test_code")

@@ -131,9 +131,9 @@ class TestGetScopes:
         with patch.dict(os.environ, {}, clear=True):
             scopes = _get_scopes()
         assert "Mail.Read" in scopes
-        assert "Files.Read.All" in scopes
+        assert "Files.ReadWrite.All" in scopes
         assert "Team.ReadBasic.All" not in scopes
-        assert "Sites.Read.All" not in scopes
+        assert "Sites.ReadWrite.All" not in scopes
 
     def test_org_scopes_with_tenant(self):
         from ms_graph.local_auth import _get_scopes
@@ -142,7 +142,7 @@ class TestGetScopes:
             scopes = _get_scopes()
         assert "Mail.Read" in scopes
         assert "Team.ReadBasic.All" in scopes
-        assert "Sites.Read.All" in scopes
+        assert "Sites.ReadWrite.All" in scopes
 
 
 class TestAcquireTokenBrowserProxy:

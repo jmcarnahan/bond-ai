@@ -53,6 +53,7 @@ resource "kubernetes_config_map" "backend" {
     AWS_REGION             = var.aws_region
     BOND_PROVIDER_CLASS    = "bondable.bond.providers.bedrock.BedrockProvider.BedrockProvider"
     S3_BUCKET_NAME         = aws_s3_bucket.uploads.id
+    BEDROCK_S3_BUCKET      = aws_s3_bucket.uploads.id
     BEDROCK_AGENT_ROLE_ARN = aws_iam_role.bedrock_agent.arn
     BEDROCK_DEFAULT_MODEL      = var.bedrock_default_model
     BEDROCK_SELECTABLE_MODELS  = var.bedrock_selectable_models
@@ -160,6 +161,12 @@ resource "kubernetes_deployment" "backend" {
       metadata {
         labels = {
           app = "bond-ai-backend"
+        }
+        annotations = {
+          # Force a rolling restart whenever bond_mcp_config (or the full
+          # app-config secret) changes. Without this, terraform apply updates
+          # Secrets Manager but running pods keep their cached config.
+          "checksum/mcp-config" = sha256(var.bond_mcp_config)
         }
       }
 

@@ -155,6 +155,7 @@ class ConnectionOAuthState(Base):
     connection_name = Column(String, nullable=False, index=True)  # Validated against BOND_MCP_CONFIG on use
     code_verifier = Column(String, nullable=True)  # For PKCE
     redirect_uri = Column(String, nullable=True)  # Where to redirect after OAuth
+    origin_host = Column(String, nullable=True)  # Host that initiated connection (for multi-domain)
     created_at = Column(DateTime, default=datetime.datetime.now)
 
 
@@ -173,6 +174,7 @@ class AuthOAuthState(Base):
     code_verifier = Column(String, nullable=True)  # For PKCE
     redirect_uri = Column(String, nullable=True)  # Mobile redirect URI
     platform = Column(String, nullable=True)  # "mobile" or empty
+    origin_host = Column(String, nullable=True)  # Host that initiated login (for multi-domain support)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
 

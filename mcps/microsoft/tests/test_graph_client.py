@@ -109,6 +109,44 @@ class TestGraphClient:
         assert result == {"id": "msg-001", "body": {"content": "Hi"}}
 
     @respx.mock
+    def test_get_operation_status_200(self):
+        """200 response returns parsed JSON."""
+        monitor_url = "https://api.onedrive.com/v1.0/monitor/abc"
+        respx.get(monitor_url).mock(
+            return_value=httpx.Response(200, json={"status": "inProgress", "percentageComplete": 50.0})
+        )
+        with GraphClient("tok") as client:
+            result = client.get_operation_status(monitor_url)
+
+        assert result["status"] == "inProgress"
+
+    @respx.mock
+    def test_get_operation_status_303(self):
+        """303 response (Graph copy completion signal) returns parsed JSON body."""
+        monitor_url = "https://api.onedrive.com/v1.0/monitor/abc"
+        respx.get(monitor_url).mock(
+            return_value=httpx.Response(303, json={"status": "completed", "resourceId": "item-001", "percentageComplete": 100.0})
+        )
+        with GraphClient("tok") as client:
+            result = client.get_operation_status(monitor_url)
+
+        assert result["status"] == "completed"
+        assert result["resourceId"] == "item-001"
+
+    @respx.mock
+    def test_get_operation_status_error_raises(self):
+        """Non-2xx/3xx responses raise GraphError."""
+        monitor_url = "https://api.onedrive.com/v1.0/monitor/abc"
+        respx.get(monitor_url).mock(
+            return_value=httpx.Response(500, json={"error": {"code": "InternalError", "message": "Server error"}})
+        )
+        with GraphClient("tok") as client:
+            with pytest.raises(GraphError) as exc_info:
+                client.get_operation_status(monitor_url)
+
+        assert exc_info.value.status_code == 500
+
+    @respx.mock
     def test_get_bytes_returns_raw_content(self):
         content = b"hello,world\n1,2\n"
         respx.get(f"{GRAPH_BASE_URL}/me/drive/items/abc/content").mock(
@@ -178,6 +216,42 @@ class TestAsyncGraphClient:
                 await client.get("/me")
 
         assert exc_info.value.status_code == 401
+
+    @respx.mock
+    async def test_async_get_operation_status_200(self):
+        monitor_url = "https://api.onedrive.com/v1.0/monitor/abc"
+        respx.get(monitor_url).mock(
+            return_value=httpx.Response(200, json={"status": "inProgress", "percentageComplete": 50.0})
+        )
+        async with AsyncGraphClient("tok") as client:
+            result = await client.get_operation_status(monitor_url)
+
+        assert result["status"] == "inProgress"
+
+    @respx.mock
+    async def test_async_get_operation_status_303(self):
+        """303 response (Graph copy completion signal) returns parsed JSON body."""
+        monitor_url = "https://api.onedrive.com/v1.0/monitor/abc"
+        respx.get(monitor_url).mock(
+            return_value=httpx.Response(303, json={"status": "completed", "resourceId": "item-001", "percentageComplete": 100.0})
+        )
+        async with AsyncGraphClient("tok") as client:
+            result = await client.get_operation_status(monitor_url)
+
+        assert result["status"] == "completed"
+        assert result["resourceId"] == "item-001"
+
+    @respx.mock
+    async def test_async_get_operation_status_error_raises(self):
+        monitor_url = "https://api.onedrive.com/v1.0/monitor/abc"
+        respx.get(monitor_url).mock(
+            return_value=httpx.Response(500, json={"error": {"code": "InternalError", "message": "Server error"}})
+        )
+        async with AsyncGraphClient("tok") as client:
+            with pytest.raises(GraphError) as exc_info:
+                await client.get_operation_status(monitor_url)
+
+        assert exc_info.value.status_code == 500
 
     @respx.mock
     async def test_async_get_bytes_returns_raw_content(self):

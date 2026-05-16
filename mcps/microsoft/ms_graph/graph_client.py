@@ -62,6 +62,41 @@ class GraphClient:
             return None
         return response.json()
 
+    def get_operation_status(self, url: str) -> Dict[str, Any]:
+        """GET an async operation monitor URL. Treats 200 and 303 as success (both carry JSON)."""
+        response = self._client.get(url)
+        if response.status_code in (200, 303):
+            return response.json()
+        _raise_for_graph_error(response)
+        raise GraphError(response.status_code, "UnexpectedStatus",
+                         f"Unexpected status {response.status_code} from operation monitor")
+
+    def post_with_location(self, path: str, json_data: Optional[Dict[str, Any]] = None) -> str:
+        """POST that expects a 202 Accepted with a Location header (async Graph operations like copy)."""
+        response = self._client.post(path, json=json_data)
+        _raise_for_graph_error(response)
+        if response.status_code != 202:
+            raise GraphError(
+                response.status_code, "UnexpectedStatus",
+                f"Expected 202 Accepted, got {response.status_code}"
+            )
+        location = response.headers.get("Location", "")
+        if not location:
+            raise GraphError(response.status_code, "NoLocation", "Expected Location header in 202 response")
+        return location
+
+    def put(self, path: str, content: bytes, content_type: str = "application/octet-stream") -> Dict[str, Any]:
+        """PUT raw bytes to a path (used for file uploads)."""
+        response = self._client.put(path, content=content, headers={"Content-Type": content_type})
+        _raise_for_graph_error(response)
+        return response.json()
+
+    def patch(self, path: str, json_data: Dict[str, Any]) -> Dict[str, Any]:
+        """PATCH a resource with a JSON payload."""
+        response = self._client.patch(path, json=json_data)
+        _raise_for_graph_error(response)
+        return response.json()
+
     def get_bytes(self, path: str, params: Optional[Dict[str, Any]] = None) -> bytes:
         """GET request returning raw bytes. Follows redirects (Graph /content returns 302)."""
         response = self._client.get(path, params=params, follow_redirects=True)
@@ -98,6 +133,41 @@ class AsyncGraphClient:
         _raise_for_graph_error(response)
         if response.status_code == 202 or not response.content:
             return None
+        return response.json()
+
+    async def get_operation_status(self, url: str) -> Dict[str, Any]:
+        """GET an async operation monitor URL. Treats 200 and 303 as success (both carry JSON)."""
+        response = await self._client.get(url)
+        if response.status_code in (200, 303):
+            return response.json()
+        _raise_for_graph_error(response)
+        raise GraphError(response.status_code, "UnexpectedStatus",
+                         f"Unexpected status {response.status_code} from operation monitor")
+
+    async def post_with_location(self, path: str, json_data: Optional[Dict[str, Any]] = None) -> str:
+        """POST that expects a 202 Accepted with a Location header (async Graph operations like copy)."""
+        response = await self._client.post(path, json=json_data)
+        _raise_for_graph_error(response)
+        if response.status_code != 202:
+            raise GraphError(
+                response.status_code, "UnexpectedStatus",
+                f"Expected 202 Accepted, got {response.status_code}"
+            )
+        location = response.headers.get("Location", "")
+        if not location:
+            raise GraphError(response.status_code, "NoLocation", "Expected Location header in 202 response")
+        return location
+
+    async def put(self, path: str, content: bytes, content_type: str = "application/octet-stream") -> Dict[str, Any]:
+        """PUT raw bytes to a path (used for file uploads)."""
+        response = await self._client.put(path, content=content, headers={"Content-Type": content_type})
+        _raise_for_graph_error(response)
+        return response.json()
+
+    async def patch(self, path: str, json_data: Dict[str, Any]) -> Dict[str, Any]:
+        """PATCH a resource with a JSON payload."""
+        response = await self._client.patch(path, json=json_data)
+        _raise_for_graph_error(response)
         return response.json()
 
     async def get_bytes(self, path: str, params: Optional[Dict[str, Any]] = None) -> bytes:

@@ -2,15 +2,12 @@
 """
 Atlassian CLI -- interact with Jira & Confluence using OAuth 2.0 authorization code flow.
 
-Atlassian doesn't support device code flow, so we use authorization code flow
-with a local HTTP server to catch the redirect (same approach as many OAuth CLIs).
+Uses the shared OAuth callback proxy (shared_auth) for browser-based auth.
 
 Setup:
-    1. Create an OAuth 2.0 app at https://developer.atlassian.com/console/myapps/
-    2. Add callback URL: http://localhost:8789/callback
-    3. Add scopes: read:jira-work, write:jira-work, read:confluence-content.all,
-       write:confluence-content, read:me, offline_access
-    4. Set env vars:
+    1. Start the shared auth proxy:
+       cd mcps/shared_auth && poetry run python -m shared_auth
+    2. Set env vars:
        export ATLASSIAN_CLIENT_ID=<your-client-id>
        export ATLASSIAN_CLIENT_SECRET=<your-client-secret>
 
@@ -22,6 +19,10 @@ Usage:
     atlassian-cli jira create PROJ "Fix the login bug" --type Bug --priority High
     atlassian-cli jira comment PROJ-123 "Working on this now"
     atlassian-cli jira transition PROJ-123 "In Progress"
+    atlassian-cli jira transitions PROJ-123
+    atlassian-cli jira versions PROJ [--query 1.2] [--status unreleased]
+    atlassian-cli jira create-version PROJ "1.2.0" [--release-date 2026-06-30]
+    atlassian-cli jira lookup-user "alice"
 
     atlassian-cli confluence spaces
     atlassian-cli confluence search 'type = page AND text ~ "release"'
@@ -33,320 +34,31 @@ Usage:
 """
 
 import argparse
-import hashlib
 import json
 import os
-import secrets
 import sys
-import threading
-import time
-import webbrowser
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from pathlib import Path
-from urllib.parse import urlencode, urlparse, parse_qs
 
-import httpx
+from dotenv import load_dotenv
+load_dotenv()
 
 from atlassian.atlassian_client import AtlassianClient, AtlassianError
+from atlassian.local_auth import get_local_token_and_cloud_id
 from atlassian import jira as jira_ops
 from atlassian import confluence as confluence_ops
 from atlassian import user as user_ops
 
-TOKEN_CACHE_PATH = Path.home() / ".atlassian_mcp_tokens.json"
-
-CALLBACK_PORT = 8789
-CALLBACK_PATH = "/callback"
-REDIRECT_URI = f"http://localhost:{CALLBACK_PORT}{CALLBACK_PATH}"
-
-# Atlassian OAuth 2.0 endpoints
-AUTH_URL = "https://auth.atlassian.com/authorize"
-TOKEN_URL = "https://auth.atlassian.com/oauth/token"  # nosec B105 — URL, not a password
-RESOURCES_URL = "https://api.atlassian.com/oauth/token/accessible-resources"
-
-# Scopes needed for Jira + Confluence + User
-# These must match scopes configured in your Atlassian OAuth app's Permissions page.
-# Classic scopes (coarse-grained):
-#   read:jira-work, write:jira-work — Jira issue CRUD, search, projects
-#   read:confluence-content.all, write:confluence-content — Confluence page CRUD, search
-# Granular scopes (fine-grained):
-#   read:jira-user — needed for /myself endpoint and user lookups in Jira
-#   read:me — User Identity API (api.atlassian.com/me)
-#   read:confluence-space.summary — needed for listing Confluence spaces
-SCOPES = [
-    "read:jira-work",
-    "write:jira-work",
-    "read:jira-user",
-    "read:confluence-content.all",
-    "write:confluence-content",
-    "read:confluence-space.summary",
-    "read:me",
-    "offline_access",
-]
-
-
-# ---------------------------------------------------------------------------
-# OAuth 2.0 Authorization Code Flow with PKCE
-# ---------------------------------------------------------------------------
-
-class _CallbackHandler(BaseHTTPRequestHandler):
-    """HTTP handler that captures the OAuth callback."""
-
-    auth_code = None
-    state = None
-    error = None
-
-    def do_GET(self):
-        parsed = urlparse(self.path)
-        if parsed.path != CALLBACK_PATH:
-            self.send_response(404)
-            self.end_headers()
-            return
-
-        params = parse_qs(parsed.query)
-
-        if "error" in params:
-            _CallbackHandler.error = params["error"][0]
-            body = f"<h2>Authentication failed</h2><p>{params.get('error_description', ['Unknown error'])[0]}</p>"
-        elif "code" in params:
-            _CallbackHandler.auth_code = params["code"][0]
-            _CallbackHandler.state = params.get("state", [None])[0]
-            body = "<h2>Authentication successful!</h2><p>You can close this tab and return to the terminal.</p>"
-        else:
-            _CallbackHandler.error = "no_code"
-            body = "<h2>Authentication failed</h2><p>No authorization code received.</p>"
-
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html")
-        self.end_headers()
-        self.wfile.write(f"<html><body>{body}</body></html>".encode())
-
-    def log_message(self, format, *args):
-        pass  # Suppress HTTP server log noise
-
-
-def _generate_pkce():
-    """Generate PKCE code_verifier and code_challenge."""
-    verifier = secrets.token_urlsafe(64)
-    challenge = hashlib.sha256(verifier.encode()).digest()
-    import base64
-    challenge_b64 = base64.urlsafe_b64encode(challenge).rstrip(b"=").decode()
-    return verifier, challenge_b64
-
-
-def _do_oauth_flow(client_id: str, client_secret: str) -> dict:
-    """Run the full OAuth 2.0 authorization code flow with PKCE."""
-    state = secrets.token_urlsafe(32)
-    code_verifier, code_challenge = _generate_pkce()
-
-    # Build authorization URL
-    auth_params = {
-        "audience": "api.atlassian.com",
-        "client_id": client_id,
-        "scope": " ".join(SCOPES),
-        "redirect_uri": REDIRECT_URI,
-        "state": state,
-        "response_type": "code",
-        "prompt": "consent",
-        "code_challenge": code_challenge,
-        "code_challenge_method": "S256",
-    }
-    auth_url = f"{AUTH_URL}?{urlencode(auth_params)}"
-
-    # Start local callback server
-    server = HTTPServer(("localhost", CALLBACK_PORT), _CallbackHandler)
-    server_thread = threading.Thread(target=server.handle_request, daemon=True)
-    server_thread.start()
-
-    # Open browser
-    print(f"\nOpening browser for Atlassian authentication...")
-    print(f"If the browser doesn't open, visit:\n  {auth_url}\n")
-    webbrowser.open(auth_url)
-
-    print("Waiting for authentication...")
-
-    # Wait for callback (up to 120 seconds)
-    deadline = time.time() + 120
-    while server_thread.is_alive() and time.time() < deadline:
-        time.sleep(0.5)
-
-    server.server_close()
-
-    if _CallbackHandler.error:
-        print(f"Authentication failed: {_CallbackHandler.error}", file=sys.stderr)
-        sys.exit(1)
-
-    if not _CallbackHandler.auth_code:
-        print("Authentication timed out.", file=sys.stderr)
-        sys.exit(1)
-
-    if _CallbackHandler.state != state:
-        print("Authentication failed: state mismatch (possible CSRF).", file=sys.stderr)
-        sys.exit(1)
-
-    # Exchange code for tokens
-    with httpx.Client(timeout=30.0) as http:
-        resp = http.post(
-            TOKEN_URL,
-            json={
-                "grant_type": "authorization_code",
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "code": _CallbackHandler.auth_code,
-                "redirect_uri": REDIRECT_URI,
-                "code_verifier": code_verifier,
-            },
-        )
-        if not resp.is_success:
-            print(f"Token exchange failed: {resp.text}", file=sys.stderr)
-            sys.exit(1)
-        token_data = resp.json()
-
-    # Reset handler state for next use
-    _CallbackHandler.auth_code = None
-    _CallbackHandler.state = None
-    _CallbackHandler.error = None
-
-    print("Authenticated successfully!\n")
-    return token_data
-
-
-def _get_accessible_resources(access_token: str) -> list:
-    """Fetch the list of Atlassian cloud sites the user can access."""
-    with httpx.Client(timeout=30.0) as http:
-        resp = http.get(
-            RESOURCES_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-        resp.raise_for_status()
-        return resp.json()
-
-
-def _refresh_token(client_id: str, client_secret: str, refresh_token: str) -> dict:
-    """Refresh an expired access token."""
-    with httpx.Client(timeout=30.0) as http:
-        resp = http.post(
-            TOKEN_URL,
-            json={
-                "grant_type": "refresh_token",
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "refresh_token": refresh_token,
-            },
-        )
-        if not resp.is_success:
-            return None
-        return resp.json()
-
-
-def _save_cache(data: dict):
-    """Save token data to cache file."""
-    TOKEN_CACHE_PATH.write_text(json.dumps(data, indent=2))
-    TOKEN_CACHE_PATH.chmod(0o600)
-
-
-def _load_cache() -> dict | None:
-    """Load token data from cache file."""
-    if not TOKEN_CACHE_PATH.exists():
-        return None
-    try:
-        return json.loads(TOKEN_CACHE_PATH.read_text())
-    except (json.JSONDecodeError, OSError):
-        return None
+from shared_auth import TokenStore
 
 
 def _get_token_and_cloud_id() -> tuple[str, str]:
     """Get a valid access token and cloud_id, authenticating if needed."""
-    client_id = os.environ.get("ATLASSIAN_CLIENT_ID", "")
-    client_secret = os.environ.get("ATLASSIAN_CLIENT_SECRET", "")
-
     # Allow direct token override for testing
     direct_token = os.environ.get("ATLASSIAN_ACCESS_TOKEN", "")
     direct_cloud_id = os.environ.get("ATLASSIAN_CLOUD_ID", "")
     if direct_token and direct_cloud_id:
         return direct_token, direct_cloud_id
 
-    if not client_id or not client_secret:
-        print(
-            "Error: ATLASSIAN_CLIENT_ID and ATLASSIAN_CLIENT_SECRET are required.\n"
-            "\n"
-            "Setup:\n"
-            "  1. Create an OAuth 2.0 app at https://developer.atlassian.com/console/myapps/\n"
-            "  2. Add callback URL: http://localhost:8789/callback\n"
-            "  3. Set environment variables:\n"
-            "     export ATLASSIAN_CLIENT_ID=<your-client-id>\n"
-            "     export ATLASSIAN_CLIENT_SECRET=<your-client-secret>\n",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    # Try cached token
-    cache = _load_cache()
-    if cache:
-        access_token = cache.get("access_token")
-        cloud_id = cache.get("cloud_id")
-        refresh_tok = cache.get("refresh_token")
-
-        if access_token and cloud_id:
-            # Quick validation — try a lightweight API call
-            try:
-                with AtlassianClient(access_token, cloud_id) as client:
-                    user_ops.get_myself(client)
-                return access_token, cloud_id
-            except (AtlassianError, Exception):
-                pass  # Token expired, try refresh
-
-        # Try refresh
-        if refresh_tok:
-            token_data = _refresh_token(client_id, client_secret, refresh_tok)
-            if token_data and "access_token" in token_data:
-                access_token = token_data["access_token"]
-                # Keep existing cloud_id, update tokens
-                cache_data = {
-                    "access_token": access_token,
-                    "refresh_token": token_data.get("refresh_token", refresh_tok),
-                    "cloud_id": cloud_id,
-                }
-                _save_cache(cache_data)
-                print("Token refreshed.\n")
-                return access_token, cloud_id
-
-    # Full OAuth flow
-    token_data = _do_oauth_flow(client_id, client_secret)
-    access_token = token_data["access_token"]
-
-    # Get accessible sites to find cloud_id
-    resources = _get_accessible_resources(access_token)
-    if not resources:
-        print("Error: No accessible Atlassian sites found for your account.", file=sys.stderr)
-        sys.exit(1)
-
-    if len(resources) == 1:
-        cloud_id = resources[0]["id"]
-        site_name = resources[0].get("name", resources[0].get("url", "?"))
-        print(f"Using site: {site_name} (cloud_id: {cloud_id})\n")
-    else:
-        print("Available Atlassian sites:\n")
-        for i, r in enumerate(resources, 1):
-            print(f"  [{i}] {r.get('name', '?')} ({r.get('url', '?')})")
-            print(f"      Cloud ID: {r['id']}")
-        print()
-        choice = input(f"Select site (1-{len(resources)}): ").strip()
-        try:
-            idx = int(choice) - 1
-            cloud_id = resources[idx]["id"]
-        except (ValueError, IndexError):
-            print("Invalid selection.", file=sys.stderr)
-            sys.exit(1)
-
-    # Cache everything
-    cache_data = {
-        "access_token": access_token,
-        "refresh_token": token_data.get("refresh_token"),
-        "cloud_id": cloud_id,
-    }
-    _save_cache(cache_data)
-
-    return access_token, cloud_id
+    return get_local_token_and_cloud_id()
 
 
 def _get_client() -> AtlassianClient:
@@ -496,6 +208,64 @@ def cmd_jira_transition(args):
     print(f"Transitioned {args.issue_key} to '{matched}'")
 
 
+def cmd_jira_transitions(args):
+    with _get_client() as client:
+        transitions = jira_ops.get_transitions(client, args.issue_key)
+    if not transitions:
+        print(f"No transitions available for {args.issue_key}.")
+        return
+    print(f"Available transitions for {args.issue_key}:\n")
+    for t in transitions:
+        print(f"  {t.get('name', '?')}")
+
+
+def cmd_jira_versions(args):
+    with _get_client() as client:
+        versions = jira_ops.get_project_versions(
+            client,
+            project_key=args.project_key,
+            query=args.query,
+            status=args.status,
+            max_results=args.max_results,
+        )
+    if not versions:
+        print(f"No versions found for {args.project_key}.")
+        return
+    print(f"Versions for {args.project_key} ({len(versions)}):\n")
+    for v in versions:
+        released = v.get("released", False)
+        status_str = "Released" if released else "Unreleased"
+        release_date = v.get("releaseDate", "")
+        date_str = f"  release: {release_date}" if release_date else ""
+        print(f"  {v.get('name', '?'):20s} [{status_str:10s}]{date_str}  (ID: {v.get('id', '?')})")
+
+
+def cmd_jira_create_version(args):
+    with _get_client() as client:
+        result = jira_ops.create_version(
+            client,
+            project_key=args.project_key,
+            name=args.name,
+            description=args.description,
+            release_date=args.release_date,
+            released=args.released,
+        )
+    print(f"Version created: {result.get('name', '?')} (ID: {result.get('id', '?')})")
+
+
+def cmd_jira_lookup_user(args):
+    with _get_client() as client:
+        users = jira_ops.search_users(client, query=args.query, max_results=args.max_results)
+    if not users:
+        print(f"No users found matching '{args.query}'.")
+        return
+    print(f"Users matching '{args.query}':\n")
+    for u in users:
+        email = u.get("emailAddress", "")
+        email_str = f"  <{email}>" if email else ""
+        print(f"  {u.get('displayName', '?'):30s}{email_str}  accountId: {u.get('accountId', '?')}")
+
+
 # ---------------------------------------------------------------------------
 # Confluence commands
 # ---------------------------------------------------------------------------
@@ -519,10 +289,10 @@ def cmd_confluence_search(args):
         return
     print(f"Results ({len(results)}):\n")
     for r in results:
-        content = r.get("content", {})
-        title = content.get("title", r.get("title", "?"))
-        ctype = content.get("type", "?")
-        print(f"  [{ctype:8s}] {title}")
+        title = r.get("title", "?")
+        page_id = r.get("id", "?")
+        ctype = r.get("type", "?")
+        print(f"  {page_id:10s} [{ctype:8s}] {title}")
 
 
 def cmd_confluence_get(args):
@@ -557,11 +327,91 @@ def cmd_user_me(args):
 # ---------------------------------------------------------------------------
 
 def cmd_logout(args):
-    if TOKEN_CACHE_PATH.exists():
-        TOKEN_CACHE_PATH.unlink()
+    store = TokenStore("atlassian")
+    if store.cache_file.exists():
+        store.clear()
         print("Logged out. Cached tokens removed.")
     else:
         print("No cached tokens found.")
+
+
+# ---------------------------------------------------------------------------
+# Raw MCP-mirror commands (for testing consolidated tools)
+# ---------------------------------------------------------------------------
+
+def cmd_raw_jira_search(args):
+    import asyncio
+    from atlassian_mcp import jira_search
+    result = asyncio.run(jira_search(
+        target=args.target,
+        jql=args.jql,
+        query=args.query,
+        project_key=args.project_key,
+        fields=args.fields,
+        status=args.status,
+        max_results=args.max_results,
+    ))
+    print(result)
+
+
+def cmd_raw_jira_get(args):
+    import asyncio
+    from atlassian_mcp import jira_get
+    result = asyncio.run(jira_get(
+        target=args.target,
+        issue_key=args.issue_key,
+    ))
+    print(result)
+
+
+def cmd_raw_jira_manage(args):
+    import asyncio
+    from atlassian_mcp import jira_manage
+    result = asyncio.run(jira_manage(
+        target=args.target,
+        issue_key=args.issue_key,
+        project_key=args.project_key,
+        summary=args.summary,
+        issue_type=args.issue_type,
+        description=args.description,
+        assignee_id=args.assignee_id,
+        priority=args.priority,
+        labels=args.labels,
+        body=args.body,
+        author_label=args.author_label,
+        transition_name=args.transition_name,
+        name=args.name,
+        release_date=args.release_date,
+        released=args.released,
+    ))
+    print(result)
+
+
+def cmd_raw_confluence_search(args):
+    import asyncio
+    from atlassian_mcp import confluence_search
+    result = asyncio.run(confluence_search(
+        target=args.target,
+        query=args.query,
+        page_id=args.page_id,
+        max_results=args.max_results,
+    ))
+    print(result)
+
+
+def cmd_raw_confluence_manage(args):
+    import asyncio
+    from atlassian_mcp import confluence_manage
+    result = asyncio.run(confluence_manage(
+        target=args.target,
+        space_id=args.space_id,
+        title=args.title,
+        body=args.body,
+        parent_id=args.parent_id,
+        page_id=args.page_id,
+        version_number=args.version_number,
+    ))
+    print(result)
 
 
 # ---------------------------------------------------------------------------
@@ -626,6 +476,31 @@ def main():
     p.add_argument("transition_name", help="Transition name (e.g., 'In Progress')")
     p.set_defaults(func=cmd_jira_transition)
 
+    p = jira_sub.add_parser("transitions", help="List available transitions for an issue")
+    p.add_argument("issue_key", help="Issue key (e.g., PROJ-123)")
+    p.set_defaults(func=cmd_jira_transitions)
+
+    p = jira_sub.add_parser("versions", help="List project versions/releases")
+    p.add_argument("project_key", help="Project key (e.g., PROJ)")
+    p.add_argument("--query", default="", help="Filter by name pattern")
+    p.add_argument("--status", default="", choices=["released", "unreleased", ""],
+                   help="Filter by status (default: all)")
+    p.add_argument("--max-results", type=int, default=50)
+    p.set_defaults(func=cmd_jira_versions)
+
+    p = jira_sub.add_parser("create-version", help="Create a project version/release")
+    p.add_argument("project_key", help="Project key (e.g., PROJ)")
+    p.add_argument("name", help="Version name (e.g., '1.2.0')")
+    p.add_argument("--description", default="", help="Version description")
+    p.add_argument("--release-date", default="", help="Release date in YYYY-MM-DD format")
+    p.add_argument("--released", action="store_true", help="Mark as already released")
+    p.set_defaults(func=cmd_jira_create_version)
+
+    p = jira_sub.add_parser("lookup-user", help="Search for users by name or email")
+    p.add_argument("query", help="Name or email to search for")
+    p.add_argument("--max-results", type=int, default=10)
+    p.set_defaults(func=cmd_jira_lookup_user)
+
     # --- Confluence ---
     conf_parser = subparsers.add_parser("confluence", help="Confluence operations")
     conf_sub = conf_parser.add_subparsers(dest="command", required=True)
@@ -649,6 +524,62 @@ def main():
 
     p = user_sub.add_parser("me", help="Get current user info")
     p.set_defaults(func=cmd_user_me)
+
+    # --- Raw (MCP-mirror for testing) ---
+    raw_parser = subparsers.add_parser("raw", help="Raw MCP tool interface (for testing)")
+    raw_sub = raw_parser.add_subparsers(dest="command", required=True)
+
+    p = raw_sub.add_parser("jira-search", help="Mirror of jira_search MCP tool")
+    p.add_argument("--target", required=True,
+                   choices=["projects", "issues", "issue_count", "versions", "users", "myself"])
+    p.add_argument("--jql", default="")
+    p.add_argument("--query", default="")
+    p.add_argument("--project-key", default="")
+    p.add_argument("--fields", default="")
+    p.add_argument("--status", default="")
+    p.add_argument("--max-results", type=int, default=0)
+    p.set_defaults(func=cmd_raw_jira_search)
+
+    p = raw_sub.add_parser("jira-get", help="Mirror of jira_get MCP tool")
+    p.add_argument("--target", required=True, choices=["issue", "transitions"])
+    p.add_argument("--issue-key", default="")
+    p.set_defaults(func=cmd_raw_jira_get)
+
+    p = raw_sub.add_parser("jira-manage", help="Mirror of jira_manage MCP tool")
+    p.add_argument("--target", required=True,
+                   choices=["create_issue", "update_issue", "comment", "transition", "create_version"])
+    p.add_argument("--issue-key", default="")
+    p.add_argument("--project-key", default="")
+    p.add_argument("--summary", default="")
+    p.add_argument("--issue-type", default="Task")
+    p.add_argument("--description", default="")
+    p.add_argument("--assignee-id", default="")
+    p.add_argument("--priority", default="")
+    p.add_argument("--labels", default="")
+    p.add_argument("--body", default="")
+    p.add_argument("--author-label", default="")
+    p.add_argument("--transition-name", default="")
+    p.add_argument("--name", default="")
+    p.add_argument("--release-date", default="")
+    p.add_argument("--released", action="store_true")
+    p.set_defaults(func=cmd_raw_jira_manage)
+
+    p = raw_sub.add_parser("confluence-search", help="Mirror of confluence_search MCP tool")
+    p.add_argument("--target", required=True, choices=["spaces", "pages", "page"])
+    p.add_argument("--query", default="")
+    p.add_argument("--page-id", default="")
+    p.add_argument("--max-results", type=int, default=0)
+    p.set_defaults(func=cmd_raw_confluence_search)
+
+    p = raw_sub.add_parser("confluence-manage", help="Mirror of confluence_manage MCP tool")
+    p.add_argument("--target", required=True, choices=["create_page", "update_page"])
+    p.add_argument("--space-id", default="")
+    p.add_argument("--title", default="")
+    p.add_argument("--body", default="")
+    p.add_argument("--parent-id", default="")
+    p.add_argument("--page-id", default="")
+    p.add_argument("--version-number", type=int, default=0)
+    p.set_defaults(func=cmd_raw_confluence_manage)
 
     # --- Logout ---
     logout_parser = subparsers.add_parser("logout", help="Clear cached tokens")

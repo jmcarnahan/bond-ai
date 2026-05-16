@@ -6,11 +6,30 @@ via the unified Drive/DriveItem abstraction. All functions accept a GraphClient
 or AsyncGraphClient and return parsed dicts.
 """
 
+import asyncio
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from .graph_client import GraphClient, AsyncGraphClient, GraphError
 
-MAX_TEXT_DOWNLOAD_BYTES = 524_288  # 512 KB
+MAX_TEXT_DOWNLOAD_BYTES = 524_288   # 512 KB
+MAX_SIMPLE_UPLOAD_BYTES = 4_000_000  # 4 MB (Graph simple upload limit)
+
+# Content-type mapping for upload (by file extension)
+_UPLOAD_CONTENT_TYPES: Dict[str, str] = {
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".html": "text/html",
+    ".htm": "text/html",
+    ".csv": "text/csv",
+    ".json": "application/json",
+    ".xml": "application/xml",
+    ".yaml": "application/yaml",
+    ".yml": "application/yaml",
+}
+
+_COPY_POLL_INTERVAL = 2   # seconds between copy status polls
+_COPY_POLL_TIMEOUT = 30   # seconds before giving up on a copy operation
 
 # MIME types considered text-readable
 _TEXT_MIME_PREFIXES = ("text/",)
@@ -286,6 +305,183 @@ async def alist_sites(
     else:
         data = await client.get("/me/followedSites", params={"$top": top})
     return data.get("value", [])
+
+
+# ---------------------------------------------------------------------------
+# Write / mutate operations — synchronous
+# ---------------------------------------------------------------------------
+
+def upload_file(
+    client: GraphClient,
+    folder_path: str,
+    filename: str,
+    content: str,
+    site_id: str = "",
+) -> Dict[str, Any]:
+    """Create or overwrite a text file at folder_path/filename.
+
+    Uses the simple upload endpoint (max 4 MB). Returns the created/updated
+    driveItem. Supported text formats: .txt, .md, .html, .csv, .json, .xml,
+    .yaml — other extensions default to application/octet-stream.
+    """
+    encoded = content.encode("utf-8")
+    if len(encoded) > MAX_SIMPLE_UPLOAD_BYTES:
+        raise ValueError(
+            f"Content is {len(encoded):,} bytes, which exceeds the 4 MB simple upload limit. "
+            "Split the content or use the resumable upload API."
+        )
+    base = _drive_base(site_id or None)
+    path = folder_path.strip("/")
+    url = f"{base}/root:/{path}/{filename}:/content" if path else f"{base}/root:/{filename}:/content"
+    ext = f".{filename.rsplit('.', 1)[-1].lower()}" if "." in filename else ""
+    content_type = _UPLOAD_CONTENT_TYPES.get(ext, "application/octet-stream")
+    return client.put(url, content=encoded, content_type=content_type)
+
+
+def copy_drive_item(
+    client: GraphClient,
+    item_id: str,
+    new_name: str,
+    destination_folder_id: str = "",
+    site_id: str = "",
+    destination_drive_id: str = "",
+) -> Dict[str, Any]:
+    """Server-side copy of a drive item to a new name (and optionally a new folder).
+
+    Works for any file type including Word, Excel, and PDF. The Graph copy API
+    is asynchronous — this function polls until the operation completes (up to
+    _COPY_POLL_TIMEOUT seconds). Returns the completed operation status dict.
+    """
+    source = get_drive_item(client, item_id, site_id)
+    drive_id = destination_drive_id or source.get("parentReference", {}).get("driveId", "")
+
+    parent_ref: Dict[str, Any] = {"driveId": drive_id}
+    if destination_folder_id:
+        parent_ref["id"] = destination_folder_id
+    else:
+        parent_ref["id"] = source.get("parentReference", {}).get("id", "")
+
+    base = _drive_base(site_id or None)
+    location = client.post_with_location(
+        f"{base}/items/{item_id}/copy",
+        json_data={"name": new_name, "parentReference": parent_ref},
+    )
+
+    deadline = time.monotonic() + _COPY_POLL_TIMEOUT
+    while time.monotonic() < deadline:
+        time.sleep(_COPY_POLL_INTERVAL)
+        status = client.get_operation_status(location)
+        if status.get("status") == "completed":
+            return status
+        if status.get("status") == "failed":
+            err = status.get("error", {})
+            raise GraphError(500, err.get("code", "CopyFailed"), err.get("message", "Copy failed"))
+    raise GraphError(504, "CopyTimeout", f"Copy did not complete within {_COPY_POLL_TIMEOUT}s")
+
+
+def rename_drive_item(
+    client: GraphClient,
+    item_id: str,
+    new_name: str,
+    site_id: str = "",
+) -> Dict[str, Any]:
+    """Rename a file or folder by item ID. Returns the updated driveItem."""
+    base = _drive_base(site_id or None)
+    return client.patch(f"{base}/items/{item_id}", json_data={"name": new_name})
+
+
+# ---------------------------------------------------------------------------
+# Write / mutate operations — asynchronous
+# ---------------------------------------------------------------------------
+
+async def aupload_file(
+    client: AsyncGraphClient,
+    folder_path: str,
+    filename: str,
+    content: str,
+    site_id: str = "",
+) -> Dict[str, Any]:
+    """Create or overwrite a text file at folder_path/filename (async)."""
+    encoded = content.encode("utf-8")
+    if len(encoded) > MAX_SIMPLE_UPLOAD_BYTES:
+        raise ValueError(
+            f"Content is {len(encoded):,} bytes, which exceeds the 4 MB simple upload limit. "
+            "Split the content or use the resumable upload API."
+        )
+    base = _drive_base(site_id or None)
+    path = folder_path.strip("/")
+    url = f"{base}/root:/{path}/{filename}:/content" if path else f"{base}/root:/{filename}:/content"
+    ext = f".{filename.rsplit('.', 1)[-1].lower()}" if "." in filename else ""
+    content_type = _UPLOAD_CONTENT_TYPES.get(ext, "application/octet-stream")
+    return await client.put(url, content=encoded, content_type=content_type)
+
+
+async def aupload_bytes(
+    client: AsyncGraphClient,
+    folder_path: str,
+    filename: str,
+    data: bytes,
+    content_type: str = "application/octet-stream",
+    site_id: str = "",
+) -> Dict[str, Any]:
+    """Upload raw bytes to folder_path/filename (async). Used for binary files such as
+    exported PDFs, PNGs, or PPTX files where the content is already encoded."""
+    if len(data) > MAX_SIMPLE_UPLOAD_BYTES:
+        raise ValueError(
+            f"Content is {len(data):,} bytes, which exceeds the 4 MB simple upload limit. "
+            "Split the content or use the resumable upload API."
+        )
+    base = _drive_base(site_id or None)
+    path = folder_path.strip("/")
+    url = f"{base}/root:/{path}/{filename}:/content" if path else f"{base}/root:/{filename}:/content"
+    return await client.put(url, content=data, content_type=content_type)
+
+
+async def acopy_drive_item(
+    client: AsyncGraphClient,
+    item_id: str,
+    new_name: str,
+    destination_folder_id: str = "",
+    site_id: str = "",
+    destination_drive_id: str = "",
+) -> Dict[str, Any]:
+    """Server-side copy of a drive item (async). Polls until completion."""
+    source = await aget_drive_item(client, item_id, site_id)
+    drive_id = destination_drive_id or source.get("parentReference", {}).get("driveId", "")
+
+    parent_ref: Dict[str, Any] = {"driveId": drive_id}
+    if destination_folder_id:
+        parent_ref["id"] = destination_folder_id
+    else:
+        parent_ref["id"] = source.get("parentReference", {}).get("id", "")
+
+    base = _drive_base(site_id or None)
+    location = await client.post_with_location(
+        f"{base}/items/{item_id}/copy",
+        json_data={"name": new_name, "parentReference": parent_ref},
+    )
+
+    deadline = time.monotonic() + _COPY_POLL_TIMEOUT
+    while time.monotonic() < deadline:
+        await asyncio.sleep(_COPY_POLL_INTERVAL)
+        status = await client.get_operation_status(location)
+        if status.get("status") == "completed":
+            return status
+        if status.get("status") == "failed":
+            err = status.get("error", {})
+            raise GraphError(500, err.get("code", "CopyFailed"), err.get("message", "Copy failed"))
+    raise GraphError(504, "CopyTimeout", f"Copy did not complete within {_COPY_POLL_TIMEOUT}s")
+
+
+async def arename_drive_item(
+    client: AsyncGraphClient,
+    item_id: str,
+    new_name: str,
+    site_id: str = "",
+) -> Dict[str, Any]:
+    """Rename a file or folder by item ID (async). Returns the updated driveItem."""
+    base = _drive_base(site_id or None)
+    return await client.patch(f"{base}/items/{item_id}", json_data={"name": new_name})
 
 
 # ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@ from typing import Annotated, List, Dict, Any, Optional
 from urllib.parse import urlencode, quote
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
@@ -225,7 +225,8 @@ def _save_oauth_state(
     user_id: str,
     connection_name: str,
     code_verifier: str,
-    redirect_uri: str
+    redirect_uri: str,
+    origin_host: str = "",
 ) -> bool:
     """Save OAuth state to database."""
     session = _get_db_session()
@@ -248,7 +249,8 @@ def _save_oauth_state(
             user_id=user_id,
             connection_name=connection_name,
             code_verifier=code_verifier,
-            redirect_uri=redirect_uri
+            redirect_uri=redirect_uri,
+            origin_host=origin_host,
         )
         session.add(oauth_state)
         session.commit()
@@ -282,7 +284,8 @@ def _get_and_delete_oauth_state(state: str) -> Optional[Dict[str, Any]]:
             "user_id": oauth_state.user_id,
             "connection_name": oauth_state.connection_name,
             "code_verifier": oauth_state.code_verifier,
-            "redirect_uri": oauth_state.redirect_uri
+            "redirect_uri": oauth_state.redirect_uri,
+            "origin_host": oauth_state.origin_host,
         }
 
         # Delete the state
@@ -372,6 +375,7 @@ async def list_connections(
 @router.get("/{connection_name}/authorize", response_model=AuthorizeResponse)
 async def authorize_connection(
     connection_name: str,
+    request: Request,
     current_user: Annotated[User, Depends(get_current_user)]
 ) -> AuthorizeResponse:
     """
@@ -411,19 +415,32 @@ async def authorize_connection(
     # Generate state for CSRF protection
     state = generate_oauth_state()
 
-    # Build redirect URI - use configured one if available, otherwise generate
+    # Build redirect URI
+    # Priority: 1) explicit config redirect_uri, 2) dynamic from origin host, 3) JWT_REDIRECT_URI fallback
+    # Import here to avoid circular import (auth.py imports from this package's dependencies)
+    from bondable.rest.routers.auth import _get_validated_origin_host
     configured_redirect = config.get("oauth_redirect_uri")
+    origin_host = _get_validated_origin_host(request)
+
     if configured_redirect:
         redirect_uri = configured_redirect
         LOGGER.debug(f"[Connections] Using configured redirect_uri")
+    elif origin_host:
+        redirect_uri = f"https://{origin_host}/connections/{connection_name}/callback"
+        LOGGER.debug(f"[Connections] Using dynamic redirect_uri from origin_host: {origin_host}")
     else:
         jwt_config = Config.config().get_jwt_config()
         base_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
         redirect_uri = f"{base_url}/connections/{connection_name}/callback"
-        LOGGER.debug(f"[Connections] Using generated redirect_uri")
+        LOGGER.debug(f"[Connections] Using generated redirect_uri from JWT_REDIRECT_URI")
+
+    LOGGER.info(
+        f"[Connections] Authorize {connection_name} - "
+        f"origin_host: {origin_host}, redirect_uri: {redirect_uri}"
+    )
 
     # Store state in database
-    if not _save_oauth_state(state, current_user.user_id, connection_name, code_verifier, redirect_uri):
+    if not _save_oauth_state(state, current_user.user_id, connection_name, code_verifier, redirect_uri, origin_host=origin_host or ""):
         LOGGER.error(f"Failed to save OAuth state for connection: {connection_name}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -478,6 +495,7 @@ async def oauth_callback(
     user_id = state_data["user_id"]
     code_verifier = state_data["code_verifier"]
     redirect_uri = state_data["redirect_uri"]
+    origin_host = state_data.get("origin_host")
 
     # Get connection configuration (include user-defined servers via user_id from state)
     config = _get_connection_config(connection_name, user_id=user_id)
@@ -531,8 +549,12 @@ async def oauth_callback(
     if client_secret:
         token_data["client_secret"] = client_secret
 
+    # Use origin host for frontend redirect if available, otherwise fall back to JWT_REDIRECT_URI
     jwt_config = Config.config().get_jwt_config()
-    frontend_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
+    if origin_host:
+        frontend_url = f"https://{origin_host}"
+    else:
+        frontend_url = jwt_config.JWT_REDIRECT_URI.rstrip('/')
 
     # Validate redirect URL against allowed domains
     if not is_safe_redirect_url(frontend_url):

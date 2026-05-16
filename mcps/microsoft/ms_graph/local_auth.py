@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 TOKEN_CACHE_PATH = Path.home() / ".ms_graph_tokens.json"
 
+POWERBI_SCOPES = [
+    "https://analysis.windows.net/powerbi/api/.default",
+]
+
 MAIL_SCOPES = [
     "Mail.Read",
     "Mail.ReadWrite",
@@ -37,17 +41,21 @@ TEAMS_SCOPES = [
 ]
 
 FILES_SCOPES = [
-    "Files.Read.All",
+    "Files.ReadWrite.All",
 ]
 
 SITES_SCOPES = [
-    "Sites.Read.All",
+    "Sites.ReadWrite.All",
+]
+
+CALENDAR_SCOPES = [
+    "Calendars.ReadWrite",
 ]
 
 
 def _get_scopes() -> list[str]:
     """Return scopes based on whether a tenant ID is set (org vs consumer)."""
-    scopes = MAIL_SCOPES + FILES_SCOPES
+    scopes = MAIL_SCOPES + FILES_SCOPES + CALENDAR_SCOPES
     if os.environ.get("MS_TENANT_ID"):
         scopes += SITES_SCOPES + TEAMS_SCOPES
     return scopes
@@ -229,5 +237,52 @@ def get_local_token() -> str:
 
     raise PermissionError(
         "Microsoft authentication failed. Could not acquire a token via "
+        "browser or device code flow."
+    )
+
+
+def get_local_powerbi_token() -> str:
+    """
+    Acquire a Power BI access token using local MSAL auth.
+
+    Uses the same app registration and token cache as get_local_token() but
+    requests the Power BI resource scope instead of Graph scopes.
+
+    Resolution order:
+    1. Cached token (acquire_token_silent)
+    2. Browser-based authorization code + PKCE flow (via shared proxy)
+    3. Device code flow fallback
+    """
+    client_id = os.environ.get("MS_CLIENT_ID")
+    if not client_id:
+        raise PermissionError(
+            "MS_CLIENT_ID environment variable is required for local authentication."
+        )
+
+    cache = _load_token_cache()
+    app = _create_msal_app(client_id, cache)
+
+    # 1. Try silent (cached)
+    accounts = app.get_accounts()
+    if accounts:
+        result = app.acquire_token_silent(POWERBI_SCOPES, account=accounts[0])
+        if result and "access_token" in result:
+            _save_token_cache(cache)
+            return result["access_token"]
+
+    # 2. Try browser auth code + PKCE (requires shared proxy)
+    result = _acquire_token_browser(app, POWERBI_SCOPES)
+    if result and "access_token" in result:
+        _save_token_cache(cache)
+        return result["access_token"]
+
+    # 3. Fallback to device code
+    result = _acquire_token_device_code(app, POWERBI_SCOPES)
+    if result and "access_token" in result:
+        _save_token_cache(cache)
+        return result["access_token"]
+
+    raise PermissionError(
+        "Power BI authentication failed. Could not acquire a token via "
         "browser or device code flow."
     )

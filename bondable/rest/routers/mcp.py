@@ -159,6 +159,10 @@ async def list_mcp_tools(
                         try:
                             async with Client(transport) as client:
                                 tools = await client.list_tools()
+                                allowed_tools = server_config.get('allowed_tools')
+                                if allowed_tools is not None:
+                                    allowed_set = set(allowed_tools)
+                                    tools = [t for t in tools if getattr(t, 'name', '') in allowed_set]
                                 LOGGER.info(f"[MCP Tools] Server '{server_name}': {len(tools)} tools")
                                 server_tools = [
                                     MCPToolResponse(
@@ -181,6 +185,10 @@ async def list_mcp_tools(
                         try:
                             async with Client({"mcpServers": {server_name: server_with_auth}}) as client:
                                 tools = await client.list_tools()
+                                allowed_tools = server_config.get('allowed_tools')
+                                if allowed_tools is not None:
+                                    allowed_set = set(allowed_tools)
+                                    tools = [t for t in tools if getattr(t, 'name', '') in allowed_set]
                                 LOGGER.debug(f"[MCP Tools] Server '{server_name}': {len(tools)} tools")
                                 server_tools = [
                                     MCPToolResponse(

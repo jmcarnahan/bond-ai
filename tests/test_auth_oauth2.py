@@ -289,6 +289,7 @@ class TestAuthenticationRoutes:
                 "redirect_uri": "",
                 "provider_name": "cognito",
                 "platform": "",
+                "origin_host": None,
             }
 
             response = test_client.get("/auth/cognito/callback?code=test_code&state=test_state", follow_redirects=False)
@@ -297,7 +298,9 @@ class TestAuthenticationRoutes:
             # Phase 3: callback now redirects with ?code= (opaque auth code) instead of ?token=
             assert "code=" in response.headers["location"]
             assert "token=" not in response.headers["location"]
-            mock_provider.get_user_info_from_code.assert_called_once_with("test_code", code_verifier="test_verifier")
+            mock_provider.get_user_info_from_code.assert_called_once_with(
+                "test_code", code_verifier="test_verifier", redirect_uri=None
+            )
 
     def test_auth_callback_missing_code(self, test_client):
         """Test OAuth callback without code."""
@@ -437,3 +440,324 @@ class TestBackwardsCompatibility:
 
             response = test_client.get("/auth/cognito/callback?code=test&state=test_state", follow_redirects=False)
             assert response.status_code == 307
+
+
+# ===========================================================================
+# Dynamic Origin Host (ZPA Clientless / Multi-Domain Support)
+# ===========================================================================
+
+class TestGetValidatedOriginHost:
+    """Unit tests for _get_validated_origin_host()."""
+
+    def _make_request(self, headers: dict) -> "Request":
+        """Create a minimal mock Request with given headers."""
+        from starlette.requests import Request
+        from starlette.datastructures import Headers
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/login/okta",
+            "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+        }
+        return Request(scope)
+
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com,app.zpa.example.com"})
+    def test_returns_host_when_in_allowed_domains(self):
+        from bondable.rest.routers.auth import _get_validated_origin_host
+        req = self._make_request({"host": "app.zpa.example.com"})
+        assert _get_validated_origin_host(req) == "app.zpa.example.com"
+
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
+    def test_returns_none_for_unknown_domain(self):
+        from bondable.rest.routers.auth import _get_validated_origin_host
+        req = self._make_request({"host": "evil.com"})
+        assert _get_validated_origin_host(req) is None
+
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
+    def test_returns_none_for_localhost(self):
+        from bondable.rest.routers.auth import _get_validated_origin_host
+        req = self._make_request({"host": "localhost"})
+        assert _get_validated_origin_host(req) is None
+
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
+    def test_returns_none_for_127_0_0_1(self):
+        from bondable.rest.routers.auth import _get_validated_origin_host
+        req = self._make_request({"host": "127.0.0.1"})
+        assert _get_validated_origin_host(req) is None
+
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
+    def test_returns_none_for_empty_headers(self):
+        from bondable.rest.routers.auth import _get_validated_origin_host
+        req = self._make_request({})
+        assert _get_validated_origin_host(req) is None
+
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.zpa.example.com"})
+    def test_x_forwarded_host_takes_precedence(self):
+        """X-Forwarded-Host should be used over Host header."""
+        from bondable.rest.routers.auth import _get_validated_origin_host
+        req = self._make_request({
+            "host": "internal-alb-123.amazonaws.com",
+            "x-forwarded-host": "app.zpa.example.com",
+        })
+        assert _get_validated_origin_host(req) == "app.zpa.example.com"
+
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.zpa.example.com"})
+    def test_comma_separated_x_forwarded_host_uses_first(self):
+        """When X-Forwarded-Host has multiple values, use the first."""
+        from bondable.rest.routers.auth import _get_validated_origin_host
+        req = self._make_request({
+            "x-forwarded-host": "app.zpa.example.com, proxy.internal",
+        })
+        assert _get_validated_origin_host(req) == "app.zpa.example.com"
+
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
+    def test_strips_port_from_host(self):
+        from bondable.rest.routers.auth import _get_validated_origin_host
+        req = self._make_request({"host": "app.dev.example.com:443"})
+        assert _get_validated_origin_host(req) == "app.dev.example.com"
+
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
+    def test_case_insensitive_matching_returns_lowercase(self):
+        """Host header with mixed case should match and return lowercase."""
+        from bondable.rest.routers.auth import _get_validated_origin_host
+        req = self._make_request({"host": "App.Dev.Example.COM"})
+        assert _get_validated_origin_host(req) == "app.dev.example.com"
+
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
+    def test_localhost_with_port_returns_none(self):
+        from bondable.rest.routers.auth import _get_validated_origin_host
+        req = self._make_request({"host": "localhost:8080"})
+        assert _get_validated_origin_host(req) is None
+
+
+class TestDynamicRedirectLogin:
+    """Integration tests for the login endpoint with dynamic redirect URIs."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_bond_provider(self):
+        """Override get_bond_provider to avoid S3/AWS calls in tests."""
+        from bondable.rest.dependencies.providers import get_bond_provider
+        mock_bp = MagicMock()
+        app.dependency_overrides[get_bond_provider] = lambda: mock_bp
+        yield mock_bp
+        app.dependency_overrides.pop(get_bond_provider, None)
+
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.zpa.example.com"})
+    def test_login_with_zpa_host_uses_dynamic_redirect(self, test_client):
+        """Login from ZPA domain should build auth URL with ZPA redirect URI."""
+        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create, \
+             patch('bondable.rest.routers.auth._save_auth_oauth_state') as mock_save:
+            mock_provider = MagicMock()
+            mock_provider.get_auth_url.return_value = "https://idp.example.com/oauth2/v1/authorize?redirect_uri=https://app.zpa.example.com/auth/cognito/callback"
+            mock_create.return_value = mock_provider
+            mock_save.return_value = True
+
+            response = test_client.get(
+                "/login/cognito",
+                headers={"host": "app.zpa.example.com"},
+                follow_redirects=False,
+            )
+
+            assert response.status_code == 307
+
+            # Verify get_auth_url was called with the ZPA redirect URI
+            call_kwargs = mock_provider.get_auth_url.call_args
+            assert call_kwargs.kwargs["redirect_uri"] == "https://app.zpa.example.com/auth/cognito/callback"
+
+            # Verify origin_host was saved in OAuth state
+            save_kwargs = mock_save.call_args
+            assert save_kwargs.kwargs["origin_host"] == "app.zpa.example.com"
+
+    def test_login_without_matching_host_uses_default(self, test_client):
+        """Login from unrecognized host should use default redirect URI (None)."""
+        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create, \
+             patch('bondable.rest.routers.auth._save_auth_oauth_state') as mock_save:
+            mock_provider = MagicMock()
+            mock_provider.get_auth_url.return_value = "https://idp.example.com/oauth2/v1/authorize"
+            mock_create.return_value = mock_provider
+            mock_save.return_value = True
+
+            response = test_client.get(
+                "/login/cognito",
+                headers={"host": "testserver"},  # default test client host
+                follow_redirects=False,
+            )
+
+            assert response.status_code == 307
+
+            # No dynamic redirect — should pass None
+            call_kwargs = mock_provider.get_auth_url.call_args
+            assert call_kwargs.kwargs["redirect_uri"] is None
+
+            # origin_host should be empty
+            save_kwargs = mock_save.call_args
+            assert save_kwargs.kwargs["origin_host"] == ""
+
+    @patch.dict(os.environ, {"ALLOWED_REDIRECT_DOMAINS": "app.dev.example.com"})
+    def test_login_with_x_forwarded_host(self, test_client):
+        """Login with X-Forwarded-Host should use that over Host."""
+        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create, \
+             patch('bondable.rest.routers.auth._save_auth_oauth_state') as mock_save:
+            mock_provider = MagicMock()
+            mock_provider.get_auth_url.return_value = "https://idp.example.com/oauth2/v1/authorize"
+            mock_create.return_value = mock_provider
+            mock_save.return_value = True
+
+            response = test_client.get(
+                "/login/cognito",
+                headers={
+                    "host": "internal-alb-123.amazonaws.com",
+                    "x-forwarded-host": "app.dev.example.com",
+                },
+                follow_redirects=False,
+            )
+
+            assert response.status_code == 307
+
+            call_kwargs = mock_provider.get_auth_url.call_args
+            assert call_kwargs.kwargs["redirect_uri"] == "https://app.dev.example.com/auth/cognito/callback"
+
+
+class TestDynamicRedirectCallback:
+    """Tests for the callback using stored origin_host for token exchange and frontend redirect."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_bond_provider(self):
+        """Override get_bond_provider to avoid S3/AWS calls in tests."""
+        from bondable.rest.dependencies.providers import get_bond_provider
+        mock_bp = MagicMock()
+        mock_bp.users.get_or_create_user.return_value = (TEST_USER_ID, False)
+        app.dependency_overrides[get_bond_provider] = lambda: mock_bp
+        yield mock_bp
+        app.dependency_overrides.pop(get_bond_provider, None)
+
+    def test_callback_with_origin_host_passes_dynamic_redirect_uri(self, test_client):
+        """When origin_host is stored, token exchange should use the dynamic redirect URI."""
+        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create, \
+             patch('bondable.rest.routers.auth._get_and_delete_auth_oauth_state') as mock_state:
+            mock_provider = MagicMock()
+            mock_provider.get_user_info_from_code.return_value = {
+                "sub": TEST_USER_ID,
+                "email": TEST_USER_EMAIL,
+                "name": "Test User"
+            }
+            mock_create.return_value = mock_provider
+
+            mock_state.return_value = {
+                "code_verifier": "test_verifier",
+                "redirect_uri": "",
+                "provider_name": "cognito",
+                "platform": "",
+                "origin_host": "app.zpa.example.com",
+            }
+
+            response = test_client.get(
+                "/auth/cognito/callback?code=test_code&state=test_state",
+                follow_redirects=False,
+            )
+
+            assert response.status_code == 307
+
+            # Verify get_user_info_from_code was called with the ZPA redirect URI
+            mock_provider.get_user_info_from_code.assert_called_once_with(
+                "test_code",
+                code_verifier="test_verifier",
+                redirect_uri="https://app.zpa.example.com/auth/cognito/callback",
+            )
+
+    def test_callback_with_origin_host_redirects_to_origin_domain(self, test_client):
+        """When origin_host is stored, post-login redirect should go to that domain."""
+        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create, \
+             patch('bondable.rest.routers.auth._get_and_delete_auth_oauth_state') as mock_state:
+            mock_provider = MagicMock()
+            mock_provider.get_user_info_from_code.return_value = {
+                "sub": TEST_USER_ID,
+                "email": TEST_USER_EMAIL,
+                "name": "Test User"
+            }
+            mock_create.return_value = mock_provider
+
+            mock_state.return_value = {
+                "code_verifier": "test_verifier",
+                "redirect_uri": "",
+                "provider_name": "cognito",
+                "platform": "",
+                "origin_host": "app.zpa.example.com",
+            }
+
+            response = test_client.get(
+                "/auth/cognito/callback?code=test_code&state=test_state",
+                follow_redirects=False,
+            )
+
+            assert response.status_code == 307
+            location = response.headers["location"]
+            # Should redirect to the ZPA domain with hash routing
+            assert location.startswith("https://app.zpa.example.com/#/auth-callback?code=")
+
+    def test_callback_without_origin_host_uses_default_redirect(self, test_client):
+        """When origin_host is empty/None, should fall back to JWT_REDIRECT_URI."""
+        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create, \
+             patch('bondable.rest.routers.auth._get_and_delete_auth_oauth_state') as mock_state:
+            mock_provider = MagicMock()
+            mock_provider.get_user_info_from_code.return_value = {
+                "sub": TEST_USER_ID,
+                "email": TEST_USER_EMAIL,
+                "name": "Test User"
+            }
+            mock_create.return_value = mock_provider
+
+            mock_state.return_value = {
+                "code_verifier": "test_verifier",
+                "redirect_uri": "",
+                "provider_name": "cognito",
+                "platform": "",
+                "origin_host": "",
+            }
+
+            response = test_client.get(
+                "/auth/cognito/callback?code=test_code&state=test_state",
+                follow_redirects=False,
+            )
+
+            assert response.status_code == 307
+
+            # redirect_uri should be None (fallback to config default)
+            mock_provider.get_user_info_from_code.assert_called_once_with(
+                "test_code",
+                code_verifier="test_verifier",
+                redirect_uri=None,
+            )
+
+    def test_callback_with_origin_host_none_in_state(self, test_client):
+        """When origin_host key is missing from state (old records), should work like no origin."""
+        with patch('bondable.bond.auth.OAuth2ProviderFactory.create_provider') as mock_create, \
+             patch('bondable.rest.routers.auth._get_and_delete_auth_oauth_state') as mock_state:
+            mock_provider = MagicMock()
+            mock_provider.get_user_info_from_code.return_value = {
+                "sub": TEST_USER_ID,
+                "email": TEST_USER_EMAIL,
+                "name": "Test User"
+            }
+            mock_create.return_value = mock_provider
+
+            # Simulate old state record without origin_host key
+            mock_state.return_value = {
+                "code_verifier": "test_verifier",
+                "redirect_uri": "",
+                "provider_name": "cognito",
+                "platform": "",
+            }
+
+            response = test_client.get(
+                "/auth/cognito/callback?code=test_code&state=test_state",
+                follow_redirects=False,
+            )
+
+            assert response.status_code == 307
+
+            mock_provider.get_user_info_from_code.assert_called_once_with(
+                "test_code",
+                code_verifier="test_verifier",
+                redirect_uri=None,
+            )

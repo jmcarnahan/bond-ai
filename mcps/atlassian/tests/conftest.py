@@ -2,6 +2,23 @@
 
 import pytest
 
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--integration",
+        action="store_true",
+        default=False,
+        help="Run integration tests (requires cached Atlassian token)",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    if not config.getoption("--integration"):
+        skip_integration = pytest.mark.skip(reason="needs --integration flag to run")
+        for item in items:
+            if "integration" in item.keywords:
+                item.add_marker(skip_integration)
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -276,25 +293,17 @@ SAMPLE_UPDATED_PAGE = {
 # ---------------------------------------------------------------------------
 
 SAMPLE_SEARCH_RESULT = {
-    "content": {
-        "id": "12345",
-        "type": "page",
-        "title": "Architecture Overview",
-        "space": {"key": "DEV", "name": "Development"},
-    },
+    "id": "12345",
+    "type": "page",
+    "status": "current",
     "title": "Architecture Overview",
-    "excerpt": "Our system uses microservices for scalability...",
 }
 
 SAMPLE_SEARCH_RESULT_2 = {
-    "content": {
-        "id": "12346",
-        "type": "blogpost",
-        "title": "Q4 Release Notes",
-        "space": {"key": "DEV", "name": "Development"},
-    },
+    "id": "12346",
+    "type": "blogpost",
+    "status": "current",
     "title": "Q4 Release Notes",
-    "excerpt": "This quarter we shipped dark mode, SSO, and improved search...",
 }
 
 SAMPLE_CONFLUENCE_SEARCH_RESPONSE = {
@@ -315,6 +324,56 @@ SAMPLE_USER = {
         "48x48": "https://avatar-management.example.com/alice.png",
     },
 }
+
+# ---------------------------------------------------------------------------
+# Jira: Versions
+# ---------------------------------------------------------------------------
+
+SAMPLE_VERSION = {
+    "id": "10300",
+    "name": "1.0.0",
+    "released": True,
+    "releaseDate": "2025-06-01",
+    "description": "First release",
+    "projectId": 10001,
+}
+
+SAMPLE_VERSION_2 = {
+    "id": "10301",
+    "name": "1.1.0",
+    "released": False,
+    "releaseDate": "2026-09-01",
+    "description": "Next release",
+    "projectId": 10001,
+}
+
+SAMPLE_VERSIONS_RESPONSE = {
+    "values": [SAMPLE_VERSION, SAMPLE_VERSION_2],
+    "total": 2,
+    "isLast": True,
+}
+
+SAMPLE_CREATED_VERSION = {
+    "id": "10302",
+    "name": "2.0.0",
+    "released": False,
+    "projectId": 10001,
+    "self": f"{ATLASSIAN_API_BASE}/ex/jira/{CLOUD_ID}/rest/api/3/version/10302",
+}
+
+# ---------------------------------------------------------------------------
+# Jira: Users
+# ---------------------------------------------------------------------------
+
+SAMPLE_USER_2 = {
+    "accountId": "5b10a2844c20165700ede21g",
+    "displayName": "Bob Jones",
+    "emailAddress": "bob@example.com",
+    "active": True,
+    "timeZone": "America/Chicago",
+}
+
+SAMPLE_USERS_RESPONSE = [SAMPLE_USER, SAMPLE_USER_2]
 
 # ---------------------------------------------------------------------------
 # Error responses

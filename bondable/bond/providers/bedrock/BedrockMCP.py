@@ -1093,6 +1093,10 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
             async with Client(transport) as client:
                 # Fetch all available tools from this server
                 all_tools = await client.list_tools()
+                allowed_tools = server_config.get('allowed_tools')
+                if allowed_tools is not None:
+                    allowed_set = set(allowed_tools)
+                    all_tools = [t for t in all_tools if t.name in allowed_set]
                 tool_dict = {tool.name: tool for tool in all_tools}
                 LOGGER.debug("[MCP Tool Defs] Server '%s': %d tools available", safe_id(server_name), len(all_tools))
 
@@ -1377,6 +1381,10 @@ async def execute_mcp_tool(
                 async with Client(transport) as client:
                     # Check if this server has the tool
                     all_tools = await client.list_tools()
+                    allowed_tools = server_config.get('allowed_tools')
+                    if allowed_tools is not None:
+                        allowed_set = set(allowed_tools)
+                        all_tools = [t for t in all_tools if t.name in allowed_set]
                     tool_dict = {t.name: t for t in all_tools}
 
                     if tool_name not in tool_dict:

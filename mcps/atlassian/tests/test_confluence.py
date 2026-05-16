@@ -45,18 +45,18 @@ class TestListSpaces:
 class TestSearchContent:
     @respx.mock
     async def test_search_content(self):
-        respx.get(f"{CONFLUENCE_V1_BASE}/search").mock(
+        respx.get(f"{CONFLUENCE_V1_BASE}/content/search").mock(
             return_value=httpx.Response(200, json=SAMPLE_CONFLUENCE_SEARCH_RESPONSE)
         )
         from atlassian import confluence
         async with AsyncAtlassianClient(TOKEN, CLOUD_ID) as client:
-            results = await confluence.asearch_content(client, query='type = page AND text ~ "architecture"')
+            results = await confluence.asearch_content(client, query='type = page')
         assert len(results) == 2
-        assert results[0]["content"]["title"] == "Architecture Overview"
+        assert results[0]["title"] == "Architecture Overview"
 
     @respx.mock
     async def test_search_empty(self):
-        respx.get(f"{CONFLUENCE_V1_BASE}/search").mock(
+        respx.get(f"{CONFLUENCE_V1_BASE}/content/search").mock(
             return_value=httpx.Response(200, json={"results": []})
         )
         from atlassian import confluence
