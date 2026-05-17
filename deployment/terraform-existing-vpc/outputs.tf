@@ -95,16 +95,19 @@ output "app_runner_security_group_id" {
 
 locals {
   # Safe versions for output interpolation (never null)
-  backend_url_display = coalesce(local.backend_url, "DISABLED")
-  eks_url_display     = local.eks_service_url != "" ? "${local.eks_service_protocol}://${local.eks_service_url}" : "DISABLED"
+  backend_url_display     = coalesce(local.backend_url, "DISABLED")
+  eks_url_display         = local.eks_service_url != "" ? "${local.eks_service_protocol}://${local.eks_service_url}" : "DISABLED"
+  ecs_express_url_display = local.ecs_express_service_url != "" ? local.ecs_express_service_url : "DISABLED"
 }
 
 output "deployment_instructions" {
   value       = <<-EOT
 
     Deployment Complete!
-    App Runner: ${var.enable_apprunner ? "https://${local.backend_url_display}${var.backend_is_private ? " (PRIVATE)" : ""}" : "DISABLED"}
-    EKS:        ${var.enable_eks ? "${local.eks_url_display} (PRIVATE — VPN required)" : "DISABLED"}
+    App Runner:   ${var.enable_apprunner ? "https://${local.backend_url_display}${var.backend_is_private ? " (PRIVATE)" : ""}" : "DISABLED"}
+    ECS Express:  ${var.enable_ecs_express ? local.ecs_express_url_display : "DISABLED"}
+    EKS:          ${var.enable_eks ? "${local.eks_url_display} (PRIVATE — VPN required)" : "DISABLED"}
+    Primary:      ${var.primary_platform}
   EOT
   description = "Post-deployment instructions"
 }
@@ -198,6 +201,35 @@ output "eks_kubectl_config" {
 }
 
 # =============================================================================
+# ECS Express Outputs (conditional on enable_ecs_express)
+# =============================================================================
+
+output "ecs_express_service_url" {
+  value       = var.enable_ecs_express ? local.ecs_express_service_url : null
+  description = "ECS Express service URL (null if disabled)"
+}
+
+output "ecs_express_service_arn" {
+  value       = var.enable_ecs_express ? aws_ecs_express_gateway_service.backend[0].service_arn : null
+  description = "ARN of the ECS Express service (null if disabled)"
+}
+
+output "ecs_express_alb_dns_name" {
+  value       = local.ecs_express_alb_dns_name != "" ? local.ecs_express_alb_dns_name : null
+  description = "DNS name of the auto-created ALB (null if disabled or not yet discovered)"
+}
+
+output "ecs_express_alb_arn" {
+  value       = local.ecs_express_alb_arn != "" ? local.ecs_express_alb_arn : null
+  description = "ARN of the auto-created ALB (null if disabled or not yet discovered)"
+}
+
+output "ecs_express_custom_domain_url" {
+  description = "ECS Express custom domain URL (null if not configured)"
+  value       = local.ecs_express_custom_domain_enabled ? "https://${var.custom_domain_name}" : null
+}
+
+# =============================================================================
 # Platform Status
 # =============================================================================
 
@@ -209,4 +241,14 @@ output "enable_apprunner" {
 output "enable_eks" {
   value       = var.enable_eks
   description = "Whether EKS is enabled"
+}
+
+output "enable_ecs_express" {
+  value       = var.enable_ecs_express
+  description = "Whether ECS Express Mode is enabled"
+}
+
+output "primary_platform" {
+  value       = var.primary_platform
+  description = "Which platform serves the custom domain"
 }

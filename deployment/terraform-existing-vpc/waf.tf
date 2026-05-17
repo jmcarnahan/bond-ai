@@ -367,6 +367,14 @@ resource "aws_wafv2_web_acl_association" "backend" {
   depends_on = [null_resource.wait_for_backend_ready]
 }
 
+# ECS Express WAF association — attaches to the auto-created ALB.
+# Only created when ecs_express_configure_alb is enabled (after first deploy).
+resource "aws_wafv2_web_acl_association" "ecs_express_backend" {
+  count        = var.waf_enabled && var.enable_ecs_express && var.ecs_express_configure_alb ? 1 : 0
+  resource_arn = data.aws_lb.ecs_express[0].arn
+  web_acl_arn  = aws_wafv2_web_acl.backend[0].arn
+}
+
 resource "aws_wafv2_web_acl_association" "mcp_atlassian" {
   count        = var.waf_enabled && local.mcp_atlassian_can_deploy ? 1 : 0
   resource_arn = aws_apprunner_service.mcp_atlassian[0].arn

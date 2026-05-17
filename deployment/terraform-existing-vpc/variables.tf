@@ -356,6 +356,35 @@ variable "enable_eks" {
   default     = false
 }
 
+variable "enable_ecs_express" {
+  description = "Deploy on ECS Express Mode. Recommended App Runner replacement with configurable ALB timeouts. Can run alongside App Runner during migration."
+  type        = bool
+  default     = false
+}
+
+variable "ecs_express_subnet_ids" {
+  description = "Public subnet IDs for ECS Express (internet-facing ALB). Defaults to app_runner_subnet_ids (private)."
+  type        = list(string)
+  default     = []
+}
+
+variable "ecs_express_configure_alb" {
+  description = "Enable ALB configuration (WAF, timeout, domain). Set to true after first ECS Express deploy when service is running."
+  type        = bool
+  default     = false
+}
+
+variable "primary_platform" {
+  description = "Which platform serves the custom domain: apprunner, ecs_express, or eks. Only affects Route53/WAF routing."
+  type        = string
+  default     = "apprunner"
+
+  validation {
+    condition     = contains(["apprunner", "ecs_express", "eks"], var.primary_platform)
+    error_message = "primary_platform must be one of: apprunner, ecs_express, eks."
+  }
+}
+
 # =============================================================================
 # EKS Configuration
 # =============================================================================
