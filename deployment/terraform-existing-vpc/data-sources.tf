@@ -58,6 +58,9 @@ locals {
   # Use explicitly provided subnet IDs if available, otherwise auto-detect
   app_runner_subnet_ids = length(var.app_runner_subnet_ids) > 0 ? var.app_runner_subnet_ids : slice(data.aws_subnets.private.ids, 0, min(3, length(data.aws_subnets.private.ids)))
 
+  # Select subnets for ECS Express — use public subnets for internet-facing ALB
+  ecs_express_subnet_ids = length(var.ecs_express_subnet_ids) > 0 ? var.ecs_express_subnet_ids : local.app_runner_subnet_ids
+
   # Select subnets for VPC endpoints (need different AZs for interface endpoints)
   vpc_endpoint_subnet_ids = [
     for az in slice(local.availability_zones, 0, min(2, length(local.availability_zones))) :
@@ -72,8 +75,21 @@ locals {
 # Validate at least one compute platform is enabled
 check "at_least_one_platform" {
   assert {
-    condition     = var.enable_apprunner || var.enable_eks
-    error_message = "At least one of enable_apprunner or enable_eks must be true."
+    condition     = var.enable_apprunner || var.enable_eks || var.enable_ecs_express
+    error_message = "At least one of enable_apprunner, enable_eks, or enable_ecs_express must be true."
+  }
+}
+
+# Validate primary_platform matches an enabled platform (when custom domain is set)
+check "primary_platform_enabled" {
+  assert {
+    condition = (
+      var.custom_domain_name == "" ||
+      (var.primary_platform == "apprunner" && var.enable_apprunner) ||
+      (var.primary_platform == "ecs_express" && var.enable_ecs_express) ||
+      (var.primary_platform == "eks" && var.enable_eks)
+    )
+    error_message = "primary_platform '${var.primary_platform}' references a disabled platform while custom_domain_name is set. No custom domain will be configured."
   }
 }
 

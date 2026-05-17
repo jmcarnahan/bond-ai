@@ -7,14 +7,15 @@
 #   - Leave custom_domain_name = "" (default) to skip custom domain setup
 
 locals {
-  custom_domain_enabled = var.custom_domain_name != "" && !var.backend_is_private && var.enable_apprunner
+  custom_domain_enabled = var.custom_domain_name != "" && !var.backend_is_private && var.enable_apprunner && var.primary_platform == "apprunner"
   # Use hosted_zone_name if provided, otherwise fall back to custom_domain_name (for root domains)
   hosted_zone_name = var.hosted_zone_name != "" ? var.hosted_zone_name : var.custom_domain_name
 }
 
 # Use the existing Route 53 Hosted Zone (created automatically during domain registration)
+# Shared by App Runner custom domain and ECS Express custom domain
 data "aws_route53_zone" "frontend" {
-  count = local.custom_domain_enabled ? 1 : 0
+  count = local.custom_domain_enabled || local.ecs_express_custom_domain_enabled ? 1 : 0
   name  = local.hosted_zone_name
 }
 

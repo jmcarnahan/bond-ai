@@ -1,11 +1,75 @@
 # App Runner Combined Service (Backend + Frontend)
 # All App Runner resources gated by var.enable_apprunner (default: true)
+# NOTE: ECS Express Mode (ecs-express.tf) is an alternative compute target.
+# Use enable_ecs_express to deploy on ECS Express instead of App Runner.
 
 locals {
   # When private, service_url is null — use VPC Ingress Connection domain instead
   backend_url = var.enable_apprunner ? (
     var.backend_is_private ? aws_apprunner_vpc_ingress_connection.backend[0].domain_name : aws_apprunner_service.backend[0].service_url
   ) : null
+
+  # ==========================================================================
+  # Shared environment variables for all compute platforms
+  # Used by App Runner (backend.tf) and ECS Express (ecs-express.tf)
+  # Same pattern as local.backend_shared_policy_statements in iam.tf
+  # ==========================================================================
+  backend_env_vars = {
+    AWS_REGION                = var.aws_region
+    BOND_PROVIDER_CLASS       = "bondable.bond.providers.bedrock.BedrockProvider.BedrockProvider"
+    DATABASE_SECRET_ARN       = aws_secretsmanager_secret.db_credentials.arn
+    S3_BUCKET_NAME            = aws_s3_bucket.uploads.id
+    BEDROCK_S3_BUCKET         = aws_s3_bucket.uploads.id
+    BEDROCK_AGENT_ROLE_ARN    = aws_iam_role.bedrock_agent.arn
+    BEDROCK_DEFAULT_MODEL     = var.bedrock_default_model
+    BEDROCK_SELECTABLE_MODELS = var.bedrock_selectable_models
+
+    # App config secret (JWT key, OAuth client IDs/secrets read at runtime)
+    APP_CONFIG_SECRET_NAME = aws_secretsmanager_secret.app_config.name
+
+    # Okta OAuth Configuration
+    OAUTH2_ENABLED_PROVIDERS = var.oauth2_providers
+    OKTA_DOMAIN              = var.okta_domain
+    OKTA_SECRET_NAME         = var.okta_secret_name
+    OKTA_REDIRECT_URI        = var.okta_redirect_uri != "" ? var.okta_redirect_uri : "https://BACKEND_URL_PLACEHOLDER/auth/okta/callback"
+    OKTA_SCOPES              = var.okta_scopes
+
+    # AWS Cognito OAuth Configuration (only if configured)
+    COGNITO_DOMAIN       = var.cognito_domain
+    COGNITO_SECRET_NAME  = var.cognito_secret_name
+    COGNITO_REDIRECT_URI = var.cognito_redirect_uri != "" ? var.cognito_redirect_uri : (var.cognito_domain != "" ? "https://BACKEND_URL_PLACEHOLDER/auth/cognito/callback" : "")
+    COGNITO_SCOPES       = var.cognito_scopes
+    COGNITO_REGION       = var.cognito_region
+
+    # JWT redirect URI for frontend - same origin now (root of the service)
+    JWT_REDIRECT_URI = var.jwt_redirect_uri != "" ? var.jwt_redirect_uri : "*"
+
+    # CORS configuration - keep for local dev compatibility
+    CORS_ALLOWED_ORIGINS = var.cors_allowed_origins
+
+    # Allowed redirect domains for OAuth callbacks (security)
+    ALLOWED_REDIRECT_DOMAINS = var.allowed_redirect_domains
+
+    # Knowledge Base configuration (only set when KB is enabled)
+    BEDROCK_KNOWLEDGE_BASE_ID = try(aws_bedrockagent_knowledge_base.main[0].id, "")
+    BEDROCK_KB_DATA_SOURCE_ID = try(aws_bedrockagent_data_source.s3[0].data_source_id, "")
+    BEDROCK_KB_S3_PREFIX      = var.enable_knowledge_base ? "knowledge-base/" : ""
+
+    # Admin configuration (prefer ADMIN_USERS for multiple admins)
+    ADMIN_USERS = var.admin_users
+    ADMIN_EMAIL = var.admin_email # Legacy fallback for backward compatibility
+
+    # Email validation: allow all authenticated IdP users (T-O6)
+    ALLOW_ALL_EMAILS       = var.allow_all_emails
+    SCHEDULED_JOBS_ENABLED = var.scheduled_jobs_enabled
+
+    # Cookie security: "true" in production (HTTPS), "false" for local dev (HTTP)
+    COOKIE_SECURE = "true"
+
+    # Bedrock Guardrails
+    BEDROCK_GUARDRAIL_ID      = var.enable_guardrails ? aws_bedrock_guardrail.main[0].guardrail_id : ""
+    BEDROCK_GUARDRAIL_VERSION = var.enable_guardrails ? (var.bedrock_guardrail_version != "" ? var.bedrock_guardrail_version : aws_bedrock_guardrail_version.main[0].version) : ""
+  }
 }
 
 # App Runner VPC Connector for database access
@@ -120,65 +184,7 @@ resource "aws_apprunner_service" "backend" {
       image_configuration {
         port = "8080"
 
-        runtime_environment_variables = {
-          AWS_REGION             = var.aws_region
-          BOND_PROVIDER_CLASS    = "bondable.bond.providers.bedrock.BedrockProvider.BedrockProvider"
-          DATABASE_SECRET_ARN    = aws_secretsmanager_secret.db_credentials.arn
-          S3_BUCKET_NAME         = aws_s3_bucket.uploads.id
-          BEDROCK_S3_BUCKET      = aws_s3_bucket.uploads.id
-          BEDROCK_AGENT_ROLE_ARN = aws_iam_role.bedrock_agent.arn
-          BEDROCK_DEFAULT_MODEL      = var.bedrock_default_model
-          BEDROCK_SELECTABLE_MODELS  = var.bedrock_selectable_models
-
-          # App config secret (JWT key, OAuth client IDs/secrets read at runtime)
-          APP_CONFIG_SECRET_NAME = aws_secretsmanager_secret.app_config.name
-
-          # Okta OAuth Configuration
-          OAUTH2_ENABLED_PROVIDERS = var.oauth2_providers
-          OKTA_DOMAIN              = var.okta_domain
-          OKTA_SECRET_NAME         = var.okta_secret_name
-          OKTA_REDIRECT_URI = var.okta_redirect_uri != "" ? var.okta_redirect_uri : "https://BACKEND_URL_PLACEHOLDER/auth/okta/callback"
-          OKTA_SCOPES       = var.okta_scopes
-
-          # AWS Cognito OAuth Configuration (only if configured)
-          COGNITO_DOMAIN       = var.cognito_domain
-          COGNITO_SECRET_NAME  = var.cognito_secret_name
-          COGNITO_REDIRECT_URI = var.cognito_redirect_uri != "" ? var.cognito_redirect_uri : (var.cognito_domain != "" ? "https://BACKEND_URL_PLACEHOLDER/auth/cognito/callback" : "")
-          COGNITO_SCOPES       = var.cognito_scopes
-          COGNITO_REGION       = var.cognito_region
-
-          # JWT redirect URI for frontend - same origin now (root of the service)
-          JWT_REDIRECT_URI = var.jwt_redirect_uri != "" ? var.jwt_redirect_uri : "*"
-
-          # CORS configuration - keep for local dev compatibility
-          CORS_ALLOWED_ORIGINS = var.cors_allowed_origins
-
-          # Allowed redirect domains for OAuth callbacks (security)
-          # Localhost and *.awsapprunner.com are always allowed by default
-          ALLOWED_REDIRECT_DOMAINS = var.allowed_redirect_domains
-
-          # Knowledge Base configuration (only set when KB is enabled)
-          BEDROCK_KNOWLEDGE_BASE_ID = try(aws_bedrockagent_knowledge_base.main[0].id, "")
-          BEDROCK_KB_DATA_SOURCE_ID = try(aws_bedrockagent_data_source.s3[0].data_source_id, "")
-          BEDROCK_KB_S3_PREFIX      = var.enable_knowledge_base ? "knowledge-base/" : ""
-
-          # Admin configuration (prefer ADMIN_USERS for multiple admins)
-          ADMIN_USERS = var.admin_users
-          ADMIN_EMAIL = var.admin_email  # Legacy fallback for backward compatibility
-
-          # Email validation: allow all authenticated IdP users (T-O6)
-          # Set to "true" when IdP app assignment controls access (e.g., Okta groups)
-          # Set to "false" and configure *_VALID_EMAILS to restrict by email list
-          ALLOW_ALL_EMAILS       = var.allow_all_emails
-          SCHEDULED_JOBS_ENABLED = var.scheduled_jobs_enabled
-
-          # Cookie security: "true" in production (HTTPS), "false" for local dev (HTTP)
-          COOKIE_SECURE = "true"
-
-          # Bedrock Guardrails
-          BEDROCK_GUARDRAIL_ID      = var.enable_guardrails ? aws_bedrock_guardrail.main[0].guardrail_id : ""
-          BEDROCK_GUARDRAIL_VERSION = var.enable_guardrails ? (var.bedrock_guardrail_version != "" ? var.bedrock_guardrail_version : aws_bedrock_guardrail_version.main[0].version) : ""
-        }
+        runtime_environment_variables = local.backend_env_vars
       }
     }
   }
@@ -219,7 +225,7 @@ resource "aws_apprunner_service" "backend" {
   depends_on = [
     null_resource.wait_for_backend_auto_deploy,
     aws_secretsmanager_secret_version.db_credentials,
-    null_resource.private_ingress_ready  # VPC endpoint must exist before going private
+    null_resource.private_ingress_ready # VPC endpoint must exist before going private
   ]
   # Note: Database dependency handled via local.database_endpoint
 }
