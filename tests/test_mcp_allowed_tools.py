@@ -110,7 +110,14 @@ class TestBedrockMCPAllowedToolsFilter:
 
     def _run_sync(self, coro):
         import asyncio
-        return asyncio.get_event_loop().run_until_complete(coro)
+        # asyncio.get_event_loop() raises in Py3.10+ when no loop exists in the
+        # current thread (e.g. after an earlier test closed its loop). Create a
+        # fresh loop per test to keep behavior independent of test ordering.
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
 
     @patch("bondable.bond.providers.bedrock.BedrockMCP.StreamableHttpTransport")
     @patch("bondable.bond.providers.bedrock.BedrockMCP.Client")

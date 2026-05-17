@@ -1,5 +1,7 @@
 import pytest
 
+from bondable.rest.routers.auth import limiter as _auth_limiter
+
 
 def pytest_addoption(parser):
     parser.addoption(
@@ -40,3 +42,15 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "investigation" in item.keywords:
                 item.add_marker(skip_investigation)
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Reset slowapi rate limiter before each test.
+
+    Multiple tests across the suite hit rate-limited auth endpoints
+    (e.g. /auth/cognito/callback at 10/min). Without per-test reset,
+    later tests in the suite see 429s purely from earlier tests' calls.
+    """
+    _auth_limiter.reset()
+    yield
