@@ -9,7 +9,10 @@ Usage:
 import asyncio
 import json
 import logging
+import pytest
 from bondable.bond.config import Config
+
+pytestmark = pytest.mark.integration
 
 logger = logging.getLogger(__name__)
 from bondable.bond.providers.bedrock.BedrockMCP import _get_mcp_tool_definitions
@@ -19,6 +22,7 @@ print("Atlassian MCP Connection Test")
 print("=" * 70)
 print()
 
+@pytest.mark.asyncio
 async def test_atlassian_mcp():
     """Test connection to Atlassian MCP server."""
 

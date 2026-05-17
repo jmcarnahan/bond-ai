@@ -15,7 +15,10 @@ import asyncio
 import json
 import logging
 import jwt
+import pytest
 from bondable.bond.config import Config
+
+pytestmark = pytest.mark.integration
 
 logger = logging.getLogger(__name__)
 from bondable.bond.providers.bedrock.BedrockMCP import execute_mcp_tool
@@ -35,6 +38,7 @@ print("=" * 70)
 print()
 
 
+@pytest.mark.asyncio
 async def test_mcp_auth():
     """Test MCP authentication with a running server."""
 

@@ -11,6 +11,8 @@ from unittest.mock import patch
 from bondable.bond.config import Config
 from bondable.bond.definition import AgentDefinition
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture(scope="module")
 def provider():

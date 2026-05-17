@@ -40,3 +40,20 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "investigation" in item.keywords:
                 item.add_marker(skip_investigation)
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Reset slowapi rate limiter before each test.
+
+    Multiple tests across the suite hit rate-limited auth endpoints
+    (e.g. /auth/cognito/callback at 10/min). Without per-test reset,
+    later tests in the suite see 429s purely from earlier tests' calls.
+    """
+    try:
+        from bondable.rest.routers.auth import limiter
+        limiter.reset()
+    except Exception:
+        # Don't fail collection if the import path changes; the fixture is best-effort.
+        pass
+    yield

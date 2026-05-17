@@ -365,6 +365,18 @@ class TestMetadataInit:
                     "created_at DATETIME, updated_at DATETIME, "
                     "PRIMARY KEY (thread_id, user_id))"
                 ))
+                # OAuth state tables required by later migrations (c4d2e8f10a7b, d5e3f9a21b8c)
+                conn.execute(sa.text(
+                    "CREATE TABLE auth_oauth_states (state VARCHAR PRIMARY KEY, "
+                    "provider_name VARCHAR NOT NULL, code_verifier VARCHAR, "
+                    "redirect_uri VARCHAR, platform VARCHAR, created_at DATETIME)"
+                ))
+                conn.execute(sa.text(
+                    "CREATE TABLE connection_oauth_states (state VARCHAR PRIMARY KEY, "
+                    "user_id VARCHAR NOT NULL REFERENCES users(id), "
+                    "connection_name VARCHAR NOT NULL, code_verifier VARCHAR, "
+                    "redirect_uri VARCHAR, created_at DATETIME)"
+                ))
                 conn.commit()
             engine.dispose()
 
@@ -443,6 +455,18 @@ class TestMetadataInit:
                     "headers_encrypted VARCHAR, oauth_config_encrypted VARCHAR, "
                     "is_active BOOLEAN NOT NULL DEFAULT 1, "
                     "created_at DATETIME, updated_at DATETIME)"
+                ))
+                # OAuth state tables required by later migrations (c4d2e8f10a7b, d5e3f9a21b8c)
+                conn.execute(sa.text(
+                    "CREATE TABLE auth_oauth_states (state VARCHAR PRIMARY KEY, "
+                    "provider_name VARCHAR NOT NULL, code_verifier VARCHAR, "
+                    "redirect_uri VARCHAR, platform VARCHAR, created_at DATETIME)"
+                ))
+                conn.execute(sa.text(
+                    "CREATE TABLE connection_oauth_states (state VARCHAR PRIMARY KEY, "
+                    "user_id VARCHAR NOT NULL REFERENCES users(id), "
+                    "connection_name VARCHAR NOT NULL, code_verifier VARCHAR, "
+                    "redirect_uri VARCHAR, created_at DATETIME)"
                 ))
                 conn.commit()
             engine.dispose()
