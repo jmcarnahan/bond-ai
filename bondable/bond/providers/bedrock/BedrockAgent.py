@@ -87,6 +87,10 @@ MIN_RECORDS_FOR_CSV = 5
 # Retry configuration for transient connection errors on invoke_agent calls
 MAX_INVOKE_RETRIES = 2
 INVOKE_RETRY_BASE_DELAY = 1.0  # seconds; exponential backoff (1s, 2s)
+# Retry configuration for EventStreamError during continuation stream processing.
+# Stream failures (e.g. dependencyFailedException after 30-60s) are different from
+# connection errors at call time — if a stream retry fails, a second is almost certainly wasted.
+MAX_STREAM_RETRIES = 1
 
 class BedrockAgent(Agent):
     """Bedrock implementation of the Agent interface"""
@@ -2242,7 +2246,7 @@ Please integrate any relevant insights from the documents with your analysis of 
                 "actionGroup": action_group,
                 "apiPath": api_path,
                 "httpMethod": "POST",
-                "httpStatusCode": 500,
+                "httpStatusCode": 200,
                 "responseBody": {
                     "application/json": {
                         "body": json.dumps({"error": "Tool execution failed - no response was generated. Please inform the user that the operation could not be completed."})
@@ -2286,163 +2290,214 @@ Please integrate any relevant insights from the documents with your analysis of 
             }
         }
 
-        # Get continuation response with retry for transient connection errors.
-        # Bedrock may close the connection if the payload is large or on transient network issues.
-        continuation_stream = None
-        for attempt in range(MAX_INVOKE_RETRIES + 1):
-            invoke_start = time.monotonic()
-            try:
-                if attempt > 0:
-                    delay = INVOKE_RETRY_BASE_DELAY * (2 ** (attempt - 1))
-                    LOGGER.warning(
-                        f"[Continuation] Retry {attempt}/{MAX_INVOKE_RETRIES} "
-                        f"after {delay}s delay (invocationId={invocation_id}, depth={depth})"
-                    )
-                    time.sleep(delay)
+        # Outer retry loop: wraps both invoke_agent and stream processing.
+        # Retries on EventStreamError (e.g. dependencyFailedException) only if no content
+        # has been yielded yet. Stream failures are different from connection errors —
+        # they occur after the call succeeds but the model fails mid-generation.
+        any_content_yielded = False
 
+        for stream_attempt in range(MAX_STREAM_RETRIES + 1):
+            # Get continuation response with retry for transient connection errors.
+            # Bedrock may close the connection if the payload is large or on transient network issues.
+            continuation_stream = None
+            for attempt in range(MAX_INVOKE_RETRIES + 1):
                 invoke_start = time.monotonic()
-                total_elapsed = invoke_start - continuation_start_time
-                LOGGER.info(
-                    f"[Continuation] Calling invoke_agent at depth={depth}, attempt={attempt + 1}, "
-                    f"elapsed_since_returnControl={total_elapsed:.3f}s, session={session_id}"
-                )
-                continuation_response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**continuation_request)
-                continuation_stream = continuation_response.get('completion')
-                invoke_elapsed = time.monotonic() - invoke_start
-                LOGGER.info(
-                    f"[Continuation] invoke_agent succeeded at depth={depth} in {invoke_elapsed:.3f}s, "
-                    f"payload={total_result_bytes} bytes, "
-                    f"stream={'present' if continuation_stream else 'absent'}"
-                    f"{f', attempt={attempt + 1}' if attempt > 0 else ''}"
-                )
-                break  # Success - exit retry loop
+                try:
+                    if attempt > 0:
+                        delay = INVOKE_RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                        LOGGER.warning(
+                            f"[Continuation] Retry {attempt}/{MAX_INVOKE_RETRIES} "
+                            f"after {delay}s delay (invocationId={invocation_id}, depth={depth})"
+                        )
+                        time.sleep(delay)
 
-            except (RemoteDisconnected, ConnectionClosedError, ConnectionError, OSError) as e:
-                invoke_elapsed = time.monotonic() - invoke_start
-                LOGGER.warning(
-                    f"[Continuation] Connection error on attempt {attempt + 1}/"
-                    f"{MAX_INVOKE_RETRIES + 1} at depth={depth} after {invoke_elapsed:.3f}s, "
-                    f"payload={total_result_bytes} bytes: {type(e).__name__}: {e}"
-                )
-                if attempt == MAX_INVOKE_RETRIES:
-                    LOGGER.error(
-                        f"[Continuation] All {MAX_INVOKE_RETRIES + 1} attempts failed. "
-                        f"Tool result payload size: {total_result_bytes} bytes. "
-                        f"This may indicate the payload exceeds the model's context window or a transient network issue."
+                    invoke_start = time.monotonic()
+                    total_elapsed = invoke_start - continuation_start_time
+                    LOGGER.info(
+                        f"[Continuation] Calling invoke_agent at depth={depth}, attempt={attempt + 1}, "
+                        f"stream_attempt={stream_attempt + 1}/{MAX_STREAM_RETRIES + 1}, "
+                        f"elapsed_since_returnControl={total_elapsed:.3f}s, session={session_id}"
+                    )
+                    continuation_response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**continuation_request)
+                    continuation_stream = continuation_response.get('completion')
+                    invoke_elapsed = time.monotonic() - invoke_start
+                    LOGGER.info(
+                        f"[Continuation] invoke_agent succeeded at depth={depth} in {invoke_elapsed:.3f}s, "
+                        f"payload={total_result_bytes} bytes, "
+                        f"stream={'present' if continuation_stream else 'absent'}"
+                        f"{f', attempt={attempt + 1}' if attempt > 0 else ''}"
+                    )
+                    break  # Success - exit inner retry loop
+
+                except (RemoteDisconnected, ConnectionClosedError, ConnectionError, OSError) as e:
+                    invoke_elapsed = time.monotonic() - invoke_start
+                    LOGGER.warning(
+                        f"[Continuation] Connection error on attempt {attempt + 1}/"
+                        f"{MAX_INVOKE_RETRIES + 1} at depth={depth} after {invoke_elapsed:.3f}s, "
+                        f"payload={total_result_bytes} bytes: {type(e).__name__}: {e}"
+                    )
+                    if attempt == MAX_INVOKE_RETRIES:
+                        LOGGER.error(
+                            f"[Continuation] All {MAX_INVOKE_RETRIES + 1} attempts failed. "
+                            f"Tool result payload size: {total_result_bytes} bytes. "
+                            f"This may indicate the payload exceeds the model's context window or a transient network issue."
+                        )
+                        yield (
+                            f"\n\nI was unable to send the tool results back to the agent because "
+                            f"the response was too large ({total_result_bytes} bytes), even after compaction. "
+                            f"Please try a more specific query to get fewer results.\n"
+                        )
+                        return
+
+                except Exception as e:
+                    LOGGER.exception(
+                        f"[Continuation] invoke_agent failed at depth={depth}, "
+                        f"invocationId={invocation_id}: {type(e).__name__}: {e}"
                     )
                     yield (
-                        f"\n\nI was unable to send the tool results back to the agent because "
-                        f"the response was too large ({total_result_bytes} bytes), even after compaction. "
-                        f"Please try a more specific query to get fewer results.\n"
+                        f"\n\nI encountered an error while processing the tool results "
+                        f"({type(e).__name__}). Please try your request again.\n"
                     )
                     return
 
-            except Exception as e:
-                LOGGER.exception(
-                    f"[Continuation] invoke_agent failed at depth={depth}, "
-                    f"invocationId={invocation_id}: {type(e).__name__}: {e}"
+            # Process continuation stream with error handling
+            try:
+                if continuation_stream:
+                    cont_event_count = 0
+                    for cont_event in continuation_stream:
+                        cont_event_count += 1
+                        cont_event_type = list(cont_event.keys())[0] if cont_event else 'unknown'
+                        LOGGER.debug(f"[Continuation] depth={depth}, event #{cont_event_count}, type: {cont_event_type}")
+
+                        if 'chunk' in cont_event:
+                            text = self._handle_chunk_event(cont_event['chunk'])
+                            if text:
+                                yield text
+                                full_content += text
+                                any_content_yielded = True
+                        elif 'files' in cont_event:
+                            # Note: File handling in continuation is handled by the caller
+                            # We just pass the event through
+                            yield {'files_event': cont_event}
+                            any_content_yielded = True
+                        elif 'returnControl' in cont_event:
+                            # Agent wants to call another tool - handle recursively
+                            nested_return_control = cont_event['returnControl']
+                            LOGGER.info(f"[Continuation] Received nested returnControl at depth={depth} - recursing to depth={depth + 1}")
+
+                            # Recursively call ourselves to handle the nested tool call
+                            nested_generator = self._handle_continuation_response(
+                                return_control=nested_return_control,
+                                session_id=session_id,
+                                thread_id=thread_id,
+                                seen_file_hashes=seen_file_hashes,
+                                attachments=attachments,
+                                depth=depth + 1
+                            )
+
+                            # Forward all yielded items from nested handler
+                            nested_text_len = 0
+                            for nested_item in nested_generator:
+                                if isinstance(nested_item, str):
+                                    yield nested_item
+                                    full_content += nested_item
+                                    any_content_yielded = True
+                                    nested_text_len += len(nested_item)
+                                elif isinstance(nested_item, dict):
+                                    # Forward files_event and capture session_state
+                                    if 'files_event' in nested_item:
+                                        yield nested_item
+                                        any_content_yielded = True
+                                    if nested_item.get('session_state'):
+                                        new_session_state = nested_item['session_state']
+
+                            LOGGER.info(f"[Continuation] Nested handler at depth={depth + 1} completed, yielded {nested_text_len} chars of text")
+
+                        elif 'sessionState' in cont_event:
+                            new_session_state = cont_event['sessionState']
+                            LOGGER.debug(f"[Continuation] Received sessionState update at depth={depth}")
+
+                        elif 'trace' in cont_event:
+                            LOGGER.debug(f"[Continuation] Received trace event at depth={depth}")
+
+                    LOGGER.info(f"[Continuation] Processed {cont_event_count} events from continuation stream at depth={depth}")
+                else:
+                    LOGGER.warning(f"[Continuation] No continuation stream received at depth={depth}")
+
+                # Stream completed successfully - exit outer retry loop
+                break
+
+            except EventStreamError as e:
+                # Bedrock raises EventStreamError (e.g. dependencyFailedException) when the
+                # underlying model fails during generation. This can be transient.
+                error_code = getattr(e, 'code', 'unknown')
+                LOGGER.error(
+                    f"[Continuation] EventStreamError at depth={depth}: {error_code} - {e}. "
+                    f"Tool result status codes: {result_summary}. "
+                    f"stream_attempt={stream_attempt + 1}/{MAX_STREAM_RETRIES + 1}, "
+                    f"any_content_yielded={any_content_yielded}, "
+                    f"content_length={len(full_content)}"
+                )
+
+                if any_content_yielded or stream_attempt >= MAX_STREAM_RETRIES:
+                    # Cannot retry: content already sent to user, or retries exhausted
+                    if any_content_yielded:
+                        LOGGER.warning(
+                            f"[Continuation] Cannot retry EventStreamError - "
+                            f"content already yielded to user (text={len(full_content)} chars)"
+                        )
+                        yield (
+                            f"\n\nThe agent encountered an error processing the tool results "
+                            f"(Bedrock error: {error_code}). This can happen when tool results "
+                            f"are very large or in an unexpected format. "
+                            f"Please try a more specific query.\n"
+                        )
+                    else:
+                        LOGGER.warning(
+                            f"[Continuation] All {MAX_STREAM_RETRIES + 1} stream attempts exhausted "
+                            f"for EventStreamError ({error_code})"
+                        )
+                        yield (
+                            f"\n\nThe agent encountered a transient error "
+                            f"(Bedrock error: {error_code}). "
+                            f"Please try your request again.\n"
+                        )
+                    break
+                else:
+                    # Safe to retry - no content yielded yet
+                    delay = INVOKE_RETRY_BASE_DELAY * (2 ** stream_attempt)
+                    LOGGER.warning(
+                        f"[Continuation] Best-effort retry after EventStreamError ({error_code}) - "
+                        f"no content yielded yet, retrying with same invocationId={invocation_id}. "
+                        f"stream_attempt={stream_attempt + 1}/{MAX_STREAM_RETRIES + 1}, "
+                        f"retry_delay={delay}s"
+                    )
+                    time.sleep(delay)
+                    continue  # Retry the outer loop
+
+            except (ReadTimeoutError, Urllib3ReadTimeoutError):
+                LOGGER.error(
+                    f"[Continuation] Read timeout waiting for Bedrock continuation stream at depth={depth}. "
+                    f"Tool result status codes: {result_summary}. "
+                    f"The agent may need more time to process complex tool results. "
+                    f"Consider increasing BEDROCK_AGENT_RUNTIME_READ_TIMEOUT (current default: 300s)."
                 )
                 yield (
-                    f"\n\nI encountered an error while processing the tool results "
-                    f"({type(e).__name__}). Please try your request again.\n"
+                    f"\n\nThe request timed out while the agent was processing the tool results. "
+                    f"This can happen with complex queries. Please try simplifying your request or try again.\n"
                 )
-                return
+                break
 
-        # Process continuation stream with error handling
-        try:
-            if continuation_stream:
-                cont_event_count = 0
-                for cont_event in continuation_stream:
-                    cont_event_count += 1
-                    cont_event_type = list(cont_event.keys())[0] if cont_event else 'unknown'
-                    LOGGER.debug(f"[Continuation] depth={depth}, event #{cont_event_count}, type: {cont_event_type}")
-
-                    if 'chunk' in cont_event:
-                        text = self._handle_chunk_event(cont_event['chunk'])
-                        if text:
-                            yield text
-                            full_content += text
-                    elif 'files' in cont_event:
-                        # Note: File handling in continuation is handled by the caller
-                        # We just pass the event through
-                        yield {'files_event': cont_event}
-                    elif 'returnControl' in cont_event:
-                        # Agent wants to call another tool - handle recursively
-                        nested_return_control = cont_event['returnControl']
-                        LOGGER.info(f"[Continuation] Received nested returnControl at depth={depth} - recursing to depth={depth + 1}")
-
-                        # Recursively call ourselves to handle the nested tool call
-                        nested_generator = self._handle_continuation_response(
-                            return_control=nested_return_control,
-                            session_id=session_id,
-                            thread_id=thread_id,
-                            seen_file_hashes=seen_file_hashes,
-                            attachments=attachments,
-                            depth=depth + 1
-                        )
-
-                        # Forward all yielded items from nested handler
-                        nested_text_len = 0
-                        for nested_item in nested_generator:
-                            if isinstance(nested_item, str):
-                                yield nested_item
-                                full_content += nested_item
-                                nested_text_len += len(nested_item)
-                            elif isinstance(nested_item, dict):
-                                # Forward files_event and capture session_state
-                                if 'files_event' in nested_item:
-                                    yield nested_item
-                                if nested_item.get('session_state'):
-                                    new_session_state = nested_item['session_state']
-
-                        LOGGER.info(f"[Continuation] Nested handler at depth={depth + 1} completed, yielded {nested_text_len} chars of text")
-
-                    elif 'sessionState' in cont_event:
-                        new_session_state = cont_event['sessionState']
-                        LOGGER.debug(f"[Continuation] Received sessionState update at depth={depth}")
-
-                    elif 'trace' in cont_event:
-                        LOGGER.debug(f"[Continuation] Received trace event at depth={depth}")
-
-                LOGGER.info(f"[Continuation] Processed {cont_event_count} events from continuation stream at depth={depth}")
-            else:
-                LOGGER.warning(f"[Continuation] No continuation stream received at depth={depth}")
-
-        except EventStreamError as e:
-            # Bedrock raises EventStreamError (e.g. dependencyFailedException) when it
-            # can't process the tool results - commonly when a tool returned a 500 error.
-            error_code = getattr(e, 'code', 'unknown')
-            LOGGER.error(
-                f"[Continuation] EventStreamError at depth={depth}: {error_code} - {e}. "
-                f"Tool result status codes: {result_summary}. "
-                f"This typically means Bedrock rejected the tool result."
-            )
-            yield (
-                f"\n\nThe agent encountered an error processing the tool results "
-                f"(Bedrock error: {error_code}). This can happen when tool results "
-                f"are very large or in an unexpected format. "
-                f"Please try a more specific query.\n"
-            )
-        except (ReadTimeoutError, Urllib3ReadTimeoutError):
-            LOGGER.error(
-                f"[Continuation] Read timeout waiting for Bedrock continuation stream at depth={depth}. "
-                f"Tool result status codes: {result_summary}. "
-                f"The agent may need more time to process complex tool results. "
-                f"Consider increasing BEDROCK_AGENT_RUNTIME_READ_TIMEOUT (current default: 300s)."
-            )
-            yield (
-                f"\n\nThe request timed out while the agent was processing the tool results. "
-                f"This can happen with complex queries. Please try simplifying your request or try again.\n"
-            )
-        except Exception as e:
-            error_type = type(e).__name__
-            LOGGER.exception(
-                f"[Continuation] {error_type} processing continuation stream at depth={depth}: {e}"
-            )
-            yield (
-                f"\n\nAn unexpected error occurred while processing the response "
-                f"({error_type}). Please try again.\n"
-            )
+            except Exception as e:
+                error_type = type(e).__name__
+                LOGGER.exception(
+                    f"[Continuation] {error_type} processing continuation stream at depth={depth}: {e}"
+                )
+                yield (
+                    f"\n\nAn unexpected error occurred while processing the response "
+                    f"({error_type}). Please try again.\n"
+                )
+                break
 
         # Yield the final session state so callers can capture it
         if new_session_state:
