@@ -1,5 +1,7 @@
 import pytest
 
+from bondable.rest.routers.auth import limiter as _auth_limiter
+
 
 def pytest_addoption(parser):
     parser.addoption(
@@ -50,10 +52,5 @@ def _reset_rate_limiter():
     (e.g. /auth/cognito/callback at 10/min). Without per-test reset,
     later tests in the suite see 429s purely from earlier tests' calls.
     """
-    try:
-        from bondable.rest.routers.auth import limiter
-        limiter.reset()
-    except Exception:
-        # Don't fail collection if the import path changes; the fixture is best-effort.
-        pass
+    _auth_limiter.reset()
     yield
