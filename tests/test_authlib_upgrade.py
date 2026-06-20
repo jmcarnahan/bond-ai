@@ -335,7 +335,7 @@ def test_get_http_headers_lowercases_keys_and_excludes_auth_by_default():
             (b"Content-Type", b"application/json"),
             (b"X-Atlassian-Cloud-Id", b"cloud-xyz"),
             (b"X-Custom-Header", b"custom-value"),
-            (b"Host", b"localhost:8000"),
+            (b"Host", b"localhost:8002"),
         ],
     }
     mock_request = Request(scope)

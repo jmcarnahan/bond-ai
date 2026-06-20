@@ -44,7 +44,7 @@ def create_auth_token(user_email: str = "feedback_test@example.com") -> str:
 class MessageFeedbackTest:
     """Test class for message feedback functionality."""
 
-    def __init__(self, base_url: str = "http://localhost:8000"):
+    def __init__(self, base_url: str = "http://localhost:8002"):
         self.base_url = base_url.rstrip('/')
         self.headers = {}
         self.thread_id = None

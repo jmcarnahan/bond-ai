@@ -18,7 +18,7 @@ pytestmark = pytest.mark.integration
 # Test user constants
 TEST_USER_ID = "forward-test-user"
 TEST_USER_EMAIL = "forward-test@example.com"
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://localhost:8002"
 
 # Regex to extract text content from assistant bond messages
 _ASSISTANT_CONTENT_RE = re.compile(

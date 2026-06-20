@@ -40,7 +40,7 @@ def create_auth_token(user_email: str = "filetest@example.com") -> str:
 class TestFileDownloadIntegration:
     """Integration tests for file download functionality."""
 
-    BASE_URL = "http://localhost:8000"
+    BASE_URL = "http://localhost:8002"
 
     @pytest.fixture(scope="class")
     def auth_headers(self):
@@ -211,7 +211,7 @@ class TestFileDownloadIntegration:
 class TestFileDownloadSecurity:
     """Test security aspects of file downloads."""
 
-    BASE_URL = "http://localhost:8000"
+    BASE_URL = "http://localhost:8002"
 
     def test_download_requires_authentication(self):
         """Verify that file download requires authentication."""

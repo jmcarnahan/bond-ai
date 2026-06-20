@@ -68,5 +68,5 @@ flutter run --target lib/main_mobile.dart -d chrome
 For production deployments, ensure you update the API_BASE_URL to point to your production server. For mobile devices, use your machine's network IP instead of localhost:
 
 ```
-API_BASE_URL=http://192.168.1.100:8000  # Replace with your IP
+API_BASE_URL=http://192.168.1.100:8002  # Replace with your IP
 ```

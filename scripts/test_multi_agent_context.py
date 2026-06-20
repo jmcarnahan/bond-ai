@@ -10,7 +10,7 @@ Prerequisites:
 - python-jose package: pip install python-jose[cryptography]
 
 Usage:
-    python scripts/test_multi_agent_context.py [--base-url http://localhost:8000]
+    python scripts/test_multi_agent_context.py [--base-url http://localhost:8002]
 """
 
 import sys
@@ -28,7 +28,7 @@ from scripts.api_demo import BondAPIDemo, create_auth_token
 PHRASE = "PURPLE ELEPHANT 42"
 
 
-def run_test(base_url: str = "http://localhost:8000"):
+def run_test(base_url: str = "http://localhost:8002"):
     """Run the multi-agent context sharing integration test."""
     print("=" * 60)
     print("Multi-Agent Thread Context Sharing Test")
@@ -228,7 +228,7 @@ def run_test(base_url: str = "http://localhost:8000"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test multi-agent context sharing")
-    parser.add_argument("--base-url", default="http://localhost:8000",
+    parser.add_argument("--base-url", default="http://localhost:8002",
                        help="Base URL of the Bond AI API")
     args = parser.parse_args()
 

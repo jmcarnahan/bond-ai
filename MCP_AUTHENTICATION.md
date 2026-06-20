@@ -207,11 +207,15 @@ Set the `BOND_MCP_CONFIG` environment variable to configure MCP servers:
 {
   "mcpServers": {
     "my-auth-server": {
-      "url": "http://localhost:8000/mcp/sse"
+      "url": "http://localhost:5555/mcp/sse"
     }
   }
 }
 ```
+
+> The port here (`:5555`) is **your MCP server's own port** — not bond-ai's
+> backend. The bond-ai backend now runs on `:8002` locally, and `:8000` is
+> reserved for the bond-mcps auth proxy.
 
 ### MCP Server JWT Configuration
 
@@ -251,7 +255,7 @@ This test script:
 
 2. **Configure Bond AI**
    ```bash
-   export BOND_MCP_CONFIG='{"mcpServers":{"test":{"url":"http://localhost:8000/mcp/sse"}}}'
+   export BOND_MCP_CONFIG='{"mcpServers":{"test":{"url":"http://localhost:5555/mcp/sse"}}}'
    ```
 
 3. **Use the Chat API**

@@ -35,7 +35,7 @@ BLOCK_INDICATORS = [
     "Sorry, I can't help with that",
 ]
 
-BASE_URL = os.getenv("BOND_API_URL", "http://localhost:8000")
+BASE_URL = os.getenv("BOND_API_URL", "http://localhost:8002")
 CHAT_TIMEOUT = 120  # seconds — agents with code interpreter can be slow
 
 

@@ -1,7 +1,7 @@
 # Bondable REST API Endpoints
 
 This document provides examples of how to use the REST API endpoints for the Bondable service.
-All examples use `curl` and assume the API is running at `http://localhost:8000`.
+All examples use `curl` and assume the API is running at `http://localhost:8002`.
 
 ## Authentication (Obtaining a JWT Token)
 
@@ -10,13 +10,13 @@ This API uses JWT Bearer tokens for authenticating protected endpoints. The toke
 **Steps to obtain a JWT token:**
 
 1.  **Initiate Login Flow**:
-    *   Open your web browser and navigate to: `http://localhost:8000/login`
+    *   Open your web browser and navigate to: `http://localhost:8002/login`
     *   This will redirect you to your OAuth2 provider's login page.
     *   Log in with your account and grant the necessary permissions if prompted.
 
 2.  **Handle the Callback**:
     *   After successful authentication, the provider will redirect your browser to the callback URL:
-        `http://localhost:8000/auth/{provider}/callback?code=<AUTHORIZATION_CODE>&scope=<SCOPES_GRANTED>`
+        `http://localhost:8002/auth/{provider}/callback?code=<AUTHORIZATION_CODE>&scope=<SCOPES_GRANTED>`
     *   Your browser will make a GET request to this callback URL.
     *   The API server will exchange the `AUTHORIZATION_CODE` with the provider for user information and then generate a JWT.
     *   The server will respond to this callback request with a JSON containing the access token.
@@ -35,7 +35,7 @@ This API uses JWT Bearer tokens for authenticating protected endpoints. The toke
         `Authorization: Bearer <YOUR_JWT_TOKEN>`
     *   Replace `<YOUR_JWT_TOKEN>` with the actual token you copied.
 
-**Note**: You will need to have your OAuth2 credentials (client ID, client secret) correctly configured in your application's environment variables (e.g., in your `.env` file, used by `bondable/bond/auth.py`) for this flow to work. The redirect URI in your provider's configuration must match the callback URL (e.g., `http://localhost:8000/auth/okta/callback`). See [OAuth2 Configuration](../docs/oauth2-configuration.md) for details.
+**Note**: You will need to have your OAuth2 credentials (client ID, client secret) correctly configured in your application's environment variables (e.g., in your `.env` file, used by `bondable/bond/auth.py`) for this flow to work. The redirect URI in your provider's configuration must match the callback URL (e.g., `http://localhost:8002/auth/okta/callback`). See [OAuth2 Configuration](../docs/oauth2-configuration.md) for details.
 
 ---
 
@@ -73,7 +73,7 @@ Creates a new agent.
     ```
 -   **`curl` Example**:
     ```bash
-    curl -X POST "http://localhost:8000/agents" \
+    curl -X POST "http://localhost:8002/agents" \
     -H "Authorization: Bearer <YOUR_JWT_TOKEN>" \
     -H "Content-Type: application/json" \
     -d '{
@@ -118,7 +118,7 @@ Updates an existing agent identified by its `assistant_id`.
     ```
 -   **`curl` Example**:
     ```bash
-    curl -X PUT "http://localhost:8000/agents/<ASSISTANT_ID>" \
+    curl -X PUT "http://localhost:8002/agents/<ASSISTANT_ID>" \
     -H "Authorization: Bearer <YOUR_JWT_TOKEN>" \
     -H "Content-Type: application/json" \
     -d '{
@@ -145,7 +145,7 @@ Retrieves a list of agents accessible to the authenticated user.
     -   `Authorization: Bearer <YOUR_JWT_TOKEN>`
 -   **`curl` Example**:
     ```bash
-    curl -X GET "http://localhost:8000/agents" \
+    curl -X GET "http://localhost:8002/agents" \
     -H "Authorization: Bearer <YOUR_JWT_TOKEN>"
     ```
 -   **Response**: `200 OK` with a list of `AgentRef` objects.
@@ -189,7 +189,7 @@ Creates a new thread for the authenticated user.
     ```
 -   **`curl` Example (with name)**:
     ```bash
-    curl -X POST "http://localhost:8000/threads" \
+    curl -X POST "http://localhost:8002/threads" \
     -H "Authorization: Bearer <YOUR_JWT_TOKEN>" \
     -H "Content-Type: application/json" \
     -d '{"name": "My API Test Thread"}'
@@ -213,7 +213,7 @@ Retrieves a list of threads for the authenticated user.
     -   `Authorization: Bearer <YOUR_JWT_TOKEN>`
 -   **`curl` Example**:
     ```bash
-    curl -X GET "http://localhost:8000/threads" \
+    curl -X GET "http://localhost:8002/threads" \
     -H "Authorization: Bearer <YOUR_JWT_TOKEN>"
     ```
 -   **Response**: `200 OK` with a list of `ThreadRef` objects.
@@ -246,7 +246,7 @@ Retrieves messages for a specific thread.
     -   `limit`: Maximum number of messages to return (default is 100).
 -   **`curl` Example**:
     ```bash
-    curl -X GET "http://localhost:8000/threads/<THREAD_ID>/messages?limit=10" \
+    curl -X GET "http://localhost:8002/threads/<THREAD_ID>/messages?limit=10" \
     -H "Authorization: Bearer <YOUR_JWT_TOKEN>"
     ```
 -   **Response**: `200 OK` with a list of `MessageRef` objects.
@@ -290,7 +290,7 @@ Sends a prompt to an agent within a specific thread and streams the response.
     ```
 -   **`curl` Example**:
     ```bash
-    curl -X POST "http://localhost:8000/chat" \
+    curl -X POST "http://localhost:8002/chat" \
     -H "Authorization: Bearer <YOUR_JWT_TOKEN>" \
     -H "Content-Type: application/json" \
     -d '{
