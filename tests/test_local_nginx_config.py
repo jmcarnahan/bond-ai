@@ -2,9 +2,14 @@
 
 Runs `nginx -t` inside an ephemeral nginx:1.27-alpine container against the
 local-combined config so a config syntax error never makes it past CI. Skips
-silently if Docker is not available (e.g. CI environments without docker-in-
-docker — the local Makefile path is what catches it there).
+silently if Docker is not available.
+
+Also enforces the design invariants documented in the config header:
+  - All upstreams use host.docker.internal (nginx runs in a container).
+  - No HSTS header (would force HTTPS over local HTTP dev).
+  - OAuth callback routes (/auth/, /connections/) deliberately bypass nginx.
 """
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -60,27 +65,11 @@ def test_nginx_local_combined_conf_is_syntactically_valid():
     assert "syntax is ok" in result.stderr.lower() or "successful" in result.stderr.lower()
 
 
-def test_nginx_local_combined_conf_routes_connections_to_mcps_port():
-    """Regression guard: /connections/ must point at :8000 (bond-mcps), not :8002
-    (bond-ai backend). The MCP OAuth callbacks live in bond-mcps now."""
-    text = NGINX_CONF.read_text()
-    assert "location /connections/" in text
-    # The proxy_pass line for /connections/ must reference :8000.
-    # Capture the block to verify.
-    start = text.index("location /connections/")
-    block = text[start : start + 600]
-    assert "host.docker.internal:8000" in block, (
-        "/connections/ must proxy to bond-mcps on :8000, not bond-ai :8002"
-    )
-
-
 def test_nginx_local_combined_conf_uses_host_docker_internal():
     """All upstreams must use host.docker.internal so the nginx container can
     reach host-running services. 127.0.0.1 inside the container is the
     container itself, not the host — common source of confusion."""
     text = NGINX_CONF.read_text()
-    # Block any proxy_pass to 127.0.0.1 or localhost (would target the
-    # container, not the host).
     for forbidden in ("proxy_pass http://127.0.0.1", "proxy_pass http://localhost"):
         assert forbidden not in text, (
             f"found '{forbidden}' — local-combined nginx runs inside a container "
@@ -94,3 +83,48 @@ def test_nginx_local_combined_conf_drops_hsts_header():
     assert "Strict-Transport-Security" not in text, (
         "HSTS header would force HTTPS upgrade and break local HTTP dev"
     )
+
+
+def _has_active_location_block(text: str, path: str) -> bool:
+    """Return True if the config has an uncommented `location <path>` block.
+
+    The regex anchors on the start of a logical line (optional leading
+    whitespace). Comment lines start with `#`, so they don't match.
+    """
+    pattern = re.compile(r"^\s*location\s+" + re.escape(path), re.MULTILINE)
+    return bool(pattern.search(text))
+
+
+def test_nginx_local_combined_conf_does_not_route_auth():
+    """OAuth user-login callbacks deliberately bypass nginx and hit
+    bond-ai :8002 directly (browser navigates straight there). Cookies set
+    on :8002 cross over to :8080 thanks to localhost cross-port cookie
+    behavior — see docs/local-dev-combined-mode.md. If we route /auth/
+    through nginx, the design changes substantially; don't do it by accident."""
+    text = NGINX_CONF.read_text()
+    assert not _has_active_location_block(text, "/auth/"), (
+        "/auth/ must NOT route through nginx — OAuth user-login callbacks "
+        "go directly to bond-ai :8002 by design"
+    )
+
+
+def test_nginx_local_combined_conf_does_not_route_connections():
+    """MCP OAuth callbacks deliberately bypass nginx and hit bond-mcps
+    :8000 directly. Same rationale as the /auth/ guard above — the design
+    relies on the existing :8000 callback URLs continuing to work, with
+    cross-port cookies handling session continuity."""
+    text = NGINX_CONF.read_text()
+    assert not _has_active_location_block(text, "/connections/"), (
+        "/connections/ must NOT route through nginx — MCP OAuth callbacks "
+        "go directly to bond-mcps :8000 by design"
+    )
+
+
+def test_nginx_local_combined_conf_routes_rest_and_root():
+    """The two routes nginx DOES handle: /rest/ to bond-ai backend, and /
+    to the Flutter dev server. Make sure neither was accidentally dropped."""
+    text = NGINX_CONF.read_text()
+    assert _has_active_location_block(text, "/rest/"), (
+        "missing /rest/ proxy block — API calls from the app won't reach the backend"
+    )
+    assert _has_active_location_block(text, "/"), "missing default `/` proxy block — app UI won't load"
