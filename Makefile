@@ -212,11 +212,17 @@ backend-combined: _check-backend-port
 # Binds Flutter to 0.0.0.0 so the nginx container can proxy it via
 # host.docker.internal. Split-mode binds to localhost (default) for tighter
 # scope; combined mode needs the looser bind.
+#
+# --no-dds disables Dart Developer Service: when Flutter binds to 0.0.0.0,
+# DDS spawns a debug WebSocket on a random high port that the nginx container
+# can't proxy. The browser tries to connect, times out, and DDS crashes the
+# whole `flutter run` process. We don't get hot reload in combined mode (use
+# split mode for active UI iteration — that's already the documented stance).
 frontend-combined: _check-frontend-port
 	@mkdir -p $(LOG_DIR)
 	@echo "Starting Flutter web on :$(FRONTEND_PORT) (API_BASE_URL=$(FLUTTER_COMBINED_BASE))..."
 	@( cd flutterui && API_BASE_URL=$(FLUTTER_COMBINED_BASE) nohup flutter run -d web-server \
-	     --web-port=$(FRONTEND_PORT) --web-hostname=0.0.0.0 \
+	     --web-port=$(FRONTEND_PORT) --web-hostname=0.0.0.0 --no-dds \
 	     --dart-define=API_BASE_URL=$(FLUTTER_COMBINED_BASE) \
 	     --target lib/main.dart ) \
 	     > $(CURDIR)/$(LOG_DIR)/frontend.log 2>&1 &
