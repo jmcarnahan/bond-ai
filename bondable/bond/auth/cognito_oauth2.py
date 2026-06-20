@@ -29,7 +29,7 @@ class CognitoOAuth2Provider(OAuth2Provider):
             "domain": "https://your-domain.auth.us-west-2.amazoncognito.com",
             "client_id": "your_client_id",
             "client_secret": "",  # Optional for public clients (SPAs)
-            "redirect_uri": "http://localhost:8000/auth/cognito/callback",
+            "redirect_uri": "http://localhost:8002/auth/cognito/callback",
             "scopes": ["openid", "email", "phone"],
             "valid_emails": [],  # Optional: restrict access to specific emails
             "region": "us-west-2"

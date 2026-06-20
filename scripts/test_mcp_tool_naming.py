@@ -7,7 +7,7 @@ Verifies correct server authentication when invoking tools.
 
 Usage:
     # Terminal 1: Start backend
-    poetry run uvicorn bondable.rest.main:app --reload --port 8000
+    poetry run uvicorn bondable.rest.main:app --reload --port 8002
 
     # Terminal 2: Start sample MCP server
     export JWT_SECRET_KEY="$JWT_SECRET_KEY"  # Set from your .env file
@@ -28,7 +28,7 @@ from datetime import datetime, timedelta, timezone
 import jwt
 
 
-BASE_URL = os.getenv("BOND_API_URL", "http://localhost:8000")
+BASE_URL = os.getenv("BOND_API_URL", "http://localhost:8002")
 
 
 def create_auth_token():
@@ -234,7 +234,7 @@ def test_create_agent_with_mcp_tools():
         "instructions": "You have access to MCP tools. When asked about time, use the current_time tool. When asked to fetch data, use the fetch_data tool.",
         "model": "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
         "mcp_tools": ["current_time", "fetch_data"]
-    })
+    }, timeout=30)
 
     if response.status_code not in [200, 201]:
         print(f"   ERROR: {response.status_code}")
@@ -257,7 +257,7 @@ def test_invoke_mcp_tool(agent_id, headers):
     # Create thread
     print("\n1. Creating thread...")
     thread_resp = requests.post(f"{BASE_URL}/threads", headers=headers,
-                               json={"name": "MCP Tool Naming Test Thread"})
+                               json={"name": "MCP Tool Naming Test Thread"}, timeout=30)
     if thread_resp.status_code not in [200, 201]:
         print(f"   ERROR creating thread: {thread_resp.status_code}")
         return None, False
@@ -273,7 +273,7 @@ def test_invoke_mcp_tool(agent_id, headers):
         "thread_id": thread_id,
         "agent_id": agent_id,
         "prompt": "What is the current time? Please use the current_time tool."
-    }, stream=True)
+    }, stream=True, timeout=120)
 
     if response.status_code != 200:
         print(f"   ERROR: {response.status_code}")
@@ -306,10 +306,10 @@ def cleanup(agent_id, thread_id, headers):
     print("=" * 60)
 
     if agent_id:
-        resp = requests.delete(f"{BASE_URL}/agents/{agent_id}", headers=headers)
+        resp = requests.delete(f"{BASE_URL}/agents/{agent_id}", headers=headers, timeout=30)
         print(f"   Deleted agent {agent_id}: {resp.status_code}")
     if thread_id:
-        resp = requests.delete(f"{BASE_URL}/threads/{thread_id}", headers=headers)
+        resp = requests.delete(f"{BASE_URL}/threads/{thread_id}", headers=headers, timeout=30)
         print(f"   Deleted thread {thread_id}: {resp.status_code}")
 
 
@@ -365,7 +365,7 @@ def main():
     except requests.ConnectionError as e:
         print(f"\nSkipping integration tests (backend not running): {e}")
         print("Make sure to start the backend server first:")
-        print("  poetry run uvicorn bondable.rest.main:app --reload --port 8000")
+        print("  poetry run uvicorn bondable.rest.main:app --reload --port 8002")
     except Exception as e:
         print(f"\nIntegration test error: {e}")
         import traceback

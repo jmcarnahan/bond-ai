@@ -41,7 +41,7 @@ class TestIsSafeRedirectUrl:
         assert is_safe_redirect_url("https://localhost/callback") is True
 
     def test_localhost_with_port(self):
-        assert is_safe_redirect_url("http://localhost:3000/callback") is True
+        assert is_safe_redirect_url("http://localhost:3002/callback") is True
 
     def test_127_0_0_1(self):
         assert is_safe_redirect_url("http://127.0.0.1/callback") is True
@@ -149,7 +149,7 @@ class TestIsSafeRedirectUrl:
         assert is_safe_redirect_url("https://myapp.internal/callback") is True
 
     def test_http_still_allowed_for_localhost(self):
-        assert is_safe_redirect_url("http://localhost:3000/callback") is True
+        assert is_safe_redirect_url("http://localhost:3002/callback") is True
 
     # --- Wildcard suffix no longer matches ---
 

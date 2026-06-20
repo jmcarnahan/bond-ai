@@ -209,7 +209,7 @@ class Config:
             'JWT_ALGORITHM': os.environ.get("JWT_ALGORITHM", "HS256"),
             'ACCESS_TOKEN_EXPIRE_MINUTES': int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 1440)),  # Default to 24 hours
             'JWT_ISSUER': os.environ.get("JWT_ISSUER", "bondable"),
-            'JWT_REDIRECT_URI': os.environ.get("JWT_REDIRECT_URI", "http://localhost:3004"),
+            'JWT_REDIRECT_URI': os.environ.get("JWT_REDIRECT_URI", "http://localhost:3002"),
         }
         return type('JWTConfig', (object,), jwt_config)()
 
@@ -333,7 +333,7 @@ class Config:
             LOGGER.info("Using Google OAuth2 credentials from Secret Manager")
 
         auth_creds = json.loads(auth_creds_str)
-        redirect_uri = os.getenv('GOOGLE_AUTH_REDIRECT_URI', 'http://localhost:8000/auth/google/callback')
+        redirect_uri = os.getenv('GOOGLE_AUTH_REDIRECT_URI', 'http://localhost:8002/auth/google/callback')
         scopes_str = os.getenv('GOOGLE_AUTH_SCOPES', 'openid, https://www.googleapis.com/auth/userinfo.email, https://www.googleapis.com/auth/userinfo.profile')
         scopes = [scope.strip() for scope in scopes_str.split(",")]
         valid_emails = []
@@ -373,7 +373,7 @@ class Config:
             else:
                 LOGGER.warning("No Okta client secret found in app config, env var, or OKTA_SECRET_NAME")
 
-        redirect_uri = os.getenv('OKTA_REDIRECT_URI', 'http://localhost:8000/auth/okta/callback')
+        redirect_uri = os.getenv('OKTA_REDIRECT_URI', 'http://localhost:8002/auth/okta/callback')
         scopes_str = os.getenv('OKTA_SCOPES', 'openid, profile, email')
         scopes = [scope.strip() for scope in scopes_str.split(",")]
         valid_emails = []
@@ -416,7 +416,7 @@ class Config:
                 except Exception as e:
                     LOGGER.error(f"Failed to get Cognito client secret from Secrets Manager: {e}")
 
-        redirect_uri = os.getenv('COGNITO_REDIRECT_URI', 'http://localhost:8000/auth/cognito/callback')
+        redirect_uri = os.getenv('COGNITO_REDIRECT_URI', 'http://localhost:8002/auth/cognito/callback')
         scopes_str = os.getenv('COGNITO_SCOPES', 'openid, email, phone')
         scopes = [scope.strip() for scope in scopes_str.split(",")]
         valid_emails = []

@@ -200,7 +200,7 @@ class TestAtlassianMcpConnection:
 class BondAPIClient:
     """HTTP client for interacting with Bond AI REST API in tests."""
 
-    def __init__(self, base_url: str = "http://localhost:8000"):
+    def __init__(self, base_url: str = "http://localhost:8002"):
         self.base_url = base_url.rstrip('/')
         self.headers = {}
         self.created_agents = []

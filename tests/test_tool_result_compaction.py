@@ -1081,7 +1081,7 @@ class TestAlwaysRespond:
         # Mock Config to return MCP config
         with patch("bondable.bond.providers.bedrock.BedrockAgent.Config") as mock_config:
             mock_config.config.return_value.get_mcp_config.return_value = {
-                "mcpServers": {"test-server": {"url": "http://localhost:8000"}}
+                "mcpServers": {"test-server": {"url": "http://localhost:8002"}}
             }
             with patch("bondable.bond.providers.bedrock.BedrockAgent._resolve_server_from_hash", return_value="test-server"):
                 results = agent._handle_return_control(self._make_return_control())

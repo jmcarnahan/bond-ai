@@ -20,16 +20,22 @@ poetry install
 cp .env.example .env
 # Edit .env with your API keys
 
-# Run all components (in separate terminals)
-# 1. MCP Server
+# Recommended: start backend (:8002) and frontend (:3002) with one command
+make dev
+
+# Or run components in separate terminals:
+# 1. MCP Server (optional)
 fastmcp run scripts/sample_mcp_server.py --transport streamable-http --port 5555
 
 # 2. Backend API
-uvicorn bondable.rest.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn bondable.rest.main:app --reload --host 0.0.0.0 --port 8002
 
 # 3. Frontend (from flutterui directory)
-cd flutterui && flutter run -d chrome --web-port=3000 --target lib/main.dart
+cd flutterui && flutter run -d chrome --web-port=3002 --target lib/main.dart
 ```
+
+> Bond AI runs on **8002 / 3002** locally to avoid conflicting with the
+> bond-mcps auth proxy (`:8000`) and sbel-crm (`:8001 / :3001`).
 
 ## Prerequisites
 
@@ -104,7 +110,7 @@ cp .env.example .env  # Create if doesn't exist
 
 Edit `flutterui/.env`:
 ```env
-API_BASE_URL=http://localhost:8000
+API_BASE_URL=http://localhost:8002
 ENABLE_AGENTS=true
 ```
 
@@ -118,27 +124,44 @@ For more theming options, see the [Flutter Theming Guide](flutterui/THEMING.md).
 
 ## Running the Application
 
-You'll need three terminal windows to run all components:
+### Recommended: `make`
 
-### Terminal 1: MCP Server
+```bash
+make dev        # starts backend on :8002 and frontend on :3002
+make status     # show what's up/down
+make logs       # tail -F tmp/logs/*.log
+make stop       # stop both
+```
+
+Access the application at: **http://localhost:3002**
+
+`make check-ports` runs a preflight check and prints which process is using
+:8002 or :3002 if either is busy.
+
+If your local dev uses MCP servers via OAuth, also run `make dev` in
+`../bond-mcps/` — that starts the auth proxy on :8000.
+
+### Manual (separate terminals)
+
+#### Terminal 1: MCP Server (optional)
 ```bash
 # From project root
 fastmcp run scripts/sample_mcp_server.py --transport streamable-http --port 5555
 ```
 
-### Terminal 2: Backend API
+#### Terminal 2: Backend API
 ```bash
 # From project root
-uvicorn bondable.rest.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn bondable.rest.main:app --reload --host 0.0.0.0 --port 8002
 ```
 
-### Terminal 3: Frontend
+#### Terminal 3: Frontend
 ```bash
 # From flutterui directory
-flutter run -d chrome --web-port=3000 --target lib/main.dart
+flutter run -d chrome --web-port=3002 --target lib/main.dart
 ```
 
-Access the application at: **http://localhost:3000**
+Access the application at: **http://localhost:3002**
 
 ## Architecture Overview
 
@@ -171,8 +194,8 @@ bond-ai/
 ## API Documentation
 
 Once running, access the interactive API documentation:
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+- **Swagger UI**: http://localhost:8002/docs
+- **ReDoc**: http://localhost:8002/redoc
 
 ## Testing
 
@@ -250,8 +273,8 @@ poetry run pytest --integration            # Include integration tests (requires
 
 **Port already in use:**
 ```bash
-# Kill process on port 8000
-lsof -ti:8000 | xargs kill -9
+# Kill process on port 8002 (use `make stop` instead when possible)
+lsof -ti:8002 | xargs kill -9
 
 # Kill process on port 5555
 lsof -ti:5555 | xargs kill -9

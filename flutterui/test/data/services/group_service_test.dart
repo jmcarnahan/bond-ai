@@ -71,7 +71,7 @@ void main() {
   late MockAuthService mockAuthService;
 
   setUp(() {
-    ApiConstants.baseUrl = 'http://localhost:8000';
+    ApiConstants.baseUrl = 'http://localhost:8002';
     mockAuthService = MockAuthService();
   });
 

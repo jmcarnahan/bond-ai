@@ -52,7 +52,7 @@ def create_local_admin_token(admin_email: str = "admin@example.com") -> str:
         raise
 
 
-def recreate_table(table_name: str, token: str, base_url: str = "http://localhost:8000"):
+def recreate_table(table_name: str, token: str, base_url: str = "http://localhost:8002"):
     """Call the admin endpoint to recreate a table."""
     try:
         headers = {
@@ -104,7 +104,7 @@ def main():
     table_name = sys.argv[1]
 
     # Parse optional arguments
-    base_url = "http://localhost:8000"
+    base_url = "http://localhost:8002"
     token = None
 
     if "--url" in sys.argv:

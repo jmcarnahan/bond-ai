@@ -2,6 +2,15 @@
 
 **Complete guide for integrating OAuth 2.0 MCP servers with Bond AI**
 
+> **Note (2026-06-19):** The bundled atlassian/github/microsoft MCP servers
+> and the OAuth proxy have moved to the separate
+> [`bond-mcps`](https://github.com/jmcarnahan/bond-mcps) repository. The
+> local-dev port layout is now: bond-ai backend on **:8002**, frontend on
+> **:3002**, bond-mcps auth proxy on **:8000**. URLs in this doc that point
+> to `localhost:8000/connections/<server>/callback` are the bond-mcps auth
+> proxy and stay on port 8000; URLs that point to the bond-ai backend
+> (uvicorn, `/auth/*`, etc.) are now on 8002.
+
 ---
 
 ## Table of Contents
@@ -78,13 +87,13 @@ Bond AI supports integration with external MCP (Model Context Protocol) servers 
 
 1. **Bond AI backend** running locally:
    ```bash
-   poetry run uvicorn bondable.rest.main:app --reload --port 8000
+   poetry run uvicorn bondable.rest.main:app --reload --port 8002
    ```
 
 2. **Bond AI frontend** running locally:
    ```bash
    cd flutterui
-   flutter run -d chrome --web-port 3000
+   flutter run -d chrome --web-port 3002
    ```
 
 3. **Docker** installed for running MCP servers
@@ -182,11 +191,11 @@ BOND_MCP_CONFIG='{
 
 1. **Restart Backend**: Restart to load new configuration
    ```bash
-   poetry run uvicorn bondable.rest.main:app --reload --port 8000
+   poetry run uvicorn bondable.rest.main:app --reload --port 8002
    ```
 
 2. **Authorize via UI**:
-   - Navigate to Connections page: `http://localhost:3000/connections`
+   - Navigate to Connections page: `http://localhost:3002/connections`
    - Click "Connect" for your new service
    - Complete OAuth authorization
    - Verify connection shows as "Active"
@@ -347,12 +356,12 @@ BOND_MCP_CONFIG='{
 # Stop current backend (Ctrl+C)
 
 # Restart with new config
-poetry run uvicorn bondable.rest.main:app --reload --port 8000
+poetry run uvicorn bondable.rest.main:app --reload --port 8002
 ```
 
 ### 5. Authorize Connection
 
-1. **Open UI**: http://localhost:3000/connections
+1. **Open UI**: http://localhost:3002/connections
 2. **Click "Connect"** on Atlassian connection
 3. **Authorize**: You'll be redirected to Atlassian
 4. **Grant Access**: Accept permissions
@@ -421,7 +430,7 @@ poetry run pytest tests/test_mcp_atlassian_e2e.py -v -s
 ### Manual Testing
 
 1. **Create Agent with MCP Tools**:
-   - Go to http://localhost:3000/agents
+   - Go to http://localhost:3002/agents
    - Click "Create Agent"
    - In "MCP Tools" section, select Jira tools (e.g., `jira_get_issue`)
    - Click "Create"
@@ -787,7 +796,7 @@ async def _get_mcp_tool_definitions(mcp_config, tool_names, user_id):
 |----------|---------|---------|
 | `BOND_MCP_CONFIG` | MCP server configuration | JSON config |
 | `JWT_SECRET_KEY` | Token encryption key | 64-char hex string |
-| `CORS_ALLOWED_ORIGINS` | Frontend CORS | `http://localhost:3000` |
+| `CORS_ALLOWED_ORIGINS` | Frontend CORS | `http://localhost:3002` |
 
 ### Docker Commands
 

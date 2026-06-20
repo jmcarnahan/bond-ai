@@ -97,10 +97,10 @@ echo "========================================="
 echo ""
 
 # Override OAuth redirect URIs for the combined container.
-# The .env values point to localhost:8000 (direct Uvicorn) and localhost:3000
-# (Flutter dev server), but in Docker everything runs behind Nginx on $PORT.
-# We export these overrides so the -e VARNAME flags in DOCKER_ENV_FLAGS pick
-# up the correct values (Docker reads from the host's shell environment).
+# In local dev the .env points bond-ai at localhost:8002 (uvicorn) and
+# localhost:3002 (Flutter web). In Docker everything runs behind Nginx on
+# $PORT, so we override these here. The -e VARNAME flags in DOCKER_ENV_FLAGS
+# pick up the values from the host shell's environment.
 LOCAL_ORIGIN="http://localhost:$PORT"
 export OKTA_REDIRECT_URI="$LOCAL_ORIGIN/auth/okta/callback"
 export COGNITO_REDIRECT_URI="$LOCAL_ORIGIN/auth/cognito/callback"
@@ -111,8 +111,11 @@ export JWT_REDIRECT_URI="$LOCAL_ORIGIN"
 # - MCP server URLs use localhost/127.0.0.1 to reach services on the host.
 #   Inside Docker, localhost = the container, so we replace with
 #   host.docker.internal (Docker's magic hostname for the host machine).
-# - OAuth redirect_uri values must stay as localhost (browser navigates to
-#   them), but need port updated from 8000 to $PORT.
+# - OAuth redirect_uri values must stay as localhost (the browser navigates
+#   to them), but need their port rewritten to $PORT — these are the MCP
+#   /connections/<server>/callback URIs that, in local dev, target the
+#   bond-mcps auth proxy on :8000; in Docker they're served by Nginx on
+#   $PORT alongside everything else.
 #
 # Strategy: save redirect_uri ports with a placeholder, rewrite all
 # localhost→host.docker.internal, then restore redirect_uri as localhost.

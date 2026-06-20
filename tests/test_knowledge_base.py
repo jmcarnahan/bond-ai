@@ -21,7 +21,7 @@ Prerequisites:
        poetry run python scripts/test_knowledge_base.py
 
 Environment Variables:
-    API_BASE_URL: Backend URL (default: http://localhost:8000)
+    API_BASE_URL: Backend URL (default: http://localhost:8002)
 """
 
 import os
@@ -46,7 +46,7 @@ class KnowledgeBaseTest:
     """Test Knowledge Base functionality."""
 
     def __init__(self, base_url: str = None):
-        self.base_url = (base_url or os.getenv("API_BASE_URL", "http://localhost:8000")).rstrip('/')
+        self.base_url = (base_url or os.getenv("API_BASE_URL", "http://localhost:8002")).rstrip('/')
         self.headers = {}
         self.created_resources = {
             "agents": [],

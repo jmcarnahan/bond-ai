@@ -67,7 +67,7 @@ void main() async {
 
   // Set API base URL from .env or compile-time constants
   if (ApiConstants.baseUrl.isEmpty) {
-    final apiBaseUrl = dotenv.env['API_BASE_URL'] ?? 'http://localhost:8000';
+    final apiBaseUrl = dotenv.env['API_BASE_URL'] ?? 'http://localhost:8002';
     ApiConstants.baseUrl = apiBaseUrl;
     logger.i('Using API base URL: $apiBaseUrl');
   } else {

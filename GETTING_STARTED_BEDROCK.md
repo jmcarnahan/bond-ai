@@ -219,8 +219,8 @@ cd ..
 2. Go to **Applications** → **Create App Integration**
 3. Select **OIDC - OpenID Connect** and **Web Application**
 4. Configure the app:
-   - Sign-in redirect URI: `http://localhost:8000/auth/okta/callback`
-   - Sign-out redirect URI: `http://localhost:8000`
+   - Sign-in redirect URI: `http://localhost:8002/auth/okta/callback`
+   - Sign-out redirect URI: `http://localhost:8002`
 5. Copy the Client ID, Client Secret, and Okta domain to your `.env` file
 
 ## Running the Application
@@ -248,12 +248,12 @@ The backend provides the REST API for the frontend to communicate with the AI pr
 
 ```bash
 # From the project root directory
-uvicorn bondable.rest.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn bondable.rest.main:app --reload --host 0.0.0.0 --port 8002
 ```
 
 You should see:
 ```
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Uvicorn running on http://0.0.0.0:8002 (Press CTRL+C to quit)
 INFO:     Started reloader process
 INFO:     Started server process
 INFO:     Waiting for application startup.
@@ -266,7 +266,7 @@ The web-based user interface for interacting with Bond AI.
 ```bash
 # From the project root directory
 cd flutterui
-flutter run -d chrome --web-port=3000 --target lib/main.dart
+flutter run -d chrome --web-port=3002 --target lib/main.dart
 ```
 
 You should see Flutter compile and launch Chrome with the Bond AI interface.
@@ -274,7 +274,7 @@ You should see Flutter compile and launch Chrome with the Bond AI interface.
 ### Accessing the Application
 
 Once all three components are running:
-1. Open your browser to `http://localhost:3000`
+1. Open your browser to `http://localhost:3002`
 2. Click "Sign in" with your configured auth provider
 3. After authentication, you'll be redirected to the main Bond AI interface
 4. Create a new agent and start chatting!
@@ -303,7 +303,7 @@ Should return a success response.
 
 ### 4. Check Backend API
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8002/health
 ```
 
 Should return `{"status": "healthy"}`
@@ -325,7 +325,7 @@ Should return `{"status": "healthy"}`
    - Ensure bucket is in the same region as your Bedrock access
 
 4. **Frontend won't connect to backend**
-   - Check that backend is running on port 8000
+   - Check that backend is running on port 8002
    - Verify no firewall blocking local connections
    - Check browser console for CORS errors
 
@@ -338,7 +338,7 @@ Should return `{"status": "healthy"}`
 For more detailed logging:
 ```bash
 # Backend with debug logging
-LOG_LEVEL=DEBUG uvicorn bondable.rest.main:app --reload --host 0.0.0.0 --port 8000
+LOG_LEVEL=DEBUG uvicorn bondable.rest.main:app --reload --host 0.0.0.0 --port 8002
 
 # Run specific test with verbose output
 pytest tests/test_bedrock_provider_integration.py -v -s

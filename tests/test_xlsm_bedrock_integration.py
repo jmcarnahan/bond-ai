@@ -77,7 +77,7 @@ def create_sample_xlsm() -> io.BytesIO:
 class TestXLSMBedrockIntegration:
     """Integration tests for XLSM file processing with Bedrock"""
 
-    BASE_URL = "http://localhost:8000"
+    BASE_URL = "http://localhost:8002"
 
     @pytest.fixture(scope="class")
     def auth_headers(self):
