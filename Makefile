@@ -16,8 +16,10 @@
 # Requires: poetry, flutter, lsof, ps.
 
 .PHONY: install dev backend frontend stop restart status logs \
-        logs-backend logs-frontend check-ports check-mcps clean help smoke \
+        logs-backend logs-frontend check-ports check-mcps check-mcps-hard \
+        clean help smoke \
         nginx nginx-stop nginx-reload nginx-logs nginx-status \
+        dev-combined backend-combined frontend-combined \
         _check-backend-port _check-frontend-port \
         _wait-backend _wait-frontend
 
@@ -31,6 +33,9 @@ MCP_AUTH_PORT ?= 8000
 NGINX_PORT      ?= 8080
 NGINX_CONTAINER := bond-ai-nginx-local
 NGINX_CONF      := $(CURDIR)/deployment/nginx-local-combined.conf
+
+ENV_FILE_COMBINED      ?= .env.combined
+FLUTTER_COMBINED_BASE  ?= http://localhost:$(NGINX_PORT)
 
 # ----- install -----------------------------------------------------------
 
@@ -69,6 +74,16 @@ check-mcps:
 	@if ! lsof -nP -iTCP:$(MCP_AUTH_PORT) -sTCP:LISTEN >/dev/null 2>&1; then \
 	  echo "  [warn] bond-mcps auth proxy not detected on :$(MCP_AUTH_PORT)."; \
 	  echo "         MCP OAuth flows will fail until you run 'make dev' in ../bond-mcps/."; \
+	fi
+
+# Hard-fail variant for combined mode — a half-broken combined stack (no MCPs
+# reachable through the front door) is worse than telling the user to start
+# bond-mcps first.
+check-mcps-hard:
+	@if ! curl -sf --max-time 2 -o /dev/null http://localhost:$(MCP_AUTH_PORT)/health 2>/dev/null; then \
+	  echo "  bond-mcps auth proxy not reachable on :$(MCP_AUTH_PORT)" >&2; \
+	  echo "  run 'make dev-combined' in ../bond-mcps/ first" >&2; \
+	  exit 1; \
 	fi
 
 # ----- start -------------------------------------------------------------
@@ -133,13 +148,63 @@ dev: check-ports
 	@$(MAKE) --no-print-directory backend
 	@$(MAKE) --no-print-directory frontend
 
+# ----- start (combined mode) ---------------------------------------------
+#
+# Combined mode runs everything behind an nginx front door on :$(NGINX_PORT).
+# Requires bond-mcps reachable on :$(MCP_AUTH_PORT) (hard-fails otherwise) and
+# .env.combined populated (copy from .env.combined.example).
+#
+# Differences from `dev`:
+#   - backend loads .env.combined (BOND_FRONT_DOOR_URL, OAuth callbacks pointed
+#     at :$(NGINX_PORT), COOKIE_SECURE=false for HTTP)
+#   - Flutter binds to 0.0.0.0 so nginx (in Docker) can reach it via
+#     host.docker.internal:$(FRONTEND_PORT)
+#   - API_BASE_URL points at the front door so the browser hits same-origin
+
+dev-combined: check-ports check-mcps-hard
+	@if [ ! -f "$(ENV_FILE_COMBINED)" ]; then \
+	  echo "  missing $(ENV_FILE_COMBINED) — copy .env.combined.example and edit" >&2; \
+	  exit 1; \
+	fi
+	@$(MAKE) --no-print-directory backend-combined
+	@$(MAKE) --no-print-directory frontend-combined
+	@$(MAKE) --no-print-directory nginx
+	@echo
+	@echo "Combined dev stack ready at http://localhost:$(NGINX_PORT)/"
+	@echo "Logs: tmp/logs/{backend,frontend}.log; nginx logs: make nginx-logs"
+
+backend-combined: _check-backend-port
+	@mkdir -p $(LOG_DIR)
+	@echo "Starting bond-ai backend on :$(BACKEND_PORT) (env: $(ENV_FILE_COMBINED))..."
+	@( set -a; . ./$(ENV_FILE_COMBINED); set +a; \
+	   nohup poetry run uvicorn bondable.rest.main:app --reload \
+	     --host 0.0.0.0 --port $(BACKEND_PORT) ) \
+	     > $(CURDIR)/$(LOG_DIR)/backend.log 2>&1 &
+	@$(MAKE) --no-print-directory _wait-backend
+
+# Binds Flutter to 0.0.0.0 so the nginx container can proxy it via
+# host.docker.internal. Split-mode binds to localhost (default) for tighter
+# scope; combined mode needs the looser bind.
+frontend-combined: _check-frontend-port
+	@mkdir -p $(LOG_DIR)
+	@echo "Starting Flutter web on :$(FRONTEND_PORT) (API_BASE_URL=$(FLUTTER_COMBINED_BASE))..."
+	@( cd flutterui && API_BASE_URL=$(FLUTTER_COMBINED_BASE) nohup flutter run -d web-server \
+	     --web-port=$(FRONTEND_PORT) --web-hostname=0.0.0.0 \
+	     --dart-define=API_BASE_URL=$(FLUTTER_COMBINED_BASE) \
+	     --target lib/main.dart ) \
+	     > $(CURDIR)/$(LOG_DIR)/frontend.log 2>&1 &
+	@$(MAKE) --no-print-directory _wait-frontend
+
 # ----- stop --------------------------------------------------------------
 
 # Snapshot-then-kill: gather PIDs first (so we can report all services even
 # after the first pgid-sweep kills the rest), then loop kills by pgid + pid.
 # Don't refactor into per-port find+kill — that pattern only reports the
 # first service stopped, since subsequent iterations find nothing.
+# Also stops the nginx container (no-op if it's not running) so `make stop`
+# covers both split and combined modes uniformly.
 stop:
+	@$(MAKE) --no-print-directory nginx-stop
 	@pids_to_kill=""; \
 	for entry in "backend:$(BACKEND_PORT)" "frontend:$(FRONTEND_PORT)"; do \
 	  name=$${entry%%:*}; port=$${entry##*:}; \
@@ -255,6 +320,7 @@ help:
 	@echo "  make clean          Remove tmp/logs"
 	@echo ""
 	@echo "Combined mode (nginx front-door on :$(NGINX_PORT); see docs/local-dev-combined-mode.md):"
+	@echo "  make dev-combined   Start backend + frontend + nginx (requires bond-mcps + .env.combined)"
 	@echo "  make nginx          Start nginx container (proxies to :$(BACKEND_PORT) / :$(MCP_AUTH_PORT) / :$(FRONTEND_PORT))"
 	@echo "  make nginx-stop     Stop nginx container"
 	@echo "  make nginx-reload   Reload nginx config without dropping connections"

@@ -1,6 +1,8 @@
 .env
 .env.bkup
 .env.*
+!.env.example
+!.env.combined.example
 mcp-atlassian.env
 **/.metadata.db
 **/.bondcache.db
