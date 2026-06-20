@@ -21,7 +21,7 @@
         nginx nginx-stop nginx-reload nginx-logs nginx-status \
         dev-combined backend-combined frontend-combined \
         _check-backend-port _check-frontend-port \
-        _wait-backend _wait-frontend
+        _wait-backend _wait-frontend _check-providers-combined
 
 LOG_DIR := tmp/logs
 
@@ -35,7 +35,12 @@ NGINX_CONTAINER := bond-ai-nginx-local
 NGINX_CONF      := $(CURDIR)/deployment/nginx-local-combined.conf
 
 ENV_FILE_COMBINED      ?= .env.combined
-FLUTTER_COMBINED_BASE  ?= http://localhost:$(NGINX_PORT)
+# The Flutter app constructs API URLs as `${API_BASE_URL}/<endpoint>` where
+# <endpoint> is bare (e.g. `/providers`, `/login/google`). In combined mode
+# we need those to reach the backend through nginx's `/rest/` proxy, so the
+# baseURL must include the `/rest` segment — otherwise calls hit the SPA
+# fallthrough and the backend never sees them.
+FLUTTER_COMBINED_BASE  ?= http://localhost:$(NGINX_PORT)/rest
 
 # ----- install -----------------------------------------------------------
 
@@ -169,9 +174,31 @@ dev-combined: check-ports check-mcps-hard
 	@$(MAKE) --no-print-directory backend-combined
 	@$(MAKE) --no-print-directory frontend-combined
 	@$(MAKE) --no-print-directory nginx
+	@$(MAKE) --no-print-directory _check-providers-combined
 	@echo
 	@echo "Combined dev stack ready at http://localhost:$(NGINX_PORT)/"
 	@echo "Logs: tmp/logs/{backend,frontend}.log; nginx logs: make nginx-logs"
+
+# Probe /rest/providers through nginx and report. Three failure modes this
+# catches that would otherwise show up as a confusing "no providers" screen
+# in the Flutter UI:
+#   1. nginx /rest/ proxy misconfigured → response is HTML (SPA fallthrough)
+#   2. backend not responding → empty response
+#   3. backend up + nginx OK but no OAuth client IDs in .env → empty list
+_check-providers-combined:
+	@out=$$(curl -s --max-time 3 http://localhost:$(NGINX_PORT)/rest/providers 2>/dev/null); \
+	case "$$out" in \
+	  '') echo "  [warn] /rest/providers returned no response — backend may still be starting" ;; \
+	  '<'*) echo "  [warn] /rest/providers returned HTML — nginx /rest/ proxy isn't reaching the backend (see docs/local-dev-combined-mode.md)" ;; \
+	  '{'*) \
+	    n=$$(echo "$$out" | tr ',' '\n' | grep -c '"name"' || true); \
+	    if [ "$$n" = "0" ]; then \
+	      echo "  [warn] /rest/providers returned no OAuth providers — check .env for GOOGLE_CLIENT_ID / OKTA_* / COGNITO_*"; \
+	    else \
+	      echo "  providers OK ($$n configured)"; \
+	    fi ;; \
+	  *) echo "  [warn] /rest/providers returned unexpected response: $$(echo $$out | head -c 80)" ;; \
+	esac
 
 backend-combined: _check-backend-port
 	@mkdir -p $(LOG_DIR)
