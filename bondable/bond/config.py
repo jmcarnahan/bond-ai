@@ -20,40 +20,6 @@ load_dotenv()
 from typing import Type, TypeVar
 T = TypeVar("T")
 
-
-def _rewrite_redirect_uris_for_front_door(mcp_config: dict) -> dict:
-    """If BOND_FRONT_DOOR_URL is set, rewrite OAuth `redirect_uri` values inside
-    BOND_MCP_CONFIG that point at the local bond-mcps auth proxy (localhost:8000
-    or 127.0.0.1:8000) so they go through the front-door host instead.
-
-    This lets developers keep a single BOND_MCP_CONFIG in their `.env` and have
-    combined-mode local dev (nginx :8080) work without maintaining a duplicate
-    `.env.combined`. Real prod URLs (https://, different hosts) are left alone.
-    """
-    front_door = os.environ.get("BOND_FRONT_DOOR_URL", "").strip().rstrip("/")
-    if not front_door:
-        return mcp_config
-
-    rewrites = 0
-    for server in mcp_config.get("mcpServers", {}).values():
-        oauth = server.get("oauth_config") if isinstance(server, dict) else None
-        if not isinstance(oauth, dict):
-            continue
-        original = oauth.get("redirect_uri")
-        if not isinstance(original, str):
-            continue
-        for prefix in ("http://localhost:8000", "http://127.0.0.1:8000"):
-            if original.startswith(prefix):
-                oauth["redirect_uri"] = front_door + original[len(prefix):]
-                rewrites += 1
-                break
-    if rewrites:
-        LOGGER.info(
-            f"Rewrote {rewrites} MCP redirect URI(s) to use "
-            f"BOND_FRONT_DOOR_URL={front_door}"
-        )
-    return mcp_config
-
 class Config:
 
     provider = None
@@ -500,7 +466,7 @@ class Config:
         if mcp_config:
             server_count = len(mcp_config.get("mcpServers", {}))
             LOGGER.info(f"Loaded MCP config from app config secret with {server_count} servers")
-            return _rewrite_redirect_uris_for_front_door(mcp_config)
+            return mcp_config
 
         # Fall back to env var
         # T20: Warn when using env var fallback in production (Secrets Manager preferred)
@@ -523,7 +489,7 @@ class Config:
             mcp_config = json.loads(mcp_config_str)
             server_count = len(mcp_config.get("mcpServers", {}))
             LOGGER.info(f"Loaded MCP config with {server_count} servers")
-            return _rewrite_redirect_uris_for_front_door(mcp_config)
+            return mcp_config
         except json.JSONDecodeError as e:
             LOGGER.error(f"Error parsing BOND_MCP_CONFIG: {e}")
             return {"mcpServers": {}}
