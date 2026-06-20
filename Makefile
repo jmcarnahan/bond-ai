@@ -17,6 +17,7 @@
 
 .PHONY: install dev backend frontend stop restart status logs \
         logs-backend logs-frontend check-ports check-mcps clean help smoke \
+        nginx nginx-stop nginx-reload nginx-logs nginx-status \
         _check-backend-port _check-frontend-port \
         _wait-backend _wait-frontend
 
@@ -25,6 +26,11 @@ LOG_DIR := tmp/logs
 BACKEND_PORT  ?= 8002
 FRONTEND_PORT ?= 3002
 MCP_AUTH_PORT ?= 8000
+
+# Combined-mode front-door (nginx in Docker; see docs/local-dev-combined-mode.md).
+NGINX_PORT      ?= 8080
+NGINX_CONTAINER := bond-ai-nginx-local
+NGINX_CONF      := $(CURDIR)/deployment/nginx-local-combined.conf
 
 # ----- install -----------------------------------------------------------
 
@@ -179,6 +185,59 @@ logs-frontend:
 clean:
 	rm -rf $(LOG_DIR)
 
+# ----- nginx front door (combined mode) ----------------------------------
+#
+# Runs nginx:1.27-alpine in Docker against deployment/nginx-local-combined.conf.
+# Upstreams are reached via host.docker.internal: backend :8002, bond-mcps
+# auth proxy :8000, Flutter web :3002. See docs/local-dev-combined-mode.md.
+
+nginx:
+	@if docker ps --format '{{.Names}}' | grep -q "^$(NGINX_CONTAINER)$$"; then \
+	  echo "  nginx container already running"; exit 0; \
+	fi
+	@if [ ! -f "$(NGINX_CONF)" ]; then \
+	  echo "  missing $(NGINX_CONF)" >&2; exit 1; \
+	fi
+	@echo "Starting nginx front-door on :$(NGINX_PORT)..."
+	@docker run -d --rm \
+	  --name $(NGINX_CONTAINER) \
+	  -p $(NGINX_PORT):8080 \
+	  -v "$(NGINX_CONF):/etc/nginx/conf.d/default.conf:ro" \
+	  --add-host=host.docker.internal:host-gateway \
+	  nginx:1.27-alpine >/dev/null
+	@sleep 1
+	@$(MAKE) --no-print-directory nginx-status
+
+nginx-stop:
+	@if docker ps --format '{{.Names}}' | grep -q "^$(NGINX_CONTAINER)$$"; then \
+	  echo "Stopping nginx container..."; \
+	  docker stop $(NGINX_CONTAINER) >/dev/null; \
+	else \
+	  echo "  nginx container not running"; \
+	fi
+
+# `nginx -s reload` inside the container — picks up edits to
+# nginx-local-combined.conf without dropping connections. Faster than
+# nginx-stop + nginx.
+nginx-reload:
+	@if ! docker ps --format '{{.Names}}' | grep -q "^$(NGINX_CONTAINER)$$"; then \
+	  echo "  nginx container not running — use 'make nginx' to start it" >&2; exit 1; \
+	fi
+	@echo "Reloading nginx config..."
+	@docker exec $(NGINX_CONTAINER) nginx -t && \
+	  docker exec $(NGINX_CONTAINER) nginx -s reload && \
+	  echo "  reloaded"
+
+nginx-logs:
+	@docker logs -f $(NGINX_CONTAINER)
+
+nginx-status:
+	@if docker ps --format '{{.Names}}' | grep -q "^$(NGINX_CONTAINER)$$"; then \
+	  echo "  [up]   nginx :$(NGINX_PORT) (container $(NGINX_CONTAINER))"; \
+	else \
+	  echo "  [down] nginx :$(NGINX_PORT)"; \
+	fi
+
 help:
 	@echo "Bond AI local dev (ports: backend=$(BACKEND_PORT), frontend=$(FRONTEND_PORT)):"
 	@echo "  make install        Install Python + Flutter deps"
@@ -194,6 +253,13 @@ help:
 	@echo "  make logs-frontend  tail frontend log only"
 	@echo "  make check-ports    Verify $(BACKEND_PORT)/$(FRONTEND_PORT) are free"
 	@echo "  make clean          Remove tmp/logs"
+	@echo ""
+	@echo "Combined mode (nginx front-door on :$(NGINX_PORT); see docs/local-dev-combined-mode.md):"
+	@echo "  make nginx          Start nginx container (proxies to :$(BACKEND_PORT) / :$(MCP_AUTH_PORT) / :$(FRONTEND_PORT))"
+	@echo "  make nginx-stop     Stop nginx container"
+	@echo "  make nginx-reload   Reload nginx config without dropping connections"
+	@echo "  make nginx-logs     tail -F nginx container logs"
+	@echo "  make nginx-status   Show nginx container status"
 	@echo ""
 	@echo "Override ports: BACKEND_PORT=8010 make dev"
 	@echo "External: bond-mcps auth proxy on :$(MCP_AUTH_PORT) (run 'make dev' in ../bond-mcps/)"
