@@ -67,13 +67,14 @@ def test_nginx_local_combined_conf_is_syntactically_valid():
     assert "syntax is ok" in result.stderr.lower() or "successful" in result.stderr.lower()
 
 
-def test_nginx_local_combined_conf_listens_on_8000():
-    """The front-door port must be 8000 — that's where every OAuth provider
-    already has its callback URLs registered. Changing this breaks every
-    OAuth flow until provider consoles are updated."""
+def test_nginx_local_combined_conf_listens_on_8080_inside_container():
+    """The Makefile maps host :8000 → container :8080, so nginx listens
+    internally on 8080. Keeping the in-container port constant decouples
+    the host-facing port from this config file."""
     text = NGINX_CONF.read_text()
-    assert re.search(r"^\s*listen\s+8000\s*;", text, re.MULTILINE), (
-        "front door must listen on :8000 to match existing OAuth callback URLs"
+    assert re.search(r"^\s*listen\s+8080\s*;", text, re.MULTILINE), (
+        "nginx must listen on :8080 inside the container (the Makefile "
+        "maps host port to this)"
     )
 
 
