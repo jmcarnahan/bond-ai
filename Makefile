@@ -19,7 +19,7 @@
         logs-backend logs-frontend check-ports check-mcps check-mcps-hard \
         clean help smoke \
         nginx nginx-stop nginx-reload nginx-logs nginx-status \
-        dev-combined backend-combined frontend-combined \
+        dev-combined backend-combined build-web \
         _check-backend-port _check-frontend-port \
         _wait-backend _wait-frontend _check-providers-combined
 
@@ -48,6 +48,13 @@ ENV_FILE_COMBINED      ?= .env.combined
 # baseURL must include the `/rest` segment — otherwise calls hit the SPA
 # fallthrough and the backend never sees them.
 FLUTTER_COMBINED_BASE  ?= http://localhost:$(NGINX_PORT)/rest
+
+# Static Flutter build for combined mode. nginx serves these files instead of
+# proxying to `flutter run -d web-server` — that path was fragile (DDS hangs,
+# 0.0.0.0 bind quirks, slow first paint). Build only re-runs when any source
+# under flutterui/lib or flutterui/web changes or pubspec changes.
+FLUTTER_WEB_OUT := flutterui/build/web/main.dart.js
+FLUTTER_SRC     := $(shell find flutterui/lib flutterui/web flutterui/pubspec.yaml flutterui/pubspec.lock -type f 2>/dev/null)
 
 # ----- install -----------------------------------------------------------
 
@@ -170,26 +177,41 @@ dev: check-ports
 #
 # Differences from `dev`:
 #   - nginx on :$(NGINX_PORT) routes /auth, /connections, /rest to the right
-#     upstream; / goes to Flutter. All OAuth callbacks already registered
-#     with providers at :$(NGINX_PORT) work unchanged.
+#     upstream; / serves a static Flutter build. All OAuth callbacks already
+#     registered with providers at :$(NGINX_PORT) work unchanged.
 #   - backend loads .env.combined (OAuth callbacks pointed at :$(NGINX_PORT),
 #     JWT_REDIRECT_URI=:$(NGINX_PORT), COOKIE_SECURE=false for HTTP)
-#   - Flutter binds to 0.0.0.0 so nginx (in Docker) can reach it via
-#     host.docker.internal:$(FRONTEND_PORT)
-#   - API_BASE_URL points at the front door so the browser hits same-origin
+#   - No flutter run process — build-web compiles a static bundle once,
+#     nginx serves it from /usr/share/nginx/html. No hot reload here (use
+#     split mode for active UI iteration).
 
-dev-combined: check-ports check-mcps-hard
+dev-combined: _check-backend-port check-mcps-hard build-web
 	@if [ ! -f "$(ENV_FILE_COMBINED)" ]; then \
 	  echo "  missing $(ENV_FILE_COMBINED) — copy .env.combined.example and edit" >&2; \
 	  exit 1; \
 	fi
 	@$(MAKE) --no-print-directory backend-combined
-	@$(MAKE) --no-print-directory frontend-combined
 	@$(MAKE) --no-print-directory nginx
 	@$(MAKE) --no-print-directory _check-providers-combined
 	@echo
 	@echo "Combined dev stack ready at http://localhost:$(NGINX_PORT)/"
-	@echo "Logs: tmp/logs/{backend,frontend}.log; nginx logs: make nginx-logs"
+	@echo "Logs: tmp/logs/backend.log; nginx logs: make nginx-logs"
+	@echo "Flutter code change? Re-run \`make dev-combined\` — build-web detects via mtime."
+
+# Static Flutter build. File-based dependency: only re-runs if Flutter source
+# is newer than the build output. First-time build is slow (~30-60s);
+# incremental builds skip when nothing changed.
+build-web: $(FLUTTER_WEB_OUT)
+
+$(FLUTTER_WEB_OUT): $(FLUTTER_SRC)
+	@echo "Building Flutter web bundle (API_BASE_URL=$(FLUTTER_COMBINED_BASE))..."
+	@echo "  (first build can take ~30-60s; subsequent runs skip when source is unchanged)"
+	@# --no-tree-shake-icons because material_symbols_icons uses non-const
+	@# IconData which breaks the default tree-shaker.
+	@cd flutterui && flutter build web \
+	    --no-tree-shake-icons \
+	    --dart-define=API_BASE_URL=$(FLUTTER_COMBINED_BASE)
+	@touch $(FLUTTER_WEB_OUT)
 
 # Probe /rest/providers through nginx and report. Three failure modes this
 # catches that would otherwise show up as a confusing "no providers" screen
@@ -221,24 +243,10 @@ backend-combined: _check-backend-port
 	     > $(CURDIR)/$(LOG_DIR)/backend.log 2>&1 &
 	@$(MAKE) --no-print-directory _wait-backend
 
-# Binds Flutter to 0.0.0.0 so the nginx container can proxy it via
-# host.docker.internal. Split-mode binds to localhost (default) for tighter
-# scope; combined mode needs the looser bind.
-#
-# --no-dds disables Dart Developer Service: when Flutter binds to 0.0.0.0,
-# DDS spawns a debug WebSocket on a random high port that the nginx container
-# can't proxy. The browser tries to connect, times out, and DDS crashes the
-# whole `flutter run` process. We don't get hot reload in combined mode (use
-# split mode for active UI iteration — that's already the documented stance).
-frontend-combined: _check-frontend-port
-	@mkdir -p $(LOG_DIR)
-	@echo "Starting Flutter web on :$(FRONTEND_PORT) (API_BASE_URL=$(FLUTTER_COMBINED_BASE))..."
-	@( cd flutterui && API_BASE_URL=$(FLUTTER_COMBINED_BASE) nohup flutter run -d web-server \
-	     --web-port=$(FRONTEND_PORT) --web-hostname=0.0.0.0 --no-dds \
-	     --dart-define=API_BASE_URL=$(FLUTTER_COMBINED_BASE) \
-	     --target lib/main.dart ) \
-	     > $(CURDIR)/$(LOG_DIR)/frontend.log 2>&1 &
-	@$(MAKE) --no-print-directory _wait-frontend
+# Note: frontend-combined was removed when combined mode switched to serving
+# a static Flutter build (build-web target). The nginx target mounts
+# flutterui/build/web into the container — no live flutter run process in
+# combined mode. Split mode (`make frontend`) is unchanged.
 
 # ----- stop --------------------------------------------------------------
 
@@ -308,11 +316,15 @@ nginx:
 	@if [ ! -f "$(NGINX_CONF)" ]; then \
 	  echo "  missing $(NGINX_CONF)" >&2; exit 1; \
 	fi
+	@if [ ! -d "$(CURDIR)/flutterui/build/web" ]; then \
+	  echo "  missing flutterui/build/web — run \`make build-web\` first" >&2; exit 1; \
+	fi
 	@echo "Starting nginx front-door on :$(NGINX_PORT)..."
 	@docker run -d --rm \
 	  --name $(NGINX_CONTAINER) \
 	  -p $(NGINX_PORT):8080 \
 	  -v "$(NGINX_CONF):/etc/nginx/conf.d/default.conf:ro" \
+	  -v "$(CURDIR)/flutterui/build/web:/usr/share/nginx/html:ro" \
 	  --add-host=host.docker.internal:host-gateway \
 	  nginx:1.27-alpine >/dev/null
 	@sleep 1
@@ -365,8 +377,9 @@ help:
 	@echo "  make clean          Remove tmp/logs"
 	@echo ""
 	@echo "Combined mode (nginx front-door on :$(NGINX_PORT); see docs/local-dev-combined-mode.md):"
-	@echo "  make dev-combined   Start backend + frontend + nginx (requires bond-mcps + .env.combined)"
-	@echo "  make nginx          Start nginx container (proxies to :$(BACKEND_PORT) / :$(MCP_AUTH_PORT_COMBINED) / :$(FRONTEND_PORT))"
+	@echo "  make build-web      Build the static Flutter bundle for combined mode (auto-runs from dev-combined)"
+	@echo "  make dev-combined   Build Flutter (if needed) + backend + nginx (requires bond-mcps + .env.combined)"
+	@echo "  make nginx          Start nginx container (proxies /rest/auth/connections; serves static Flutter)"
 	@echo "  make nginx-stop     Stop nginx container"
 	@echo "  make nginx-reload   Reload nginx config without dropping connections"
 	@echo "  make nginx-logs     tail -F nginx container logs"

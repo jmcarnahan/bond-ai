@@ -132,9 +132,25 @@ def test_nginx_local_combined_conf_routes_connections_to_mcps_18000():
 
 
 def test_nginx_local_combined_conf_routes_rest_and_root():
-    """The two app-serving routes: /rest/ to bond-ai, / to Flutter."""
+    """The two app-serving routes: /rest/ to bond-ai backend, / to the
+    static Flutter build (served from /usr/share/nginx/html, mounted by
+    the Makefile from flutterui/build/web)."""
     text = NGINX_CONF.read_text()
     assert _has_active_location_block(text, "/rest/"), (
         "missing /rest/ proxy block — API calls from the app won't reach the backend"
     )
-    assert _has_active_location_block(text, "/"), "missing default `/` proxy block — app UI won't load"
+    assert _has_active_location_block(text, "/"), "missing default `/` block — app UI won't load"
+    # The root block must serve static files, NOT proxy to a flutter dev
+    # server (which is the split-mode pattern). The static-bundle approach
+    # is what makes combined mode stable.
+    start = text.index("location / {")
+    block = text[start : start + 600]
+    assert "try_files" in block, (
+        "default `/` block must use try_files for static SPA serving — proxying "
+        "to a live flutter dev-server was found to be fragile (DDS hangs, "
+        "0.0.0.0 bind quirks, slow first paint)"
+    )
+    assert "proxy_pass" not in block, (
+        "default `/` block must NOT proxy_pass — combined mode serves a static "
+        "Flutter build (run `make build-web` to (re)build)"
+    )
