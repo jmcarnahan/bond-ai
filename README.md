@@ -141,11 +141,13 @@ Access the application at: **http://localhost:3002**
 If your local dev uses MCP servers via OAuth, also run `make dev` in
 `../bond-mcps/` — that starts the auth proxy on :8000.
 
-### Combined mode (nginx front door on :8080)
+### Combined mode (nginx front door on :8000)
 
-When you want a production-shaped local stack (app + REST behind one
-front door), run combined mode. nginx runs in a Docker container;
-backend, Flutter, and bond-mcps still run as host processes.
+When you want a production-shaped local stack with a single host:port
+for all OAuth callbacks, run combined mode. nginx runs in a Docker
+container on `:8000`; backend, Flutter, and bond-mcps still run as host
+processes (bond-mcps's auth proxy moves to `:18000` in combined mode so
+nginx can take `:8000`).
 
 ```bash
 # Terminal 1
@@ -156,13 +158,13 @@ cp .env.combined.example .env.combined          # first time only
 make dev-combined
 ```
 
-Open **http://localhost:8080/**.
+Open **http://localhost:8000/**.
 
-**No OAuth provider console changes needed.** The existing `:8002`
-(user-login) and `:8000` (MCP) callback URLs keep working — the browser
-hits those ports directly during the OAuth dance, and the cookie set on
-`:8002` is visible on `:8080` thanks to localhost cross-port cookie
-behavior (cookies on `localhost` aren't port-scoped by spec).
+The OAuth callback URLs already registered with every provider
+(Google / Okta / Cognito for user-login; Atlassian / GitHub / Microsoft
+for MCP) use `:8000`, so combined mode requires **no provider console
+changes**. nginx routes `/auth/*` to bond-ai and `/connections/*` to
+bond-mcps based on the path.
 
 Use split mode (`make dev`) for active backend/frontend iteration;
 combined mode for OAuth flow testing and integration work. See
