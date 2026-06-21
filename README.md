@@ -141,6 +141,36 @@ Access the application at: **http://localhost:3002**
 If your local dev uses MCP servers via OAuth, also run `make dev` in
 `../bond-mcps/` — that starts the auth proxy on :8000.
 
+### Combined mode (nginx front door on :8000)
+
+When you want a production-shaped local stack with a single host:port
+for all OAuth callbacks, run combined mode. nginx runs in a Docker
+container on `:8000`; backend, Flutter, and bond-mcps still run as host
+processes (bond-mcps's auth proxy moves to `:18000` in combined mode so
+nginx can take `:8000`).
+
+```bash
+# Terminal 1
+cd ../bond-mcps && make dev-combined
+
+# Terminal 2
+cp .env.combined.example .env.combined          # first time only
+make dev-combined
+```
+
+Open **http://localhost:8000/**.
+
+The OAuth callback URLs already registered with every provider
+(Google / Okta / Cognito for user-login; Atlassian / GitHub / Microsoft
+for MCP) use `:8000`, so combined mode requires **no provider console
+changes**. nginx routes `/auth/*` to bond-ai and `/connections/*` to
+bond-mcps based on the path.
+
+Use split mode (`make dev`) for active backend/frontend iteration;
+combined mode for OAuth flow testing and integration work. See
+[docs/local-dev-combined-mode.md](docs/local-dev-combined-mode.md) for
+architecture details and troubleshooting.
+
 ### Manual (separate terminals)
 
 #### Terminal 1: MCP Server (optional)
