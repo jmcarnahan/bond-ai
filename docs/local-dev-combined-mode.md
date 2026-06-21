@@ -20,17 +20,25 @@ active backend or UI iteration.
 Browser / OAuth provider
         │
         ▼
-┌───────────────────────────────────────────────────────────────┐
-│  nginx :8000  (bond-ai owns the config)                       │
-│                                                               │
-│   /                           ──►  Flutter dev :3002          │
-│   /rest/<api>                 ──►  bond-ai     :8002 (strip)  │
-│   /health                     ──►  bond-ai     :8002          │
-│   /auth/<provider>/callback   ──►  bond-ai     :8002          │
-│   /login/<provider>           ──►  bond-ai     :8002          │
-│   /connections/<svc>/callback ──►  bond-mcps   :18000         │
-└───────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│  nginx :8000  (bond-ai owns the config)                            │
+│                                                                    │
+│   /                           ──►  static Flutter build            │
+│                                   (flutterui/build/web mounted as  │
+│                                    /usr/share/nginx/html)          │
+│   /rest/<api>                 ──►  bond-ai     :8002 (strip)       │
+│   /health                     ──►  bond-ai     :8002               │
+│   /auth/<provider>/callback   ──►  bond-ai     :8002               │
+│   /login/<provider>           ──►  bond-ai     :8002               │
+│   /connections/<svc>/callback ──►  bond-mcps   :18000              │
+└────────────────────────────────────────────────────────────────────┘
 ```
+
+The Flutter app is served as a **static build** — nginx serves the
+pre-compiled bundle out of `flutterui/build/web/`. There is no
+`flutter run` process in combined mode. This intentionally trades hot
+reload for stability: `flutter run -d web-server` behind nginx was
+fragile (DDS hangs, port-bind quirks, slow 965-script first paint).
 
 **bond-mcps's auth proxy MOVES off `:8000` in combined mode** — it binds
 to `:18000` instead so nginx can take `:8000` as the front door. The
@@ -38,9 +46,10 @@ individual MCP services (Microsoft, GitHub, Atlassian, Databricks) keep
 their `:18001`–`:18004` ports.
 
 nginx runs as a `nginx:1.27-alpine` Docker container managed by bond-ai's
-Makefile. Upstreams are reached via `host.docker.internal`. Backend
-(`:8002`), Flutter (`:3002`), and bond-mcps (`:18000` in combined mode)
-are still host processes — nginx is only fronting them.
+Makefile. API upstreams are reached via `host.docker.internal`. Backend
+(`:8002`) and bond-mcps (`:18000` in combined mode) are still host
+processes — nginx is only fronting them and serving the static Flutter
+bundle.
 
 ---
 
@@ -82,10 +91,16 @@ what `.env.combined` exported.
 cd ../bond-mcps && make dev-combined        # auth proxy on :18000, MCPs on :18001-:18004
 
 # Terminal 2
-cd ../bond-ai && make dev-combined          # backend :8002 + Flutter :3002 + nginx :8000
+cd ../bond-ai && make dev-combined          # build-web (if needed) + backend + nginx
 ```
 
 Open **`http://localhost:8000/`**.
+
+The first `make dev-combined` triggers `flutter build web` (~30–60s);
+subsequent runs skip the build via mtime-based Make dependency. After
+editing any Flutter source file (`flutterui/lib/**`, `flutterui/web/**`,
+`pubspec.yaml`, `pubspec.lock`), re-run `make dev-combined` — build-web
+detects the change and rebuilds.
 
 `make stop` in each repo shuts everything down (including the nginx
 container on the bond-ai side).
@@ -96,8 +111,8 @@ container on the bond-ai side).
 
 | Mode | Use for |
 |---|---|
-| `make dev` (split) | Active iteration on backend or frontend code. Faster startup, fewer moving parts, predictable Flutter hot reload. |
-| `make dev-combined` | OAuth flow testing, MCP integration, validating production-shaped routing. No Flutter hot reload through nginx (combined mode uses `--no-dds`). |
+| `make dev` (split) | Active iteration on backend or frontend code. Faster startup, fewer moving parts, hot reload. Flutter dev server with live recompilation. |
+| `make dev-combined` | OAuth flow testing, MCP integration, validating production-shaped routing. Static Flutter bundle (no hot reload — re-run `make dev-combined` to rebuild). |
 
 ---
 
@@ -109,8 +124,9 @@ container on the bond-ai side).
 | OAuth provider returns `redirect_mismatch` | Provider has a different URL registered than what bond-ai is sending | Confirm the provider's allowed callback list includes `http://localhost:8000/auth/<provider>/callback`. If you have a different port registered, either add `:8000` or change the corresponding `*_REDIRECT_URI` in `.env.combined`. |
 | Login redirect succeeds but the app immediately thinks you're logged out | Browser dropped the `Secure` cookie sent over HTTP | Confirm `.env.combined` has `COOKIE_SECURE=false`. DevTools → Application → Cookies → `localhost` should show `bond_session` and `bond_csrf` after login. |
 | `make dev-combined` startup probe says `[warn] /rest/providers returned HTML` | nginx routing wrong, or backend didn't load `.env.combined` | Check `tmp/logs/backend.log` for the loaded env vars; check `make nginx-logs`. |
-| Flutter hot reload doesn't trigger | Combined mode runs Flutter with `--no-dds` (Dart debug service disabled because the random debug-port can't proxy through nginx) | Use `make dev` (split mode) for active Flutter iteration. |
-| Browser stuck on "Loading..." | Flutter compiling assets through nginx is slower than direct | Wait ~10–15 seconds. If still stuck, check `tail tmp/logs/frontend.log` for crashes. |
+| Combined-mode UI doesn't reflect a recent Flutter code change | Static bundle is stale | Re-run `make dev-combined` — build-web detects via mtime and rebuilds. |
+| `make build-web` fails with `Avoid non-constant invocations of IconData` | A new icon-pack import broke tree-shaking | The Makefile passes `--no-tree-shake-icons` already; check that you didn't drop that flag in a local edit. |
+| Regular browser shows blank page but incognito works | Cached service worker or stale assets from a previous Flutter dev-server session | DevTools → Application → Storage → Clear site data, then hard refresh. |
 
 ---
 
