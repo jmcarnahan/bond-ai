@@ -5,6 +5,7 @@ This router handles OAuth authentication with external services like Atlassian,
 storing tokens encrypted in the database for use with MCP tools.
 """
 
+import asyncio
 import logging
 import re
 from datetime import datetime, timezone, timedelta
@@ -19,8 +20,11 @@ from pydantic import BaseModel
 from bondable.bond.config import Config
 from bondable.bond.auth.mcp_token_cache import get_mcp_token_cache
 from bondable.bond.auth.oauth_utils import generate_pkce_pair, generate_oauth_state, resolve_client_secret
+from bondable.bond.mcp_discovery import get_discovered_mcps
+from bondable.bond import mcp_connect_client
+from bondable.bond.mcp_connect_client import ConnectError
 from bondable.rest.models.auth import User
-from bondable.rest.dependencies.auth import get_current_user
+from bondable.rest.dependencies.auth import get_current_user, get_current_user_with_token
 from bondable.utils.url_validation import is_safe_redirect_url
 from bondable.utils.logging_utils import safe_id
 
@@ -217,6 +221,54 @@ def _get_connection_config(connection_name: str, user_id: Optional[str] = None) 
 
 
 # =============================================================================
+# Managed (bond-mcps-delegated) connections
+# =============================================================================
+#
+# bond-mcps-managed MCPs are discovered (not hard-configured). bond-ai does not
+# drive their OAuth or store their tokens; it delegates to bond-mcps, forwarding
+# the user's Bond JWT. These appear as `bond_jwt` servers in the effective MCP
+# config (see Config._overlay_discovered_mcps). The Connections UI still shows
+# them as connectable tiles, but authorize/status/disconnect proxy to bond-mcps.
+
+def _get_managed_connection_configs() -> List[Dict[str, Any]]:
+    """Return discovered bond-mcps-managed MCPs as connection-config dicts."""
+    configs = []
+    for entry in get_discovered_mcps():
+        name = entry["name"]
+        display_name = entry.get("display_name", name.title())
+        configs.append({
+            "name": name,
+            "display_name": display_name,
+            "description": f"Connect to {display_name}",
+            "url": entry["url"],
+            "auth_type": "bond_jwt",
+            "is_managed": True,
+            "is_user_defined": False,
+            "icon_url": None,
+        })
+    return configs
+
+
+def _get_managed_connection(connection_name: str) -> Optional[Dict[str, Any]]:
+    """Get a specific managed (discovered) connection by name, or None."""
+    for config in _get_managed_connection_configs():
+        if config["name"] == connection_name:
+            return config
+    return None
+
+
+def _frontend_return_url(request: Request) -> str:
+    """Compute the bond-ai URL bond-mcps should return the user to after connect."""
+    from bondable.rest.routers.auth import _get_validated_origin_host
+    origin_host = _get_validated_origin_host(request)
+    if origin_host:
+        base = f"https://{origin_host}"
+    else:
+        base = Config.config().get_jwt_config().JWT_REDIRECT_URI.rstrip('/')
+    return f"{base}/connections"
+
+
+# =============================================================================
 # OAuth State Management (Database-backed)
 # =============================================================================
 
@@ -311,26 +363,77 @@ def _get_and_delete_oauth_state(state: str) -> Optional[Dict[str, Any]]:
 
 @router.get("", response_model=ConnectionsListResponse)
 async def list_connections(
-    current_user: Annotated[User, Depends(get_current_user)]
+    user_and_token: Annotated[tuple[User, str], Depends(get_current_user_with_token)]
 ) -> ConnectionsListResponse:
     """
     List all available connections with user's status.
 
     Returns both the connection configurations and whether the user
     has connected to each one, including whether tokens are expired.
+
+    Combines two tracks: bond-mcps-managed connections (status delegated to
+    bond-mcps, forwarding the Bond JWT) and the legacy/user-defined OAuth2
+    connections (status from bond-ai's own token cache).
     """
+    current_user, jwt_token = user_and_token
     LOGGER.debug(f"[Connections] Listing connections for user {current_user.email}")
 
+    connections = []
+    expired = []
 
-    # Get all connection configs (including user-defined OAuth servers)
+    # --- Managed (bond-mcps-delegated) connections -------------------------
+    # Query every managed MCP's status concurrently (each is a network round-trip
+    # to bond-mcps; sequential would block proportional to the MCP count).
+    managed_configs = _get_managed_connection_configs()
+
+    async def _managed_status(cfg):
+        try:
+            return cfg, await mcp_connect_client.get_connect_status(cfg["url"], cfg["name"], jwt_token)
+        except Exception as e:  # noqa: BLE001 - one bad MCP must not 500 the whole list
+            # bond-mcps unreachable / unexpected error: surface this provider as
+            # disconnected so the user can retry, without failing the page.
+            LOGGER.warning(
+                "[Connections] status check failed for managed %s: %s: %s",
+                safe_id(cfg["name"]), type(e).__name__, e,
+            )
+            return cfg, {"connected": False, "valid": False}
+
+    managed_results = await asyncio.gather(*(_managed_status(c) for c in managed_configs))
+
+    for config, mcps_status in managed_results:
+        name = config["name"]
+        if mcps_status is None:
+            # MCP exposes no connect surface → not a connectable provider; omit.
+            continue
+        connected = bool(mcps_status.get("connected", False))
+        valid = bool(mcps_status.get("valid", True)) if connected else True
+        connections.append(ConnectionStatusResponse(
+            name=name,
+            display_name=config.get("display_name", name.title()),
+            description=config.get("description"),
+            connected=connected,
+            valid=valid,
+            auth_type="bond_jwt",
+            icon_url=config.get("icon_url"),
+            scopes=mcps_status.get("scopes"),
+            expires_at=mcps_status.get("expires_at"),
+            requires_authorization=not connected,
+            has_refresh_token=bool(mcps_status.get("has_refresh_token", False)),
+            is_user_defined=False,
+        ))
+        if connected and not valid:
+            expired.append({
+                "name": name,
+                "display_name": config.get("display_name", name.title()),
+                "expires_at": mcps_status.get("expires_at"),
+            })
+
+    # --- Legacy / user-defined OAuth2 connections --------------------------
     configs = _get_connection_configs(user_id=current_user.user_id)
 
     # Get user's connection tokens
     token_cache = get_mcp_token_cache()
     user_connections = token_cache.get_user_connections(current_user.user_id)
-
-    connections = []
-    expired = []
 
     for config in configs:
         name = config["name"]
@@ -376,19 +479,47 @@ async def list_connections(
 async def authorize_connection(
     connection_name: str,
     request: Request,
-    current_user: Annotated[User, Depends(get_current_user)]
+    user_and_token: Annotated[tuple[User, str], Depends(get_current_user_with_token)]
 ) -> AuthorizeResponse:
     """
-    Initiate OAuth2 authorization for a connection.
+    Initiate authorization for a connection.
 
     Returns an authorization URL that the client should open in a browser/popup.
 
-    Args:
-        connection_name: Name of the connection to authorize
-
-    Returns:
-        Authorization URL to redirect user to
+    For bond-mcps-managed connections this delegates to bond-mcps: bond-ai mints a
+    connect ticket (forwarding the user's Bond JWT and a return URL) and returns
+    the resulting bond-mcps connect URL. For legacy/user-defined OAuth2 servers
+    bond-ai builds the provider authorize URL itself (unchanged).
     """
+    current_user, jwt_token = user_and_token
+
+    # --- Managed (bond-mcps-delegated) connection --------------------------
+    managed = _get_managed_connection(connection_name)
+    if managed is not None:
+        return_url = _frontend_return_url(request)
+        if not is_safe_redirect_url(return_url):
+            LOGGER.error("[Connections] computed return_url is not on the allowed domain list")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Server configuration error: invalid return URL",
+            )
+        try:
+            connect_url = await mcp_connect_client.mint_connect_ticket(
+                managed["url"], connection_name, jwt_token, return_url
+            )
+        except ConnectError as e:
+            LOGGER.error("[Connections] failed to mint connect ticket for %s: %s", safe_id(connection_name), e)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed to initiate connection with the MCP service",
+            )
+        return AuthorizeResponse(
+            authorization_url=connect_url,
+            connection_name=connection_name,
+            message="Open authorization_url in browser to authorize",
+        )
+
+    # --- Legacy / user-defined OAuth2 connection ---------------------------
     config = _get_connection_config(connection_name, user_id=current_user.user_id)
     if config is None:
         raise HTTPException(
@@ -620,14 +751,44 @@ async def oauth_callback(
 @router.get("/{connection_name}/status", response_model=ConnectionStatusResponse)
 async def get_connection_status(
     connection_name: str,
-    current_user: Annotated[User, Depends(get_current_user)]
+    user_and_token: Annotated[tuple[User, str], Depends(get_current_user_with_token)]
 ) -> ConnectionStatusResponse:
     """
     Get the status of a specific connection for the current user.
     """
+    current_user, jwt_token = user_and_token
     LOGGER.debug(f"[Connections] Checking status of {connection_name} for user {current_user.email}")
 
+    # --- Managed (bond-mcps-delegated) connection --------------------------
+    managed = _get_managed_connection(connection_name)
+    if managed is not None:
+        try:
+            mcps_status = await mcp_connect_client.get_connect_status(managed["url"], connection_name, jwt_token)
+        except ConnectError as e:
+            LOGGER.warning("[Connections] status check failed for managed %s: %s", safe_id(connection_name), e)
+            mcps_status = {"connected": False, "valid": False}
+        if mcps_status is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Connection '{connection_name}' not found",
+            )
+        connected = bool(mcps_status.get("connected", False))
+        valid = bool(mcps_status.get("valid", True)) if connected else True
+        return ConnectionStatusResponse(
+            name=connection_name,
+            display_name=managed.get("display_name", connection_name.title()),
+            description=managed.get("description"),
+            connected=connected,
+            valid=valid,
+            auth_type="bond_jwt",
+            icon_url=managed.get("icon_url"),
+            scopes=mcps_status.get("scopes"),
+            expires_at=mcps_status.get("expires_at"),
+            requires_authorization=not connected,
+            has_refresh_token=bool(mcps_status.get("has_refresh_token", False)),
+        )
 
+    # --- Legacy / user-defined OAuth2 connection ---------------------------
     config = _get_connection_config(connection_name, user_id=current_user.user_id)
     if config is None:
         raise HTTPException(
@@ -665,14 +826,38 @@ async def get_connection_status(
 @router.delete("/{connection_name}")
 async def disconnect(
     connection_name: str,
-    current_user: Annotated[User, Depends(get_current_user)]
+    user_and_token: Annotated[tuple[User, str], Depends(get_current_user_with_token)]
 ) -> Dict[str, Any]:
     """
     Disconnect from a connection by removing the stored token.
+
+    For managed connections this deletes the provider token in bond-mcps; for
+    legacy/user-defined OAuth2 servers it clears bond-ai's own token cache.
     """
+    current_user, jwt_token = user_and_token
     LOGGER.info(f"User {current_user.email} disconnecting from {connection_name}")
 
+    # --- Managed (bond-mcps-delegated) connection --------------------------
+    managed = _get_managed_connection(connection_name)
+    if managed is not None:
+        try:
+            removed = await mcp_connect_client.delete_connection(managed["url"], connection_name, jwt_token)
+        except ConnectError as e:
+            LOGGER.error("[Connections] disconnect failed for managed %s: %s", safe_id(connection_name), e)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Failed to disconnect from the MCP service",
+            )
+        return {
+            "message": (
+                f"Successfully disconnected from '{connection_name}'" if removed
+                else f"No connection found for '{connection_name}'"
+            ),
+            "connection_name": connection_name,
+            "disconnected": removed,
+        }
 
+    # --- Legacy / user-defined OAuth2 connection ---------------------------
     token_cache = get_mcp_token_cache()
     removed = token_cache.clear_token(current_user.user_id, connection_name)
 

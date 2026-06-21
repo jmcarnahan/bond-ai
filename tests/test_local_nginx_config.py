@@ -131,6 +131,24 @@ def test_nginx_local_combined_conf_routes_connections_to_mcps_18000():
     )
 
 
+def test_nginx_local_combined_conf_routes_connect_to_mcp_ports():
+    """Delegated OAuth Connect (/connect/<provider>) lands on the front door but
+    must route to each provider's bond-mcps MCP port (combined-mode 18001-18004),
+    NOT to the auth proxy :18000."""
+    text = NGINX_CONF.read_text()
+    expected = {
+        "/connect/atlassian/": "host.docker.internal:18003",
+        "/connect/github/": "host.docker.internal:18002",
+        "/connect/ms-graph/": "host.docker.internal:18001",
+        "/connect/databricks/": "host.docker.internal:18004",
+    }
+    for path, upstream in expected.items():
+        assert _has_active_location_block(text, path), f"missing {path} proxy block"
+        start = text.index(f"location {path}")
+        block = text[start : start + 300]
+        assert upstream in block, f"{path} must proxy to {upstream}"
+
+
 def test_nginx_local_combined_conf_routes_rest_and_root():
     """The two app-serving routes: /rest/ to bond-ai backend, / to the
     static Flutter build (served from /usr/share/nginx/html, mounted by

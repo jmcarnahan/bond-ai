@@ -101,9 +101,28 @@ Browser / OAuth provider
    the other two user-login providers complete the full redirect → callback →
    session-cookie loop at `:8000`.
 
-3. **MCP OAuth connections** (`/connections/<svc>/callback` → bond-mcps :18000).
-   Atlassian / GitHub / Microsoft connect flows have NOT been exercised in
-   combined mode. Confirm a connection goes Active and an MCP tool call works.
+3. **MCP OAuth connections — now DELEGATED to bond-mcps** (branch
+   `mcp-discovery-delegation`). bond-ai no longer hard-configures MCPs or drives
+   their OAuth: it discovers the MCP set from `BOND_MCPS_DISCOVERY_URL`
+   (`http://localhost:8000/connections/discovery`, polled) and delegates Connect
+   to bond-mcps' `/connect/<name>` flow, forwarding the Bond JWT. bond-ai's side
+   is implemented + unit/integration-tested; **not yet exercised live** in
+   combined mode. To test, bond-mcps must run with JWT mode ON (shared secret =
+   bond-ai `JWT_SECRET_KEY`, `HS256`, `iss=bond-ai`, `aud=mcp-server`) and provide
+   the bond-mcps-side additions below. nginx now routes `/connect/<provider>/*` to
+   the per-MCP ports (18001-18004). Confirm: discovery lists MCPs → Connect on a
+   tile → bond-mcps consent → return to bond-ai Connected → an MCP tool call works.
+
+   **bond-mcps prerequisites (companion work, not in this repo):**
+   - JWT-mode config (shared secret, `HS256`, issuer/audience) — un-dormants
+     `/connect/*`.
+   - `return_url` support in `/connect/<name>/callback` (302 back to bond-ai with
+     `?connection_success=`/`connection_error=`, allowlisted) — today it renders a
+     terminal "close this tab" page.
+   - `GET /connect/<name>/status` + `DELETE /connect/<name>` (JWT-authed) backing
+     the Connections list/disconnect.
+   - Deployment-aware discovery URLs (it currently emits `localhost` and `[]` off
+     a dev checkout) — until then deployed bond-ai falls back to static config.
 
 4. **Session-cookie persistence.** Confirm `bond_session` / `bond_csrf` are set
    on `localhost:8000` and survive a page reload (`COOKIE_SECURE=false` over HTTP).

@@ -439,8 +439,13 @@ class Config:
         """
         Get MCP configuration in fastmcp format.
 
-        Tries app config secret first (bond_mcp_config key), then falls back
-        to BOND_MCP_CONFIG environment variable.
+        The set of bond-mcps-managed MCP servers is fetched from the bond-mcps
+        discovery endpoint (when ``BOND_MCPS_DISCOVERY_URL`` is set) and overlaid
+        on the static config so bond-ai does not hard-configure the list of MCPs.
+        Discovered servers are authenticated with the Bond JWT (``bond_jwt``);
+        bond-mcps owns their OAuth config and per-user tokens. The static config
+        (Secrets Manager ``bond_mcp_config`` key, then ``BOND_MCP_CONFIG`` env)
+        provides the fallback set used when discovery is disabled or unreachable.
 
         Example:
         BOND_MCP_CONFIG='{
@@ -460,6 +465,10 @@ class Config:
         Returns:
             Dict in fastmcp config format
         """
+        return self._overlay_discovered_mcps(self._load_static_mcp_config())
+
+    def _load_static_mcp_config(self):
+        """Load the static MCP config (Secrets Manager first, then env var)."""
         # Try app config secret first
         app_config = self._load_app_config()
         mcp_config = app_config.get('bond_mcp_config')
@@ -493,6 +502,53 @@ class Config:
         except json.JSONDecodeError as e:
             LOGGER.error(f"Error parsing BOND_MCP_CONFIG: {e}")
             return {"mcpServers": {}}
+
+    def _overlay_discovered_mcps(self, mcp_config):
+        """Overlay bond-mcps discovery results onto the static MCP config.
+
+        For each discovered MCP (``{name, display_name, url}``) the merged server
+        entry uses the discovered ``url``/``display_name`` and is forced to
+        ``auth_type=bond_jwt`` + ``transport=streamable-http`` (bond-mcps owns its
+        OAuth). Any non-OAuth annotations already present in the static config for
+        that name (e.g. ``description``, ``icon_url``, ``allowed_tools``) are
+        preserved; a stale inline ``oauth_config`` is dropped. Servers not present
+        in discovery (user-defined live in the DB, not here; ``command`` servers
+        like ``hello``) are left untouched. No-op when discovery is disabled.
+        """
+        try:
+            from bondable.bond.mcp_discovery import get_discovered_mcps
+            discovered = get_discovered_mcps()
+        except Exception as e:  # never let discovery break config loading
+            LOGGER.warning(f"MCP discovery overlay skipped due to error: {e}")
+            return mcp_config
+
+        if not discovered:
+            return mcp_config
+
+        if not isinstance(mcp_config, dict):
+            mcp_config = {}
+        servers = dict(mcp_config.get("mcpServers", {}))
+
+        for entry in discovered:
+            name = entry["name"]
+            existing = dict(servers.get(name, {}))
+            # Drop any stale inline OAuth config — bond-mcps owns OAuth now.
+            existing.pop("oauth_config", None)
+            existing.update({
+                "url": entry["url"],
+                "display_name": entry.get("display_name", existing.get("display_name", name)),
+                "transport": "streamable-http",
+                "auth_type": "bond_jwt",
+            })
+            servers[name] = existing
+
+        result = dict(mcp_config)
+        result["mcpServers"] = servers
+        LOGGER.info(
+            "Overlaid %d discovered MCP server(s); effective MCP count=%d",
+            len(discovered), len(servers),
+        )
+        return result
 
     def get_admin_users(self) -> list:
         """

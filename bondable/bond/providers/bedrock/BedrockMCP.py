@@ -50,6 +50,22 @@ def _is_401_error(exc: Exception) -> bool:
     return False
 
 
+# Matches a bond-mcps connect URL surfaced inside a MissingProviderConnection
+# tool error (e.g. ".../connect/atlassian?ticket=..."). bond-mcps raises this
+# when a managed (bond_jwt) MCP has no stored provider token for the user; the
+# message text is the documented surfacing channel, so we extract the URL to
+# return a structured "authorization_required" response the UI can act on.
+_CONNECT_URL_RE = re.compile(r"https?://[^\s'\"<>]+/connect/[^\s'\"<>]*")
+
+
+def _extract_connect_url(error_str: str) -> Optional[str]:
+    """Return the bond-mcps connect URL embedded in a tool error, if any."""
+    if not error_str:
+        return None
+    match = _CONNECT_URL_RE.search(error_str)
+    return match.group(0) if match else None
+
+
 # =============================================================================
 # Tool Naming Utilities
 # =============================================================================
@@ -1465,6 +1481,25 @@ async def execute_mcp_tool(
                 break  # Break retry loop, continue to next server
             except Exception as e:
                 error_str = str(e)
+
+                # bond-mcps-managed (bond_jwt) MCP with no provider connection:
+                # surface the connect URL so the UI/agent can offer to connect.
+                # The tool was found on this server, so this is the right target —
+                # return immediately rather than searching further.
+                connect_url = _extract_connect_url(error_str)
+                if connect_url:
+                    LOGGER.info(
+                        "[MCP Execute] Server '%s' requires a provider connection",
+                        safe_id(server_name),
+                    )
+                    return {
+                        "success": False,
+                        "error": error_str,
+                        "authorization_required": True,
+                        "server_name": server_name,
+                        "connect_url": connect_url,
+                    }
+
                 # Retry on 401 for oauth2 servers: token may have expired between
                 # the 5-minute buffer check and the actual API call
                 if attempt == 0 and auth_type == AUTH_TYPE_OAUTH2 and _is_401_error(e):
