@@ -30,9 +30,16 @@ FRONTEND_PORT ?= 3002
 MCP_AUTH_PORT ?= 8000
 
 # Combined-mode front-door (nginx in Docker; see docs/local-dev-combined-mode.md).
-NGINX_PORT      ?= 8080
+# Listens on :8000 so existing OAuth callback URLs already registered with
+# Google / Okta / Cognito / Atlassian / GitHub / Microsoft (which all use
+# :8000) keep working without any provider console changes.
+NGINX_PORT      ?= 8000
 NGINX_CONTAINER := bond-ai-nginx-local
 NGINX_CONF      := $(CURDIR)/deployment/nginx-local-combined.conf
+
+# bond-mcps auth proxy moves to this port in combined mode so nginx can take
+# :8000. Must match COMBINED_AUTH_PORT in bond-mcps's Makefile.
+MCP_AUTH_PORT_COMBINED ?= 18000
 
 ENV_FILE_COMBINED      ?= .env.combined
 # The Flutter app constructs API URLs as `${API_BASE_URL}/<endpoint>` where
@@ -83,10 +90,11 @@ check-mcps:
 
 # Hard-fail variant for combined mode — a half-broken combined stack (no MCPs
 # reachable through the front door) is worse than telling the user to start
-# bond-mcps first.
+# bond-mcps first. Probes the COMBINED-mode port (:18000) because that's
+# where `make dev-combined` in bond-mcps binds the auth proxy.
 check-mcps-hard:
-	@if ! curl -sf --max-time 2 -o /dev/null http://localhost:$(MCP_AUTH_PORT)/health 2>/dev/null; then \
-	  echo "  bond-mcps auth proxy not reachable on :$(MCP_AUTH_PORT)" >&2; \
+	@if ! curl -sf --max-time 2 -o /dev/null http://localhost:$(MCP_AUTH_PORT_COMBINED)/health 2>/dev/null; then \
+	  echo "  bond-mcps auth proxy not reachable on :$(MCP_AUTH_PORT_COMBINED)" >&2; \
 	  echo "  run 'make dev-combined' in ../bond-mcps/ first" >&2; \
 	  exit 1; \
 	fi
@@ -156,12 +164,16 @@ dev: check-ports
 # ----- start (combined mode) ---------------------------------------------
 #
 # Combined mode runs everything behind an nginx front door on :$(NGINX_PORT).
-# Requires bond-mcps reachable on :$(MCP_AUTH_PORT) (hard-fails otherwise) and
-# .env.combined populated (copy from .env.combined.example).
+# Requires bond-mcps's auth proxy reachable on :$(MCP_AUTH_PORT_COMBINED)
+# (the combined-mode port; hard-fails otherwise) and .env.combined populated
+# (copy from .env.combined.example).
 #
 # Differences from `dev`:
-#   - backend loads .env.combined (BOND_FRONT_DOOR_URL, OAuth callbacks pointed
-#     at :$(NGINX_PORT), COOKIE_SECURE=false for HTTP)
+#   - nginx on :$(NGINX_PORT) routes /auth, /connections, /rest to the right
+#     upstream; / goes to Flutter. All OAuth callbacks already registered
+#     with providers at :$(NGINX_PORT) work unchanged.
+#   - backend loads .env.combined (OAuth callbacks pointed at :$(NGINX_PORT),
+#     JWT_REDIRECT_URI=:$(NGINX_PORT), COOKIE_SECURE=false for HTTP)
 #   - Flutter binds to 0.0.0.0 so nginx (in Docker) can reach it via
 #     host.docker.internal:$(FRONTEND_PORT)
 #   - API_BASE_URL points at the front door so the browser hits same-origin
@@ -354,11 +366,12 @@ help:
 	@echo ""
 	@echo "Combined mode (nginx front-door on :$(NGINX_PORT); see docs/local-dev-combined-mode.md):"
 	@echo "  make dev-combined   Start backend + frontend + nginx (requires bond-mcps + .env.combined)"
-	@echo "  make nginx          Start nginx container (proxies to :$(BACKEND_PORT) / :$(MCP_AUTH_PORT) / :$(FRONTEND_PORT))"
+	@echo "  make nginx          Start nginx container (proxies to :$(BACKEND_PORT) / :$(MCP_AUTH_PORT_COMBINED) / :$(FRONTEND_PORT))"
 	@echo "  make nginx-stop     Stop nginx container"
 	@echo "  make nginx-reload   Reload nginx config without dropping connections"
 	@echo "  make nginx-logs     tail -F nginx container logs"
 	@echo "  make nginx-status   Show nginx container status"
 	@echo ""
 	@echo "Override ports: BACKEND_PORT=8010 make dev"
-	@echo "External: bond-mcps auth proxy on :$(MCP_AUTH_PORT) (run 'make dev' in ../bond-mcps/)"
+	@echo "External (split mode): bond-mcps auth proxy on :$(MCP_AUTH_PORT) (run 'make dev' in ../bond-mcps/)"
+	@echo "External (combined): bond-mcps auth proxy on :$(MCP_AUTH_PORT_COMBINED) (run 'make dev-combined' in ../bond-mcps/)"
