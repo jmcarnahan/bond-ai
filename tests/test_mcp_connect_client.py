@@ -67,6 +67,38 @@ def test_connect_base_url_rejects_garbage():
         cc.connect_base_url("not-a-url")
 
 
+def test_safe_name_passes_legitimate_names():
+    for name in ("atlassian", "github", "ms-graph", "databricks", "foo_bar.v2"):
+        assert cc._safe_name(name) == name
+
+
+@pytest.mark.parametrize("evil,expected", [
+    ("../../evil", ".._.._evil"),
+    ("a/b", "a_b"),
+    ("x?y=1", "x_y_1"),
+    ("host@evil.com", "host_evil.com"),
+    ("a b", "a_b"),
+])
+def test_safe_name_neutralizes_url_control_chars(evil, expected):
+    safe = cc._safe_name(evil)
+    assert safe == expected
+    for ch in "/?@: ":
+        assert ch not in safe
+
+
+@pytest.mark.asyncio
+async def test_malicious_name_cannot_escape_path(fake_http):
+    """A name with path-traversal/host chars stays a single sanitized segment."""
+    fake_http["handler"] = lambda *a, **k: FakeResp(
+        {"ticket": "t", "connect_url": "http://localhost:8000/connect/x?ticket=t"})
+    await cc.mint_connect_ticket(MCP_URL, "../@evil.com/x", "JWT", "http://localhost:8000/connections")
+    url = fake_http["calls"][0]["url"]
+    # Host is unchanged; the name became one inert path segment.
+    assert url.startswith("http://localhost:18003/connect/")
+    assert "evil.com" not in url.split("/connect/")[0]
+    assert "@" not in url and "?" not in url
+
+
 # --- mint ticket ----------------------------------------------------------
 
 @pytest.mark.asyncio

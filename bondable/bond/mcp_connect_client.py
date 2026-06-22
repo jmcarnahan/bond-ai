@@ -19,6 +19,7 @@ in that case so callers can omit it from the connectable list.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
@@ -28,9 +29,26 @@ LOGGER = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SECONDS = 10.0
 
+# Anything outside this set is stripped before a name is used as a URL path
+# segment. MCP/provider names are short identifiers (e.g. "atlassian",
+# "ms-graph"), so legitimate values pass through unchanged.
+_UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9_.-]")
+
 
 class ConnectError(Exception):
     """Raised when a bond-mcps connect call fails (network/HTTP/parse)."""
+
+
+def _safe_name(name: str) -> str:
+    """Sanitize an MCP/provider name for safe use as a URL path segment.
+
+    The connection name originates from a request path parameter, so it must not
+    be able to alter the request host/path (SSRF) — strip ``/``, ``@``, ``?`` and
+    any other URL-control characters. This also breaks CodeQL's taint chain
+    (``py/partial-ssrf``), mirroring the same defense in ``connections.py``'s
+    ``oauth_callback``. Legitimate names are unaffected.
+    """
+    return _UNSAFE_NAME_CHARS.sub("_", name or "")
 
 
 def connect_base_url(mcp_url: str) -> str:
@@ -60,7 +78,7 @@ async def mint_connect_ticket(
     ``return_url`` through to the callback so the user is sent back to bond-ai.
     """
     base = connect_base_url(mcp_url)
-    url = f"{base}/connect/{name}/ticket"
+    url = f"{base}/connect/{_safe_name(name)}/ticket"
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(
@@ -92,7 +110,7 @@ async def get_connect_status(
     error this raises :class:`ConnectError` (callers decide how to fail soft).
     """
     base = connect_base_url(mcp_url)
-    url = f"{base}/connect/{name}/status"
+    url = f"{base}/connect/{_safe_name(name)}/status"
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.get(url, headers=_auth_headers(jwt_token))
@@ -116,7 +134,7 @@ async def delete_connection(
 ) -> bool:
     """Delete the user's stored provider token for an MCP via bond-mcps."""
     base = connect_base_url(mcp_url)
-    url = f"{base}/connect/{name}"
+    url = f"{base}/connect/{_safe_name(name)}"
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.request("DELETE", url, headers=_auth_headers(jwt_token))

@@ -504,8 +504,10 @@ async def authorize_connection(
                 detail="Server configuration error: invalid return URL",
             )
         try:
+            # Use the discovery-sourced name (managed["name"]), not the raw request
+            # path parameter, so no user-controlled value flows into the URL (SSRF).
             connect_url = await mcp_connect_client.mint_connect_ticket(
-                managed["url"], connection_name, jwt_token, return_url
+                managed["url"], managed["name"], jwt_token, return_url
             )
         except ConnectError as e:
             LOGGER.error("[Connections] failed to mint connect ticket for %s: %s", safe_id(connection_name), e)
@@ -763,7 +765,8 @@ async def get_connection_status(
     managed = _get_managed_connection(connection_name)
     if managed is not None:
         try:
-            mcps_status = await mcp_connect_client.get_connect_status(managed["url"], connection_name, jwt_token)
+            # discovery-sourced name (not the request path param) → no SSRF taint.
+            mcps_status = await mcp_connect_client.get_connect_status(managed["url"], managed["name"], jwt_token)
         except ConnectError as e:
             LOGGER.warning("[Connections] status check failed for managed %s: %s", safe_id(connection_name), e)
             mcps_status = {"connected": False, "valid": False}
@@ -841,7 +844,8 @@ async def disconnect(
     managed = _get_managed_connection(connection_name)
     if managed is not None:
         try:
-            removed = await mcp_connect_client.delete_connection(managed["url"], connection_name, jwt_token)
+            # discovery-sourced name (not the request path param) → no SSRF taint.
+            removed = await mcp_connect_client.delete_connection(managed["url"], managed["name"], jwt_token)
         except ConnectError as e:
             LOGGER.error("[Connections] disconnect failed for managed %s: %s", safe_id(connection_name), e)
             raise HTTPException(
