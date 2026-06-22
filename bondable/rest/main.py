@@ -41,6 +41,13 @@ LOGGER = logging.getLogger(__name__)
 # Lifespan for scheduler
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Keep the bond-mcps discovery cache warm via periodic polling so newly
+    # added/removed MCPs show up without restarting bond-ai, and so the cache is
+    # populated before requests arrive (no blocking fetch on the event loop).
+    # No-op when BOND_MCPS_DISCOVERY_URL is unset.
+    from bondable.bond.mcp_discovery import start_background_poller, stop_background_poller
+    start_background_poller()
+
     scheduler = None
     if os.getenv("SCHEDULED_JOBS_ENABLED", "false").lower() == "true":
         from bondable.bond.scheduler import JobScheduler
@@ -53,6 +60,7 @@ async def lifespan(app: FastAPI):
     if scheduler:
         scheduler.stop()
         LOGGER.info("Scheduled jobs scheduler stopped")
+    stop_background_poller()
 
 
 # Create FastAPI app
