@@ -256,26 +256,34 @@ backend-combined: _check-backend-port
 # first service stopped, since subsequent iterations find nothing.
 # Also stops the nginx container (no-op if it's not running) so `make stop`
 # covers both split and combined modes uniformly.
+# Robust stop: uvicorn --reload runs TWO processes on :$(BACKEND_PORT) (the
+# reloader + its worker), so killing a single `lsof | head -1` PID left the
+# port bound and made `make dev-combined` fail its port check. Instead, for
+# each port: kill ALL listeners (TERM the whole process group + the pid), then
+# poll up to ~5s and escalate to KILL until the socket is actually free. This
+# makes `make stop && make dev-combined` reliable.
 stop:
 	@$(MAKE) --no-print-directory nginx-stop
-	@pids_to_kill=""; \
-	for entry in "backend:$(BACKEND_PORT)" "frontend:$(FRONTEND_PORT)"; do \
-	  name=$${entry%%:*}; port=$${entry##*:}; \
-	  pid=$$(lsof -nP -iTCP:$$port -sTCP:LISTEN -t 2>/dev/null | head -1); \
-	  if [ -n "$$pid" ]; then \
-	    echo "Stopping $$name :$$port (pid $$pid)"; \
-	    pids_to_kill="$$pids_to_kill $$pid"; \
-	  fi; \
+	@any=0; \
+	for port in $(BACKEND_PORT) $(FRONTEND_PORT); do \
+	  pids=$$(lsof -nP -iTCP:$$port -sTCP:LISTEN -t 2>/dev/null | sort -u); \
+	  [ -z "$$pids" ] && continue; \
+	  any=1; echo "Stopping :$$port ($$(echo $$pids | tr '\n' ' '))"; \
+	  for pid in $$pids; do \
+	    pgid=$$(ps -o pgid= -p $$pid 2>/dev/null | tr -d ' '); \
+	    [ -n "$$pgid" ] && kill -TERM -- -$$pgid 2>/dev/null || true; \
+	    kill -TERM $$pid 2>/dev/null || true; \
+	  done; \
+	  for i in 1 2 3 4 5 6 7 8 9 10; do \
+	    rem=$$(lsof -nP -iTCP:$$port -sTCP:LISTEN -t 2>/dev/null); \
+	    [ -z "$$rem" ] && break; \
+	    sleep 0.5; \
+	    for pid in $$rem; do kill -KILL $$pid 2>/dev/null || true; done; \
+	  done; \
+	  rem=$$(lsof -nP -iTCP:$$port -sTCP:LISTEN -t 2>/dev/null); \
+	  [ -n "$$rem" ] && echo "  WARN: :$$port still in use ($$rem)" >&2 || echo "  :$$port free"; \
 	done; \
-	if [ -z "$$pids_to_kill" ]; then \
-	  echo "  nothing to stop (no process on :$(BACKEND_PORT) or :$(FRONTEND_PORT))"; \
-	  exit 0; \
-	fi; \
-	for pid in $$pids_to_kill; do \
-	  pgid=$$(ps -o pgid= -p $$pid 2>/dev/null | tr -d ' '); \
-	  if [ -n "$$pgid" ]; then kill -- -$$pgid 2>/dev/null; fi; \
-	  kill $$pid 2>/dev/null || true; \
-	done
+	[ $$any -eq 0 ] && echo "  nothing to stop (no process on :$(BACKEND_PORT) or :$(FRONTEND_PORT))" || true
 
 restart: stop
 	@sleep 1
