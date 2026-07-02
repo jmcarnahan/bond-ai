@@ -65,6 +65,23 @@ your consent (this is the "real proof" — see the architecture doc §9):
    stored in bond-mcps' `tokens.db`.
 6. **Disconnect** on the tile should clear it.
 
+## Known gotcha: managed tiles missing right after a restart
+
+`make dev-combined` starts the backend **before** nginx, and
+`BOND_MCPS_DISCOVERY_URL` points through nginx (`:8000/connections/discovery`),
+so the backend's first discovery fetch gets connection-refused and fails soft
+to an empty list — the Connections screen then shows only static tiles (no
+Atlassian/GitHub/Microsoft/Databricks). Symptom in `tmp/logs/backend.log`:
+
+```
+WARNING - bondable.bond.mcp_discovery - MCP discovery fetch failed (ConnectError: ...); failing soft
+```
+
+The discovery poller now fast-retries every 10s until its first successful
+fetch (`STARTUP_RETRY_SECONDS` in `mcp_discovery.py`), so the tiles appear
+within seconds of nginx coming up — just refresh the page. (Before that fix
+the retry waited a full TTL: up to 5 minutes of missing tiles.)
+
 ## Notes
 
 - The JWT seam check reads `JWT_SECRET_KEY` from `.env` by default; override

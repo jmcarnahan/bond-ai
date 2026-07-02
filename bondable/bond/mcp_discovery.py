@@ -46,6 +46,15 @@ ENV_DISCOVERY_TIMEOUT = "BOND_MCPS_DISCOVERY_TIMEOUT_SECONDS"
 DEFAULT_TTL_SECONDS = 300
 DEFAULT_TIMEOUT_SECONDS = 5.0
 
+# Poller retry interval while the cache has never been populated. Until the
+# first successful fetch, waiting a full TTL leaves managed MCPs invisible for
+# minutes when bond-ai starts before its discovery upstream is reachable
+# (locally `make dev-combined` starts the backend before nginx; in deployment
+# a bond-ai pod can start before the bond-mcps AS). Once a fetch has
+# succeeded, transient failures fall back to the last-good cache, so the
+# normal TTL cadence is fine.
+STARTUP_RETRY_SECONDS = 10.0
+
 # SSRF protection: never let a (mis)configured discovery URL reach a cloud
 # metadata endpoint. Mirrors the blocklist in
 # ``bondable/rest/routers/user_mcp_servers.py`` (localhost is intentionally
@@ -209,13 +218,23 @@ class _DiscoveryCache:
         LOGGER.debug("MCP discovery returned %d server(s) from %s", len(entries), url)
         return entries
 
+    def _next_poll_interval(self) -> float:
+        """Poll cadence: fast retry until the first successful fetch lands."""
+        with self._lock:
+            never_fetched = self._entries is None
+        ttl = _get_ttl_seconds()
+        return min(STARTUP_RETRY_SECONDS, ttl) if never_fetched else ttl
+
     def start_background_poller(self) -> None:
         """Start a daemon thread that refreshes the cache every TTL seconds.
 
         Idempotent and a no-op when discovery is disabled. Lazy TTL refresh on
         access already keeps data fresh for active traffic; the poller guarantees
         regular refresh even when nothing is reading (so a newly added MCP shows
-        up without waiting for the next request).
+        up without waiting for the next request). Until the first fetch
+        succeeds it polls every ``STARTUP_RETRY_SECONDS`` instead, so a backend
+        that boots before its discovery upstream recovers in seconds, not a
+        full TTL.
         """
         if not get_discovery_url():
             return
@@ -231,7 +250,7 @@ class _DiscoveryCache:
                         self.get(force_refresh=True)
                     except Exception:  # noqa: BLE001 - poller must never die
                         LOGGER.debug("MCP discovery poll iteration failed", exc_info=True)
-                    stop.wait(_get_ttl_seconds())
+                    stop.wait(self._next_poll_interval())
 
             poller = threading.Thread(
                 target=_loop, name="mcp-discovery-poller", daemon=True
