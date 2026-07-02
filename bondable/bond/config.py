@@ -539,6 +539,11 @@ class Config:
                 "display_name": entry.get("display_name", existing.get("display_name", name)),
                 "transport": "streamable-http",
                 "auth_type": "bond_jwt",
+                # Marks a bond-mcps-managed MCP: bond_jwt auth, but its per-user
+                # connection status is delegated (queried via bond-mcps'
+                # /connect/<name>/status), NOT "always connected" like internal
+                # bond_jwt servers (sbelcrm, admin, common).
+                "is_managed": True,
             })
             servers[name] = existing
 

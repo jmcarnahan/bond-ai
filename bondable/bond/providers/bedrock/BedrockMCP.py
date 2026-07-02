@@ -1283,12 +1283,27 @@ def _get_auth_headers_for_server(
         LOGGER.debug("Using OAuth2 token for MCP server %s", safe_id(server_name))
 
     elif auth_type == AUTH_TYPE_BOND_JWT:
-        # Bond JWT: Use the passed JWT token
-        if jwt_token:
-            headers['Authorization'] = f'Bearer {jwt_token}'
+        # Bond JWT: use the forwarded token, or mint one for the user. Server-side
+        # flows (agent tool-def fetch at create time) call this without a
+        # forwarded request JWT; without a token, bond-mcps-managed MCPs 401 and
+        # the agent gets no tools. bond-mcps validates the Bond JWT (HS256,
+        # iss=bond-ai, aud includes mcp-server, sub=email), so minting from the
+        # authenticated user's email yields a token the MCPs accept.
+        token = jwt_token
+        if not token and current_user is not None:
+            email = getattr(current_user, 'email', None)
+            if email:
+                try:
+                    from bondable.rest.utils.auth import create_access_token
+                    token = create_access_token({"sub": email})
+                    LOGGER.debug("Minted Bond JWT for bond_jwt server %s (user %s)", safe_id(server_name), safe_id(email))
+                except Exception as e:  # noqa: BLE001 - fall through to no-auth + log
+                    LOGGER.warning("Failed to mint Bond JWT for server %s: %s", safe_id(server_name), e)
+        if token:
+            headers['Authorization'] = f'Bearer {token}'
             LOGGER.debug("Using Bond JWT for MCP server %s", safe_id(server_name))
         else:
-            LOGGER.debug("No JWT token provided for bond_jwt auth on server %s", safe_id(server_name))
+            LOGGER.debug("No JWT token or current_user for bond_jwt auth on server %s", safe_id(server_name))
 
     elif auth_type == AUTH_TYPE_STATIC:
         # Static: Only use headers from config (already set above)
