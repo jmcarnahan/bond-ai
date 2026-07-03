@@ -21,6 +21,7 @@ from fastmcp.client.transports import StreamableHttpTransport  # Use fastmcp's t
 from fastmcp.client.transports import SSETransport
 import asyncio
 from bondable.bond.config import Config
+from bondable.bond import mcp_token_exchange
 from bondable.bond.auth.mcp_token_cache import (
     get_mcp_token_cache,
     AuthorizationRequiredError,
@@ -1113,7 +1114,11 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
         try:
             # Get authentication headers (handles oauth2, bond_jwt, static)
             try:
-                headers = _get_auth_headers_for_server(server_name, server_config, current_user)
+                # to_thread: the managed-MCP branch may make a blocking token-exchange
+                # HTTP call — keep it off the event loop.
+                headers = await asyncio.to_thread(
+                    _get_auth_headers_for_server, server_name, server_config, current_user
+                )
                 headers['User-Agent'] = 'Bond-AI-MCP-Client/1.0'
                 LOGGER.debug("[MCP Tool Defs] Server '%s': authenticated successfully", safe_id(server_name))
             except (AuthorizationRequiredError, TokenExpiredError) as e:
@@ -1338,6 +1343,20 @@ def _get_auth_headers_for_server(
                     LOGGER.warning("Failed to mint Bond JWT for server %s: %s", safe_id(server_name), e)
             else:
                 LOGGER.debug("No real email for bond_jwt mint on server %s; skipping", safe_id(server_name))
+
+        # bond-mcps-managed MCPs sit behind the Authorization Server: when token
+        # exchange is enabled we must NOT present the HS256 Bond JWT to the MCP
+        # pod. Exchange it (RFC 8693) for an AS token scoped to this MCP. On
+        # failure, send NO Authorization header rather than leak the HS256 to a
+        # managed pod. Non-managed servers and disabled mode are unaffected.
+        if token and server_config.get('is_managed') and mcp_token_exchange.is_exchange_enabled():
+            try:
+                token = mcp_token_exchange.exchange_token_sync(token, server_config['url'])
+                LOGGER.debug("Exchanged Bond JWT for AS token on managed server %s", safe_id(server_name))
+            except mcp_token_exchange.TokenExchangeError as e:
+                LOGGER.warning("AS token exchange failed for managed server %s; sending no Authorization: %s", safe_id(server_name), e)
+                token = None
+
         if token:
             headers['Authorization'] = f'Bearer {token}'
             LOGGER.debug("Using Bond JWT for MCP server %s", safe_id(server_name))
@@ -1428,12 +1447,15 @@ async def execute_mcp_tool(
 
         for attempt in range(max_attempts):
             try:
-                # Get authentication headers based on auth_type
-                headers = _get_auth_headers_for_server(
+                # Get authentication headers based on auth_type.
+                # to_thread: the managed-MCP branch may make a blocking
+                # token-exchange HTTP call — keep it off the event loop.
+                headers = await asyncio.to_thread(
+                    _get_auth_headers_for_server,
                     server_name=server_name,
                     server_config=server_config,
                     current_user=current_user,
-                    jwt_token=jwt_token
+                    jwt_token=jwt_token,
                 )
                 headers['User-Agent'] = 'Bond-AI-MCP-Client/1.0'
 
