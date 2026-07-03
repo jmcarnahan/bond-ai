@@ -476,8 +476,30 @@ These are the non-obvious things most reviews miss. Each is real and worth a car
    route `/connect/<provider>/*` to the right pod (mirroring local nginx), or should the
    connect flow use each MCP's own ingress host (and register per-host callbacks)? This
    is the highest-risk deployment detail.
-2. **HS256 vs RS256 in production** (§11.1) — decide whether to keep the shared symmetric
-   secret or move to bond-ai-published JWKS.
+2. **Deployed JWT verification: two token populations, one verifier — this is
+   bigger than "HS256 vs RS256" (§11.1).** In EKS, an MCP pod's fastmcp
+   `JWTVerifier` has exactly **one key source** (JWKS URI *or* static key) and
+   one algorithm. But the deployed MCPs have two known caller populations with
+   incompatible contracts:
+   - **Claude Code** (today's deployed consumer, per bond-mcps
+     `docs/DEPLOYMENT.md`): RS256 tokens issued by the bond-mcps AS —
+     `iss = <AS base URL>`, `aud = <publicUrl>/mcp`.
+   - **bond-ai delegation** (this work): HS256 shared-secret tokens —
+     `iss = bond-ai`, `aud = mcp-server` (server-side mints) or
+     `["bond-ai-api","mcp-server"]` (forwarded sessions).
+
+   fastmcp accepts issuer/audience **lists**, so those claims can coexist —
+   but the key/algorithm cannot. Configuring a pod for one population 401s
+   the other. **Enabling bond-ai delegation in EKS as currently shaped breaks
+   Claude Code access to that MCP (or vice versa).** Options to decide before
+   Chapter 2 wiring:
+   (a) a composite verifier (try JWKS, fall back to HS256 — small custom
+   `TokenVerifier`); (b) bond-ai obtains tokens from the bond-mcps AS
+   (token-exchange / client-credentials — the "correct OAuth" answer, more
+   work); (c) bond-ai publishes a JWKS and both issuers go RS256 behind a
+   multi-JWKS verifier (still needs (a)-style composition); (d) separate MCP
+   deployments per consumer. The Helm chart's `values.yaml` jwt block
+   documents the same constraint from the operator's side.
 3. **`user_key` = email vs internal `user_id`** — email is the current `sub`; an internal
    stable ID would survive email changes but requires aligning `sub` (and
    `BOND_MCPS_JWT_SUB_CLAIM`) on both sides.

@@ -13,9 +13,11 @@
 #   4. /rest/providers returns JSON            (nginx /rest proxy → backend)
 #   5. MCP discovery through nginx             (:8000/connections/discovery)
 #   6. Bare /connections serves the SPA        (OAuth return-trip route, no broken 301)
-#   7. JWT trust seam: mint a Bond JWT with JWT_SECRET_KEY and call a bond-mcps
-#      /connect/<name>/status directly — 401 without token AND 200/404 with token
-#      proves the HS256 shared-secret contract (iss/aud/sub) is live end-to-end.
+#   7. JWT trust seam: mint Bond JWTs with JWT_SECRET_KEY and call a bond-mcps
+#      /connect/<name>/status directly — 401 without a token, 200/404 with the
+#      session shape (aud=["bond-ai-api","mcp-server"]) AND with the narrow
+#      server-mint shape (aud=["mcp-server"]) proves the HS256 shared-secret
+#      contract (iss/aud/sub) is live end-to-end for both shapes bond-ai sends.
 #
 # Exit code 0 = all checks passed. Any failure prints a hint and exits 1.
 #
@@ -141,22 +143,37 @@ else
   else
     PY="poetry run python"
   fi
-  token=$(cd "$REPO_ROOT" && JWT_SEAM_SECRET="$secret" $PY -c "
+  # Two token shapes, both real at runtime: forwarded user sessions carry
+  # aud=["bond-ai-api","mcp-server"]; bond-ai's server-side mint (agent
+  # tool-def fetch) carries aud=["mcp-server"] only. Test both.
+  tokens=$(cd "$REPO_ROOT" && JWT_SEAM_SECRET="$secret" $PY -c "
 import os, time, uuid, jwt
-print(jwt.encode(
-    {'sub': 'verify-stack@example.com', 'iss': 'bond-ai',
-     'aud': ['bond-ai-api', 'mcp-server'],
-     'exp': int(time.time()) + 300, 'jti': str(uuid.uuid4())},
-    os.environ['JWT_SEAM_SECRET'], algorithm='HS256'))
+base = {'sub': 'verify-stack@example.com', 'iss': 'bond-ai',
+        'exp': int(time.time()) + 300}
+secret = os.environ['JWT_SEAM_SECRET']
+print(jwt.encode({**base, 'aud': ['bond-ai-api', 'mcp-server'],
+                  'jti': str(uuid.uuid4())}, secret, algorithm='HS256'))
+print(jwt.encode({**base, 'aud': ['mcp-server'],
+                  'jti': str(uuid.uuid4())}, secret, algorithm='HS256'))
 " 2>/dev/null)
-  if [ -z "$token" ]; then
-    bad "could not mint a Bond JWT" "run from the bond-ai repo root (needs 'poetry run python' + pyjwt)"
+  token=$(echo "$tokens" | sed -n 1p)
+  narrow=$(echo "$tokens" | sed -n 2p)
+  if [ -z "$token" ] || [ -z "$narrow" ]; then
+    bad "could not mint Bond JWTs" "run from the bond-ai repo root (needs 'poetry run python' + pyjwt)"
   else
     code=$($CURL -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $token" "$status_url" 2>/dev/null)
     if [ "$code" = "200" ] || [ "$code" = "404" ]; then
-      ok "bond-mcps accepts minted Bond JWT ($status_url → $code) — HS256 trust seam live"
+      ok "bond-mcps accepts session-shape Bond JWT ($status_url → $code) — HS256 trust seam live"
     else
-      bad "minted Bond JWT rejected ($status_url → $code)" "BOND_MCPS_JWT_SECRET in bond-mcps must equal JWT_SECRET_KEY in bond-ai's .env; iss=bond-ai, aud=mcp-server"
+      bad "session-shape Bond JWT rejected ($status_url → $code)" "BOND_MCPS_JWT_SECRET in bond-mcps must equal JWT_SECRET_KEY in bond-ai's .env; iss=bond-ai, aud=mcp-server"
+    fi
+    # 7c. narrow mint shape (aud=["mcp-server"] only — what the server-side
+    # mint sends). Requires BOND_MCPS_JWT_AUDIENCE=mcp-server on the MCPs.
+    code=$($CURL -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $narrow" "$status_url" 2>/dev/null)
+    if [ "$code" = "200" ] || [ "$code" = "404" ]; then
+      ok "bond-mcps accepts narrow (server-mint) Bond JWT ($status_url → $code)"
+    else
+      bad "narrow (server-mint) Bond JWT rejected ($status_url → $code)" "BOND_MCPS_JWT_AUDIENCE=mcp-server must be set on the MCPs (dev-combined-jwt sets it)"
     fi
   fi
 fi

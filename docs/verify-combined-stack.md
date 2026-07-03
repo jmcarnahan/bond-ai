@@ -29,7 +29,8 @@ output.
 | 5 | `GET :8000/connections/discovery` → `{"mcps":[…]}` | **bond-ai ↔ bond-mcps discovery plane is live** |
 | 6 | `GET :8000/connections` → 200 | the OAuth return-trip SPA route works (no broken 301 to the in-container port) |
 | 7a | status endpoint without a token → 401 | bond-mcps is in **JWT mode** (auth actually enforced) |
-| 7b | status endpoint with a freshly minted Bond JWT → 200/404 | **the HS256 trust seam is live**: shared secret, `iss=bond-ai`, `aud=mcp-server`, `sub=email` all align across repos |
+| 7b | status endpoint with a session-shape Bond JWT (`aud=["bond-ai-api","mcp-server"]`) → 200/404 | **the HS256 trust seam is live**: shared secret, `iss=bond-ai`, audience, `sub=email` all align across repos |
+| 7c | status endpoint with a narrow server-mint Bond JWT (`aud=["mcp-server"]` only) → 200/404 | the shape bond-ai's server-side mint sends (agent tool-def fetch) is accepted — requires `BOND_MCPS_JWT_AUDIENCE=mcp-server` on the MCPs |
 
 Check 7 is the one no automated test in either repo covers (each side only
 emulates the other) — it exercises the real cross-repo contract at runtime by
