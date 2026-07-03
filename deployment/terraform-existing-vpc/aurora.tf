@@ -173,7 +173,9 @@ resource "aws_rds_cluster" "aurora" {
 
   engine         = "aurora-postgresql"
   engine_mode    = "provisioned"
-  engine_version = "15.12"
+  # 15.15: AWS auto-minor-upgraded the live cluster; pinning the old value
+  # would plan an engine downgrade, which RDS rejects.
+  engine_version = "15.15"
 
   snapshot_identifier = var.aurora_main_snapshot_identifier != "" ? var.aurora_main_snapshot_identifier : null
 
