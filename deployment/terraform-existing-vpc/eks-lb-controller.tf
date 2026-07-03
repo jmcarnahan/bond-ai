@@ -12,8 +12,11 @@
 # Source: https://github.com/kubernetes-sigs/aws-load-balancer-controller/blob/v2.11.0/docs/install/iam_policy.json
 # =============================================================================
 
+# NOTE: The AWS Load Balancer Controller is gated on local.eks_create, so it is
+# NOT installed in consume mode — the shared cluster's controller is owned by
+# bond-mcps (see docs/PLATFORM-CONTRACT.md). bond-ai must never run a second one.
 resource "aws_iam_policy" "lb_controller" {
-  count = var.enable_eks ? 1 : 0
+  count = local.eks_create ? 1 : 0
 
   name        = "${var.project_name}-${var.environment}-eks-lb-controller"
   description = "IAM policy for AWS Load Balancer Controller on EKS"
@@ -266,7 +269,7 @@ resource "aws_iam_policy" "lb_controller" {
 # =============================================================================
 
 resource "aws_iam_role" "lb_controller" {
-  count = var.enable_eks ? 1 : 0
+  count = local.eks_create ? 1 : 0
 
   name = "${var.project_name}-${var.environment}-eks-lb-controller"
 
@@ -295,7 +298,7 @@ resource "aws_iam_role" "lb_controller" {
 }
 
 resource "aws_iam_role_policy_attachment" "lb_controller" {
-  count = var.enable_eks ? 1 : 0
+  count = local.eks_create ? 1 : 0
 
   role       = aws_iam_role.lb_controller[0].name
   policy_arn = aws_iam_policy.lb_controller[0].arn
@@ -306,7 +309,7 @@ resource "aws_iam_role_policy_attachment" "lb_controller" {
 # =============================================================================
 
 resource "helm_release" "lb_controller" {
-  count = var.enable_eks ? 1 : 0
+  count = local.eks_create ? 1 : 0
 
   name       = "aws-load-balancer-controller"
   repository = "https://aws.github.io/eks-charts"

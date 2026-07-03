@@ -15,7 +15,7 @@ resource "aws_security_group" "rds" {
     protocol  = "tcp"
     security_groups = compact(concat(
       [aws_security_group.app_runner.id],
-      var.enable_eks ? [module.eks[0].node_security_group_id] : []
+      var.enable_eks ? [local.eks_node_security_group_id] : []
     ))
     description = "PostgreSQL from compute platforms (App Runner / EKS)"
   }
@@ -96,7 +96,7 @@ resource "aws_security_group" "vpc_endpoints" {
     protocol  = "tcp"
     security_groups = compact(concat(
       [aws_security_group.app_runner.id],
-      var.enable_eks ? [module.eks[0].node_security_group_id] : []
+      var.enable_eks ? [local.eks_node_security_group_id] : []
     ))
     description = "HTTPS from compute platforms (App Runner / EKS)"
   }

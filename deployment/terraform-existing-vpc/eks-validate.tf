@@ -19,7 +19,7 @@ resource "null_resource" "validate_eks_deployment" {
 
       # Configure kubectl
       aws eks update-kubeconfig \
-        --name ${module.eks[0].cluster_name} \
+        --name ${local.eks_cluster_name_effective} \
         --region ${var.aws_region} 2>/dev/null
 
       echo ""

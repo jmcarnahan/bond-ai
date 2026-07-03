@@ -165,12 +165,12 @@ output "apprunner_requests_vpc_endpoint_id" {
 # =============================================================================
 
 output "eks_cluster_name" {
-  value       = var.enable_eks ? module.eks[0].cluster_name : null
+  value       = var.enable_eks ? local.eks_cluster_name_effective : null
   description = "EKS cluster name (null if EKS disabled)"
 }
 
 output "eks_cluster_endpoint" {
-  value       = var.enable_eks ? module.eks[0].cluster_endpoint : null
+  value       = var.enable_eks ? local.eks_provider_host : null
   description = "EKS cluster API endpoint (null if EKS disabled)"
 }
 
@@ -196,7 +196,7 @@ output "eks_custom_domain_url" {
 }
 
 output "eks_kubectl_config" {
-  value       = var.enable_eks ? "aws eks update-kubeconfig --name ${module.eks[0].cluster_name} --region ${var.aws_region}" : null
+  value       = var.enable_eks ? "aws eks update-kubeconfig --name ${local.eks_cluster_name_effective} --region ${var.aws_region}" : null
   description = "Command to configure kubectl for EKS cluster (null if EKS disabled)"
 }
 

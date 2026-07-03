@@ -99,8 +99,11 @@ resource "kubernetes_config_map" "backend" {
     ADMIN_EMAIL = var.admin_email
 
     # Email validation
-    ALLOW_ALL_EMAILS       = var.allow_all_emails
-    SCHEDULED_JOBS_ENABLED = "false"  # Only App Runner runs the scheduler
+    ALLOW_ALL_EMAILS = var.allow_all_emails
+    # Defaults to "false" (var.eks_scheduled_jobs_enabled=false) so the ECS/App
+    # Runner scheduler stays the single source of truth until cutover. Flip the
+    # var to true only after the other scheduler is decommissioned.
+    SCHEDULED_JOBS_ENABLED = var.eks_scheduled_jobs_enabled ? "true" : "false"
 
     # Cookie security
     COOKIE_SECURE = "true"
@@ -263,6 +266,12 @@ resource "kubernetes_deployment" "backend" {
 
 locals {
   eks_use_external_alb = var.eks_target_group_arn != ""
+
+  # ClusterIP (no per-service cloud LB) when either an external target-group
+  # binding OR the shared-ALB Ingress is in play. In both cases the AWS LB
+  # Controller keeps pod IPs registered in an ALB target group directly, so the
+  # Service must not provision its own NLB.
+  eks_service_clusterip = local.eks_use_external_alb || local.eks_use_ingress
 }
 
 resource "kubernetes_service" "backend" {
@@ -271,7 +280,7 @@ resource "kubernetes_service" "backend" {
   metadata {
     name      = "bond-ai-backend"
     namespace = kubernetes_namespace.bond_ai[0].metadata[0].name
-    annotations = local.eks_use_external_alb ? {} : merge(
+    annotations = local.eks_service_clusterip ? {} : merge(
       {
         "service.beta.kubernetes.io/aws-load-balancer-type"            = "external"
         "service.beta.kubernetes.io/aws-load-balancer-nlb-target-type" = "ip"
@@ -291,10 +300,10 @@ resource "kubernetes_service" "backend" {
       app = "bond-ai-backend"
     }
 
-    type = local.eks_use_external_alb ? "ClusterIP" : "LoadBalancer"
+    type = local.eks_service_clusterip ? "ClusterIP" : "LoadBalancer"
 
     port {
-      port        = local.eks_use_external_alb ? 8080 : (local.eks_has_tls ? 443 : 80)
+      port        = local.eks_service_clusterip ? 8080 : (local.eks_has_tls ? 443 : 80)
       target_port = 8080
       protocol    = "TCP"
     }
