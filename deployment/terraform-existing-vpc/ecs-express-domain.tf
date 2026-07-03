@@ -9,15 +9,26 @@
 # =============================================================================
 
 locals {
-  ecs_express_custom_domain_enabled = (
+  # ALB TLS plumbing (ACM cert + validation + listener rule) is kept alive
+  # whenever ECS Express is configured with a custom domain, INDEPENDENT of which
+  # platform currently serves apex traffic. This protects the ECS Express
+  # rollback path: flipping primary_platform to "eks" must NOT destroy the cert
+  # and listener rule (recreating them on rollback is slow and racy).
+  ecs_express_alb_domain_configured = (
     var.enable_ecs_express &&
     var.custom_domain_name != "" &&
     !var.backend_is_private &&
-    var.primary_platform == "ecs_express" &&
     var.ecs_express_configure_alb
   )
 
-  # Resolved service URL: custom domain > ALB endpoint
+  # The Route53 apex alias points at ECS Express ONLY while it is the primary
+  # platform. This is the single resource whose gating flips at cutover.
+  ecs_express_custom_domain_enabled = (
+    local.ecs_express_alb_domain_configured &&
+    var.primary_platform == "ecs_express"
+  )
+
+  # Resolved service URL: custom domain (when apex points here) > ALB endpoint
   ecs_express_service_url = var.enable_ecs_express ? (
     local.ecs_express_custom_domain_enabled ? var.custom_domain_name : local.ecs_express_backend_url
   ) : ""
@@ -29,7 +40,7 @@ locals {
 # =============================================================================
 
 resource "aws_acm_certificate" "ecs_express" {
-  count = local.ecs_express_custom_domain_enabled ? 1 : 0
+  count = local.ecs_express_alb_domain_configured ? 1 : 0
 
   domain_name               = var.custom_domain_name
   subject_alternative_names = var.enable_www_subdomain ? ["www.${var.custom_domain_name}"] : []
@@ -50,7 +61,7 @@ resource "aws_acm_certificate" "ecs_express" {
 # =============================================================================
 
 resource "aws_route53_record" "ecs_express_cert_validation" {
-  for_each = local.ecs_express_custom_domain_enabled ? {
+  for_each = local.ecs_express_alb_domain_configured ? {
     for dvo in aws_acm_certificate.ecs_express[0].domain_validation_options : dvo.domain_name => {
       name   = dvo.resource_record_name
       record = dvo.resource_record_value
@@ -67,7 +78,7 @@ resource "aws_route53_record" "ecs_express_cert_validation" {
 }
 
 resource "aws_acm_certificate_validation" "ecs_express" {
-  count = local.ecs_express_custom_domain_enabled ? 1 : 0
+  count = local.ecs_express_alb_domain_configured ? 1 : 0
 
   certificate_arn         = aws_acm_certificate.ecs_express[0].arn
   validation_record_fqdns = [for record in aws_route53_record.ecs_express_cert_validation : record.fqdn]
@@ -121,7 +132,10 @@ resource "aws_route53_record" "ecs_express_www_alias" {
 # =============================================================================
 
 resource "null_resource" "ecs_express_alb_custom_domain" {
-  count = local.ecs_express_custom_domain_enabled ? 1 : 0
+  # Kept alive with the cert (alb_domain_configured) so the listener rule for the
+  # custom domain survives a primary_platform flip — the ECS rollback path stays
+  # ready. Only the Route53 apex alias below tracks the active platform.
+  count = local.ecs_express_alb_domain_configured ? 1 : 0
 
   triggers = {
     # Re-run on every apply to sync target groups after blue-green deployments

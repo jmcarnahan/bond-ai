@@ -1,0 +1,323 @@
+# =============================================================================
+# nginx-combined.conf.template — bond-ai PROD combined-mode front door.
+#
+# Rendered at container start by deployment/docker-entrypoint.sh, which runs
+# envsubst with an explicit variable WHITELIST so nginx's own $variables (e.g.
+# $http_host, $remote_addr) survive and only the ${BOND_MCPS_*_UPSTREAM}
+# placeholders below are substituted. The rendered file is written to
+# /etc/nginx/conf.d/default.conf.
+#
+# The ${BOND_MCPS_*_UPSTREAM} values are full origins (scheme + host, no path).
+# Defaults (set by the entrypoint if unset) are the public *.mcps.* ALB
+# hostnames; in EKS consume mode they are overridden to in-cluster service DNS
+# (e.g. http://auth-server.bond-mcps.svc.cluster.local:8001).
+# =============================================================================
+
+# Map for conditional WebSocket Connection header:
+# - When client sends Upgrade header → pass "upgrade"
+# - When no Upgrade header (normal HTTP/SSE) → pass empty string (keep-alive)
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      '';
+}
+
+server {
+    listen 8080;
+    server_name localhost;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Hide nginx version in response headers
+    server_tokens off;
+
+    # File upload size limit
+    client_max_body_size 50m;
+
+    # Global security headers (applied to all locations)
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # -----------------------------------------------------------------------
+    # /rest/* → reverse proxy to Uvicorn (strips /rest prefix)
+    # -----------------------------------------------------------------------
+    # The trailing slash on proxy_pass rewrites /rest/health → /health
+    location /rest/ {
+        proxy_pass http://127.0.0.1:8000/;
+
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # SSE streaming support (critical for /chat endpoint)
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+
+        # WebSocket upgrade headers (conditional — no-op for plain HTTP/SSE)
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+
+        # Security headers
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+    }
+
+    # -----------------------------------------------------------------------
+    # Backend paths accessed directly (not via /rest prefix)
+    # -----------------------------------------------------------------------
+    # OAuth callbacks are redirected here by external providers (Okta, Cognito,
+    # Microsoft, etc.) and must keep their original paths to avoid reconfiguring
+    # every OAuth application. Health check is used by App Runner directly.
+
+    location /auth/ {
+        proxy_pass http://127.0.0.1:8000/auth/;
+
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+
+        # Security headers
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+    }
+
+    # /connections (exact, no trailing slash) is a frontend SPA route — serve
+    # index.html so the Flutter router can handle query params like
+    # ?connection_success=... after the MCP OAuth callback redirect.
+    location = /connections {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        try_files /index.html =404;
+    }
+
+    # -----------------------------------------------------------------------
+    # bond-mcps front door (production combined mode)
+    # -----------------------------------------------------------------------
+    # Proxies the browser-facing MCP OAuth flows to the bond-mcps services.
+    # Upstream origins are injected at container start (see header comment).
+    #
+    # Host is intentionally NOT overridden to $http_host: the public upstreams
+    # sit behind an ALB that routes by Host header, so Host must remain the
+    # upstream hostname (nginx's default, derived from proxy_pass). The original
+    # front-door host is forwarded via X-Forwarded-Host; bond-mcps builds its
+    # public callback URLs from BOND_MCPS_CONNECT_PUBLIC_URL, not the Host header.
+    # proxy_ssl_server_name sends SNI for the https public upstreams (harmless
+    # for the http cluster-DNS form). Mirrors nginx-local-combined.conf's
+    # front-door blocks. Exact `=` matches below win over the /connections/
+    # prefix (which still carries everything else to the local backend).
+
+    # /connections/discovery → bond-mcps Authorization Server
+    location = /connections/discovery {
+        proxy_pass ${BOND_MCPS_AUTH_UPSTREAM};
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+    }
+
+    # MCP OAuth callbacks → the per-provider MCP that serves that provider's
+    # connect routes (canonical, already-registered provider redirect paths).
+    location = /connections/microsoft/callback {
+        proxy_pass ${BOND_MCPS_MICROSOFT_UPSTREAM};
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+    }
+
+    location = /connections/github/callback {
+        proxy_pass ${BOND_MCPS_GITHUB_UPSTREAM};
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+    }
+
+    location = /connections/atlassian/callback {
+        proxy_pass ${BOND_MCPS_ATLASSIAN_UPSTREAM};
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+    }
+
+    # /connect/<provider>/* → the per-provider MCP that serves the delegated
+    # OAuth Connect flow. The browser hits these at the front door. Exact
+    # no-slash variants avoid a fall-through to the SPA on a bare /connect/<p>.
+    location /connect/microsoft/ {
+        proxy_pass ${BOND_MCPS_MICROSOFT_UPSTREAM};
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+    }
+    location = /connect/microsoft {
+        proxy_pass ${BOND_MCPS_MICROSOFT_UPSTREAM};
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+    }
+
+    location /connect/github/ {
+        proxy_pass ${BOND_MCPS_GITHUB_UPSTREAM};
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+    }
+    location = /connect/github {
+        proxy_pass ${BOND_MCPS_GITHUB_UPSTREAM};
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+    }
+
+    location /connect/atlassian/ {
+        proxy_pass ${BOND_MCPS_ATLASSIAN_UPSTREAM};
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+    }
+    location = /connect/atlassian {
+        proxy_pass ${BOND_MCPS_ATLASSIAN_UPSTREAM};
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+    }
+
+    location /connect/databricks/ {
+        proxy_pass ${BOND_MCPS_DATABRICKS_UPSTREAM};
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+    }
+    location = /connect/databricks {
+        proxy_pass ${BOND_MCPS_DATABRICKS_UPSTREAM};
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+    }
+
+    location /connections/ {
+        proxy_pass http://127.0.0.1:8000/connections/;
+
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+
+        # Security headers
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+    }
+
+    location = /health {
+        # Try uvicorn first; if it's still starting, return 200 from nginx
+        # so App Runner considers the instance healthy during startup.
+        proxy_pass http://127.0.0.1:8000/health;
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 5s;
+
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Security headers
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+
+        # If uvicorn isn't up yet, return 200 so App Runner doesn't kill us
+        proxy_intercept_errors on;
+        error_page 502 503 504 =200 @health_fallback;
+    }
+
+    location @health_fallback {
+        add_header Content-Type application/json;
+        add_header X-Content-Type-Options "nosniff" always;
+        return 200 '{"status":"starting"}';
+    }
+
+    # -----------------------------------------------------------------------
+    # Static assets with content hashes — cache for 1 year
+    # -----------------------------------------------------------------------
+    location ~* \.(js|css|woff2?|ttf|eot|ico|png|jpg|jpeg|gif|svg|webp)$ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        try_files $uri =404;
+    }
+
+    # -----------------------------------------------------------------------
+    # HTML files — no caching, always fetch fresh
+    # -----------------------------------------------------------------------
+    location ~* \.html$ {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        add_header Expires "0";
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        # CSP for Flutter web app:
+        # - script-src: 'unsafe-eval' (dart2js), 'unsafe-inline' (flutter_bootstrap.js), gstatic.com (CanvasKit)
+        # - connect-src: gstatic.com (CanvasKit WASM + fonts)
+        # - font-src: fonts.gstatic.com (Google Fonts / Roboto)
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://www.gstatic.com https://fonts.gstatic.com; img-src 'self' data: blob:; font-src 'self' https://fonts.gstatic.com; frame-src 'self' blob:; frame-ancestors 'none'" always;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # -----------------------------------------------------------------------
+    # Default location — SPA fallback
+    # -----------------------------------------------------------------------
+    location / {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        try_files $uri $uri/ /index.html;
+    }
+}

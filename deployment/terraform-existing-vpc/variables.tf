@@ -484,3 +484,48 @@ variable "eks_alb_dns_name" {
   type        = string
   default     = ""
 }
+
+# =============================================================================
+# EKS External-Cluster "Consume Mode" (shared bond-platform cluster)
+#
+# When eks_existing_cluster_name is non-empty, bond-ai does NOT create its own
+# EKS cluster/node group/LB controller. Instead it deploys its namespace onto a
+# cluster owned by bond-mcps and joins the shared ALB via an IngressGroup.
+# See docs/PLATFORM-CONTRACT.md.
+# =============================================================================
+
+variable "eks_existing_cluster_name" {
+  description = "Name of a pre-existing EKS cluster to CONSUME (shared bond-platform cluster). Empty string (default) keeps the current CREATE behavior where bond-ai provisions its own cluster."
+  type        = string
+  default     = ""
+}
+
+variable "eks_external_node_security_group_id" {
+  description = "Node security group ID of the consumed EKS cluster (bond-mcps output node_security_group_id). Used in consume mode to authorize PostgreSQL/HTTPS ingress from EKS node ENIs, replacing the created cluster's module output."
+  type        = string
+  default     = ""
+}
+
+variable "eks_use_ingress" {
+  description = "Force use of the shared-ALB kubernetes_ingress_v1 (bond-platform IngressGroup) instead of a self-managed NLB/TargetGroupBinding. Automatically enabled in consume mode; this toggle lets create-mode opt in for testing."
+  type        = bool
+  default     = false
+}
+
+variable "eks_ingress_group_name" {
+  description = "alb.ingress.kubernetes.io/group.name for the shared ALB IngressGroup. Must match the value used by bond-mcps (see docs/PLATFORM-CONTRACT.md)."
+  type        = string
+  default     = "bond-platform"
+}
+
+variable "eks_ingress_group_order" {
+  description = "alb.ingress.kubernetes.io/group.order for bond-ai within the shared IngressGroup. Per the platform contract, bond-ai = 20 (auth-server = 1, per-MCP services = 10)."
+  type        = string
+  default     = "20"
+}
+
+variable "eks_scheduled_jobs_enabled" {
+  description = "Whether the EKS bond-ai deployment runs the background scheduled-jobs engine. Defaults false so the ECS/App Runner scheduler stays the single source of truth until cutover; flip to true only after decommissioning the other scheduler."
+  type        = bool
+  default     = false
+}

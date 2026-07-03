@@ -92,20 +92,27 @@ resource "aws_acm_certificate_validation" "eks" {
 # =============================================================================
 
 data "aws_lb" "eks_alb" {
-  # Only active when the LB Controller creates the ALB (no external ALB provided).
-  # When eks_alb_dns_name is set, DNS is managed externally — skip this lookup.
-  count = var.enable_eks && var.eks_custom_domain_name != "" && var.eks_hosted_zone_id != "" && var.eks_alb_dns_name == "" ? 1 : 0
+  # Only active when the LB Controller creates the ALB (no external ALB provided)
+  # AND EKS is the primary platform (so the apex points at it — symmetric with
+  # ecs-express-domain.tf). When eks_alb_dns_name is set, DNS is managed
+  # externally — skip this lookup.
+  count = var.enable_eks && var.primary_platform == "eks" && var.eks_custom_domain_name != "" && var.eks_hosted_zone_id != "" && var.eks_alb_dns_name == "" ? 1 : 0
 
-  tags = {
-    "elbv2.k8s.aws/cluster" = local.eks_cluster_name
-  }
+  # Match on cluster name (effective name works in both create and consume mode).
+  # In shared-ALB (Ingress) mode also match the IngressGroup stack so the lookup
+  # is unambiguous on a cluster that hosts multiple IngressGroups/ALBs.
+  tags = merge(
+    { "elbv2.k8s.aws/cluster" = local.eks_cluster_name_effective },
+    local.eks_use_ingress ? { "ingress.k8s.aws/stack" = var.eks_ingress_group_name } : {}
+  )
 
   depends_on = [kubernetes_service.backend]
 }
 
 resource "aws_route53_record" "eks_alias" {
-  # Only when LB Controller manages the ALB; external ALB users handle DNS themselves.
-  count = var.enable_eks && var.eks_custom_domain_name != "" && var.eks_hosted_zone_id != "" && var.eks_alb_dns_name == "" ? 1 : 0
+  # Only when LB Controller manages the ALB and EKS is the primary platform;
+  # external ALB users handle DNS themselves.
+  count = var.enable_eks && var.primary_platform == "eks" && var.eks_custom_domain_name != "" && var.eks_hosted_zone_id != "" && var.eks_alb_dns_name == "" ? 1 : 0
 
   zone_id = var.eks_hosted_zone_id
   name    = var.eks_custom_domain_name

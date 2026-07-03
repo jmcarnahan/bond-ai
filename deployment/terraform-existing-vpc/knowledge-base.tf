@@ -71,7 +71,7 @@ resource "aws_security_group" "aurora_kb" {
     protocol  = "tcp"
     security_groups = compact(concat(
       [aws_security_group.app_runner.id],
-      var.enable_eks ? [module.eks[0].node_security_group_id] : []
+      var.enable_eks ? [local.eks_node_security_group_id] : []
     ))
     description = "PostgreSQL from compute platforms (App Runner / EKS)"
   }
@@ -159,7 +159,8 @@ resource "aws_rds_cluster" "aurora_kb" {
   cluster_identifier = "${var.project_name}-${var.environment}-aurora-kb"
   engine             = "aurora-postgresql"
   engine_mode        = "provisioned"
-  engine_version     = "15.12"
+  # 15.15: AWS auto-minor-upgraded the live cluster (see aurora.tf).
+  engine_version     = "15.15"
   database_name      = local.aurora_kb_database
   master_username    = "postgres"
   master_password    = random_password.aurora_kb_password[0].result

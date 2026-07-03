@@ -18,13 +18,13 @@ resource "aws_iam_role" "eks_pod" {
       {
         Effect = "Allow"
         Principal = {
-          Federated = module.eks[0].oidc_provider_arn
+          Federated = local.eks_oidc_provider_arn
         }
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
           StringEquals = {
-            "${module.eks[0].oidc_provider}:sub" = "system:serviceaccount:bond-ai:bond-ai-backend"
-            "${module.eks[0].oidc_provider}:aud" = "sts.amazonaws.com"
+            "${local.eks_oidc_provider}:sub" = "system:serviceaccount:bond-ai:bond-ai-backend"
+            "${local.eks_oidc_provider}:aud" = "sts.amazonaws.com"
           }
         }
       }
