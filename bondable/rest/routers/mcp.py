@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Annotated, List, Dict, Any, Optional, Union
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -114,7 +115,6 @@ async def list_mcp_tools(
         # network round-trip to bond-mcps' /connect/<name>/status; gathering them
         # avoids serializing the calls inside the per-server loop below (mirrors
         # list_connections). Internal/oauth2 servers are resolved synchronously.
-        import asyncio
         managed_names = [n for n, c in servers.items() if c.get('is_managed')]
         managed_status: Dict[str, ConnectionStatusInfo] = {}
         if managed_names:
@@ -458,7 +458,6 @@ async def _discover_user_mcp_server_tools(
                     transport = StreamableHttpTransport(server_url, headers=headers)
 
                 try:
-                    import asyncio
                     async with Client(transport) as client:
                         tools = await asyncio.wait_for(client.list_tools(), timeout=15)
                         server_tools = [
@@ -513,30 +512,31 @@ async def _get_managed_connection_status(
     """Connection status for a bond-mcps-managed (discovered) MCP.
 
     Delegates to bond-mcps' /connect/<name>/status (same as the Connections
-    screen). A None result means the MCP exposes no connect surface (e.g.
-    PAT-based databricks) — nothing to connect, so report connected. Network/
-    HTTP errors are surfaced as not-connected so the UI prompts a (re)connect.
+    screen), fail-soft: network/HTTP errors surface as not-connected so the
+    UI prompts a (re)connect instead of failing the listing.
     """
     from bondable.bond import mcp_connect_client
 
     url = server_config.get('url', '')
-    try:
-        status = await mcp_connect_client.get_connect_status(url, server_name, jwt_token)
-    except Exception as e:  # noqa: BLE001 - fail soft to "not connected"
-        LOGGER.warning("[MCP Tools] managed status check failed for '%s': %s", server_name, e)
-        return ConnectionStatusInfo(connected=False, valid=False, requires_authorization=True, expires_at=None)
+    status = await mcp_connect_client.get_connect_status_safe(url, server_name, jwt_token)
 
     if status is None:
-        # No connect surface (e.g. databricks PAT) — nothing to connect.
+        # No connect surface (e.g. databricks PAT) — nothing to connect, so the
+        # server renders as usable. NOTE: the Connections screen makes the
+        # opposite call for the same signal (omits the tile entirely).
         return ConnectionStatusInfo(connected=True, valid=True, requires_authorization=False, expires_at=None)
 
     connected = bool(status.get("connected", False))
+    # `valid` gates tool selection in the agent editor, so a disconnected
+    # server reads invalid here — unlike the Connections screen, where
+    # valid=True on a disconnected provider just means "not expired".
     valid = bool(status.get("valid", True)) if connected else False
     return ConnectionStatusInfo(
         connected=connected,
         valid=valid,
         requires_authorization=not connected,
         expires_at=status.get("expires_at"),
+        has_refresh_token=bool(status.get("has_refresh_token", False)),
     )
 
 

@@ -151,6 +151,49 @@ async def test_status_other_error_raises(fake_http):
         await cc.get_connect_status(MCP_URL, "atlassian", "JWT")
 
 
+# --- status (safe wrapper) --------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_status_safe_normalizes_expires_at_to_iso(fake_http):
+    # bond-mcps reports epoch seconds; the safe wrapper converts to ISO-8601
+    # (the shape the REST models / Flutter expect).
+    fake_http["handler"] = lambda *a, **k: FakeResp(
+        {"connected": True, "valid": True, "scopes": "s",
+         "expires_at": 1750000000.0, "has_refresh_token": True}
+    )
+    out = await cc.get_connect_status_safe(MCP_URL, "atlassian", "JWT")
+    assert out["connected"] is True
+    assert out["expires_at"] == "2025-06-15T15:06:40+00:00"
+    assert out["has_refresh_token"] is True
+
+
+@pytest.mark.asyncio
+async def test_status_safe_none_expiry_stays_none(fake_http):
+    fake_http["handler"] = lambda *a, **k: FakeResp(
+        {"connected": True, "valid": True, "scopes": None,
+         "expires_at": None, "has_refresh_token": False}
+    )
+    out = await cc.get_connect_status_safe(MCP_URL, "atlassian", "JWT")
+    assert out["expires_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_status_safe_404_passthrough(fake_http):
+    fake_http["handler"] = lambda *a, **k: FakeResp(status_code=404)
+    assert await cc.get_connect_status_safe(MCP_URL, "weather", "JWT") is None
+
+
+@pytest.mark.asyncio
+async def test_status_safe_error_reads_disconnected(fake_http):
+    def boom(*a, **k):
+        raise httpx.ConnectError("down")
+    fake_http["handler"] = boom
+    out = await cc.get_connect_status_safe(MCP_URL, "atlassian", "JWT")
+    assert out["connected"] is False
+    assert out["valid"] is False
+    assert "error" in out
+
+
 # --- disconnect -----------------------------------------------------------
 
 @pytest.mark.asyncio

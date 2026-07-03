@@ -335,6 +335,13 @@ def test_overlay_merges_and_strips_oauth(monkeypatch):
     assert out["hello"] == {"command": "python", "args": ["h.py"]}  # untouched
     assert out["github"]["auth_type"] == "bond_jwt"
 
+    # Discovered servers are marked managed: bond_jwt like internal servers,
+    # but their per-user connection status is delegated to bond-mcps (the
+    # "non-oauth = always connected" shortcut must not apply to them).
+    assert atl["is_managed"] is True
+    assert out["github"]["is_managed"] is True
+    assert "is_managed" not in out["hello"]
+
 
 def test_overlay_noop_when_no_discovery(monkeypatch):
     static = {"mcpServers": {"hello": {"command": "python"}}}

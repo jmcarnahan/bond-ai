@@ -68,7 +68,7 @@ class _StubMcps:
         self.tickets.append({"name": name, "return_url": return_url, "url": mcp_url})
         return f"http://localhost:8000/connect/{name}?ticket=TKT&return_url={return_url}"
 
-    async def get_connect_status(self, mcp_url, name, jwt_token):
+    async def get_connect_status(self, mcp_url, name, jwt_token, timeout=None):
         if name in self.no_surface:
             return None
         connected = name in self.connected
