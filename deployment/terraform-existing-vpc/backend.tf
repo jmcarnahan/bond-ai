@@ -69,6 +69,11 @@ locals {
     # Bedrock Guardrails
     BEDROCK_GUARDRAIL_ID      = var.enable_guardrails ? aws_bedrock_guardrail.main[0].guardrail_id : ""
     BEDROCK_GUARDRAIL_VERSION = var.enable_guardrails ? (var.bedrock_guardrail_version != "" ? var.bedrock_guardrail_version : aws_bedrock_guardrail_version.main[0].version) : ""
+
+    # bond-mcps managed-MCP discovery + RFC 8693 token exchange (empty = both
+    # features disabled; see docs/PLATFORM-CONTRACT.md "Auth seam")
+    BOND_MCPS_DISCOVERY_URL = var.bond_mcps_discovery_url
+    BOND_MCPS_AS_BASE_URL   = var.bond_mcps_as_base_url
   }
 }
 
