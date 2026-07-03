@@ -111,6 +111,14 @@ resource "kubernetes_config_map" "backend" {
     # Bedrock Guardrails
     BEDROCK_GUARDRAIL_ID      = var.enable_guardrails ? aws_bedrock_guardrail.main[0].guardrail_id : ""
     BEDROCK_GUARDRAIL_VERSION = var.enable_guardrails ? (var.bedrock_guardrail_version != "" ? var.bedrock_guardrail_version : aws_bedrock_guardrail_version.main[0].version) : ""
+
+    # bond-mcps managed-MCP discovery + RFC 8693 token exchange (empty = off).
+    # The in-container nginx front-door upstreams (BOND_MCPS_*_UPSTREAM) are
+    # deliberately NOT overridden here — the image defaults target the public
+    # *.mcps hostnames, which work from any platform. Switching to
+    # cluster-internal service DNS is a later optimization.
+    BOND_MCPS_DISCOVERY_URL = var.bond_mcps_discovery_url
+    BOND_MCPS_AS_BASE_URL   = var.bond_mcps_as_base_url
   }
 
   depends_on = [kubernetes_namespace.bond_ai]

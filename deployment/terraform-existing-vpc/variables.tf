@@ -529,3 +529,15 @@ variable "eks_scheduled_jobs_enabled" {
   type        = bool
   default     = false
 }
+
+variable "bond_mcps_discovery_url" {
+  description = "bond-mcps managed-MCP discovery endpoint (e.g. https://auth.mcps.example.com/connections/discovery). Empty disables discovery — managed MCP tiles and delegation stay off."
+  type        = string
+  default     = ""
+}
+
+variable "bond_mcps_as_base_url" {
+  description = "bond-mcps Authorization Server origin for RFC 8693 token exchange (e.g. https://auth.mcps.example.com). Empty disables the exchange — bond-ai sends HS256 bond JWTs directly (local/dev behavior)."
+  type        = string
+  default     = ""
+}
