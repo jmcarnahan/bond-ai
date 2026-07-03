@@ -206,3 +206,63 @@ async def test_delete_returns_flag(fake_http):
 async def test_delete_404_returns_false(fake_http):
     fake_http["handler"] = lambda *a, **k: FakeResp(status_code=404, content=b"")
     assert await cc.delete_connection(MCP_URL, "atlassian", "JWT") is False
+
+
+# --- AS token exchange (managed MCP delegation) ----------------------------
+
+@pytest.fixture
+def exchange_enabled(monkeypatch):
+    """Enable RFC 8693 exchange; exchange_token returns 'AS-<resource>'."""
+    monkeypatch.setattr(cc.mcp_token_exchange, "is_exchange_enabled", lambda: True)
+
+    async def fake_exchange(subject, resource, timeout=None):
+        return f"AS-{resource}"
+
+    monkeypatch.setattr(cc.mcp_token_exchange, "exchange_token", fake_exchange)
+
+
+@pytest.mark.asyncio
+async def test_ticket_sends_exchanged_bearer(fake_http, exchange_enabled):
+    fake_http["handler"] = lambda *a, **k: FakeResp({"connect_url": "http://x/connect/a?ticket=t"})
+    await cc.mint_connect_ticket(MCP_URL, "atlassian", "JWT123", "http://x/connections")
+    assert fake_http["calls"][0]["headers"]["Authorization"] == f"Bearer AS-{MCP_URL}"
+
+
+@pytest.mark.asyncio
+async def test_status_sends_exchanged_bearer(fake_http, exchange_enabled):
+    fake_http["handler"] = lambda *a, **k: FakeResp({"connected": True})
+    await cc.get_connect_status(MCP_URL, "atlassian", "JWT123")
+    assert fake_http["calls"][0]["headers"]["Authorization"] == f"Bearer AS-{MCP_URL}"
+
+
+@pytest.mark.asyncio
+async def test_delete_sends_exchanged_bearer(fake_http, exchange_enabled):
+    fake_http["handler"] = lambda *a, **k: FakeResp({"disconnected": True})
+    await cc.delete_connection(MCP_URL, "atlassian", "JWT123")
+    assert fake_http["calls"][0]["headers"]["Authorization"] == f"Bearer AS-{MCP_URL}"
+
+
+@pytest.mark.asyncio
+async def test_exchange_failure_raises_connect_error(fake_http, monkeypatch):
+    monkeypatch.setattr(cc.mcp_token_exchange, "is_exchange_enabled", lambda: True)
+
+    async def boom(subject, resource, timeout=None):
+        raise cc.mcp_token_exchange.TokenExchangeError("nope")
+
+    monkeypatch.setattr(cc.mcp_token_exchange, "exchange_token", boom)
+    with pytest.raises(ConnectError):
+        await cc.get_connect_status(MCP_URL, "atlassian", "JWT123")
+
+
+@pytest.mark.asyncio
+async def test_status_safe_degrades_on_exchange_failure(fake_http, monkeypatch):
+    monkeypatch.setattr(cc.mcp_token_exchange, "is_exchange_enabled", lambda: True)
+
+    async def boom(subject, resource, timeout=None):
+        raise cc.mcp_token_exchange.TokenExchangeError("nope")
+
+    monkeypatch.setattr(cc.mcp_token_exchange, "exchange_token", boom)
+    out = await cc.get_connect_status_safe(MCP_URL, "atlassian", "JWT123")
+    assert out["connected"] is False
+    assert out["valid"] is False
+    assert "error" in out

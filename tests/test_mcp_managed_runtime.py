@@ -153,6 +153,98 @@ def test_mint_refuses_placeholder_identity(email):
     assert "Authorization" not in headers
 
 
+# --- AS token exchange for managed MCPs --------------------------------------
+
+from bondable.bond.providers.bedrock import BedrockMCP as bm  # noqa: E402
+
+MANAGED_SERVER = {
+    "url": "http://localhost:18003/mcp",
+    "transport": "streamable-http",
+    "auth_type": "bond_jwt",
+    "is_managed": True,
+}
+
+
+def test_managed_enabled_exchanges_forwarded_token(monkeypatch):
+    """Managed MCP + exchange on: the forwarded Bond JWT is exchanged at the
+    AS and the AS-issued token (not the HS256) is presented."""
+    monkeypatch.setattr(bm.mcp_token_exchange, "is_exchange_enabled", lambda: True)
+    captured = {}
+
+    def fake_exchange(subject, resource, timeout=None):
+        captured["subject"] = subject
+        captured["resource"] = resource
+        return "ASTOKEN"
+
+    monkeypatch.setattr(bm.mcp_token_exchange, "exchange_token_sync", fake_exchange)
+    headers = _get_auth_headers_for_server(
+        "atlassian", MANAGED_SERVER, current_user=_user("a@example.com"), jwt_token="FWD"
+    )
+    assert headers["Authorization"] == "Bearer ASTOKEN"
+    assert captured["subject"] == "FWD"                       # exchanges what it would have sent
+    assert captured["resource"] == "http://localhost:18003/mcp"
+
+
+def test_managed_enabled_mints_then_exchanges(monkeypatch):
+    """Server-side flow (no forwarded JWT): mint a subject from the real email,
+    then exchange it — the presented token is the AS token."""
+    monkeypatch.setattr(bm.mcp_token_exchange, "is_exchange_enabled", lambda: True)
+    captured = {}
+
+    def fake_exchange(subject, resource, timeout=None):
+        captured["subject"] = subject
+        return "ASTOKEN"
+
+    monkeypatch.setattr(bm.mcp_token_exchange, "exchange_token_sync", fake_exchange)
+    headers = _get_auth_headers_for_server(
+        "atlassian", MANAGED_SERVER, current_user=_user("a@example.com"), jwt_token=None
+    )
+    assert headers["Authorization"] == "Bearer ASTOKEN"
+    # subject is a minted HS256 Bond JWT for the real identity
+    claims = pyjwt.decode(captured["subject"], options={"verify_signature": False})
+    assert claims["sub"] == "a@example.com"
+
+
+def test_managed_exchange_failure_sends_no_auth(monkeypatch):
+    """Exchange failure must NOT leak the HS256 to a managed pod — no header."""
+    monkeypatch.setattr(bm.mcp_token_exchange, "is_exchange_enabled", lambda: True)
+
+    def boom(subject, resource, timeout=None):
+        raise bm.mcp_token_exchange.TokenExchangeError("AS down")
+
+    monkeypatch.setattr(bm.mcp_token_exchange, "exchange_token_sync", boom)
+    headers = _get_auth_headers_for_server(
+        "atlassian", MANAGED_SERVER, current_user=_user("a@example.com"), jwt_token="FWD"
+    )
+    assert "Authorization" not in headers
+
+
+def test_managed_disabled_sends_hs256(monkeypatch):
+    """Managed MCP + exchange off (local dev): HS256 Bond JWT sent directly."""
+    monkeypatch.setattr(bm.mcp_token_exchange, "is_exchange_enabled", lambda: False)
+    headers = _get_auth_headers_for_server(
+        "atlassian", MANAGED_SERVER, current_user=_user("a@example.com"), jwt_token="FWD"
+    )
+    assert headers["Authorization"] == "Bearer FWD"
+
+
+def test_non_managed_never_exchanges(monkeypatch):
+    """A non-managed bond_jwt server always sends HS256, even when exchange is on."""
+    monkeypatch.setattr(bm.mcp_token_exchange, "is_exchange_enabled", lambda: True)
+    calls = {"n": 0}
+
+    def fake_exchange(*a, **k):
+        calls["n"] += 1
+        return "ASTOKEN"
+
+    monkeypatch.setattr(bm.mcp_token_exchange, "exchange_token_sync", fake_exchange)
+    headers = _get_auth_headers_for_server(
+        "atlassian", BOND_JWT_SERVER, current_user=_user("a@example.com"), jwt_token="FWD"
+    )
+    assert headers["Authorization"] == "Bearer FWD"
+    assert calls["n"] == 0
+
+
 # --- /mcp/tools managed-status delegation ------------------------------------
 
 from bondable.rest.routers.mcp import _get_managed_connection_status  # noqa: E402
