@@ -25,6 +25,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from bondable.bond import mcp_token_exchange
+
 LOGGER = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SECONDS = 10.0
@@ -65,6 +67,23 @@ def _auth_headers(jwt_token: Optional[str]) -> Dict[str, str]:
     return {"Authorization": f"Bearer {jwt_token}", "Accept": "application/json"}
 
 
+async def _bearer_for(mcp_url: str, jwt_token: str) -> str:
+    """Resolve the Bearer credential for a bond-mcps connect call.
+
+    These connect endpoints only ever front bond-mcps-managed MCPs, which sit
+    behind the bond-mcps Authorization Server. When token exchange is enabled
+    (``BOND_MCPS_AS_BASE_URL`` set) the caller's Bond JWT must be exchanged
+    (RFC 8693) for an AS-issued token scoped to this MCP; when disabled, the
+    Bond JWT is presented directly (local dev-combined-jwt), unchanged.
+    """
+    if not mcp_token_exchange.is_exchange_enabled():
+        return jwt_token
+    try:
+        return await mcp_token_exchange.exchange_token(jwt_token, mcp_url)
+    except mcp_token_exchange.TokenExchangeError as exc:
+        raise ConnectError(f"AS token exchange failed: {exc}") from exc
+
+
 async def mint_connect_ticket(
     mcp_url: str,
     name: str,
@@ -77,6 +96,7 @@ async def mint_connect_ticket(
     bond-mcps binds the ticket to the JWT's ``sub`` and (per the contract) carries
     ``return_url`` through to the callback so the user is sent back to bond-ai.
     """
+    bearer = await _bearer_for(mcp_url, jwt_token)
     base = connect_base_url(mcp_url)
     url = f"{base}/connect/{_safe_name(name)}/ticket"
     try:
@@ -84,7 +104,7 @@ async def mint_connect_ticket(
             resp = await client.post(
                 url,
                 json={"return_url": return_url},
-                headers=_auth_headers(jwt_token),
+                headers=_auth_headers(bearer),
             )
             resp.raise_for_status()
             payload = resp.json()
@@ -109,11 +129,12 @@ async def get_connect_status(
     no provider connection and should not be shown as connectable. On any other
     error this raises :class:`ConnectError` (callers decide how to fail soft).
     """
+    bearer = await _bearer_for(mcp_url, jwt_token)
     base = connect_base_url(mcp_url)
     url = f"{base}/connect/{_safe_name(name)}/status"
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url, headers=_auth_headers(jwt_token))
+            resp = await client.get(url, headers=_auth_headers(bearer))
             if resp.status_code == 404:
                 return None
             resp.raise_for_status()
@@ -189,11 +210,12 @@ async def delete_connection(
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
 ) -> bool:
     """Delete the user's stored provider token for an MCP via bond-mcps."""
+    bearer = await _bearer_for(mcp_url, jwt_token)
     base = connect_base_url(mcp_url)
     url = f"{base}/connect/{_safe_name(name)}"
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.request("DELETE", url, headers=_auth_headers(jwt_token))
+            resp = await client.request("DELETE", url, headers=_auth_headers(bearer))
             if resp.status_code == 404:
                 return False
             resp.raise_for_status()

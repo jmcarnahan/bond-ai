@@ -18,6 +18,9 @@
 #      session shape (aud=["bond-ai-api","mcp-server"]) AND with the narrow
 #      server-mint shape (aud=["mcp-server"]) proves the HS256 shared-secret
 #      contract (iss/aud/sub) is live end-to-end for both shapes bond-ai sends.
+#   8. RFC 8693 token exchange (only when BOND_MCPS_AS_BASE_URL is set): exchange
+#      a minted Bond JWT at the AS for a scoped access token, then use that token
+#      on the connect status probe. Unset -> SKIP (HS256-direct mode).
 #
 # Exit code 0 = all checks passed. Any failure prints a hint and exits 1.
 #
@@ -39,6 +42,7 @@ FAIL=0
 
 ok()   { PASS=$((PASS+1)); printf '  \033[32mPASS\033[0m  %s\n' "$1"; }
 bad()  { FAIL=$((FAIL+1)); printf '  \033[31mFAIL\033[0m  %s\n' "$1"; [ -n "${2:-}" ] && printf '        hint: %s\n' "$2"; }
+skip() { printf '  \033[33mSKIP\033[0m  %s\n' "$1"; }
 
 echo "== bond-ai + bond-mcps combined-stack verification =="
 echo
@@ -175,6 +179,49 @@ print(jwt.encode({**base, 'aud': ['mcp-server'],
     else
       bad "narrow (server-mint) Bond JWT rejected ($status_url → $code)" "BOND_MCPS_JWT_AUDIENCE=mcp-server must be set on the MCPs (dev-combined-jwt sets it)"
     fi
+  fi
+fi
+
+# --- 8. RFC 8693 token exchange (only when AS delegation mode is on) ----------
+# When BOND_MCPS_AS_BASE_URL is set, bond-ai exchanges its Bond JWT at the AS
+# for a scoped access token instead of presenting the HS256 JWT directly. Prove
+# that round-trip: exchange the narrow minted subject JWT (from check 7), assert
+# HTTP 200 + access_token, then use the result on the connect status probe.
+# Unset -> nothing to exchange (HS256-direct mode); SKIP.
+as_base="${BOND_MCPS_AS_BASE_URL:-}"
+if [ -z "$as_base" ] && [ -f "$ENV_FILE" ]; then
+  as_base=$(grep -E '^BOND_MCPS_AS_BASE_URL=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '"')
+fi
+as_base=${as_base%/}
+if [ -z "$as_base" ]; then
+  skip "RFC 8693 token exchange (BOND_MCPS_AS_BASE_URL unset — HS256-direct mode)"
+elif [ -z "${narrow:-}" ]; then
+  bad "token exchange: no minted subject JWT available" "check 7 must run first (needs env file + discovered MCP)"
+elif [ -z "${status_url:-}" ] || [ -z "${base:-}" ]; then
+  bad "token exchange: no connect status URL available" "no discovered MCP to exchange against"
+else
+  # resource = the MCP's discovered /mcp URL, exactly what bond-ai sends.
+  mcp_resource="$base/mcp"
+  ex_resp=$($CURL -w '\n%{http_code}' \
+    -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
+    -d "subject_token=$narrow" \
+    -d "subject_token_type=urn:ietf:params:oauth:token-type:jwt" \
+    -d "resource=$mcp_resource" \
+    -d "client_id=bond-ai" \
+    "$as_base/oauth/token" 2>/dev/null)
+  ex_code=$(echo "$ex_resp" | tail -1)
+  ex_body=$(echo "$ex_resp" | sed '$d')
+  access=$(echo "$ex_body" | sed -n 's/.*"access_token" *: *"\([^"]*\)".*/\1/p')
+  if [ "$ex_code" = "200" ] && [ -n "$access" ]; then
+    ok "AS token exchange ($as_base/oauth/token → 200, access_token present)"
+    code=$($CURL -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $access" "$status_url" 2>/dev/null)
+    if [ "$code" = "200" ] || [ "$code" = "404" ]; then
+      ok "exchanged token accepted by MCP ($status_url → $code)"
+    else
+      bad "exchanged token rejected ($status_url → $code)" "AS-issued token not accepted by the MCP — check AS signing keys / MCP verification config"
+    fi
+  else
+    bad "AS token exchange failed ($as_base/oauth/token → $ex_code)" "is the bond-mcps AS running with the RFC 8693 grant? body: $(echo "$ex_body" | head -c 120)"
   fi
 fi
 
