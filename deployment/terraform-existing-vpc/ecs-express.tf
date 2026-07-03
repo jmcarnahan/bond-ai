@@ -6,7 +6,7 @@
 # and auto-scaling policies. Uses the same combined Docker image as App Runner.
 #
 # Key benefit: No 2-minute timeout — ALB idle timeout configurable up to 4000s
-# (set to 300s to match nginx proxy_read_timeout in nginx-combined.conf).
+# (set to 300s to match nginx proxy_read_timeout in nginx-combined.conf.template).
 # =============================================================================
 
 locals {

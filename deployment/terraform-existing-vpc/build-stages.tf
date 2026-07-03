@@ -12,7 +12,8 @@ locals {
   # distinct tag, avoiding ImageTagAlreadyExistsException on immutable repos.
   combined_image_tag = substr(md5(join("", [
     filemd5("${path.module}/../Dockerfile.combined"),
-    filemd5("${path.module}/../nginx-combined.conf"),
+    filemd5("${path.module}/../nginx-combined.conf.template"),
+    filemd5("${path.module}/../docker-entrypoint.sh"),
     filemd5("${path.module}/../supervisord.conf"),
     filemd5("${path.module}/../../requirements.txt"),
     md5(join("", [
