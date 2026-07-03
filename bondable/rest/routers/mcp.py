@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Annotated, List, Dict, Any, Optional, Union
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -110,6 +111,18 @@ async def list_mcp_tools(
         # Get token cache for checking connection status
         token_cache = get_mcp_token_cache()
 
+        # Pre-fetch managed-server connection status concurrently. Each is a
+        # network round-trip to bond-mcps' /connect/<name>/status; gathering them
+        # avoids serializing the calls inside the per-server loop below (mirrors
+        # list_connections). Internal/oauth2 servers are resolved synchronously.
+        managed_names = [n for n, c in servers.items() if c.get('is_managed')]
+        managed_status: Dict[str, ConnectionStatusInfo] = {}
+        if managed_names:
+            results = await asyncio.gather(
+                *(_get_managed_connection_status(n, servers[n], jwt_token) for n in managed_names)
+            )
+            managed_status = dict(zip(managed_names, results))
+
         # Collect tools from all servers (grouped by server)
         all_tools = []
         server_tools_list: List[MCPServerWithTools] = []
@@ -120,10 +133,16 @@ async def list_mcp_tools(
             description = server_config.get('description')
             icon_url = server_config.get('icon_url')
 
-            # Determine connection status
-            connection_status = _get_connection_status_for_server(
-                server_name, server_config, current_user.user_id, token_cache
-            )
+            # Determine connection status. Managed (bond-mcps-discovered) servers
+            # are bond_jwt but DO require a per-user provider connection, so their
+            # status is delegated to bond-mcps — not the "non-oauth = always
+            # connected" shortcut used for internal bond_jwt servers.
+            if server_config.get('is_managed'):
+                connection_status = managed_status[server_name]
+            else:
+                connection_status = _get_connection_status_for_server(
+                    server_name, server_config, current_user.user_id, token_cache
+                )
 
             server_tools: List[MCPToolResponse] = []
 
@@ -439,7 +458,6 @@ async def _discover_user_mcp_server_tools(
                     transport = StreamableHttpTransport(server_url, headers=headers)
 
                 try:
-                    import asyncio
                     async with Client(transport) as client:
                         tools = await asyncio.wait_for(client.list_tools(), timeout=15)
                         server_tools = [
@@ -484,6 +502,42 @@ async def _discover_user_mcp_server_tools(
         LOGGER.info(f"[MCP Tools] Discovered {len(result['servers'])} user-defined servers with {len(result['tools'])} tools")
 
     return result
+
+
+async def _get_managed_connection_status(
+    server_name: str,
+    server_config: Dict[str, Any],
+    jwt_token: Optional[str],
+) -> ConnectionStatusInfo:
+    """Connection status for a bond-mcps-managed (discovered) MCP.
+
+    Delegates to bond-mcps' /connect/<name>/status (same as the Connections
+    screen), fail-soft: network/HTTP errors surface as not-connected so the
+    UI prompts a (re)connect instead of failing the listing.
+    """
+    from bondable.bond import mcp_connect_client
+
+    url = server_config.get('url', '')
+    status = await mcp_connect_client.get_connect_status_safe(url, server_name, jwt_token)
+
+    if status is None:
+        # No connect surface (e.g. databricks PAT) — nothing to connect, so the
+        # server renders as usable. NOTE: the Connections screen makes the
+        # opposite call for the same signal (omits the tile entirely).
+        return ConnectionStatusInfo(connected=True, valid=True, requires_authorization=False, expires_at=None)
+
+    connected = bool(status.get("connected", False))
+    # `valid` gates tool selection in the agent editor, so a disconnected
+    # server reads invalid here — unlike the Connections screen, where
+    # valid=True on a disconnected provider just means "not expired".
+    valid = bool(status.get("valid", True)) if connected else False
+    return ConnectionStatusInfo(
+        connected=connected,
+        valid=valid,
+        requires_authorization=not connected,
+        expires_at=status.get("expires_at"),
+        has_refresh_token=bool(status.get("has_refresh_token", False)),
+    )
 
 
 def _get_connection_status_for_server(

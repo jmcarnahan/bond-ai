@@ -139,11 +139,28 @@ def test_nginx_local_combined_conf_routes_connect_to_mcp_ports():
     expected = {
         "/connect/atlassian/": "host.docker.internal:18003",
         "/connect/github/": "host.docker.internal:18002",
-        "/connect/ms-graph/": "host.docker.internal:18001",
+        "/connect/microsoft/": "host.docker.internal:18001",
         "/connect/databricks/": "host.docker.internal:18004",
     }
     for path, upstream in expected.items():
         assert _has_active_location_block(text, path), f"missing {path} proxy block"
+        start = text.index(f"location {path}")
+        block = text[start : start + 300]
+        assert upstream in block, f"{path} must proxy to {upstream}"
+
+
+def test_nginx_local_combined_conf_routes_connection_callbacks_to_mcp_ports():
+    """The provider OAuth redirect lands at /connections/<provider>/callback on
+    the front door (the canonical, already-registered path) and must route to
+    each provider's bond-mcps MCP port, NOT the auth proxy :18000."""
+    text = NGINX_CONF.read_text()
+    expected = {
+        "= /connections/microsoft/callback": "host.docker.internal:18001",
+        "= /connections/github/callback": "host.docker.internal:18002",
+        "= /connections/atlassian/callback": "host.docker.internal:18003",
+    }
+    for path, upstream in expected.items():
+        assert _has_active_location_block(text, path), f"missing 'location {path}' block"
         start = text.index(f"location {path}")
         block = text[start : start + 300]
         assert upstream in block, f"{path} must proxy to {upstream}"

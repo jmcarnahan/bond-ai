@@ -126,6 +126,62 @@ async def get_connect_status(
     return payload
 
 
+def _iso_expires_at(value: Any) -> Optional[str]:
+    """Normalize bond-mcps' ``expires_at`` (epoch seconds) to ISO-8601 UTC.
+
+    bond-ai's REST models (and the Flutter UI) carry ``expires_at`` as an
+    ISO string — the same shape the legacy token-cache path produces. None or
+    an unparseable value maps to None.
+    """
+    if value is None:
+        return None
+    try:
+        from datetime import datetime, timezone
+
+        return datetime.fromtimestamp(float(value), tz=timezone.utc).isoformat()
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None
+
+
+async def get_connect_status_safe(
+    mcp_url: str,
+    name: str,
+    jwt_token: str,
+    timeout: float = DEFAULT_TIMEOUT_SECONDS,
+) -> Optional[Dict[str, Any]]:
+    """:func:`get_connect_status`, but never raises — for status listings.
+
+    Returns the status dict with ``expires_at`` normalized to ISO-8601, or
+    ``None`` for "no connect surface" (HTTP 404). When bond-mcps is
+    unreachable or errors, returns a disconnected-shaped dict carrying an
+    ``"error"`` key, so one bad MCP never fails a whole listing.
+
+    Callers decide what ``None`` means for their surface: the Connections
+    screen omits the tile (not a connectable provider), while the tools list
+    reports the server as connected (nothing to connect, still usable).
+    """
+    try:
+        status = await get_connect_status(mcp_url, name, jwt_token, timeout=timeout)
+    except Exception as exc:  # noqa: BLE001 - fail soft; listings must render
+        LOGGER.warning(
+            "connect status for %s failed; reporting disconnected: %s: %s",
+            name, type(exc).__name__, exc,
+        )
+        return {
+            "connected": False,
+            "valid": False,
+            "scopes": None,
+            "expires_at": None,
+            "has_refresh_token": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    if status is None:
+        return None
+    status = dict(status)
+    status["expires_at"] = _iso_expires_at(status.get("expires_at"))
+    return status
+
+
 async def delete_connection(
     mcp_url: str,
     name: str,

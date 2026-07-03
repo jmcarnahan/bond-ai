@@ -216,6 +216,65 @@ def test_force_refresh_fetches_even_with_poller(monkeypatch):
     assert len(calls) == 1  # still no request-path fetch
 
 
+def test_poll_interval_fast_until_first_success(monkeypatch):
+    """Before any successful fetch the poller retries every
+    STARTUP_RETRY_SECONDS (backend booted before its discovery upstream);
+    after the first success it settles to the TTL cadence."""
+    monkeypatch.setenv(mcp_discovery.ENV_DISCOVERY_URL, DISCOVERY_URL)
+    cache = mcp_discovery._CACHE
+
+    # Never fetched (also the state after a failed startup fetch) → fast.
+    assert cache._next_poll_interval() == mcp_discovery.STARTUP_RETRY_SECONDS
+
+    def boom(*a, **k):
+        import httpx
+        raise httpx.ConnectError("down")
+    monkeypatch.setattr(mcp_discovery.httpx, "get", boom)
+    get_discovered_mcps(force_refresh=True)
+    assert cache._next_poll_interval() == mcp_discovery.STARTUP_RETRY_SECONDS
+
+    # A TTL smaller than the retry interval wins (never wait longer than TTL).
+    monkeypatch.setenv(mcp_discovery.ENV_DISCOVERY_TTL, "1")
+    assert cache._next_poll_interval() == 1.0
+    monkeypatch.delenv(mcp_discovery.ENV_DISCOVERY_TTL)
+
+    # First success → normal TTL cadence (even for an empty-but-valid list).
+    _set_response(monkeypatch, {"mcps": []})
+    get_discovered_mcps(force_refresh=True)
+    assert cache._next_poll_interval() == mcp_discovery.DEFAULT_TTL_SECONDS
+
+
+def test_poller_recovers_quickly_from_failed_startup_fetch(monkeypatch):
+    """End-to-end: upstream down when the poller starts → comes up moments
+    later → the cache populates within the fast-retry window, not a full TTL."""
+    import threading
+    import time as _time
+
+    monkeypatch.setenv(mcp_discovery.ENV_DISCOVERY_URL, DISCOVERY_URL)
+    monkeypatch.setattr(mcp_discovery, "STARTUP_RETRY_SECONDS", 0.05)
+    upstream_up = threading.Event()
+
+    def flaky_get(url, timeout=None):
+        if not upstream_up.is_set():
+            import httpx
+            raise httpx.ConnectError("nginx not up yet")
+        return FakeResp({"mcps": [{"name": "a", "url": "http://h/mcp"}]})
+    monkeypatch.setattr(mcp_discovery.httpx, "get", flaky_get)
+
+    mcp_discovery.start_background_poller()
+    try:
+        upstream_up.set()
+        deadline = _time.monotonic() + 5
+        while _time.monotonic() < deadline:
+            if [m["name"] for m in get_discovered_mcps()] == ["a"]:
+                break
+            _time.sleep(0.02)
+        else:
+            pytest.fail("poller did not recover within the fast-retry window")
+    finally:
+        mcp_discovery.stop_background_poller()
+
+
 # --- Fail soft ------------------------------------------------------------
 
 def test_failsoft_returns_last_good_on_error(monkeypatch):
@@ -275,6 +334,13 @@ def test_overlay_merges_and_strips_oauth(monkeypatch):
     assert atl["icon_url"] == "x.png"          # annotation preserved
     assert out["hello"] == {"command": "python", "args": ["h.py"]}  # untouched
     assert out["github"]["auth_type"] == "bond_jwt"
+
+    # Discovered servers are marked managed: bond_jwt like internal servers,
+    # but their per-user connection status is delegated to bond-mcps (the
+    # "non-oauth = always connected" shortcut must not apply to them).
+    assert atl["is_managed"] is True
+    assert out["github"]["is_managed"] is True
+    assert "is_managed" not in out["hello"]
 
 
 def test_overlay_noop_when_no_discovery(monkeypatch):

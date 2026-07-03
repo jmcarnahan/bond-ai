@@ -387,16 +387,12 @@ async def list_connections(
     managed_configs = _get_managed_connection_configs()
 
     async def _managed_status(cfg):
-        try:
-            return cfg, await mcp_connect_client.get_connect_status(cfg["url"], cfg["name"], jwt_token)
-        except Exception as e:  # noqa: BLE001 - one bad MCP must not 500 the whole list
-            # bond-mcps unreachable / unexpected error: surface this provider as
-            # disconnected so the user can retry, without failing the page.
-            LOGGER.warning(
-                "[Connections] status check failed for managed %s: %s: %s",
-                safe_id(cfg["name"]), type(e).__name__, e,
-            )
-            return cfg, {"connected": False, "valid": False}
+        # Fail-soft per MCP (get_connect_status_safe): bond-mcps unreachable /
+        # errored reads as disconnected so the user can retry, without one bad
+        # MCP failing the whole page.
+        return cfg, await mcp_connect_client.get_connect_status_safe(
+            cfg["url"], cfg["name"], jwt_token
+        )
 
     managed_results = await asyncio.gather(*(_managed_status(c) for c in managed_configs))
 
@@ -404,8 +400,13 @@ async def list_connections(
         name = config["name"]
         if mcps_status is None:
             # MCP exposes no connect surface → not a connectable provider; omit.
+            # NOTE: /mcp/tools makes the opposite call for the same signal
+            # (reports connected — nothing to connect, server still usable).
             continue
         connected = bool(mcps_status.get("connected", False))
+        # On this screen `valid` means "not expired", so a disconnected
+        # provider reads valid=True (nothing to be expired). The tools list
+        # maps it the other way (valid gates tool selection).
         valid = bool(mcps_status.get("valid", True)) if connected else True
         connections.append(ConnectionStatusResponse(
             name=name,
@@ -764,12 +765,11 @@ async def get_connection_status(
     # --- Managed (bond-mcps-delegated) connection --------------------------
     managed = _get_managed_connection(connection_name)
     if managed is not None:
-        try:
-            # discovery-sourced name (not the request path param) → no SSRF taint.
-            mcps_status = await mcp_connect_client.get_connect_status(managed["url"], managed["name"], jwt_token)
-        except ConnectError as e:
-            LOGGER.warning("[Connections] status check failed for managed %s: %s", safe_id(connection_name), e)
-            mcps_status = {"connected": False, "valid": False}
+        # discovery-sourced name (not the request path param) → no SSRF taint.
+        # get_connect_status_safe fails soft (errors read as disconnected).
+        mcps_status = await mcp_connect_client.get_connect_status_safe(
+            managed["url"], managed["name"], jwt_token
+        )
         if mcps_status is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

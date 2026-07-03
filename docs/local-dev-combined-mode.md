@@ -114,6 +114,13 @@ container on the bond-ai side).
 | `make dev` (split) | Active iteration on backend or frontend code. Faster startup, fewer moving parts, hot reload. Flutter dev server with live recompilation. |
 | `make dev-combined` | OAuth flow testing, MCP integration, validating production-shaped routing. Static Flutter bundle (no hot reload — re-run `make dev-combined` to rebuild). |
 
+**Caveat — bond-mcps CLI logins (`make login-atlassian` etc.):** the front door
+exact-routes `/connections/<provider>/callback` to the per-MCP ports, which only
+serve that route in JWT mode. With the combined stack up and bond-mcps in plain
+`make dev-combined` (JWT off), a CLI login's callback through `:8000` 404s.
+Run CLI logins in split mode (auth proxy directly on `:8000`, no nginx), or run
+bond-mcps with `make dev-combined-jwt`.
+
 ---
 
 ## Troubleshooting

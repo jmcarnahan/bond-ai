@@ -930,6 +930,30 @@ def create_mcp_action_groups(bedrock_agent_id: str, mcp_tools: List[str], mcp_re
         # Continue without MCP tools rather than failing agent creation
 
 
+def _resolve_user_email(user_id: str) -> Optional[str]:
+    """Resolve a user's email from the users table.
+
+    Server-side flows (agent tool-def fetch at create time) only carry a
+    user_id, but the Bond JWT identity contract keys on email (sub claim).
+    Returns None when the lookup fails — callers must then skip minting
+    rather than fabricate an identity.
+    """
+    try:
+        from bondable.bond.providers.metadata import User
+
+        provider = Config.config().get_provider()
+        if not provider or not hasattr(provider, 'metadata'):
+            return None
+        session = provider.metadata.get_db_session()
+        if not session:
+            return None
+        record = session.query(User).filter(User.id == user_id).first()
+        return record.email if record else None
+    except Exception as e:  # noqa: BLE001 - lookup failure must not break tool-def fetch
+        LOGGER.warning("[MCP Auth] Could not resolve email for user %s: %s", safe_id(user_id), e)
+        return None
+
+
 async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List[str], user_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Get tool definitions from MCP servers.
@@ -951,14 +975,17 @@ async def _get_mcp_tool_definitions(mcp_config: Dict[str, Any], tool_names: List
 
     LOGGER.debug(f"[MCP Tool Defs] Searching {len(servers)} servers for {len(tool_names)} tools: {tool_names}")
 
-    # Create user context for OAuth lookup if user_id is provided
+    # Create user context for OAuth lookup if user_id is provided. The email
+    # is resolved from the users table because bond_jwt minting asserts it as
+    # the JWT sub — a placeholder like 'unknown' would fabricate an identity
+    # that bond-mcps trusts. None (lookup failed) means "don't mint".
     current_user = None
     if user_id:
         class UserContext:
-            def __init__(self, uid):
+            def __init__(self, uid, email):
                 self.user_id = uid
-                self.email = 'unknown'
-        current_user = UserContext(user_id)
+                self.email = email
+        current_user = UserContext(user_id, _resolve_user_email(user_id))
 
     tool_definitions = []
 
@@ -1283,12 +1310,39 @@ def _get_auth_headers_for_server(
         LOGGER.debug("Using OAuth2 token for MCP server %s", safe_id(server_name))
 
     elif auth_type == AUTH_TYPE_BOND_JWT:
-        # Bond JWT: Use the passed JWT token
-        if jwt_token:
-            headers['Authorization'] = f'Bearer {jwt_token}'
+        # Bond JWT: use the forwarded token, or mint one for the user. Server-side
+        # flows (agent tool-def fetch at create time) call this without a
+        # forwarded request JWT; without a token, bond-mcps-managed MCPs 401 and
+        # the agent gets no tools. bond-mcps validates the Bond JWT (HS256,
+        # iss=bond-ai, aud includes mcp-server, sub=email), so minting from the
+        # user's real email yields a token the MCPs accept.
+        token = jwt_token
+        if not token and current_user is not None:
+            email = getattr(current_user, 'email', None)
+            # Only mint for a real email identity — a placeholder ('unknown',
+            # empty) would sign a JWT asserting an identity that doesn't exist.
+            if email and '@' in email:
+                try:
+                    from datetime import timedelta
+                    from bondable.rest.utils.auth import create_access_token
+                    # Narrow audience + short expiry: this token is consumed
+                    # immediately by an MCP call. The session defaults (aud
+                    # includes bond-ai-api, 24h expiry) would hand the MCP
+                    # server a full bond-ai API session — mint the minimum.
+                    token = create_access_token(
+                        {"sub": email, "aud": ["mcp-server"]},
+                        expires_delta=timedelta(minutes=5),
+                    )
+                    LOGGER.debug("Minted Bond JWT for bond_jwt server %s (user %s)", safe_id(server_name), safe_id(email))
+                except Exception as e:  # noqa: BLE001 - fall through to no-auth + log
+                    LOGGER.warning("Failed to mint Bond JWT for server %s: %s", safe_id(server_name), e)
+            else:
+                LOGGER.debug("No real email for bond_jwt mint on server %s; skipping", safe_id(server_name))
+        if token:
+            headers['Authorization'] = f'Bearer {token}'
             LOGGER.debug("Using Bond JWT for MCP server %s", safe_id(server_name))
         else:
-            LOGGER.debug("No JWT token provided for bond_jwt auth on server %s", safe_id(server_name))
+            LOGGER.debug("No JWT token or current_user for bond_jwt auth on server %s", safe_id(server_name))
 
     elif auth_type == AUTH_TYPE_STATIC:
         # Static: Only use headers from config (already set above)
