@@ -13,9 +13,12 @@ locals {
 }
 
 # Use the existing Route 53 Hosted Zone (created automatically during domain registration)
-# Shared by App Runner custom domain and ECS Express custom domain
+# Shared by App Runner custom domain and ECS Express custom domain.
+# Gated on ecs_express_alb_domain_configured (not *_custom_domain_enabled):
+# the cert-validation records survive a primary_platform flip (rollback path),
+# so the zone lookup they reference must survive it too.
 data "aws_route53_zone" "frontend" {
-  count = local.custom_domain_enabled || local.ecs_express_custom_domain_enabled ? 1 : 0
+  count = local.custom_domain_enabled || local.ecs_express_alb_domain_configured ? 1 : 0
   name  = local.hosted_zone_name
 }
 
