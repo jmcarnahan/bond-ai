@@ -471,38 +471,40 @@ These are the non-obvious things most reviews miss. Each is real and worth a car
 
 ## 12. Open questions / decisions
 
-1. **Deployed `/connect` routing.** `BOND_MCPS_CONNECT_PUBLIC_URL` is the front door, but
-   `/connect/<provider>` lives on per-MCP pods. Does the deployed front-door ingress
-   route `/connect/<provider>/*` to the right pod (mirroring local nginx), or should the
-   connect flow use each MCP's own ingress host (and register per-host callbacks)? This
-   is the highest-risk deployment detail.
-2. **Deployed JWT verification: two token populations, one verifier — this is
-   bigger than "HS256 vs RS256" (§11.1).** In EKS, an MCP pod's fastmcp
-   `JWTVerifier` has exactly **one key source** (JWKS URI *or* static key) and
-   one algorithm. But the deployed MCPs have two known caller populations with
-   incompatible contracts:
-   - **Claude Code** (today's deployed consumer, per bond-mcps
-     `docs/DEPLOYMENT.md`): RS256 tokens issued by the bond-mcps AS —
-     `iss = <AS base URL>`, `aud = <publicUrl>/mcp`.
-   - **bond-ai delegation** (this work): HS256 shared-secret tokens —
-     `iss = bond-ai`, `aud = mcp-server` (server-side mints) or
-     `["bond-ai-api","mcp-server"]` (forwarded sessions).
+> **2026-07-03 — items 1–3 RESOLVED and deployed.** Both apps now run on the
+> shared EKS cluster `bond-platform-dev` (see `docs/PLATFORM-CONTRACT.md`),
+> with `ai.southbayequity.cloud` served by the shared ALB. The resolutions
+> below are live and E2E-verified in the deployed environment.
 
-   fastmcp accepts issuer/audience **lists**, so those claims can coexist —
-   but the key/algorithm cannot. Configuring a pod for one population 401s
-   the other. **Enabling bond-ai delegation in EKS as currently shaped breaks
-   Claude Code access to that MCP (or vice versa).** Options to decide before
-   Chapter 2 wiring:
-   (a) a composite verifier (try JWKS, fall back to HS256 — small custom
-   `TokenVerifier`); (b) bond-ai obtains tokens from the bond-mcps AS
-   (token-exchange / client-credentials — the "correct OAuth" answer, more
-   work); (c) bond-ai publishes a JWKS and both issuers go RS256 behind a
-   multi-JWKS verifier (still needs (a)-style composition); (d) separate MCP
-   deployments per consumer. The Helm chart's `values.yaml` jwt block
-   documents the same constraint from the operator's side.
-3. **`user_key` = email vs internal `user_id`** — email is the current `sub`; an internal
-   stable ID would survive email changes but requires aligning `sub` (and
-   `BOND_MCPS_JWT_SUB_CLAIM`) on both sides.
+1. **Deployed `/connect` routing — RESOLVED: front-door nginx, mirroring local.**
+   bond-ai's in-container nginx (`deployment/nginx-combined.conf.template`,
+   rendered by `deployment/docker-entrypoint.sh`) exact-matches
+   `/connections/<provider>/callback`, prefixes `/connect/<provider>/`, and
+   `/connections/discovery`, proxying to per-MCP upstreams via
+   `BOND_MCPS_*_UPSTREAM` env vars (defaults: the public `*.mcps` hostnames).
+   Every MCP pod carries `BOND_MCPS_CONNECT_PUBLIC_URL=https://<front door>`
+   so provider redirect URIs stay on the single registered front-door host.
+   Note: the discovery manifest's `name` field MUST be the provider connect
+   name, not the hostname prefix (bond-mcps `locals.tf` — `ms-graph` vs
+   `microsoft` broke both connect routing and static-entry merging).
+2. **Two token populations, one verifier — RESOLVED: option (b), RFC 8693
+   token exchange.** MCP pods keep their single RS256/JWKS verifier (Claude
+   Code untouched). bond-ai exchanges its HS256 bond JWT at the bond-mcps AS
+   (`POST /oauth/token`, `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`,
+   `resource=<mcp url>`) for a short-lived (300 s, no refresh token) RS256
+   access token. The HS256 shared secret (`JWT_SECRET_KEY` ≡
+   `BOND_MCPS_AS_BOND_JWT_SECRET`) is held ONLY by the AS pod — never by MCP
+   pods. Client side: `bondable/bond/mcp_token_exchange.py` (cached per
+   user × resource), enabled by `BOND_MCPS_AS_BASE_URL` (unset = local
+   HS256-direct behavior, unchanged). Server side: bond-mcps
+   `auth/auth_server/token_exchange.py`.
+3. **`user_key` — RESOLVED: Cognito `sub`, resolved AS-side.** The exchange
+   handler resolves the subject token's email to the Cognito sub via
+   `cognito-idp:ListUsers` (cached; IRSA-scoped to the pool), so exchanged
+   tokens carry the same `sub` as Claude Code's — one identity, shared
+   provider-token rows, zero data migration. Email keying was rejected on
+   code evidence: the AS refresh grant mints tokens without an email claim,
+   so email-keyed pods would 401 Claude Code on first refresh.
 4. **Tool-time Connect affordance** (§11.11) — build the Flutter UI that consumes the
    surfaced `connect_url`, or leave it as text.
 5. **Discovery refresh in deployment** (§11.2) — accept static-per-deploy, or add a
