@@ -207,6 +207,7 @@ class _DiscoveryCache:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._sources: Dict[str, _SourceState] = {}
+        self._warned_collisions: set = set()
         self._poller: Optional[threading.Thread] = None
         self._poller_stop: Optional[threading.Event] = None
 
@@ -214,6 +215,7 @@ class _DiscoveryCache:
         """Clear cached state (primarily for tests)."""
         with self._lock:
             self._sources = {}
+            self._warned_collisions = set()
 
     def _merge_locked(self, urls: List[str]) -> List[Dict[str, Any]]:
         """Merge cached entries across sources in configured order.
@@ -227,10 +229,15 @@ class _DiscoveryCache:
             for entry in (state.entries if state else None) or []:
                 name = entry["name"]
                 if name in claimed:
-                    LOGGER.warning(
-                        "Discovered MCP %r from %s shadowed by earlier source %s",
-                        name, url, claimed[name],
-                    )
+                    # Merges run on every cached read — warn once per
+                    # collision, not once per request.
+                    key = (name, url)
+                    if key not in self._warned_collisions:
+                        self._warned_collisions.add(key)
+                        LOGGER.warning(
+                            "Discovered MCP %r from %s shadowed by earlier source %s",
+                            name, url, claimed[name],
+                        )
                     continue
                 claimed[name] = url
                 merged.append(dict(entry))
@@ -257,10 +264,16 @@ class _DiscoveryCache:
                     for u in urls
                 ):
                     return self._merge_locked(urls)
+            # Refresh whatever isn't fresh — under force_refresh too (the
+            # poller path). At the poller's TTL cadence every source is past
+            # its TTL by the time the tick fires, so skipping fresh sources
+            # only matters during the fast startup-retry window: there it
+            # stops a never-succeeding source from dragging the healthy ones
+            # into being refetched every STARTUP_RETRY_SECONDS.
             stale = [
                 u for u in urls
                 if not (self._sources.get(u) is not None and self._sources[u].is_fresh())
-            ] if not force_refresh else list(urls)
+            ]
 
         # Fetch outside the lock so a slow endpoint doesn't block other readers.
         for url in stale:

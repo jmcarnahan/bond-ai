@@ -394,6 +394,49 @@ def test_multi_source_per_source_failsoft(monkeypatch):
     assert [m["name"] for m in get_discovered_mcps()] == ["a2", "b"]
 
 
+def test_refresh_skips_fresh_sources(monkeypatch):
+    """During the fast startup-retry window only the never-fetched source is
+    refetched — a dead source must not drag the healthy one into being
+    hammered every STARTUP_RETRY_SECONDS."""
+    import httpx
+
+    monkeypatch.setenv(
+        mcp_discovery.ENV_DISCOVERY_URL, f"{DISCOVERY_URL},{DISCOVERY_URL_2}")
+    calls = []
+
+    def fake_get(url, timeout=None):
+        calls.append(url)
+        if url == DISCOVERY_URL_2:
+            raise httpx.ConnectError("still down")
+        return FakeResp({"mcps": [{"name": "a", "url": "http://h:1/mcp"}]})
+    monkeypatch.setattr(mcp_discovery.httpx, "get", fake_get)
+
+    # First poll: both fetched (A succeeds, B fails).
+    get_discovered_mcps(force_refresh=True)
+    assert calls == [DISCOVERY_URL, DISCOVERY_URL_2]
+    # Fast retry: A is fresh (default TTL) → only B is retried.
+    get_discovered_mcps(force_refresh=True)
+    assert calls == [DISCOVERY_URL, DISCOVERY_URL_2, DISCOVERY_URL_2]
+
+
+def test_collision_warns_once(monkeypatch):
+    """A persistent name collision logs one warning, not one per read."""
+    monkeypatch.setenv(
+        mcp_discovery.ENV_DISCOVERY_URL, f"{DISCOVERY_URL},{DISCOVERY_URL_2}")
+    _set_multi_response(monkeypatch, {
+        DISCOVERY_URL: {"mcps": [{"name": "github", "url": "http://first/mcp"}]},
+        DISCOVERY_URL_2: {"mcps": [{"name": "github", "url": "http://second/mcp"}]},
+    })
+    warnings = []
+    monkeypatch.setattr(
+        mcp_discovery.LOGGER, "warning",
+        lambda msg, *args: warnings.append(msg % args if args else msg),
+    )
+    for _ in range(3):
+        get_discovered_mcps()
+    assert len([w for w in warnings if "shadowed" in w]) == 1
+
+
 def test_multi_source_name_collision_first_wins(monkeypatch):
     monkeypatch.setenv(
         mcp_discovery.ENV_DISCOVERY_URL, f"{DISCOVERY_URL},{DISCOVERY_URL_2}")
