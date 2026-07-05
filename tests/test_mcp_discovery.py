@@ -15,11 +15,12 @@ from bondable.bond.mcp_discovery import (
     _parse_response,
     _validate_url_ssrf,
     get_discovered_mcps,
-    get_discovery_url,
+    get_discovery_urls,
 )
 
 
 DISCOVERY_URL = "http://localhost:8000/connections/discovery"
+DISCOVERY_URL_2 = "http://localhost:8001/connections/discovery"
 
 
 class FakeResp:
@@ -60,13 +61,22 @@ def _set_response(monkeypatch, payload, calls=None):
 # --- URL config -----------------------------------------------------------
 
 def test_discovery_disabled_when_url_unset():
-    assert get_discovery_url() is None
+    assert get_discovery_urls() == []
     assert get_discovered_mcps() == []
 
 
 def test_discovery_url_read_from_env(monkeypatch):
     monkeypatch.setenv(mcp_discovery.ENV_DISCOVERY_URL, DISCOVERY_URL)
-    assert get_discovery_url() == DISCOVERY_URL
+    assert get_discovery_urls() == [DISCOVERY_URL]
+
+
+def test_discovery_urls_comma_separated(monkeypatch):
+    """Whitespace trimmed, empties dropped, duplicates removed preserving order."""
+    monkeypatch.setenv(
+        mcp_discovery.ENV_DISCOVERY_URL,
+        f" {DISCOVERY_URL} , {DISCOVERY_URL_2},, {DISCOVERY_URL} ",
+    )
+    assert get_discovery_urls() == [DISCOVERY_URL, DISCOVERY_URL_2]
 
 
 # --- Parsing --------------------------------------------------------------
@@ -82,9 +92,31 @@ def test_parse_skips_malformed_entries():
     ]}
     out = _parse_response(payload)
     assert out == [
-        {"name": "atlassian", "display_name": "Atlassian", "url": "http://h:1/mcp"},
-        {"name": "github", "display_name": "github", "url": "http://h:4/mcp"},
+        {"name": "atlassian", "display_name": "Atlassian", "url": "http://h:1/mcp",
+         "requires_connection": True},
+        {"name": "github", "display_name": "github", "url": "http://h:4/mcp",
+         "requires_connection": True},
     ]
+
+
+def test_parse_requires_connection_and_description():
+    """Only a literal false opts out of the connect flow; description passes
+    through when a non-empty string and is dropped otherwise."""
+    payload = {"mcps": [
+        {"name": "sbelcrm", "url": "http://h:1/mcp", "requires_connection": False,
+         "description": " CRM tools "},
+        {"name": "absent", "url": "http://h:2/mcp"},
+        {"name": "nonbool", "url": "http://h:3/mcp", "requires_connection": "yes"},
+        {"name": "blankdesc", "url": "http://h:4/mcp", "description": "  "},
+        {"name": "baddesc", "url": "http://h:5/mcp", "description": 42},
+    ]}
+    out = {e["name"]: e for e in _parse_response(payload)}
+    assert out["sbelcrm"]["requires_connection"] is False
+    assert out["sbelcrm"]["description"] == "CRM tools"
+    assert out["absent"]["requires_connection"] is True
+    assert out["nonbool"]["requires_connection"] is True
+    assert "description" not in out["blankdesc"]
+    assert "description" not in out["baddesc"]
 
 
 def test_parse_rejects_non_object_and_missing_list():
@@ -302,6 +334,81 @@ def test_failsoft_empty_when_no_prior_success(monkeypatch):
     assert get_discovered_mcps() == []
 
 
+# --- Multiple sources -------------------------------------------------------
+
+def _set_multi_response(monkeypatch, payloads):
+    """Install a fake httpx.get dispatching per-URL from ``payloads``.
+
+    A payload value of an Exception instance is raised instead of returned.
+    """
+    def fake_get(url, timeout=None):
+        payload = payloads[url]
+        if isinstance(payload, Exception):
+            raise payload
+        return FakeResp(payload)
+    monkeypatch.setattr(mcp_discovery.httpx, "get", fake_get)
+
+
+def test_multi_source_merge_in_configured_order(monkeypatch):
+    monkeypatch.setenv(
+        mcp_discovery.ENV_DISCOVERY_URL, f"{DISCOVERY_URL},{DISCOVERY_URL_2}")
+    _set_multi_response(monkeypatch, {
+        DISCOVERY_URL: {"mcps": [{"name": "atlassian", "url": "http://h:1/mcp"}]},
+        DISCOVERY_URL_2: {"mcps": [
+            {"name": "sbelcrm", "url": "http://h:2/mcp", "requires_connection": False}]},
+    })
+    out = get_discovered_mcps()
+    assert [m["name"] for m in out] == ["atlassian", "sbelcrm"]
+    assert out[0]["requires_connection"] is True
+    assert out[1]["requires_connection"] is False
+
+
+def test_multi_source_per_source_failsoft(monkeypatch):
+    """One source down keeps its last good entries without affecting the other;
+    a source that never succeeded contributes nothing."""
+    import httpx
+
+    monkeypatch.setenv(
+        mcp_discovery.ENV_DISCOVERY_URL, f"{DISCOVERY_URL},{DISCOVERY_URL_2}")
+    monkeypatch.setenv(mcp_discovery.ENV_DISCOVERY_TTL, "0")
+
+    # B down from the start → A only.
+    _set_multi_response(monkeypatch, {
+        DISCOVERY_URL: {"mcps": [{"name": "a", "url": "http://h:1/mcp"}]},
+        DISCOVERY_URL_2: httpx.ConnectError("down"),
+    })
+    assert [m["name"] for m in get_discovered_mcps()] == ["a"]
+
+    # B comes up → merged.
+    _set_multi_response(monkeypatch, {
+        DISCOVERY_URL: {"mcps": [{"name": "a", "url": "http://h:1/mcp"}]},
+        DISCOVERY_URL_2: {"mcps": [{"name": "b", "url": "http://h:2/mcp"}]},
+    })
+    assert [m["name"] for m in get_discovered_mcps()] == ["a", "b"]
+
+    # B goes down again → A fresh + B last-good.
+    _set_multi_response(monkeypatch, {
+        DISCOVERY_URL: {"mcps": [{"name": "a2", "url": "http://h:3/mcp"}]},
+        DISCOVERY_URL_2: httpx.ConnectError("down"),
+    })
+    assert [m["name"] for m in get_discovered_mcps()] == ["a2", "b"]
+
+
+def test_multi_source_name_collision_first_wins(monkeypatch):
+    monkeypatch.setenv(
+        mcp_discovery.ENV_DISCOVERY_URL, f"{DISCOVERY_URL},{DISCOVERY_URL_2}")
+    _set_multi_response(monkeypatch, {
+        DISCOVERY_URL: {"mcps": [{"name": "github", "url": "http://first/mcp"}]},
+        DISCOVERY_URL_2: {"mcps": [
+            {"name": "github", "url": "http://second/mcp"},
+            {"name": "sbelcrm", "url": "http://second/crm/mcp"},
+        ]},
+    })
+    out = {m["name"]: m for m in get_discovered_mcps()}
+    assert set(out) == {"github", "sbelcrm"}
+    assert out["github"]["url"] == "http://first/mcp"
+
+
 # --- Config overlay -------------------------------------------------------
 
 def _overlay(monkeypatch, static, discovered):
@@ -347,3 +454,31 @@ def test_overlay_noop_when_no_discovery(monkeypatch):
     static = {"mcpServers": {"hello": {"command": "python"}}}
     out = _overlay(monkeypatch, static, [])
     assert out == static
+
+
+def test_overlay_internal_entry_not_managed(monkeypatch):
+    """requires_connection=false entries are internal bond_jwt servers: never
+    marked is_managed (the "always connected" path in /mcp/tools applies), and
+    a stale is_managed from an earlier overlay is removed."""
+    static = {"mcpServers": {
+        "sbelcrm": {"url": "http://old", "auth_type": "bond_jwt",
+                    "description": "Static description", "is_managed": True},
+    }}
+    discovered = [
+        {"name": "sbelcrm", "display_name": "SBEL CRM",
+         "url": "http://localhost:8001/mcp", "requires_connection": False,
+         "description": "Discovered description"},
+        {"name": "fresh", "url": "http://localhost:9999/mcp",
+         "requires_connection": False, "description": "From discovery"},
+    ]
+    out = _overlay(monkeypatch, static, discovered)["mcpServers"]
+
+    crm = out["sbelcrm"]
+    assert crm["url"] == "http://localhost:8001/mcp"
+    assert crm["auth_type"] == "bond_jwt"
+    assert "is_managed" not in crm
+    assert crm["description"] == "Static description"   # static annotation wins
+
+    fresh = out["fresh"]
+    assert "is_managed" not in fresh
+    assert fresh["description"] == "From discovery"     # discovery fills the gap
