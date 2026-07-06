@@ -86,11 +86,21 @@ The integration is best understood as three orthogonal planes that share one ide
 (the Bond JWT) but otherwise solve independent problems.
 
 ### 2a. Discovery plane — "which MCPs exist and where"
-- bond-ai calls `GET {BOND_MCPS_DISCOVERY_URL}` → `{"mcps":[{name, display_name, url}]}`.
-- Cached in-process with a TTL and refreshed by a background poller (so MCPs can be
-  added/removed without restarting bond-ai — *with caveats in deployment, see §11*).
+- `BOND_MCPS_DISCOVERY_URL` is a **comma-separated list** of discovery sources
+  (bond-mcps, sbel-crm, …). bond-ai calls `GET <url>` on each →
+  `{"mcps":[{name, display_name, url, description?, requires_connection?}]}`.
+- Merged across sources in configured order (earlier source wins a `name`
+  collision, warned once). Cached in-process per source with a TTL and refreshed
+  by a background poller (so MCPs can be added/removed without restarting
+  bond-ai — *with caveats in deployment, see §11*); each source fails soft
+  independently to its last good result.
 - The discovered set is overlaid onto bond-ai's effective MCP config as `bond_jwt`
   servers; everything beyond the URL (tools) is learned via the MCP protocol itself.
+- `requires_connection` (default `true`) = managed: per-user Connect flow
+  delegated to the advertising service. `false` (e.g. sbel-crm) = authorized by
+  the Bond JWT for any signed-in user — never `is_managed`, always connected,
+  informational Connections tile with no Connect/Disconnect. Contract:
+  `docs/PLATFORM-CONTRACT.md` §"MCP discovery".
 
 ### 2b. Authentication plane — Bond JWT + shared secret
 - bond-ai mints **HS256** JWTs signed with `JWT_SECRET_KEY`; claims: `sub`=**email**,
@@ -242,7 +252,7 @@ Merged in **PR #201** (`170ced0` feat + `daef8f7` SSRF fix → merge `a9ad9df`).
 
 | File | Change |
 |------|--------|
-| `bondable/bond/mcp_discovery.py` | **new** — `get_discovered_mcps()`; TTL cache + background poller (`start/stop_background_poller`); SSRF-guards both the discovery URL **and each discovered MCP URL**; fail-soft to last-good/empty. Env: `BOND_MCPS_DISCOVERY_URL` / `_TTL_SECONDS` / `_TIMEOUT_SECONDS`. **Poller is the sole fetcher** — when it's alive, request threads only read cache (no blocking HTTP on the event loop). |
+| `bondable/bond/mcp_discovery.py` | **new** — `get_discovered_mcps()`; per-source TTL cache + background poller (`start/stop_background_poller`); SSRF-guards each discovery URL **and each discovered MCP URL**; each source fails soft to its last-good result independently. Env: `BOND_MCPS_DISCOVERY_URL` (comma-separated list; earlier source wins name collisions) / `_TTL_SECONDS` / `_TIMEOUT_SECONDS`. Entries carry `requires_connection` (default true = managed) + optional `description`. **Poller is the sole fetcher** — when it's alive, request threads only read cache (no blocking HTTP on the event loop); refreshes skip still-fresh sources so a dead source can't drag healthy ones into the 10s startup-retry cadence. |
 | `bondable/bond/mcp_connect_client.py` | **new** — **async** (`httpx.AsyncClient`) client for `mint_connect_ticket` / `get_connect_status` / `delete_connection`. `connect_base_url()` strips the discovered path to an origin. `_safe_name()` strips URL-control chars from the name (SSRF defense + CodeQL taint break). |
 | `bondable/bond/config.py` | `get_mcp_config()` now overlays discovered MCPs onto the static config as `bond_jwt` / `streamable-http`, dropping any stale inline `oauth_config`, preserving annotations, leaving `command`/user-defined servers untouched. No-op when discovery is disabled. |
 | `bondable/rest/routers/connections.py` | Managed (delegated) track added alongside the preserved user-defined OAuth2 path. `authorize`→mint ticket; `list`/`status`→bond-mcps status (concurrent via `asyncio.gather`, **per-MCP fail-soft**); `disconnect`→bond-mcps delete. Passes the **discovery-sourced `managed["name"]`** (not the request path param) into the client → no SSRF taint. |
@@ -356,7 +366,9 @@ trace each carefully.
    AS**. Terraform renders `discovery.json` (`{name, display_name, url: https://<prefix>.<base_domain>/mcp}`)
    from the enabled MCP services, mounts it as a ConfigMap at `/etc/bond-mcps`, and sets
    `BOND_MCPS_DISCOVERY_FILE` on the AS pod. bond-ai points
-   `BOND_MCPS_DISCOVERY_URL` → `https://auth.<base_domain>/connections/discovery`.
+   `BOND_MCPS_DISCOVERY_URL` → `https://auth.<base_domain>/connections/discovery`
+   (comma-append further sources, e.g. sbel-crm's
+   `https://crm.<domain>/connections/discovery`).
    *This file is static per deploy — see §11.2.*
 
 2. **JWT validation.** Each MCP runs with the JWT env (HS256 + shared secret, or RS256

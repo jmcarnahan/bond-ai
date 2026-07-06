@@ -504,16 +504,21 @@ class Config:
             return {"mcpServers": {}}
 
     def _overlay_discovered_mcps(self, mcp_config):
-        """Overlay bond-mcps discovery results onto the static MCP config.
+        """Overlay discovery results onto the static MCP config.
 
-        For each discovered MCP (``{name, display_name, url}``) the merged server
-        entry uses the discovered ``url``/``display_name`` and is forced to
-        ``auth_type=bond_jwt`` + ``transport=streamable-http`` (bond-mcps owns its
-        OAuth). Any non-OAuth annotations already present in the static config for
-        that name (e.g. ``description``, ``icon_url``, ``allowed_tools``) are
-        preserved; a stale inline ``oauth_config`` is dropped. Servers not present
-        in discovery (user-defined live in the DB, not here; ``command`` servers
-        like ``hello``) are left untouched. No-op when discovery is disabled.
+        For each discovered MCP (``{name, display_name, url, requires_connection}``)
+        the merged server entry uses the discovered ``url``/``display_name`` and is
+        forced to ``auth_type=bond_jwt`` + ``transport=streamable-http``. Entries
+        with ``requires_connection=true`` (the default — all bond-mcps MCPs) are
+        marked ``is_managed``: their per-user connection status is delegated to the
+        advertising service. ``requires_connection=false`` entries (e.g. sbel-crm)
+        are internal bond_jwt servers — authorized by the Bond JWT for any
+        signed-in user, always connected. Any non-OAuth annotations already present
+        in the static config for that name (e.g. ``description``, ``icon_url``,
+        ``allowed_tools``) are preserved; a stale inline ``oauth_config`` is
+        dropped. Servers not present in discovery (user-defined live in the DB,
+        not here; ``command`` servers like ``hello``) are left untouched. No-op
+        when discovery is disabled.
         """
         try:
             from bondable.bond.mcp_discovery import get_discovered_mcps
@@ -532,19 +537,29 @@ class Config:
         for entry in discovered:
             name = entry["name"]
             existing = dict(servers.get(name, {}))
-            # Drop any stale inline OAuth config — bond-mcps owns OAuth now.
+            # Drop any stale inline OAuth config — the advertising service owns
+            # OAuth now.
             existing.pop("oauth_config", None)
             existing.update({
                 "url": entry["url"],
                 "display_name": entry.get("display_name", existing.get("display_name", name)),
                 "transport": "streamable-http",
                 "auth_type": "bond_jwt",
-                # Marks a bond-mcps-managed MCP: bond_jwt auth, but its per-user
-                # connection status is delegated (queried via bond-mcps'
+            })
+            if entry.get("requires_connection", True):
+                # Marks a managed MCP: bond_jwt auth, but its per-user
+                # connection status is delegated (queried via the advertiser's
                 # /connect/<name>/status), NOT "always connected" like internal
                 # bond_jwt servers (sbelcrm, admin, common).
-                "is_managed": True,
-            })
+                existing["is_managed"] = True
+            else:
+                # Internal bond_jwt server: authorized by the Bond JWT for any
+                # signed-in user — no per-user connect flow, always connected.
+                existing.pop("is_managed", None)
+            # Static annotation wins; discovery fills the gap for servers that
+            # have no static entry.
+            if entry.get("description") and not existing.get("description"):
+                existing["description"] = entry["description"]
             servers[name] = existing
 
         result = dict(mcp_config)

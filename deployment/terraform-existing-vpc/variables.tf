@@ -531,7 +531,7 @@ variable "eks_scheduled_jobs_enabled" {
 }
 
 variable "bond_mcps_discovery_url" {
-  description = "bond-mcps managed-MCP discovery endpoint (e.g. https://auth.mcps.example.com/connections/discovery). Empty disables discovery — managed MCP tiles and delegation stay off."
+  description = "Comma-separated MCP discovery endpoints (e.g. https://auth.mcps.example.com/connections/discovery,https://crm.example.com/connections/discovery). Earlier sources win name collisions. Empty disables discovery — managed MCP tiles and delegation stay off."
   type        = string
   default     = ""
 }

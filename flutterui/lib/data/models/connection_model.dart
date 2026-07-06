@@ -12,6 +12,10 @@ class ConnectionStatus {
   final bool requiresAuthorization;
   final bool hasRefreshToken;
 
+  /// False for MCPs authorized by the signed-in session itself (e.g. SBEL
+  /// CRM): always connected, no Connect/Disconnect action.
+  final bool requiresConnection;
+
   ConnectionStatus({
     required this.name,
     required this.displayName,
@@ -24,6 +28,7 @@ class ConnectionStatus {
     this.expiresAt,
     this.requiresAuthorization = false,
     this.hasRefreshToken = false,
+    this.requiresConnection = true,
   });
 
   factory ConnectionStatus.fromJson(Map<String, dynamic> json) {
@@ -39,6 +44,7 @@ class ConnectionStatus {
       expiresAt: json['expires_at'] as String?,
       requiresAuthorization: json['requires_authorization'] as bool? ?? false,
       hasRefreshToken: json['has_refresh_token'] as bool? ?? false,
+      requiresConnection: json['requires_connection'] as bool? ?? true,
     );
   }
 
@@ -54,10 +60,12 @@ class ConnectionStatus {
     'expires_at': expiresAt,
     'requires_authorization': requiresAuthorization,
     'has_refresh_token': hasRefreshToken,
+    'requires_connection': requiresConnection,
   };
 
   /// Returns true if the connection needs attention (expired without refresh token, or not connected)
-  bool get needsAttention => !connected || (!valid && !hasRefreshToken);
+  bool get needsAttention =>
+      requiresConnection && (!connected || (!valid && !hasRefreshToken));
 
   /// Human-readable status string
   String get statusText {

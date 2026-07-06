@@ -31,6 +31,10 @@ TEST_USER_ID = "deleg-user-1"
 DISCOVERED = [
     {"name": "atlassian", "display_name": "Atlassian", "url": "http://localhost:18003/mcp"},
     {"name": "github", "display_name": "GitHub", "url": "http://localhost:18002/mcp"},
+    # Internal (requires_connection=false): authorized by the Bond JWT for any
+    # signed-in user — always connected, no connect flow to delegate.
+    {"name": "sbelcrm", "display_name": "SBEL CRM", "url": "http://localhost:8001/mcp",
+     "requires_connection": False, "description": "Access CRM tools"},
 ]
 
 
@@ -61,6 +65,7 @@ class _StubMcps:
     def __init__(self):
         self.connected = set()
         self.tickets = []
+        self.status_calls = []
         self.no_surface = set()  # providers that 404 (no connect flow)
 
     async def mint_connect_ticket(self, mcp_url, name, jwt_token, return_url):
@@ -69,6 +74,7 @@ class _StubMcps:
         return f"http://localhost:8000/connect/{name}?ticket=TKT&return_url={return_url}"
 
     async def get_connect_status(self, mcp_url, name, jwt_token, timeout=None):
+        self.status_calls.append(name)
         if name in self.no_surface:
             return None
         connected = name in self.connected
@@ -208,3 +214,58 @@ def test_full_connect_choreography(client, headers, stub):
 def test_managed_endpoints_require_auth(client, stub):
     assert client.get("/connections/atlassian/authorize").status_code == 401
     assert client.delete("/connections/atlassian").status_code == 401
+
+
+# --- internal (requires_connection=false) discovered MCPs -------------------
+
+def test_list_includes_internal_always_connected(client, headers, stub):
+    """Internal discovered MCPs get an informational always-connected tile,
+    with no status round-trip to the advertising service."""
+    resp = client.get("/connections", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    by_name = {c["name"]: c for c in body["connections"]}
+
+    crm = by_name["sbelcrm"]
+    assert crm["connected"] is True
+    assert crm["valid"] is True
+    assert crm["auth_type"] == "bond_jwt"
+    assert crm["requires_connection"] is False
+    assert crm["requires_authorization"] is False
+    assert crm["description"] == "Access CRM tools"
+    # Never in the expired list.
+    assert all(e["name"] != "sbelcrm" for e in body["expired"])
+    # No connect-status round-trip was made for the internal MCP.
+    assert "sbelcrm" not in stub.status_calls
+
+    # Managed entries still require a connection.
+    assert by_name["atlassian"]["requires_connection"] is True
+
+
+def test_internal_status_always_connected(client, headers, stub):
+    resp = client.get("/connections/sbelcrm/status", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["connected"] is True
+    assert body["requires_connection"] is False
+
+
+def test_internal_status_skips_connect_client(client, headers, monkeypatch):
+    """Status for an internal MCP must not hit the connect client at all."""
+    async def kaboom(*a, **k):
+        raise AssertionError("connect client must not be called for internal MCPs")
+    monkeypatch.setattr(conn.mcp_connect_client, "get_connect_status", kaboom)
+    assert client.get("/connections/sbelcrm/status", headers=headers).status_code == 200
+
+
+def test_internal_authorize_rejected(client, headers, stub):
+    resp = client.get("/connections/sbelcrm/authorize", headers=headers)
+    assert resp.status_code == 400
+    assert "does not require authorization" in resp.json()["detail"]
+    assert stub.tickets == []
+
+
+def test_internal_disconnect_rejected(client, headers, stub):
+    resp = client.delete("/connections/sbelcrm", headers=headers)
+    assert resp.status_code == 400
+    assert "cannot be disconnected" in resp.json()["detail"]

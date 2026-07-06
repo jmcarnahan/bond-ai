@@ -61,6 +61,9 @@ class ConnectionStatusResponse(BaseModel):
     has_refresh_token: bool = False
     is_user_defined: bool = False
     user_server_id: Optional[str] = None
+    # False for MCPs authorized by the Bond JWT for any signed-in user (e.g.
+    # sbel-crm): always connected, no Connect/Disconnect action in the UI.
+    requires_connection: bool = True
 
 
 class ConnectionsListResponse(BaseModel):
@@ -231,15 +234,22 @@ def _get_connection_config(connection_name: str, user_id: Optional[str] = None) 
 # them as connectable tiles, but authorize/status/disconnect proxy to bond-mcps.
 
 def _get_managed_connection_configs() -> List[Dict[str, Any]]:
-    """Return discovered bond-mcps-managed MCPs as connection-config dicts."""
+    """Return discovered managed MCPs as connection-config dicts.
+
+    Entries advertised with ``requires_connection: false`` are internal bond_jwt
+    servers (no per-user connect flow) — see
+    :func:`_get_internal_discovered_configs`.
+    """
     configs = []
     for entry in get_discovered_mcps():
+        if entry.get("requires_connection", True) is False:
+            continue
         name = entry["name"]
         display_name = entry.get("display_name", name.title())
         configs.append({
             "name": name,
             "display_name": display_name,
-            "description": f"Connect to {display_name}",
+            "description": entry.get("description") or f"Connect to {display_name}",
             "url": entry["url"],
             "auth_type": "bond_jwt",
             "is_managed": True,
@@ -247,6 +257,56 @@ def _get_managed_connection_configs() -> List[Dict[str, Any]]:
             "icon_url": None,
         })
     return configs
+
+
+def _get_internal_discovered_configs() -> List[Dict[str, Any]]:
+    """Return discovered internal (``requires_connection: false``) MCPs.
+
+    These are authorized by the Bond JWT for any signed-in user (e.g. sbel-crm):
+    always connected, nothing to authorize or disconnect. They get an
+    informational tile on the Connections page.
+    """
+    configs = []
+    for entry in get_discovered_mcps():
+        if entry.get("requires_connection", True) is not False:
+            continue
+        name = entry["name"]
+        display_name = entry.get("display_name", name.title())
+        configs.append({
+            "name": name,
+            "display_name": display_name,
+            "description": entry.get("description"),
+            "url": entry["url"],
+            "auth_type": "bond_jwt",
+            "is_user_defined": False,
+            "icon_url": None,
+        })
+    return configs
+
+
+def _get_internal_discovered(connection_name: str) -> Optional[Dict[str, Any]]:
+    """Get a specific internal (always-connected) discovered MCP, or None."""
+    for config in _get_internal_discovered_configs():
+        if config["name"] == connection_name:
+            return config
+    return None
+
+
+def _internal_connection_response(config: Dict[str, Any]) -> ConnectionStatusResponse:
+    """Always-connected status for an internal discovered MCP."""
+    name = config["name"]
+    return ConnectionStatusResponse(
+        name=name,
+        display_name=config.get("display_name", name.title()),
+        description=config.get("description"),
+        connected=True,
+        valid=True,
+        auth_type="bond_jwt",
+        icon_url=config.get("icon_url"),
+        requires_authorization=False,
+        is_user_defined=False,
+        requires_connection=False,
+    )
 
 
 def _get_managed_connection(connection_name: str) -> Optional[Dict[str, Any]]:
@@ -429,6 +489,12 @@ async def list_connections(
                 "expires_at": mcps_status.get("expires_at"),
             })
 
+    # --- Internal discovered connections (always connected) ----------------
+    # No per-user state to query: the Bond JWT authorizes any signed-in user,
+    # so these render as informational "Connected" tiles and never expire.
+    for config in _get_internal_discovered_configs():
+        connections.append(_internal_connection_response(config))
+
     # --- Legacy / user-defined OAuth2 connections --------------------------
     configs = _get_connection_configs(user_id=current_user.user_id)
 
@@ -493,6 +559,13 @@ async def authorize_connection(
     bond-ai builds the provider authorize URL itself (unchanged).
     """
     current_user, jwt_token = user_and_token
+
+    # --- Internal discovered connection: nothing to authorize --------------
+    if _get_internal_discovered(connection_name) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Connection '{connection_name}' does not require authorization",
+        )
 
     # --- Managed (bond-mcps-delegated) connection --------------------------
     managed = _get_managed_connection(connection_name)
@@ -762,6 +835,11 @@ async def get_connection_status(
     current_user, jwt_token = user_and_token
     LOGGER.debug(f"[Connections] Checking status of {connection_name} for user {current_user.email}")
 
+    # --- Internal discovered connection: always connected -------------------
+    internal = _get_internal_discovered(connection_name)
+    if internal is not None:
+        return _internal_connection_response(internal)
+
     # --- Managed (bond-mcps-delegated) connection --------------------------
     managed = _get_managed_connection(connection_name)
     if managed is not None:
@@ -839,6 +917,13 @@ async def disconnect(
     """
     current_user, jwt_token = user_and_token
     LOGGER.info(f"User {current_user.email} disconnecting from {connection_name}")
+
+    # --- Internal discovered connection: nothing to disconnect --------------
+    if _get_internal_discovered(connection_name) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Connection '{connection_name}' cannot be disconnected",
+        )
 
     # --- Managed (bond-mcps-delegated) connection --------------------------
     managed = _get_managed_connection(connection_name)

@@ -793,7 +793,16 @@ class _ConnectionRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           // Action buttons based on connection state
-          if (connection.connected && connection.valid)
+          if (!connection.requiresConnection)
+            // Authorized by the signed-in session itself (e.g. SBEL CRM):
+            // informational tile, nothing to connect or disconnect.
+            Text(
+              'Included',
+              style: textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            )
+          else if (connection.connected && connection.valid)
             // Connected and valid: show Disconnect
             OutlinedButton(
               onPressed: onDisconnect,

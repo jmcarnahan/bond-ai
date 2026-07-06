@@ -1,26 +1,38 @@
 """MCP discovery client.
 
 bond-ai no longer hard-configures the list of MCP servers and their endpoints.
-Instead it fetches the set of available MCPs from bond-mcps' discovery endpoint
-(``GET <BOND_MCPS_DISCOVERY_URL>``), which returns::
+Instead it fetches the set of available MCPs from one or more discovery
+endpoints (``GET <url>`` for each URL in ``BOND_MCPS_DISCOVERY_URL``), each of
+which returns::
 
     {"mcps": [{"name": "atlassian", "display_name": "Atlassian",
                "url": "http://localhost:18003/mcp"}, ...]}
 
-Everything beyond the endpoint URL (tools, auth, capabilities) is learned via the
-MCP protocol itself. Discovery only answers "which MCPs exist and where".
+Entries may carry two optional fields (see docs/PLATFORM-CONTRACT.md):
 
-Results are cached in-process with a TTL and refreshed lazily on access (and
-optionally by a background poller started at app startup) so MCPs can be added or
-removed in bond-mcps **without restarting bond-ai**. On any fetch error or an
-empty response the client *fails soft*: it returns the last good result if one is
-cached, otherwise an empty list, and callers fall back to whatever static MCP
-config bond-ai still carries.
+- ``requires_connection`` (bool, default ``true``) — ``true`` means the user
+  must run a per-provider connect flow, delegated to the advertising service
+  (bond-mcps' /connect routes); ``false`` means the MCP is authorized by the
+  Bond JWT for any signed-in user (e.g. sbel-crm) and needs no connect flow.
+- ``description`` — human-readable blurb, passed through to the UI.
+
+Everything beyond that (tools, auth, capabilities) is learned via the MCP
+protocol itself. Discovery only answers "which MCPs exist and where".
+
+Results are cached in-process per source with a TTL and refreshed lazily on
+access (and optionally by a background poller started at app startup) so MCPs
+can be added or removed upstream **without restarting bond-ai**. Each source
+*fails soft* independently: on a fetch error it keeps that source's last good
+result (or contributes nothing if it never succeeded) without affecting the
+other sources, and callers fall back to whatever static MCP config bond-ai
+still carries. When two sources advertise the same ``name``, the earlier URL
+in the configured list wins and a warning is logged.
 
 Configuration (all via environment):
 
-- ``BOND_MCPS_DISCOVERY_URL`` — full discovery URL. When unset, discovery is
-  disabled and :func:`get_discovered_mcps` returns ``[]`` (pure static config).
+- ``BOND_MCPS_DISCOVERY_URL`` — comma-separated list of discovery URLs. When
+  unset, discovery is disabled and :func:`get_discovered_mcps` returns ``[]``
+  (pure static config).
 - ``BOND_MCPS_DISCOVERY_TTL_SECONDS`` — cache TTL (default 300).
 - ``BOND_MCPS_DISCOVERY_TIMEOUT_SECONDS`` — per-request HTTP timeout (default 5).
 """
@@ -71,10 +83,20 @@ class DiscoveryError(Exception):
     """Raised internally when a discovery fetch cannot be completed."""
 
 
-def get_discovery_url() -> Optional[str]:
-    """Return the configured discovery URL, or ``None`` if discovery is off."""
-    url = os.environ.get(ENV_DISCOVERY_URL, "").strip()
-    return url or None
+def get_discovery_urls() -> List[str]:
+    """Return the configured discovery URLs (possibly empty when discovery is off).
+
+    ``BOND_MCPS_DISCOVERY_URL`` is a comma-separated list; whitespace around
+    entries is ignored, empties are dropped, and duplicates are removed while
+    preserving order (order matters: earlier sources win name collisions).
+    """
+    raw = os.environ.get(ENV_DISCOVERY_URL, "")
+    urls: List[str] = []
+    for part in raw.split(","):
+        url = part.strip()
+        if url and url not in urls:
+            urls.append(url)
+    return urls
 
 
 def _get_ttl_seconds() -> float:
@@ -108,7 +130,7 @@ def _validate_url_ssrf(url: str) -> None:
         pass  # not an IP literal — exact-match check above is sufficient
 
 
-def _parse_response(payload: Any) -> List[Dict[str, str]]:
+def _parse_response(payload: Any) -> List[Dict[str, Any]]:
     """Coerce a discovery response into a clean list of MCP entries.
 
     Malformed entries (missing ``name``/``url`` or wrong types) are skipped so a
@@ -120,7 +142,7 @@ def _parse_response(payload: Any) -> List[Dict[str, str]]:
     if not isinstance(raw, list):
         raise DiscoveryError("discovery response missing 'mcps' list")
 
-    entries: List[Dict[str, str]] = []
+    entries: List[Dict[str, Any]] = []
     for item in raw:
         if not isinstance(item, dict):
             continue
@@ -143,39 +165,87 @@ def _parse_response(payload: Any) -> List[Dict[str, str]]:
         display_name = item.get("display_name")
         if not isinstance(display_name, str) or not display_name.strip():
             display_name = name
-        entries.append({
+        entry: Dict[str, Any] = {
             "name": name.strip(),
             "display_name": display_name.strip(),
             "url": url,
-        })
+            # Only a literal JSON `false` opts an MCP out of the per-user
+            # connect flow; anything else (absent, non-bool) keeps the safe
+            # default of a managed connection.
+            "requires_connection": item.get("requires_connection") is not False,
+        }
+        description = item.get("description")
+        if isinstance(description, str) and description.strip():
+            entry["description"] = description.strip()
+        entries.append(entry)
     return entries
 
 
+class _SourceState:
+    """Last-good entries and fetch time for a single discovery URL."""
+
+    __slots__ = ("entries", "fetched_at")
+
+    def __init__(self) -> None:
+        self.entries: Optional[List[Dict[str, Any]]] = None
+        self.fetched_at: float = 0.0
+
+    def is_fresh(self) -> bool:
+        return (
+            self.entries is not None
+            and (time.monotonic() - self.fetched_at) < _get_ttl_seconds()
+        )
+
+
 class _DiscoveryCache:
-    """Thread-safe TTL cache for discovered MCP entries with fail-soft refresh."""
+    """Thread-safe per-source TTL cache for discovered MCP entries.
+
+    Each configured discovery URL fails soft independently: a fetch error keeps
+    that source's last good entries without affecting the others.
+    """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._entries: Optional[List[Dict[str, str]]] = None
-        self._fetched_at: float = 0.0
+        self._sources: Dict[str, _SourceState] = {}
+        self._warned_collisions: set = set()
         self._poller: Optional[threading.Thread] = None
         self._poller_stop: Optional[threading.Event] = None
 
     def reset(self) -> None:
         """Clear cached state (primarily for tests)."""
         with self._lock:
-            self._entries = None
-            self._fetched_at = 0.0
+            self._sources = {}
+            self._warned_collisions = set()
 
-    def _is_fresh(self) -> bool:
-        return (
-            self._entries is not None
-            and (time.monotonic() - self._fetched_at) < _get_ttl_seconds()
-        )
+    def _merge_locked(self, urls: List[str]) -> List[Dict[str, Any]]:
+        """Merge cached entries across sources in configured order.
 
-    def get(self, force_refresh: bool = False) -> List[Dict[str, str]]:
-        url = get_discovery_url()
-        if not url:
+        Earlier sources win name collisions (callers must hold ``self._lock``).
+        """
+        merged: List[Dict[str, Any]] = []
+        claimed: Dict[str, str] = {}
+        for url in urls:
+            state = self._sources.get(url)
+            for entry in (state.entries if state else None) or []:
+                name = entry["name"]
+                if name in claimed:
+                    # Merges run on every cached read — warn once per
+                    # collision, not once per request.
+                    key = (name, url)
+                    if key not in self._warned_collisions:
+                        self._warned_collisions.add(key)
+                        LOGGER.warning(
+                            "Discovered MCP %r from %s shadowed by earlier source %s",
+                            name, url, claimed[name],
+                        )
+                    continue
+                claimed[name] = url
+                merged.append(dict(entry))
+        return merged
+
+    def get(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        urls = get_discovery_urls()
+        if not urls:
             return []
 
         with self._lock:
@@ -189,24 +259,42 @@ class _DiscoveryCache:
                 # Without a poller (scripts/CLI, off the event loop) lazy fetch is
                 # the right behaviour, so we only short-circuit when one is alive.
                 poller_active = self._poller is not None and self._poller.is_alive()
-                if poller_active or self._is_fresh():
-                    return list(self._entries or [])
+                if poller_active or all(
+                    self._sources.get(u) is not None and self._sources[u].is_fresh()
+                    for u in urls
+                ):
+                    return self._merge_locked(urls)
+            # Refresh whatever isn't fresh — under force_refresh too (the
+            # poller path). At the poller's TTL cadence every source is past
+            # its TTL by the time the tick fires, so skipping fresh sources
+            # only matters during the fast startup-retry window: there it
+            # stops a never-succeeding source from dragging the healthy ones
+            # into being refetched every STARTUP_RETRY_SECONDS.
+            stale = [
+                u for u in urls
+                if not (self._sources.get(u) is not None and self._sources[u].is_fresh())
+            ]
 
         # Fetch outside the lock so a slow endpoint doesn't block other readers.
-        try:
-            entries = self._fetch(url)
-        except DiscoveryError as exc:
-            LOGGER.warning("MCP discovery fetch failed (%s); failing soft", exc)
+        for url in stale:
+            try:
+                entries = self._fetch(url)
+            except DiscoveryError as exc:
+                # Keep this source's last good entries (or nothing if it never
+                # succeeded); other sources are unaffected.
+                LOGGER.warning(
+                    "MCP discovery fetch from %s failed (%s); failing soft", url, exc
+                )
+                continue
             with self._lock:
-                # Serve the last good result if we have one, else empty.
-                return list(self._entries or [])
+                state = self._sources.setdefault(url, _SourceState())
+                state.entries = entries
+                state.fetched_at = time.monotonic()
 
         with self._lock:
-            self._entries = entries
-            self._fetched_at = time.monotonic()
-            return list(entries)
+            return self._merge_locked(urls)
 
-    def _fetch(self, url: str) -> List[Dict[str, str]]:
+    def _fetch(self, url: str) -> List[Dict[str, Any]]:
         _validate_url_ssrf(url)
         try:
             resp = httpx.get(url, timeout=_get_timeout_seconds())  # nosec B113 - timeout always set (defaults to 5s)
@@ -219,9 +307,13 @@ class _DiscoveryCache:
         return entries
 
     def _next_poll_interval(self) -> float:
-        """Poll cadence: fast retry until the first successful fetch lands."""
+        """Poll cadence: fast retry until every source's first fetch lands."""
+        urls = get_discovery_urls()
         with self._lock:
-            never_fetched = self._entries is None
+            never_fetched = any(
+                self._sources.get(u) is None or self._sources[u].entries is None
+                for u in urls
+            )
         ttl = _get_ttl_seconds()
         return min(STARTUP_RETRY_SECONDS, ttl) if never_fetched else ttl
 
@@ -236,7 +328,7 @@ class _DiscoveryCache:
         that boots before its discovery upstream recovers in seconds, not a
         full TTL.
         """
-        if not get_discovery_url():
+        if not get_discovery_urls():
             return
         with self._lock:
             if self._poller is not None and self._poller.is_alive():
@@ -269,11 +361,12 @@ class _DiscoveryCache:
 _CACHE = _DiscoveryCache()
 
 
-def get_discovered_mcps(force_refresh: bool = False) -> List[Dict[str, str]]:
-    """Return the available MCPs from bond-mcps discovery.
+def get_discovered_mcps(force_refresh: bool = False) -> List[Dict[str, Any]]:
+    """Return the available MCPs merged across all configured discovery sources.
 
-    Returns a list of ``{"name", "display_name", "url"}`` dicts (possibly empty).
-    Never raises: a discovery outage degrades to the last good result or ``[]``.
+    Returns a list of ``{"name", "display_name", "url", "requires_connection"
+    [, "description"]}`` dicts (possibly empty). Never raises: a source outage
+    degrades to that source's last good result without affecting the others.
     """
     return _CACHE.get(force_refresh=force_refresh)
 
