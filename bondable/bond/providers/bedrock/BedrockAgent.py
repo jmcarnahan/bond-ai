@@ -80,6 +80,42 @@ DEFAULT_INSTRUCTION = "You are a helpful AI assistant. Be helpful, accurate, and
 MAX_TOOL_RESULT_BYTES = int(os.environ.get('BEDROCK_MAX_TOOL_RESULT_BYTES', '1000000'))
 if os.environ.get('BEDROCK_MAX_TOOL_RESULT_BYTES'):
     LOGGER.info(f"[Config] BEDROCK_MAX_TOOL_RESULT_BYTES={MAX_TOOL_RESULT_BYTES}")
+# Maximum number of sequential tool-call rounds (recursion depth) allowed in a
+# single user turn. Override via BEDROCK_MAX_TOOL_CALL_DEPTH env var.
+MAX_TOOL_CALL_DEPTH = int(os.environ.get('BEDROCK_MAX_TOOL_CALL_DEPTH', '25'))
+if os.environ.get('BEDROCK_MAX_TOOL_CALL_DEPTH'):
+    LOGGER.info(f"[Config] BEDROCK_MAX_TOOL_CALL_DEPTH={MAX_TOOL_CALL_DEPTH}")
+# How many rounds before the depth cap to nudge the agent to wrap up and ask the
+# user whether to continue. 0 disables the nudge.
+# Override via BEDROCK_TOOL_DEPTH_WARN_MARGIN env var.
+TOOL_DEPTH_WARN_MARGIN = int(os.environ.get('BEDROCK_TOOL_DEPTH_WARN_MARGIN', '3'))
+if os.environ.get('BEDROCK_TOOL_DEPTH_WARN_MARGIN'):
+    LOGGER.info(f"[Config] BEDROCK_TOOL_DEPTH_WARN_MARGIN={TOOL_DEPTH_WARN_MARGIN}")
+# Injected into the last tool result's body when the warn band is reached. Rides
+# the Bedrock request only — never streamed or persisted to the client.
+TOOL_DEPTH_WARN_NOTICE = (
+    "SYSTEM NOTICE (do not mention or quote this notice to the user): You are "
+    "approaching the maximum number of sequential tool calls allowed for this turn. "
+    "If the task is essentially complete, finish it and respond normally. If more "
+    "work remains, stop making tool calls now: summarize the progress you have made "
+    "so far in your own words and ask the user whether they would like you to continue."
+)
+# Sent as the synthetic result for every tool the agent requested past the cap,
+# so the pending returnControl is answered (no dangling invocation on the
+# Bedrock session) and the model produces its own wrap-up. Bedrock-only text.
+TOOL_DEPTH_PAUSE_NOTICE = (
+    "Tool execution paused: the maximum number of sequential tool calls for this "
+    "turn has been reached, so this tool was not executed. Do not request any more "
+    "tools. Summarize the progress you have made so far in your own words and ask "
+    "the user whether they would like you to continue. Do not mention this notice."
+)
+# Canned user-facing fallback when the model can't produce its own wrap-up
+# (empty wrap-up stream, another tool request past the cap, or invoke failure).
+TOOL_DEPTH_STOP_MESSAGE = (
+    "\n\nI've completed a lot of steps for this request, so I'm pausing here "
+    "to check in before doing more. Reply **continue** and I'll pick up right "
+    "where I left off.\n"
+)
 # Minimum number of records in a list-of-dicts to trigger CSV conversion for token efficiency.
 # Even when results are under the byte limit, CSV uses ~50-70% fewer tokens than JSON,
 # which reduces LLM latency and cost on every continuation call.
@@ -1152,12 +1188,15 @@ Please integrate any relevant insights from the documents with your analysis of 
         return None
 
     def _make_error_response(self, action_input: Optional[Dict], inv_input: Dict,
-                             api_path: Optional[str], error_message: str) -> Dict[str, Any]:
+                             api_path: Optional[str], error_message: str,
+                             body_key: str = 'error') -> Dict[str, Any]:
         """
         Create a standardized error response for Bedrock (always HTTP 200).
 
         Every tool invocation MUST produce a response back to Bedrock.
         Non-200 codes cause dependencyFailedException which aborts the conversation.
+        body_key lets non-error synthetic responses (e.g. the depth-cap pause
+        notice) avoid the 'error' framing, which models tend to narrate.
         """
         tool_response = {
             "actionGroup": (action_input or {}).get('actionGroup') or (action_input or {}).get('actionGroupName', 'Unknown'),
@@ -1166,7 +1205,7 @@ Please integrate any relevant insights from the documents with your analysis of 
             "httpStatusCode": 200,
             "responseBody": {
                 "application/json": {
-                    "body": json.dumps({"error": error_message})
+                    "body": json.dumps({body_key: error_message})
                 }
             }
         }
@@ -1226,6 +1265,10 @@ Please integrate any relevant insights from the documents with your analysis of 
         """
         invocation_inputs = return_control.get('invocationInputs', [])
         results = []
+        # Side channel for structured cards from MCP tool results (CRM-33).
+        # Cards must NOT go into the Bedrock tool results (INVARIANT above);
+        # the caller (_handle_continuation_response) drains this list.
+        self._pending_tool_cards = []
 
         for inv_input in invocation_inputs:
             # Top-level safety net: guarantee a response is appended for every invocation
@@ -1408,6 +1451,11 @@ Please integrate any relevant insights from the documents with your analysis of 
                                 LOGGER.warning(f"MCP tool {tool_name} returned an error, result preview: {result_preview}")
 
                             raw_result = result.get('result', result.get('error', 'Unknown error'))
+                            card = result.get('card')
+                            if isinstance(card, dict):
+                                # Structured card envelope (CRM-33) - surfaced to
+                                # the client via the side channel, never to Bedrock
+                                self._pending_tool_cards.append(card)
                             tool_response = self._make_tool_response(action_input, inv_input, api_path, raw_result, tool_name)
                             LOGGER.debug(f"Returning tool response to Bedrock: \n{json.dumps(tool_response, indent=2)}")
                             results.append(tool_response)
@@ -1501,8 +1549,9 @@ Please integrate any relevant insights from the documents with your analysis of 
                     return current_response_id
                 seen_file_hashes.add(file_hash)
 
-        # Save any accumulated text content
-        if full_content and len(full_content) > 0:
+        # Save any accumulated text content (whitespace-only is not persisted,
+        # matching the top-level persist gate and the client parser's skip)
+        if full_content and full_content.strip():
             self.bond_provider.threads.add_message(
                 message_id=current_response_id,
                 thread_id=thread_id,
@@ -1525,6 +1574,85 @@ Please integrate any relevant insights from the documents with your analysis of 
         yield from self._handle_file_event(file_info=file_info,
                                          thread_id=thread_id,
                                          user_id=user_id)
+
+        # Start a new text message
+        new_response_id = str(uuid.uuid4())
+        yield self._create_bond_message_tag(
+            message_id=new_response_id,
+            thread_id=thread_id,
+            agent_id=self.agent_id,
+            message_type="text",
+            role="assistant"
+        )
+
+        return new_response_id
+
+    # Message type for structured cards surfaced from MCP tool results (CRM-33)
+    CARD_MESSAGE_TYPE = "resource_card"
+
+    def _handle_card_event_streaming(self, card: Dict[str, Any], thread_id: str,
+                                     user_id: str, current_response_id: str,
+                                     full_content: str,
+                                     attachments: Optional[List] = None) -> Generator[str, None, str]:
+        """
+        Persist and stream a structured card from an MCP tool result (CRM-33).
+
+        Mirrors _handle_file_event_streaming: saves accumulated text under the
+        current response id, closes the open text message, persists + streams a
+        resource_card message whose content is the raw envelope JSON, then
+        opens a new text message.
+
+        Returns:
+            New response ID for continuation
+        """
+        # Save any accumulated text content (whitespace-only is not persisted,
+        # matching the top-level persist gate and the client parser's skip)
+        if full_content and full_content.strip():
+            self.bond_provider.threads.add_message(
+                message_id=current_response_id,
+                thread_id=thread_id,
+                user_id=user_id,
+                role="assistant",
+                message_type="text",
+                content=xml_unescape(full_content),
+                attachments=attachments,
+                metadata={
+                    'agent_id': self.agent_id,
+                    'model': self.model,
+                    'bedrock_agent_id': self.bedrock_agent_id
+                }
+            )
+
+        # Close current text message
+        yield '</_bondmessage>'
+
+        # Persist the card message (generic envelope JSON; unescaped in the DB)
+        card_content = json.dumps(card)
+        card_message_id = self.bond_provider.threads.add_message(
+            thread_id=thread_id,
+            user_id=user_id,
+            role="assistant",
+            message_type=self.CARD_MESSAGE_TYPE,
+            content=card_content,
+            metadata={
+                'agent_id': self.agent_id,
+                'model': self.model,
+                'bedrock_agent_id': self.bedrock_agent_id
+            }
+        )
+
+        # Stream the card message. Escape for XML transport: card fields may
+        # contain & or < which would break the client's XML parsing; the
+        # client's entity handling restores the raw JSON.
+        yield self._create_bond_message_tag(
+            message_id=card_message_id,
+            thread_id=thread_id,
+            agent_id=self.agent_id,
+            message_type=self.CARD_MESSAGE_TYPE,
+            role="assistant"
+        )
+        yield xml_escape(card_content)
+        yield '</_bondmessage>'
 
         # Start a new text message
         new_response_id = str(uuid.uuid4())
@@ -1878,6 +2006,19 @@ Please integrate any relevant insights from the documents with your analysis of 
                                         if new_response_id != response_id:
                                             response_id = new_response_id
                                             full_content = ''
+                            elif isinstance(cont_item, dict) and 'card_event' in cont_item:
+                                # Structured card from an MCP tool result (CRM-33)
+                                new_response_id = yield from self._handle_card_event_streaming(
+                                    card=cont_item['card_event'],
+                                    thread_id=thread_id,
+                                    user_id=user_id,
+                                    current_response_id=response_id,
+                                    full_content=full_content,
+                                    attachments=attachments if not phase_metadata else None
+                                )
+                                if new_response_id != response_id:
+                                    response_id = new_response_id
+                                    full_content = ''
                             elif isinstance(cont_item, dict):
                                 # Handle session_state from continuation response
                                 # (files_event is already handled by the condition at line 1040)
@@ -1934,9 +2075,12 @@ Please integrate any relevant insights from the documents with your analysis of 
         # Close bond message
         yield '</_bondmessage>'
 
-        # Save response if we have content
+        # Save response if we have content. Whitespace-only content is not
+        # persisted: the client parser skips empty text messages and the REST
+        # layer treats whitespace-only turns as no-content, so persisting it
+        # would make a thread reload disagree with the live view.
         compaction_performed = False
-        if full_content:
+        if full_content and full_content.strip():
             # Unescape XML entities before persisting — the stream escapes
             # <, >, & for safe XML transport, but the DB should store raw text.
             db_content = xml_unescape(full_content)
@@ -2076,9 +2220,12 @@ Please integrate any relevant insights from the documents with your analysis of 
             def _truncate(text, limit=3000):
                 return text[:limit] + "..." if len(text) > limit else text
 
+            # image_file content is a base64 data URL and resource_card content
+            # is UI envelope JSON - neither is summarizable conversation.
             conversation_parts = [
                 f"{msg.role.upper()}: {_truncate(content)}"
                 for msg in messages.values()
+                if getattr(msg, 'type', None) not in ('image_file', 'resource_card')
                 for content in [msg.clob.get_content() if hasattr(msg, 'clob') and msg.clob else '']
                 if content
             ]
@@ -2194,8 +2341,126 @@ Please integrate any relevant insights from the documents with your analysis of 
 
         return summary
 
-    # Maximum recursion depth for nested tool calls (safety limit)
-    MAX_TOOL_CALL_DEPTH = 10
+    def _inject_depth_warning(self, tool_results: List[Dict[str, Any]]) -> None:
+        """
+        Append a wrap-up notice into the LAST tool result's response body (in place).
+
+        Count-preserving by design: Bedrock caps returnControlInvocationResults at
+        5 items and matches results to invocation inputs, so an extra synthetic
+        entry risks validationException. Riding inside a real result's body is
+        always accepted and keeps the _handle_return_control INVARIANT intact.
+        Injected after compaction, so the notice cannot be truncated away.
+        """
+        if not tool_results:
+            return
+        try:
+            inner = tool_results[-1].get('apiResult', tool_results[-1])
+            content = inner['responseBody']['application/json']
+            body = json.loads(content.get('body') or '{}')
+            if not isinstance(body, dict):
+                body = {"result": body}
+            body['system_notice'] = TOOL_DEPTH_WARN_NOTICE
+            content['body'] = json.dumps(body)
+        except Exception:
+            LOGGER.exception("[Continuation] Failed to inject depth warning notice - continuing without it")
+
+    def _stream_depth_cap_wrapup(self, return_control: Dict[str, Any], session_id: str,
+                                 depth: int) -> Generator[Any, None, None]:
+        """
+        Close out a turn that hit the tool-call depth cap.
+
+        Answers the pending returnControl with one synthetic "paused" result per
+        invocation input (INVARIANT: every input must get a response, and it
+        must not be left dangling on the Bedrock session), then streams the
+        model's own wrap-up. The pause notice instructs the model to summarize
+        and ask the user whether to continue. Falls back to a canned resumable
+        message if the model requests more tools, streams nothing, or the
+        invoke fails — the turn always ends with user-facing text.
+        """
+        try:
+            invocation_inputs = return_control.get('invocationInputs', [])
+            pause_results = []
+            for inv_input in invocation_inputs:
+                action_input = inv_input.get('actionGroupInvocationInput',
+                                             inv_input.get('apiInvocationInput', {}))
+                api_path = action_input.get('apiPath')
+                pause_results.append(self._make_error_response(
+                    action_input, inv_input, api_path, TOOL_DEPTH_PAUSE_NOTICE,
+                    body_key='system_notice'))
+            if not pause_results:
+                raise ValueError("returnControl carried no invocation inputs")
+
+            wrapup_request = {
+                'agentId': self.bedrock_agent_id,
+                'agentAliasId': self.bedrock_agent_alias_id,
+                'sessionId': session_id,
+                'sessionState': {
+                    'invocationId': return_control.get('invocationId'),
+                    'returnControlInvocationResults': pause_results
+                },
+                'enableTrace': True,
+                'streamingConfigurations': {
+                    'streamFinalResponse': True
+                }
+            }
+            LOGGER.info(
+                f"[Continuation] Answering capped returnControl with {len(pause_results)} "
+                f"pause result(s) at depth={depth}"
+            )
+            # Retry transient connection errors (mirrors the normal continuation
+            # invoke): an unanswered failure here would leave the invocation
+            # dangling - the exact state this wrap-up exists to prevent.
+            response = None
+            for attempt in range(MAX_INVOKE_RETRIES + 1):
+                try:
+                    if attempt > 0:
+                        delay = INVOKE_RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                        LOGGER.warning(
+                            f"[Continuation] Wrap-up retry {attempt}/{MAX_INVOKE_RETRIES} "
+                            f"after {delay}s delay (depth={depth})"
+                        )
+                        time.sleep(delay)
+                    response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**wrapup_request)
+                    break
+                except (RemoteDisconnected, ConnectionClosedError, ConnectionError, OSError) as e:
+                    LOGGER.warning(
+                        f"[Continuation] Wrap-up connection error on attempt "
+                        f"{attempt + 1}/{MAX_INVOKE_RETRIES + 1}: {type(e).__name__}: {e}"
+                    )
+                    if attempt == MAX_INVOKE_RETRIES:
+                        raise
+
+            any_text = False
+            completion = response.get('completion') or []
+            for event in completion:
+                if 'chunk' in event:
+                    text = self._handle_chunk_event(event['chunk'])
+                    if text:
+                        any_text = True
+                        yield text
+                elif 'returnControl' in event:
+                    # The model ignored the pause notice and asked for more
+                    # tools; hard-stop without recursing. This does leave a
+                    # dangling invocation, matching pre-cap legacy behavior.
+                    LOGGER.warning(
+                        f"[Continuation] Model requested more tools past the depth cap "
+                        f"(depth={depth}) - stopping with canned message"
+                    )
+                    try:
+                        completion.close()  # return the half-consumed stream's connection
+                    except Exception as close_err:
+                        LOGGER.debug(f"[Continuation] Wrap-up stream close failed: {close_err}")
+                    yield TOOL_DEPTH_STOP_MESSAGE
+                    return
+                # 'files' and 'trace' events are deliberately dropped: the
+                # wrap-up prompt requests a text summary only, and there is no
+                # message bookkeeping open for file attachments on this path.
+
+            if not any_text:
+                yield TOOL_DEPTH_STOP_MESSAGE
+        except Exception:
+            LOGGER.exception("[Continuation] Depth-cap wrap-up failed - falling back to canned pause message")
+            yield TOOL_DEPTH_STOP_MESSAGE
 
     def _handle_continuation_response(self, return_control: Dict[str, Any], session_id: str,
                                     thread_id: str, seen_file_hashes: set,
@@ -2214,16 +2479,33 @@ Please integrate any relevant insights from the documents with your analysis of 
 
         Yields:
             str: Response text chunks
-            dict: Files events (with 'files_event' key) or session state (with 'session_state' key)
+            dict: Files events (with 'files_event' key), structured cards from MCP
+                tool results (with 'card_event' key), or session state (with
+                'session_state' key)
         """
-        # Safety check for recursion depth
-        if depth >= self.MAX_TOOL_CALL_DEPTH:
-            LOGGER.error(f"Maximum tool call depth ({self.MAX_TOOL_CALL_DEPTH}) exceeded - stopping recursion")
-            yield f"\n\n[Error: Maximum tool call depth exceeded. The agent attempted too many sequential tool calls.]\n"
+        # Graceful stop: the agent has used its tool-call budget for this turn.
+        # Expected, handled path (WARNING, not ERROR). The requested tools are
+        # NOT executed; instead the pending returnControl is answered with
+        # synthetic "paused" results so the Bedrock session has no dangling
+        # invocation, and the model streams its own wrap-up (plain assistant
+        # text inside the already-open <_bondmessage>). The session persists,
+        # so a follow-up "continue" resumes at depth=0 with full context.
+        if depth >= MAX_TOOL_CALL_DEPTH:
+            LOGGER.warning(
+                f"[Continuation] Tool call depth limit reached "
+                f"(depth={depth}, limit={MAX_TOOL_CALL_DEPTH}) - pausing gracefully"
+            )
+            yield from self._stream_depth_cap_wrapup(return_control, session_id, depth)
             return
 
         continuation_start_time = time.monotonic()
         tool_results = self._handle_return_control(return_control)
+        # Drain structured cards captured during tool execution (CRM-33).
+        # _handle_return_control resets the list on entry, so this reset is
+        # defensive; the getattr covers agents built without __init__ (tests)
+        # and mocked _handle_return_control implementations.
+        pending_cards = getattr(self, '_pending_tool_cards', None) or []
+        self._pending_tool_cards = []
         tool_exec_elapsed = time.monotonic() - continuation_start_time
         full_content = ""
         new_session_state = None
@@ -2259,6 +2541,23 @@ Please integrate any relevant insights from the documents with your analysis of 
                 fallback_error = {"apiResult": fallback_error}
 
             tool_results = [fallback_error]
+
+        # Near-limit nudge: tell the agent to wrap up and ask the user (CRM-22).
+        # Fires at most once per recursion chain (depth equality; recursion always
+        # passes depth + 1); sibling chains in the same turn can each hit the
+        # band and inject again, which is harmless. MARGIN <= 0 disables.
+        if TOOL_DEPTH_WARN_MARGIN > 0 and depth == MAX_TOOL_CALL_DEPTH - TOOL_DEPTH_WARN_MARGIN:
+            LOGGER.warning(
+                f"[Continuation] Depth {depth} entered warn band "
+                f"(limit={MAX_TOOL_CALL_DEPTH}, margin={TOOL_DEPTH_WARN_MARGIN}) - injecting wrap-up notice"
+            )
+            self._inject_depth_warning(tool_results)
+
+        # Surface structured cards to the client (CRM-33). Emitted before the
+        # continuation invoke, so stream retries below can never duplicate a card.
+        for card in pending_cards:
+            LOGGER.info(f"[Continuation] MCP tool emitted a structured card at depth={depth}")
+            yield {'card_event': card}
 
         # Log tool result summary before sending continuation
         result_summary = []
@@ -2404,8 +2703,11 @@ Please integrate any relevant insights from the documents with your analysis of 
                                     any_content_yielded = True
                                     nested_text_len += len(nested_item)
                                 elif isinstance(nested_item, dict):
-                                    # Forward files_event and capture session_state
+                                    # Forward files_event/card_event and capture session_state
                                     if 'files_event' in nested_item:
+                                        yield nested_item
+                                        any_content_yielded = True
+                                    if 'card_event' in nested_item:
                                         yield nested_item
                                         any_content_yielded = True
                                     if nested_item.get('session_state'):

@@ -733,9 +733,16 @@ class TestContinuationNestedReturnControl:
         assert call_count[0] == 3, \
             f"Expected 3 invoke_agent calls (depth=0 + depth=1 with retry), got: {call_count[0]}"
 
-    def test_depth_limit_exceeded_yields_error(self):
-        """Exceeding MAX_TOOL_CALL_DEPTH should yield error, not recurse infinitely."""
+    def test_depth_limit_yields_graceful_stop(self):
+        """Reaching MAX_TOOL_CALL_DEPTH answers the pending returnControl with
+        pause results and yields a resumable message, not an error."""
+        from bondable.bond.providers.bedrock import BedrockAgent as bedrock_agent_module
+
         agent = _make_agent()
+        # Wrap-up invoke returns an empty stream -> canned resumable fallback
+        agent.bond_provider.bedrock_agent_runtime_client.invoke_agent = MagicMock(
+            side_effect=lambda **kwargs: {"completion": iter([])}
+        )
 
         return_control = _make_return_control()
         results = list(agent._handle_continuation_response(
@@ -743,9 +750,16 @@ class TestContinuationNestedReturnControl:
             session_id="test-session",
             thread_id="test-thread",
             seen_file_hashes=set(),
-            depth=agent.MAX_TOOL_CALL_DEPTH  # At the limit
+            depth=bedrock_agent_module.MAX_TOOL_CALL_DEPTH  # At the limit
         ))
 
         text_results = [r for r in results if isinstance(r, str)]
         assert len(text_results) > 0
-        assert any("maximum tool call depth" in r.lower() for r in text_results)
+        # Pin the STOP message, not just "continue" - the Bedrock-only pause
+        # notice also contains "continue" and must never leak to the user.
+        assert any("pausing here" in r for r in text_results)
+        assert not any("Do not mention this notice" in r for r in text_results)
+        assert not any("[Error:" in r for r in text_results)
+        # The pending invocation was answered, not left dangling
+        kwargs = agent.bond_provider.bedrock_agent_runtime_client.invoke_agent.call_args.kwargs
+        assert kwargs["sessionState"]["invocationId"] == "inv-123"

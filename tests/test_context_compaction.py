@@ -191,12 +191,15 @@ class TestCompactContext:
         agent = _make_agent()
         agent.bond_provider.threads.get_thread_session_id.return_value = 'old-session-id'
 
-        # Mock messages
+        # Mock messages (real .type values so the type filter is exercised -
+        # a MagicMock auto-attribute would never match a filter tuple)
         msg1 = MagicMock()
         msg1.role = 'user'
+        msg1.type = 'text'
         msg1.clob.get_content.return_value = 'Hello, can you help me?'
         msg2 = MagicMock()
         msg2.role = 'assistant'
+        msg2.type = 'text'
         msg2.clob.get_content.return_value = 'Of course! How can I assist you?'
         agent.bond_provider.threads.get_messages.return_value = OrderedDict([
             ('msg-1', msg1), ('msg-2', msg2)
@@ -211,6 +214,29 @@ class TestCompactContext:
             }
         }
         return agent
+
+    def test_skips_image_and_card_content(self):
+        """image_file base64 and resource_card JSON must not reach the summarizer."""
+        agent = self._setup_agent()
+        img = MagicMock()
+        img.role = 'assistant'
+        img.type = 'image_file'
+        img.clob.get_content.return_value = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg'
+        card = MagicMock()
+        card.role = 'assistant'
+        card.type = 'resource_card'
+        card.clob.get_content.return_value = '{"type": "proposal", "proposal_id": "p-1"}'
+        messages = agent.bond_provider.threads.get_messages.return_value
+        messages['msg-3'] = img
+        messages['msg-4'] = card
+        session_state = {'context_usage': {'estimated_tokens': 130_000, 'compaction_count': 0}}
+
+        agent._compact_context('thread-1', 'user-1', session_state)
+
+        converse_input = str(agent.bond_provider.bedrock_runtime_client.converse.call_args)
+        assert 'iVBORw0KGgo' not in converse_input
+        assert 'proposal_id' not in converse_input
+        assert 'Hello, can you help me?' in converse_input
 
     def test_calls_converse_api(self):
         """Verifies that Converse API is called for summary generation."""

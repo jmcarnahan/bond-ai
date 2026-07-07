@@ -1,0 +1,474 @@
+"""
+Unit tests for tool-call depth handling in BedrockAgent (CRM-22).
+
+Covers the env-configurable depth limit, the graceful resumable stop at the
+limit, and the near-limit warn-band nudge injected into the last tool result.
+
+NOTE on overriding the tunables: BEDROCK_MAX_TOOL_CALL_DEPTH and
+BEDROCK_TOOL_DEPTH_WARN_MARGIN are read from the environment once at module
+import, so monkeypatch.setenv after import is a no-op. Tests must override the
+module constants directly, e.g.:
+
+    monkeypatch.setattr(bedrock_agent_module, 'MAX_TOOL_CALL_DEPTH', 5)
+
+The guard and injection code read the module globals at call time, so this
+works and monkeypatch restores the values automatically. The env-var pathway
+itself is exercised by manual smoke testing, not unit tests.
+"""
+
+import copy
+import json
+import os
+import pytest
+from unittest.mock import MagicMock, patch
+
+from bondable.bond.providers.bedrock import BedrockAgent as bedrock_agent_module
+
+# Tests asserting the shipped defaults are meaningless (and would fail
+# spuriously) when a developer has the env overrides exported.
+_env_override_active = bool(
+    os.environ.get('BEDROCK_MAX_TOOL_CALL_DEPTH')
+    or os.environ.get('BEDROCK_TOOL_DEPTH_WARN_MARGIN')
+)
+skip_if_env_override = pytest.mark.skipif(
+    _env_override_active,
+    reason="BEDROCK_MAX_TOOL_CALL_DEPTH / BEDROCK_TOOL_DEPTH_WARN_MARGIN set in env"
+)
+
+
+def _make_agent():
+    """Create a minimal BedrockAgent instance with mocked dependencies."""
+    from bondable.bond.providers.bedrock.BedrockAgent import BedrockAgent
+
+    agent = object.__new__(BedrockAgent)
+    agent.bedrock_agent_id = "test-agent-id"
+    agent.bedrock_agent_alias_id = "test-alias-id"
+    agent.bond_provider = MagicMock()
+    agent._current_user = None
+    agent._jwt_token = None
+    return agent
+
+
+def _make_return_control(invocation_id="inv-123"):
+    """Create a minimal returnControl event."""
+    return {
+        "invocationId": invocation_id,
+        "invocationInputs": [
+            {
+                "apiInvocationInput": {
+                    "actionGroupName": "test-action-group",
+                    "apiPath": "/b.abc123.jira_search",
+                    "httpMethod": "POST",
+                    "parameters": [
+                        {"name": "jql", "value": "project = TEST"}
+                    ]
+                }
+            }
+        ]
+    }
+
+
+def _make_tool_results():
+    """Create tool results as _handle_return_control would return."""
+    return [
+        {
+            "apiResult": {
+                "actionGroup": "test-action-group",
+                "apiPath": "/b.abc123.jira_search",
+                "httpMethod": "POST",
+                "httpStatusCode": 200,
+                "responseBody": {
+                    "application/json": {
+                        "body": json.dumps({"result": "some data"})
+                    }
+                }
+            }
+        }
+    ]
+
+
+def _make_two_tool_results():
+    """Two real tool results, to verify the nudge only touches the last one."""
+    results = _make_tool_results()
+    second = copy.deepcopy(results[0])
+    second["apiResult"]["apiPath"] = "/b.abc123.jira_get"
+    second["apiResult"]["responseBody"]["application/json"]["body"] = json.dumps(
+        {"result": "other data"}
+    )
+    return results + [second]
+
+
+def _chunk_stream(**_kwargs):
+    """Fresh single-chunk completion stream per invoke_agent call."""
+    return {"completion": iter([{"chunk": {"bytes": b"Done."}}])}
+
+
+def _run_continuation(agent, depth, tool_results=None, session_id="test-session"):
+    """Run _handle_continuation_response with mocked tool exec + Bedrock stream."""
+    agent.bond_provider.bedrock_agent_runtime_client.invoke_agent = MagicMock(
+        side_effect=_chunk_stream
+    )
+    with patch.object(
+        agent, "_handle_return_control",
+        return_value=tool_results if tool_results is not None else _make_tool_results()
+    ) as mock_hrc:
+        items = list(agent._handle_continuation_response(
+            return_control=_make_return_control(),
+            session_id=session_id,
+            thread_id="test-thread",
+            seen_file_hashes=set(),
+            depth=depth
+        ))
+    return items, mock_hrc, agent.bond_provider.bedrock_agent_runtime_client.invoke_agent
+
+
+def _sent_results(mock_invoke):
+    """Extract the returnControlInvocationResults sent to Bedrock."""
+    kwargs = mock_invoke.call_args.kwargs
+    return kwargs["sessionState"]["returnControlInvocationResults"]
+
+
+def _body_of(result):
+    inner = result.get("apiResult", result)
+    return json.loads(inner["responseBody"]["application/json"]["body"])
+
+
+class TestDepthLimitConfig:
+
+    @skip_if_env_override
+    def test_default_limit_is_25_and_margin_3(self):
+        """Guard the chosen production defaults (CI has no env override)."""
+        assert bedrock_agent_module.MAX_TOOL_CALL_DEPTH == 25
+        assert bedrock_agent_module.TOOL_DEPTH_WARN_MARGIN == 3
+
+    def test_limit_configurable_stops_at_5(self, monkeypatch):
+        """At the cap: tools are NOT executed, but the pending returnControl is
+        answered with synthetic pause results and the model's wrap-up streams."""
+        monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
+        agent = _make_agent()
+
+        items, mock_hrc, mock_invoke = _run_continuation(agent, depth=5)
+
+        mock_hrc.assert_not_called()  # tools at the cap must not execute
+        assert mock_invoke.call_count == 1  # single wrap-up invoke, no recursion
+        kwargs = mock_invoke.call_args.kwargs
+        # Routing must be pinned: a wrong session/agent id fails with a
+        # validationException in production that the fallback would swallow.
+        assert kwargs["sessionId"] == "test-session"
+        assert kwargs["agentId"] == "test-agent-id"
+        assert kwargs["agentAliasId"] == "test-alias-id"
+        assert kwargs["sessionState"]["invocationId"] == "inv-123"  # same pending invocation
+        sent = kwargs["sessionState"]["returnControlInvocationResults"]
+        assert len(sent) == 1  # one response per invocation input (INVARIANT)
+        assert "apiResult" in sent[0]  # apiInvocationInput must be wrapped
+        body = _body_of(sent[0])
+        assert "paused" in body["system_notice"]  # not the 'error' key - models narrate errors
+        # The model's own wrap-up text streams through
+        assert any("Done." in i for i in items if isinstance(i, str))
+
+    def test_cap_answers_every_invocation_input(self, monkeypatch):
+        """A parallel multi-tool returnControl at the cap gets one pause
+        result per input (count mismatch => validationException in prod)."""
+        monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
+        agent = _make_agent()
+
+        return_control = _make_return_control()
+        second_input = copy.deepcopy(return_control["invocationInputs"][0])
+        second_input["apiInvocationInput"]["apiPath"] = "/b.abc123.jira_get"
+        return_control["invocationInputs"].append(second_input)
+        agent.bond_provider.bedrock_agent_runtime_client.invoke_agent = MagicMock(
+            side_effect=_chunk_stream
+        )
+
+        # Patch tool execution so a cap that fails to fire cannot mimic this
+        # shape via the per-invocation error safety net (which also produces
+        # one result per input with matching apiPaths, but with "error" bodies).
+        with patch.object(agent, "_handle_return_control") as mock_hrc:
+            list(agent._handle_continuation_response(
+                return_control=return_control,
+                session_id="test-session",
+                thread_id="test-thread",
+                seen_file_hashes=set(),
+                depth=5
+            ))
+
+        mock_hrc.assert_not_called()  # the cap actually fired
+        sent = agent.bond_provider.bedrock_agent_runtime_client.invoke_agent \
+            .call_args.kwargs["sessionState"]["returnControlInvocationResults"]
+        assert len(sent) == 2
+        assert [r["apiResult"]["apiPath"] for r in sent] == \
+            ["/b.abc123.jira_search", "/b.abc123.jira_get"]
+        for result in sent:
+            assert "paused" in _body_of(result)["system_notice"]
+
+    def test_below_limit_proceeds(self, monkeypatch):
+        monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
+        agent = _make_agent()
+
+        items, mock_hrc, mock_invoke = _run_continuation(agent, depth=4)
+
+        assert mock_invoke.call_count == 1
+        mock_hrc.assert_called_once()
+        assert any("Done." in i for i in items if isinstance(i, str))
+
+
+class TestGracefulStop:
+
+    def _run_at_cap(self, agent, invoke_response):
+        """Run at the cap with a controlled wrap-up invoke response."""
+        agent.bond_provider.bedrock_agent_runtime_client.invoke_agent = MagicMock(
+            side_effect=invoke_response
+        )
+        return list(agent._handle_continuation_response(
+            return_control=_make_return_control(),
+            session_id="test-session",
+            thread_id="test-thread",
+            seen_file_hashes=set(),
+            depth=bedrock_agent_module.MAX_TOOL_CALL_DEPTH
+        ))
+
+    def test_model_wrapup_streams_no_canned_message(self):
+        """When the model produces its own wrap-up, the canned text is not appended."""
+        agent = _make_agent()
+        items = self._run_at_cap(agent, lambda **kw: {
+            "completion": iter([{"chunk": {"bytes": b"I finished steps 1-3. Want me to continue?"}}])
+        })
+
+        text = "".join(i for i in items if isinstance(i, str))
+        assert "Want me to continue?" in text
+        assert "pausing here" not in text  # canned fallback not appended
+        assert "[Error:" not in text
+
+    def test_empty_wrapup_stream_falls_back_to_canned(self):
+        agent = _make_agent()
+        items = self._run_at_cap(agent, lambda **kw: {"completion": iter([])})
+
+        text = "".join(i for i in items if isinstance(i, str))
+        # Pin the STOP message, not just "continue" - the Bedrock-only pause
+        # notice also says "continue" and must never leak to the user.
+        assert "pausing here" in text
+        assert "Do not mention this notice" not in text
+        assert "[Error:" not in text
+        assert "is_error" not in text
+
+    def test_model_requests_more_tools_gets_canned_stop(self):
+        """A returnControl in the wrap-up stream must not recurse."""
+        agent = _make_agent()
+        items = self._run_at_cap(agent, lambda **kw: {
+            "completion": iter([{"returnControl": _make_return_control("inv-nested")}])
+        })
+
+        assert agent.bond_provider.bedrock_agent_runtime_client.invoke_agent.call_count == 1
+        text = "".join(i for i in items if isinstance(i, str))
+        assert "pausing here" in text
+        assert "Do not mention this notice" not in text
+
+    def test_wrapup_invoke_failure_falls_back_to_canned(self):
+        agent = _make_agent()
+
+        def boom(**kwargs):
+            raise RuntimeError("bedrock unavailable")
+
+        items = self._run_at_cap(agent, boom)
+
+        text = "".join(i for i in items if isinstance(i, str))
+        assert "pausing here" in text
+        assert "Do not mention this notice" not in text
+        assert "[Error:" not in text
+
+    @patch("bondable.bond.providers.bedrock.BedrockAgent.time.sleep")
+    def test_wrapup_retries_transient_connection_error(self, mock_sleep):
+        """A connection blip must not leave the invocation dangling - the
+        wrap-up invoke retries like the normal continuation does."""
+        from http.client import RemoteDisconnected
+
+        agent = _make_agent()
+        calls = [0]
+
+        def flaky(**kwargs):
+            calls[0] += 1
+            if calls[0] == 1:
+                raise RemoteDisconnected("connection dropped")
+            return {"completion": iter([{"chunk": {"bytes": b"Wrapped up."}}])}
+
+        items = self._run_at_cap(agent, flaky)
+
+        assert calls[0] == 2  # retried once, then succeeded
+        text = "".join(i for i in items if isinstance(i, str))
+        assert "Wrapped up." in text
+        assert "pausing here" not in text  # no canned fallback needed
+
+    def test_resume_uses_same_session_at_depth_zero(self, monkeypatch):
+        """After a stop, a fresh depth-0 call continues on the same session."""
+        monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
+        agent = _make_agent()
+
+        _run_continuation(agent, depth=5)  # hits the cap; wrap-up invoke fires once
+
+        # Fresh top-level call, as _process_bedrock_invocation would make it
+        items, _, mock_invoke = _run_continuation(agent, depth=0, session_id="test-session")
+
+        kwargs = mock_invoke.call_args.kwargs
+        assert kwargs["sessionId"] == "test-session"
+        assert "returnControlInvocationResults" in kwargs["sessionState"]
+
+
+class TestWarnBandInjection:
+
+    def test_warn_band_injection_fires_at_band(self, monkeypatch):
+        monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
+        monkeypatch.setattr(bedrock_agent_module, "TOOL_DEPTH_WARN_MARGIN", 2)
+        agent = _make_agent()
+
+        _, _, mock_invoke = _run_continuation(agent, depth=3)
+
+        sent = _sent_results(mock_invoke)
+        assert len(sent) == 1  # count-preserving: no synthetic entry
+        body = _body_of(sent[-1])
+        assert "ask the user whether they would like" in body["system_notice"]
+
+    @pytest.mark.parametrize("depth", [0, 1, 2, 4])
+    def test_warn_band_not_fired_outside_band(self, monkeypatch, depth):
+        monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
+        monkeypatch.setattr(bedrock_agent_module, "TOOL_DEPTH_WARN_MARGIN", 2)
+        agent = _make_agent()
+
+        _, _, mock_invoke = _run_continuation(agent, depth=depth)
+
+        for result in _sent_results(mock_invoke):
+            assert "system_notice" not in _body_of(result)
+
+    def test_warn_band_preserves_real_responses(self, monkeypatch):
+        """The nudge only adds a key to the last result; nothing dropped/reordered."""
+        monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
+        monkeypatch.setattr(bedrock_agent_module, "TOOL_DEPTH_WARN_MARGIN", 2)
+
+        agent = _make_agent()
+        _, _, mock_invoke = _run_continuation(
+            agent, depth=0, tool_results=_make_two_tool_results())
+        baseline = _sent_results(mock_invoke)
+
+        agent = _make_agent()
+        _, _, mock_invoke = _run_continuation(
+            agent, depth=3, tool_results=_make_two_tool_results())
+        warned = _sent_results(mock_invoke)
+
+        assert len(warned) == len(baseline) == 2
+        # First result untouched, byte-identical
+        assert json.dumps(warned[0], sort_keys=True) == json.dumps(baseline[0], sort_keys=True)
+        # Last result differs ONLY by the added system_notice key in its body
+        warned_body = _body_of(warned[1])
+        baseline_body = _body_of(baseline[1])
+        assert warned_body.pop("system_notice")
+        assert warned_body == baseline_body
+        # All non-body fields identical
+        stripped = copy.deepcopy(warned[1])
+        stripped["apiResult"]["responseBody"]["application/json"]["body"] = \
+            baseline[1]["apiResult"]["responseBody"]["application/json"]["body"]
+        assert json.dumps(stripped, sort_keys=True) == json.dumps(baseline[1], sort_keys=True)
+
+    @skip_if_env_override
+    def test_below_band_byte_identical_at_defaults(self):
+        """Short flows (depth 0 at default 25/3) send tool results unmodified."""
+        agent = _make_agent()
+        _, _, mock_invoke = _run_continuation(agent, depth=0)
+
+        sent = _sent_results(mock_invoke)
+        assert json.dumps(sent, sort_keys=True) == \
+            json.dumps(_make_tool_results(), sort_keys=True)
+
+    def test_warn_band_with_real_return_control(self, monkeypatch):
+        """The notice survives the REAL _handle_return_control response shape.
+
+        The other warn-band tests use hand-built fixtures; if the real
+        _make_tool_response shape drifted, _inject_depth_warning's blanket
+        except would swallow the mismatch silently. This composes the real
+        pair, mocking only the external tool executor.
+        """
+        monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
+        monkeypatch.setattr(bedrock_agent_module, "TOOL_DEPTH_WARN_MARGIN", 2)
+        agent = _make_agent()
+        agent.agent_id = "test-agent-record-id"
+        agent.mcp_tools = []
+        agent.mcp_resources = []
+        agent.bond_provider.bedrock_agent_runtime_client.invoke_agent = MagicMock(
+            side_effect=_chunk_stream
+        )
+
+        mcp_return_control = {
+            "invocationId": "inv-123",
+            "invocationInputs": [
+                {
+                    "apiInvocationInput": {
+                        "actionGroupName": "mcp-action-group",
+                        "apiPath": "/b.aaa000.jira_search",
+                        "httpMethod": "POST",
+                        "parameters": [{"name": "jql", "value": "project = TEST"}]
+                    }
+                }
+            ]
+        }
+        with patch("bondable.bond.providers.bedrock.BedrockAgent.Config") as mock_config, \
+             patch("bondable.bond.providers.bedrock.BedrockAgent.execute_mcp_tool_sync") as mock_execute, \
+             patch("bondable.bond.providers.bedrock.BedrockAgent._resolve_server_from_hash") as mock_resolve:
+            mock_config.config.return_value.get_mcp_config.return_value = {"mcpServers": {"atlassian": {}}}
+            mock_resolve.return_value = "atlassian"
+            mock_execute.return_value = {"success": True, "result": "tool output"}
+
+            list(agent._handle_continuation_response(
+                return_control=mcp_return_control,
+                session_id="test-session",
+                thread_id="test-thread",
+                seen_file_hashes=set(),
+                depth=3
+            ))
+
+        sent = _sent_results(agent.bond_provider.bedrock_agent_runtime_client.invoke_agent)
+        assert len(sent) == 1
+        body = _body_of(sent[-1])
+        assert "ask the user whether they would like" in body["system_notice"]
+        assert "tool output" in body["result"]
+
+    def test_malformed_last_result_degrades_to_no_notice(self, monkeypatch):
+        """A last result without responseBody must not break the continuation."""
+        monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
+        monkeypatch.setattr(bedrock_agent_module, "TOOL_DEPTH_WARN_MARGIN", 2)
+        agent = _make_agent()
+
+        malformed = [{"apiResult": {"actionGroup": "x", "apiPath": "/y", "httpStatusCode": 200}}]
+        items, _, mock_invoke = _run_continuation(
+            agent, depth=3, tool_results=copy.deepcopy(malformed))
+
+        # No exception; the continuation proceeded with the results unmodified
+        assert any("Done." in i for i in items if isinstance(i, str))
+        sent = _sent_results(mock_invoke)
+        assert json.dumps(sent, sort_keys=True) == json.dumps(malformed, sort_keys=True)
+
+    def test_empty_results_fallback_gets_notice(self, monkeypatch):
+        """The fallback error result built for empty tool_results carries the nudge."""
+        monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
+        monkeypatch.setattr(bedrock_agent_module, "TOOL_DEPTH_WARN_MARGIN", 2)
+        agent = _make_agent()
+
+        _, _, mock_invoke = _run_continuation(agent, depth=3, tool_results=[])
+
+        sent = _sent_results(mock_invoke)
+        assert len(sent) == 1
+        body = _body_of(sent[0])
+        assert "error" in body  # still the fallback error payload
+        assert "system_notice" in body
+
+    def test_margin_zero_disables_warning(self, monkeypatch):
+        monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
+        monkeypatch.setattr(bedrock_agent_module, "TOOL_DEPTH_WARN_MARGIN", 0)
+        agent = _make_agent()
+
+        _, _, mock_invoke = _run_continuation(agent, depth=4)
+        for result in _sent_results(mock_invoke):
+            assert "system_notice" not in _body_of(result)
+
+        items, mock_hrc, mock_invoke = _run_continuation(agent, depth=5)
+        mock_hrc.assert_not_called()  # cap still fires with margin 0
+        assert mock_invoke.call_count == 1  # wrap-up invoke only
+        body = _body_of(mock_invoke.call_args.kwargs["sessionState"]["returnControlInvocationResults"][0])
+        assert "paused" in body["system_notice"]

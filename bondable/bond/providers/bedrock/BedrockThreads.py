@@ -539,7 +539,7 @@ class BedrockThreadsProvider(ThreadsProvider):
                     msg_meta = msg.message_metadata or {}
                     if msg_meta.get('hidden') in (True, 'true') or msg_meta.get('override_role') == 'system':
                         continue
-                    if msg.type in ('system', 'error', 'file_link', 'image_file'):
+                    if msg.type in ('system', 'error', 'file_link', 'image_file', 'resource_card'):
                         continue
 
                     # Extract text content

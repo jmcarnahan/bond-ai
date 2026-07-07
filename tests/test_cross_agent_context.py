@@ -208,7 +208,7 @@ class TestGetCrossAgentConversationHistory:
         assert truncated.endswith("...")
 
     def test_skips_system_error_file_messages(self, threads_provider):
-        """Should skip system, error, file_link, and image_file type messages."""
+        """Should skip system, error, file_link, image_file, and resource_card type messages."""
         messages = [
             make_message(0, "user", "text", [{"text": "Hello"}], agent_id="agent_A"),
             make_message(1, "assistant", "text", [{"text": "Hi"}], agent_id="agent_A"),
@@ -216,7 +216,8 @@ class TestGetCrossAgentConversationHistory:
             make_message(3, "assistant", "error", [{"text": "Error msg"}], agent_id="agent_A"),
             make_message(4, "assistant", "file_link", [{"text": "file.pdf"}], agent_id="agent_A"),
             make_message(5, "assistant", "image_file", [{"text": "data:image/png;base64,abc"}], agent_id="agent_A"),
-            make_message(6, "user", "text", [{"text": "Next question"}], agent_id="agent_B"),
+            make_message(6, "assistant", "resource_card", [{"text": '{"type": "proposal", "proposal_id": "p-1"}'}], agent_id="agent_A"),
+            make_message(7, "user", "text", [{"text": "Next question"}], agent_id="agent_B"),
         ]
         setup_mock_session(threads_provider, messages)
         result = threads_provider.get_cross_agent_conversation_history(

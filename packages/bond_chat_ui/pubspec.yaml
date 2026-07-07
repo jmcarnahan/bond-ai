@@ -1,6 +1,6 @@
 name: bond_chat_ui
 description: Reusable chat message rendering widgets for Bond AI
-version: 0.1.0
+version: 0.2.0
 publish_to: 'none'
 
 environment:

@@ -1373,6 +1373,55 @@ def _get_auth_headers_for_server(
     return headers
 
 
+def _extract_bond_card(result: Any, text: str) -> Optional[Dict[str, Any]]:
+    """Extract a _bond_card envelope from an MCP tool result (CRM-33).
+
+    A tool can surface a structured card in chat by including a "_bond_card"
+    object in its result. Primary transport: MCP structuredContent (fastmcp
+    CallToolResult.structured_content). fastmcp wraps non-object returns under
+    {"result": ...}, so check one level down too. Fallback: a top-level
+    "_bond_card" key in the text JSON.
+    """
+    structured = getattr(result, 'structured_content', None)
+    if isinstance(structured, dict):
+        card = structured.get('_bond_card')
+        if isinstance(card, dict):
+            return card
+        inner = structured.get('result')
+        if isinstance(inner, dict) and isinstance(inner.get('_bond_card'), dict):
+            return inner['_bond_card']
+    # Substring guard: skips a potentially large json.loads for the vast
+    # majority of tool results that never carry a card.
+    if text and '_bond_card' in text:
+        try:
+            parsed = json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            return None
+        if isinstance(parsed, dict) and isinstance(parsed.get('_bond_card'), dict):
+            return parsed['_bond_card']
+    return None
+
+
+def _strip_bond_card_text(text: str) -> str:
+    """Remove the _bond_card envelope from a tool-result text JSON.
+
+    The envelope is UI plumbing, not model input: leaving it in the text wastes
+    tokens and invites the model to narrate raw card JSON next to the rendered
+    card. All other keys are preserved for agents that parse them. Returns the
+    text unchanged if it isn't a JSON object carrying the key.
+    """
+    if not text or '_bond_card' not in text:
+        return text
+    try:
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return text
+    if isinstance(parsed, dict) and '_bond_card' in parsed:
+        parsed.pop('_bond_card')
+        return json.dumps(parsed)
+    return text
+
+
 async def execute_mcp_tool(
     mcp_config: Dict[str, Any],
     tool_name: str,
@@ -1521,7 +1570,20 @@ async def execute_mcp_tool(
                                 text_parts.append(content_item.text)
                             elif hasattr(content_item, 'type') and content_item.type == 'text':
                                 text_parts.append(str(content_item))
-                        return {"success": True, "result": " ".join(text_parts)}
+                        text_result = " ".join(text_parts)
+                        card = _extract_bond_card(result, text_result)
+                        if card:
+                            # The card rides a side channel to the client; strip
+                            # the envelope from the model-facing text so Bedrock
+                            # never sees it (other keys are preserved).
+                            response = {
+                                "success": True,
+                                "result": _strip_bond_card_text(text_result),
+                                "card": card,
+                            }
+                        else:
+                            response = {"success": True, "result": text_result}
+                        return response
                     elif hasattr(result, 'text'):
                         return {"success": True, "result": result.text}
                     else:
