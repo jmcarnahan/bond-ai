@@ -1246,6 +1246,10 @@ Please integrate any relevant insights from the documents with your analysis of 
         """
         invocation_inputs = return_control.get('invocationInputs', [])
         results = []
+        # Side channel for structured cards from MCP tool results (CRM-33).
+        # Cards must NOT go into the Bedrock tool results (INVARIANT above);
+        # the caller (_handle_continuation_response) drains this list.
+        self._pending_tool_cards = []
 
         for inv_input in invocation_inputs:
             # Top-level safety net: guarantee a response is appended for every invocation
@@ -1428,6 +1432,11 @@ Please integrate any relevant insights from the documents with your analysis of 
                                 LOGGER.warning(f"MCP tool {tool_name} returned an error, result preview: {result_preview}")
 
                             raw_result = result.get('result', result.get('error', 'Unknown error'))
+                            card = result.get('card')
+                            if isinstance(card, dict):
+                                # Structured card envelope (CRM-33) - surfaced to
+                                # the client via the side channel, never to Bedrock
+                                self._pending_tool_cards.append(card)
                             tool_response = self._make_tool_response(action_input, inv_input, api_path, raw_result, tool_name)
                             LOGGER.debug(f"Returning tool response to Bedrock: \n{json.dumps(tool_response, indent=2)}")
                             results.append(tool_response)
@@ -1545,6 +1554,84 @@ Please integrate any relevant insights from the documents with your analysis of 
         yield from self._handle_file_event(file_info=file_info,
                                          thread_id=thread_id,
                                          user_id=user_id)
+
+        # Start a new text message
+        new_response_id = str(uuid.uuid4())
+        yield self._create_bond_message_tag(
+            message_id=new_response_id,
+            thread_id=thread_id,
+            agent_id=self.agent_id,
+            message_type="text",
+            role="assistant"
+        )
+
+        return new_response_id
+
+    # Message type for structured cards surfaced from MCP tool results (CRM-33)
+    CARD_MESSAGE_TYPE = "resource_card"
+
+    def _handle_card_event_streaming(self, card: Dict[str, Any], thread_id: str,
+                                     user_id: str, current_response_id: str,
+                                     full_content: str,
+                                     attachments: Optional[List] = None) -> Generator[str, None, str]:
+        """
+        Persist and stream a structured card from an MCP tool result (CRM-33).
+
+        Mirrors _handle_file_event_streaming: saves accumulated text under the
+        current response id, closes the open text message, persists + streams a
+        resource_card message whose content is the raw envelope JSON, then
+        opens a new text message.
+
+        Returns:
+            New response ID for continuation
+        """
+        # Save any accumulated text content
+        if full_content and len(full_content) > 0:
+            self.bond_provider.threads.add_message(
+                message_id=current_response_id,
+                thread_id=thread_id,
+                user_id=user_id,
+                role="assistant",
+                message_type="text",
+                content=xml_unescape(full_content),
+                attachments=attachments,
+                metadata={
+                    'agent_id': self.agent_id,
+                    'model': self.model,
+                    'bedrock_agent_id': self.bedrock_agent_id
+                }
+            )
+
+        # Close current text message
+        yield '</_bondmessage>'
+
+        # Persist the card message (generic envelope JSON; unescaped in the DB)
+        card_content = json.dumps(card)
+        card_message_id = self.bond_provider.threads.add_message(
+            thread_id=thread_id,
+            user_id=user_id,
+            role="assistant",
+            message_type=self.CARD_MESSAGE_TYPE,
+            content=card_content,
+            metadata={
+                'agent_id': self.agent_id,
+                'model': self.model,
+                'bedrock_agent_id': self.bedrock_agent_id
+            }
+        )
+
+        # Stream the card message. Escape for XML transport: card fields may
+        # contain & or < which would break the client's XML parsing; the
+        # client's entity handling restores the raw JSON.
+        yield self._create_bond_message_tag(
+            message_id=card_message_id,
+            thread_id=thread_id,
+            agent_id=self.agent_id,
+            message_type=self.CARD_MESSAGE_TYPE,
+            role="assistant"
+        )
+        yield xml_escape(card_content)
+        yield '</_bondmessage>'
 
         # Start a new text message
         new_response_id = str(uuid.uuid4())
@@ -1898,6 +1985,19 @@ Please integrate any relevant insights from the documents with your analysis of 
                                         if new_response_id != response_id:
                                             response_id = new_response_id
                                             full_content = ''
+                            elif isinstance(cont_item, dict) and 'card_event' in cont_item:
+                                # Structured card from an MCP tool result (CRM-33)
+                                new_response_id = yield from self._handle_card_event_streaming(
+                                    card=cont_item['card_event'],
+                                    thread_id=thread_id,
+                                    user_id=user_id,
+                                    current_response_id=response_id,
+                                    full_content=full_content,
+                                    attachments=attachments if not phase_metadata else None
+                                )
+                                if new_response_id != response_id:
+                                    response_id = new_response_id
+                                    full_content = ''
                             elif isinstance(cont_item, dict):
                                 # Handle session_state from continuation response
                                 # (files_event is already handled by the condition at line 1040)
@@ -2254,7 +2354,9 @@ Please integrate any relevant insights from the documents with your analysis of 
 
         Yields:
             str: Response text chunks
-            dict: Files events (with 'files_event' key) or session state (with 'session_state' key)
+            dict: Files events (with 'files_event' key), structured cards from MCP
+                tool results (with 'card_event' key), or session state (with
+                'session_state' key)
         """
         # Graceful stop: the agent has used its tool-call budget for this turn.
         # Expected, handled path (WARNING, not ERROR). The message is plain
@@ -2275,6 +2377,11 @@ Please integrate any relevant insights from the documents with your analysis of 
 
         continuation_start_time = time.monotonic()
         tool_results = self._handle_return_control(return_control)
+        # Drain structured cards captured during tool execution (CRM-33).
+        # Drained synchronously before any recursion can re-enter
+        # _handle_return_control, so cards can never leak across rounds.
+        pending_cards = getattr(self, '_pending_tool_cards', None) or []
+        self._pending_tool_cards = []
         tool_exec_elapsed = time.monotonic() - continuation_start_time
         full_content = ""
         new_session_state = None
@@ -2320,6 +2427,12 @@ Please integrate any relevant insights from the documents with your analysis of 
                 f"(limit={MAX_TOOL_CALL_DEPTH}, margin={TOOL_DEPTH_WARN_MARGIN}) - injecting wrap-up notice"
             )
             self._inject_depth_warning(tool_results)
+
+        # Surface structured cards to the client (CRM-33). Emitted before the
+        # continuation invoke, so stream retries below can never duplicate a card.
+        for card in pending_cards:
+            LOGGER.info(f"[Continuation] MCP tool emitted a structured card at depth={depth}")
+            yield {'card_event': card}
 
         # Log tool result summary before sending continuation
         result_summary = []
@@ -2465,8 +2578,11 @@ Please integrate any relevant insights from the documents with your analysis of 
                                     any_content_yielded = True
                                     nested_text_len += len(nested_item)
                                 elif isinstance(nested_item, dict):
-                                    # Forward files_event and capture session_state
+                                    # Forward files_event/card_event and capture session_state
                                     if 'files_event' in nested_item:
+                                        yield nested_item
+                                        any_content_yielded = True
+                                    if 'card_event' in nested_item:
                                         yield nested_item
                                         any_content_yielded = True
                                     if nested_item.get('session_state'):

@@ -1373,6 +1373,33 @@ def _get_auth_headers_for_server(
     return headers
 
 
+def _extract_bond_card(result: Any, text: str) -> Optional[Dict[str, Any]]:
+    """Extract a _bond_card envelope from an MCP tool result (CRM-33).
+
+    A tool can surface a structured card in chat by including a "_bond_card"
+    object in its result. Primary transport: MCP structuredContent (fastmcp
+    CallToolResult.structured_content). fastmcp wraps non-object returns under
+    {"result": ...}, so check one level down too. Fallback: a top-level
+    "_bond_card" key in the text JSON.
+    """
+    structured = getattr(result, 'structured_content', None)
+    if isinstance(structured, dict):
+        card = structured.get('_bond_card')
+        if isinstance(card, dict):
+            return card
+        inner = structured.get('result')
+        if isinstance(inner, dict) and isinstance(inner.get('_bond_card'), dict):
+            return inner['_bond_card']
+    if text:
+        try:
+            parsed = json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            return None
+        if isinstance(parsed, dict) and isinstance(parsed.get('_bond_card'), dict):
+            return parsed['_bond_card']
+    return None
+
+
 async def execute_mcp_tool(
     mcp_config: Dict[str, Any],
     tool_name: str,
@@ -1521,7 +1548,13 @@ async def execute_mcp_tool(
                                 text_parts.append(content_item.text)
                             elif hasattr(content_item, 'type') and content_item.type == 'text':
                                 text_parts.append(str(content_item))
-                        return {"success": True, "result": " ".join(text_parts)}
+                        text_result = " ".join(text_parts)
+                        response = {"success": True, "result": text_result}
+                        card = _extract_bond_card(result, text_result)
+                        if card:
+                            # Side channel for the agent loop; never sent to Bedrock
+                            response["card"] = card
+                        return response
                     elif hasattr(result, 'text'):
                         return {"success": True, "result": result.text}
                     else:
