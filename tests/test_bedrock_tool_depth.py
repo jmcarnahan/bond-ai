@@ -180,19 +180,26 @@ class TestDepthLimitConfig:
             side_effect=_chunk_stream
         )
 
-        list(agent._handle_continuation_response(
-            return_control=return_control,
-            session_id="test-session",
-            thread_id="test-thread",
-            seen_file_hashes=set(),
-            depth=5
-        ))
+        # Patch tool execution so a cap that fails to fire cannot mimic this
+        # shape via the per-invocation error safety net (which also produces
+        # one result per input with matching apiPaths, but with "error" bodies).
+        with patch.object(agent, "_handle_return_control") as mock_hrc:
+            list(agent._handle_continuation_response(
+                return_control=return_control,
+                session_id="test-session",
+                thread_id="test-thread",
+                seen_file_hashes=set(),
+                depth=5
+            ))
 
+        mock_hrc.assert_not_called()  # the cap actually fired
         sent = agent.bond_provider.bedrock_agent_runtime_client.invoke_agent \
             .call_args.kwargs["sessionState"]["returnControlInvocationResults"]
         assert len(sent) == 2
         assert [r["apiResult"]["apiPath"] for r in sent] == \
             ["/b.abc123.jira_search", "/b.abc123.jira_get"]
+        for result in sent:
+            assert "paused" in _body_of(result)["system_notice"]
 
     def test_below_limit_proceeds(self, monkeypatch):
         monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)

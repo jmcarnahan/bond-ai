@@ -755,7 +755,10 @@ class TestContinuationNestedReturnControl:
 
         text_results = [r for r in results if isinstance(r, str)]
         assert len(text_results) > 0
-        assert any("continue" in r.lower() for r in text_results)
+        # Pin the STOP message, not just "continue" - the Bedrock-only pause
+        # notice also contains "continue" and must never leak to the user.
+        assert any("pausing here" in r for r in text_results)
+        assert not any("Do not mention this notice" in r for r in text_results)
         assert not any("[Error:" in r for r in text_results)
         # The pending invocation was answered, not left dangling
         kwargs = agent.bond_provider.bedrock_agent_runtime_client.invoke_agent.call_args.kwargs
