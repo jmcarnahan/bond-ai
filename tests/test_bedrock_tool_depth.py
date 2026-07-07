@@ -18,10 +18,22 @@ itself is exercised by manual smoke testing, not unit tests.
 
 import copy
 import json
+import os
 import pytest
 from unittest.mock import MagicMock, patch
 
 from bondable.bond.providers.bedrock import BedrockAgent as bedrock_agent_module
+
+# Tests asserting the shipped defaults are meaningless (and would fail
+# spuriously) when a developer has the env overrides exported.
+_env_override_active = bool(
+    os.environ.get('BEDROCK_MAX_TOOL_CALL_DEPTH')
+    or os.environ.get('BEDROCK_TOOL_DEPTH_WARN_MARGIN')
+)
+skip_if_env_override = pytest.mark.skipif(
+    _env_override_active,
+    reason="BEDROCK_MAX_TOOL_CALL_DEPTH / BEDROCK_TOOL_DEPTH_WARN_MARGIN set in env"
+)
 
 
 def _make_agent():
@@ -123,6 +135,7 @@ def _body_of(result):
 
 class TestDepthLimitConfig:
 
+    @skip_if_env_override
     def test_default_limit_is_25_and_margin_3(self):
         """Guard the chosen production defaults (CI has no env override)."""
         assert bedrock_agent_module.MAX_TOOL_CALL_DEPTH == 25
@@ -237,6 +250,7 @@ class TestWarnBandInjection:
             baseline[1]["apiResult"]["responseBody"]["application/json"]["body"]
         assert json.dumps(stripped, sort_keys=True) == json.dumps(baseline[1], sort_keys=True)
 
+    @skip_if_env_override
     def test_below_band_byte_identical_at_defaults(self):
         """Short flows (depth 0 at default 25/3) send tool results unmodified."""
         agent = _make_agent()
@@ -245,6 +259,73 @@ class TestWarnBandInjection:
         sent = _sent_results(mock_invoke)
         assert json.dumps(sent, sort_keys=True) == \
             json.dumps(_make_tool_results(), sort_keys=True)
+
+    def test_warn_band_with_real_return_control(self, monkeypatch):
+        """The notice survives the REAL _handle_return_control response shape.
+
+        The other warn-band tests use hand-built fixtures; if the real
+        _make_tool_response shape drifted, _inject_depth_warning's blanket
+        except would swallow the mismatch silently. This composes the real
+        pair, mocking only the external tool executor.
+        """
+        monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
+        monkeypatch.setattr(bedrock_agent_module, "TOOL_DEPTH_WARN_MARGIN", 2)
+        agent = _make_agent()
+        agent.agent_id = "test-agent-record-id"
+        agent.mcp_tools = []
+        agent.mcp_resources = []
+        agent.bond_provider.bedrock_agent_runtime_client.invoke_agent = MagicMock(
+            side_effect=_chunk_stream
+        )
+
+        mcp_return_control = {
+            "invocationId": "inv-123",
+            "invocationInputs": [
+                {
+                    "apiInvocationInput": {
+                        "actionGroupName": "mcp-action-group",
+                        "apiPath": "/b.aaa000.jira_search",
+                        "httpMethod": "POST",
+                        "parameters": [{"name": "jql", "value": "project = TEST"}]
+                    }
+                }
+            ]
+        }
+        with patch("bondable.bond.providers.bedrock.BedrockAgent.Config") as mock_config, \
+             patch("bondable.bond.providers.bedrock.BedrockAgent.execute_mcp_tool_sync") as mock_execute, \
+             patch("bondable.bond.providers.bedrock.BedrockAgent._resolve_server_from_hash") as mock_resolve:
+            mock_config.config.return_value.get_mcp_config.return_value = {"mcpServers": {"atlassian": {}}}
+            mock_resolve.return_value = "atlassian"
+            mock_execute.return_value = {"success": True, "result": "tool output"}
+
+            list(agent._handle_continuation_response(
+                return_control=mcp_return_control,
+                session_id="test-session",
+                thread_id="test-thread",
+                seen_file_hashes=set(),
+                depth=3
+            ))
+
+        sent = _sent_results(agent.bond_provider.bedrock_agent_runtime_client.invoke_agent)
+        assert len(sent) == 1
+        body = _body_of(sent[-1])
+        assert "ask the user whether they would like" in body["system_notice"]
+        assert "tool output" in body["result"]
+
+    def test_malformed_last_result_degrades_to_no_notice(self, monkeypatch):
+        """A last result without responseBody must not break the continuation."""
+        monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
+        monkeypatch.setattr(bedrock_agent_module, "TOOL_DEPTH_WARN_MARGIN", 2)
+        agent = _make_agent()
+
+        malformed = [{"apiResult": {"actionGroup": "x", "apiPath": "/y", "httpStatusCode": 200}}]
+        items, _, mock_invoke = _run_continuation(
+            agent, depth=3, tool_results=copy.deepcopy(malformed))
+
+        # No exception; the continuation proceeded with the results unmodified
+        assert any("Done." in i for i in items if isinstance(i, str))
+        sent = _sent_results(mock_invoke)
+        assert json.dumps(sent, sort_keys=True) == json.dumps(malformed, sort_keys=True)
 
     def test_empty_results_fallback_gets_notice(self, monkeypatch):
         """The fallback error result built for empty tool_results carries the nudge."""

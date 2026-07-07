@@ -2378,8 +2378,9 @@ Please integrate any relevant insights from the documents with your analysis of 
         continuation_start_time = time.monotonic()
         tool_results = self._handle_return_control(return_control)
         # Drain structured cards captured during tool execution (CRM-33).
-        # Drained synchronously before any recursion can re-enter
-        # _handle_return_control, so cards can never leak across rounds.
+        # _handle_return_control resets the list on entry, so this reset is
+        # defensive; the getattr covers agents built without __init__ (tests)
+        # and mocked _handle_return_control implementations.
         pending_cards = getattr(self, '_pending_tool_cards', None) or []
         self._pending_tool_cards = []
         tool_exec_elapsed = time.monotonic() - continuation_start_time
@@ -2419,8 +2420,9 @@ Please integrate any relevant insights from the documents with your analysis of 
             tool_results = [fallback_error]
 
         # Near-limit nudge: tell the agent to wrap up and ask the user (CRM-22).
-        # Fires exactly once per recursion chain (depth equality; recursion always
-        # passes depth + 1). MARGIN <= 0 disables.
+        # Fires at most once per recursion chain (depth equality; recursion always
+        # passes depth + 1); sibling chains in the same turn can each hit the
+        # band and inject again, which is harmless. MARGIN <= 0 disables.
         if TOOL_DEPTH_WARN_MARGIN > 0 and depth == MAX_TOOL_CALL_DEPTH - TOOL_DEPTH_WARN_MARGIN:
             LOGGER.warning(
                 f"[Continuation] Depth {depth} entered warn band "
