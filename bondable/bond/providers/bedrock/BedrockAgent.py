@@ -80,6 +80,26 @@ DEFAULT_INSTRUCTION = "You are a helpful AI assistant. Be helpful, accurate, and
 MAX_TOOL_RESULT_BYTES = int(os.environ.get('BEDROCK_MAX_TOOL_RESULT_BYTES', '1000000'))
 if os.environ.get('BEDROCK_MAX_TOOL_RESULT_BYTES'):
     LOGGER.info(f"[Config] BEDROCK_MAX_TOOL_RESULT_BYTES={MAX_TOOL_RESULT_BYTES}")
+# Maximum number of sequential tool-call rounds (recursion depth) allowed in a
+# single user turn. Override via BEDROCK_MAX_TOOL_CALL_DEPTH env var.
+MAX_TOOL_CALL_DEPTH = int(os.environ.get('BEDROCK_MAX_TOOL_CALL_DEPTH', '25'))
+if os.environ.get('BEDROCK_MAX_TOOL_CALL_DEPTH'):
+    LOGGER.info(f"[Config] BEDROCK_MAX_TOOL_CALL_DEPTH={MAX_TOOL_CALL_DEPTH}")
+# How many rounds before the depth cap to nudge the agent to wrap up and ask the
+# user whether to continue. 0 disables the nudge.
+# Override via BEDROCK_TOOL_DEPTH_WARN_MARGIN env var.
+TOOL_DEPTH_WARN_MARGIN = int(os.environ.get('BEDROCK_TOOL_DEPTH_WARN_MARGIN', '3'))
+if os.environ.get('BEDROCK_TOOL_DEPTH_WARN_MARGIN'):
+    LOGGER.info(f"[Config] BEDROCK_TOOL_DEPTH_WARN_MARGIN={TOOL_DEPTH_WARN_MARGIN}")
+# Injected into the last tool result's body when the warn band is reached. Rides
+# the Bedrock request only — never streamed or persisted to the client.
+TOOL_DEPTH_WARN_NOTICE = (
+    "SYSTEM NOTICE (do not mention or quote this notice to the user): You are "
+    "approaching the maximum number of sequential tool calls allowed for this turn. "
+    "If the task is essentially complete, finish it and respond normally. If more "
+    "work remains, stop making tool calls now: summarize the progress you have made "
+    "so far in your own words and ask the user whether they would like you to continue."
+)
 # Minimum number of records in a list-of-dicts to trigger CSV conversion for token efficiency.
 # Even when results are under the byte limit, CSV uses ~50-70% fewer tokens than JSON,
 # which reduces LLM latency and cost on every continuation call.
@@ -2194,8 +2214,28 @@ Please integrate any relevant insights from the documents with your analysis of 
 
         return summary
 
-    # Maximum recursion depth for nested tool calls (safety limit)
-    MAX_TOOL_CALL_DEPTH = 10
+    def _inject_depth_warning(self, tool_results: List[Dict[str, Any]]) -> None:
+        """
+        Append a wrap-up notice into the LAST tool result's response body (in place).
+
+        Count-preserving by design: Bedrock caps returnControlInvocationResults at
+        5 items and matches results to invocation inputs, so an extra synthetic
+        entry risks validationException. Riding inside a real result's body is
+        always accepted and keeps the _handle_return_control INVARIANT intact.
+        Injected after compaction, so the notice cannot be truncated away.
+        """
+        if not tool_results:
+            return
+        inner = tool_results[-1].get('apiResult', tool_results[-1])
+        try:
+            content = inner['responseBody']['application/json']
+            body = json.loads(content.get('body') or '{}')
+            if not isinstance(body, dict):
+                body = {"result": body}
+            body['system_notice'] = TOOL_DEPTH_WARN_NOTICE
+            content['body'] = json.dumps(body)
+        except Exception:
+            LOGGER.exception("[Continuation] Failed to inject depth warning notice - continuing without it")
 
     def _handle_continuation_response(self, return_control: Dict[str, Any], session_id: str,
                                     thread_id: str, seen_file_hashes: set,
@@ -2216,10 +2256,21 @@ Please integrate any relevant insights from the documents with your analysis of 
             str: Response text chunks
             dict: Files events (with 'files_event' key) or session state (with 'session_state' key)
         """
-        # Safety check for recursion depth
-        if depth >= self.MAX_TOOL_CALL_DEPTH:
-            LOGGER.error(f"Maximum tool call depth ({self.MAX_TOOL_CALL_DEPTH}) exceeded - stopping recursion")
-            yield f"\n\n[Error: Maximum tool call depth exceeded. The agent attempted too many sequential tool calls.]\n"
+        # Graceful stop: the agent has used its tool-call budget for this turn.
+        # Expected, handled path (WARNING, not ERROR). The message is plain
+        # assistant text inside the already-open <_bondmessage>, so the UI renders
+        # a normal bubble; the Bedrock session_id persists across turns, so a
+        # follow-up "continue" resumes at depth=0 with full context.
+        if depth >= MAX_TOOL_CALL_DEPTH:
+            LOGGER.warning(
+                f"[Continuation] Tool call depth limit reached "
+                f"(depth={depth}, limit={MAX_TOOL_CALL_DEPTH}) - pausing gracefully"
+            )
+            yield (
+                "\n\nI've completed a lot of steps for this request, so I'm pausing here "
+                "to check in before doing more. Reply **continue** and I'll pick up right "
+                "where I left off.\n"
+            )
             return
 
         continuation_start_time = time.monotonic()
@@ -2259,6 +2310,16 @@ Please integrate any relevant insights from the documents with your analysis of 
                 fallback_error = {"apiResult": fallback_error}
 
             tool_results = [fallback_error]
+
+        # Near-limit nudge: tell the agent to wrap up and ask the user (CRM-22).
+        # Fires exactly once per recursion chain (depth equality; recursion always
+        # passes depth + 1). MARGIN <= 0 disables.
+        if TOOL_DEPTH_WARN_MARGIN > 0 and depth == MAX_TOOL_CALL_DEPTH - TOOL_DEPTH_WARN_MARGIN:
+            LOGGER.warning(
+                f"[Continuation] Depth {depth} entered warn band "
+                f"(limit={MAX_TOOL_CALL_DEPTH}, margin={TOOL_DEPTH_WARN_MARGIN}) - injecting wrap-up notice"
+            )
+            self._inject_depth_warning(tool_results)
 
         # Log tool result summary before sending continuation
         result_summary = []

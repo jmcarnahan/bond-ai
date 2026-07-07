@@ -733,8 +733,10 @@ class TestContinuationNestedReturnControl:
         assert call_count[0] == 3, \
             f"Expected 3 invoke_agent calls (depth=0 + depth=1 with retry), got: {call_count[0]}"
 
-    def test_depth_limit_exceeded_yields_error(self):
-        """Exceeding MAX_TOOL_CALL_DEPTH should yield error, not recurse infinitely."""
+    def test_depth_limit_yields_graceful_stop(self):
+        """Reaching MAX_TOOL_CALL_DEPTH should yield a resumable message, not an error."""
+        from bondable.bond.providers.bedrock import BedrockAgent as bedrock_agent_module
+
         agent = _make_agent()
 
         return_control = _make_return_control()
@@ -743,9 +745,10 @@ class TestContinuationNestedReturnControl:
             session_id="test-session",
             thread_id="test-thread",
             seen_file_hashes=set(),
-            depth=agent.MAX_TOOL_CALL_DEPTH  # At the limit
+            depth=bedrock_agent_module.MAX_TOOL_CALL_DEPTH  # At the limit
         ))
 
         text_results = [r for r in results if isinstance(r, str)]
         assert len(text_results) > 0
-        assert any("maximum tool call depth" in r.lower() for r in text_results)
+        assert any("continue" in r.lower() for r in text_results)
+        assert not any("[Error:" in r for r in text_results)
