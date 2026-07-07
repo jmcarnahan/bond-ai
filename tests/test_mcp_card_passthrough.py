@@ -262,6 +262,60 @@ class TestNestedCardForwarding:
         assert "done" in text
 
 
+class TestTopLevelCardWiring:
+    """_process_bedrock_invocation routes card_event dicts to the card helper.
+
+    Guards the elif ordering at the top-level continuation loop: if the generic
+    dict branch ever precedes the card_event branch, cards vanish silently.
+    """
+
+    def _make_full_agent(self):
+        """Agent with the attrs _process_bedrock_invocation touches (mirrors
+        tests/test_bedrock_connection_resilience.py)."""
+        agent = _make_agent()
+        agent.name = "Test Agent"
+        agent.introduction = "Hi"
+        agent.reminder = ""
+        agent.owner_user_id = "user-1"
+        agent.bond_provider.threads.add_message = MagicMock(return_value="card-msg-id")
+        return agent
+
+    def test_card_event_from_continuation_streams_resource_card(self):
+        agent = self._make_full_agent()
+        agent.bond_provider.bedrock_agent_runtime_client.invoke_agent = MagicMock(
+            return_value={"completion": iter([{"returnControl": _make_return_control_for_mcp()}])}
+        )
+
+        def fake_continuation(**kwargs):
+            yield {'card_event': SAMPLE_CARD}
+            yield "after card"
+
+        with patch.object(agent, "_handle_continuation_response", side_effect=fake_continuation):
+            stream = "".join(
+                item for item in agent._process_bedrock_invocation(
+                    prompt="Hello",
+                    thread_id="test-thread",
+                    session_id="test-session",
+                    session_state={},
+                    files=None,
+                    attachments=None,
+                    hidden=False,
+                    user_id="user-1",
+                )
+                if isinstance(item, str)
+            )
+
+        assert 'type="resource_card"' in stream
+        assert xml_escape(json.dumps(SAMPLE_CARD)) in stream
+        assert "after card" in stream
+        card_calls = [
+            c for c in agent.bond_provider.threads.add_message.call_args_list
+            if c.kwargs.get("message_type") == "resource_card"
+        ]
+        assert len(card_calls) == 1
+        assert card_calls[0].kwargs["content"] == json.dumps(SAMPLE_CARD)
+
+
 class TestCardEventStreamingHelper:
     """_handle_card_event_streaming persists and streams the card message."""
 

@@ -2326,8 +2326,8 @@ Please integrate any relevant insights from the documents with your analysis of 
         """
         if not tool_results:
             return
-        inner = tool_results[-1].get('apiResult', tool_results[-1])
         try:
+            inner = tool_results[-1].get('apiResult', tool_results[-1])
             content = inner['responseBody']['application/json']
             body = json.loads(content.get('body') or '{}')
             if not isinstance(body, dict):
