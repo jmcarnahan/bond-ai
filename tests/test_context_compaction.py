@@ -191,12 +191,15 @@ class TestCompactContext:
         agent = _make_agent()
         agent.bond_provider.threads.get_thread_session_id.return_value = 'old-session-id'
 
-        # Mock messages
+        # Mock messages (real .type values so the type filter is exercised -
+        # a MagicMock auto-attribute would never match a filter tuple)
         msg1 = MagicMock()
         msg1.role = 'user'
+        msg1.type = 'text'
         msg1.clob.get_content.return_value = 'Hello, can you help me?'
         msg2 = MagicMock()
         msg2.role = 'assistant'
+        msg2.type = 'text'
         msg2.clob.get_content.return_value = 'Of course! How can I assist you?'
         agent.bond_provider.threads.get_messages.return_value = OrderedDict([
             ('msg-1', msg1), ('msg-2', msg2)

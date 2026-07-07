@@ -152,13 +152,47 @@ class TestDepthLimitConfig:
         mock_hrc.assert_not_called()  # tools at the cap must not execute
         assert mock_invoke.call_count == 1  # single wrap-up invoke, no recursion
         kwargs = mock_invoke.call_args.kwargs
+        # Routing must be pinned: a wrong session/agent id fails with a
+        # validationException in production that the fallback would swallow.
+        assert kwargs["sessionId"] == "test-session"
+        assert kwargs["agentId"] == "test-agent-id"
+        assert kwargs["agentAliasId"] == "test-alias-id"
         assert kwargs["sessionState"]["invocationId"] == "inv-123"  # same pending invocation
         sent = kwargs["sessionState"]["returnControlInvocationResults"]
         assert len(sent) == 1  # one response per invocation input (INVARIANT)
+        assert "apiResult" in sent[0]  # apiInvocationInput must be wrapped
         body = _body_of(sent[0])
-        assert "paused" in body["error"]
+        assert "paused" in body["system_notice"]  # not the 'error' key - models narrate errors
         # The model's own wrap-up text streams through
         assert any("Done." in i for i in items if isinstance(i, str))
+
+    def test_cap_answers_every_invocation_input(self, monkeypatch):
+        """A parallel multi-tool returnControl at the cap gets one pause
+        result per input (count mismatch => validationException in prod)."""
+        monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
+        agent = _make_agent()
+
+        return_control = _make_return_control()
+        second_input = copy.deepcopy(return_control["invocationInputs"][0])
+        second_input["apiInvocationInput"]["apiPath"] = "/b.abc123.jira_get"
+        return_control["invocationInputs"].append(second_input)
+        agent.bond_provider.bedrock_agent_runtime_client.invoke_agent = MagicMock(
+            side_effect=_chunk_stream
+        )
+
+        list(agent._handle_continuation_response(
+            return_control=return_control,
+            session_id="test-session",
+            thread_id="test-thread",
+            seen_file_hashes=set(),
+            depth=5
+        ))
+
+        sent = agent.bond_provider.bedrock_agent_runtime_client.invoke_agent \
+            .call_args.kwargs["sessionState"]["returnControlInvocationResults"]
+        assert len(sent) == 2
+        assert [r["apiResult"]["apiPath"] for r in sent] == \
+            ["/b.abc123.jira_search", "/b.abc123.jira_get"]
 
     def test_below_limit_proceeds(self, monkeypatch):
         monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
@@ -202,11 +236,13 @@ class TestGracefulStop:
         agent = _make_agent()
         items = self._run_at_cap(agent, lambda **kw: {"completion": iter([])})
 
-        text = [i for i in items if isinstance(i, str)]
-        assert len(text) > 0
-        assert any("continue" in t.lower() for t in text)
-        assert not any("[Error:" in t for t in text)
-        assert not any("is_error" in t for t in text)
+        text = "".join(i for i in items if isinstance(i, str))
+        # Pin the STOP message, not just "continue" - the Bedrock-only pause
+        # notice also says "continue" and must never leak to the user.
+        assert "pausing here" in text
+        assert "Do not mention this notice" not in text
+        assert "[Error:" not in text
+        assert "is_error" not in text
 
     def test_model_requests_more_tools_gets_canned_stop(self):
         """A returnControl in the wrap-up stream must not recurse."""
@@ -217,7 +253,8 @@ class TestGracefulStop:
 
         assert agent.bond_provider.bedrock_agent_runtime_client.invoke_agent.call_count == 1
         text = "".join(i for i in items if isinstance(i, str))
-        assert "continue" in text.lower()
+        assert "pausing here" in text
+        assert "Do not mention this notice" not in text
 
     def test_wrapup_invoke_failure_falls_back_to_canned(self):
         agent = _make_agent()
@@ -228,15 +265,38 @@ class TestGracefulStop:
         items = self._run_at_cap(agent, boom)
 
         text = "".join(i for i in items if isinstance(i, str))
-        assert "continue" in text.lower()
+        assert "pausing here" in text
+        assert "Do not mention this notice" not in text
         assert "[Error:" not in text
+
+    @patch("bondable.bond.providers.bedrock.BedrockAgent.time.sleep")
+    def test_wrapup_retries_transient_connection_error(self, mock_sleep):
+        """A connection blip must not leave the invocation dangling - the
+        wrap-up invoke retries like the normal continuation does."""
+        from http.client import RemoteDisconnected
+
+        agent = _make_agent()
+        calls = [0]
+
+        def flaky(**kwargs):
+            calls[0] += 1
+            if calls[0] == 1:
+                raise RemoteDisconnected("connection dropped")
+            return {"completion": iter([{"chunk": {"bytes": b"Wrapped up."}}])}
+
+        items = self._run_at_cap(agent, flaky)
+
+        assert calls[0] == 2  # retried once, then succeeded
+        text = "".join(i for i in items if isinstance(i, str))
+        assert "Wrapped up." in text
+        assert "pausing here" not in text  # no canned fallback needed
 
     def test_resume_uses_same_session_at_depth_zero(self, monkeypatch):
         """After a stop, a fresh depth-0 call continues on the same session."""
         monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
         agent = _make_agent()
 
-        _run_continuation(agent, depth=5)  # hits the cap, invoke_agent unused
+        _run_continuation(agent, depth=5)  # hits the cap; wrap-up invoke fires once
 
         # Fresh top-level call, as _process_bedrock_invocation would make it
         items, _, mock_invoke = _run_continuation(agent, depth=0, session_id="test-session")
@@ -404,4 +464,4 @@ class TestWarnBandInjection:
         mock_hrc.assert_not_called()  # cap still fires with margin 0
         assert mock_invoke.call_count == 1  # wrap-up invoke only
         body = _body_of(mock_invoke.call_args.kwargs["sessionState"]["returnControlInvocationResults"][0])
-        assert "paused" in body["error"]
+        assert "paused" in body["system_notice"]

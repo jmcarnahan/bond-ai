@@ -79,7 +79,7 @@ packages:
       path: "../packages/bond_chat_ui"
       relative: true
     source: path
-    version: "0.1.0"
+    version: "0.2.0"
   boolean_selector:
     dependency: transitive
     description:

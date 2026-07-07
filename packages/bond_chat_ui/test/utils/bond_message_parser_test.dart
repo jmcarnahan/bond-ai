@@ -128,12 +128,43 @@ void main() {
 
     test('keeps empty non-text and non-assistant messages', () {
       final xml = '<_bondmessage id="1" thread_id="t" type="text" role="user"></_bondmessage>'
-          '<_bondmessage id="2" thread_id="t" type="error" role="assistant" is_error="true"></_bondmessage>';
+          '<_bondmessage id="2" thread_id="t" type="error" role="assistant" is_error="true"></_bondmessage>'
+          '<_bondmessage id="3" thread_id="t" role="assistant"></_bondmessage>';
+
+      final messages = BondMessageParser.parseAllBondMessages(xml);
+      expect(messages.length, 3);
+      expect(messages[0].role, 'user');
+      expect(messages[1].isErrorAttribute, true);
+      // Typeless empty assistant message is kept: the skip is deliberately
+      // narrow (the server always sets type="text" on the empty pairs).
+      expect(messages[2].type, '');
+    });
+
+    test('skips whitespace-only assistant text message', () {
+      final xml = '<_bondmessage id="1" thread_id="t" type="text" role="assistant" is_error="false">   \n  </_bondmessage>'
+          '<_bondmessage id="2" thread_id="t" type="text" role="assistant" is_error="false">real reply</_bondmessage>';
+
+      final messages = BondMessageParser.parseAllBondMessages(xml);
+      expect(messages.length, 1);
+      expect(messages[0].content, 'real reply');
+    });
+
+    test('image flow keeps image and trailing system message with thread_id', () {
+      // Real server shape for an image-only turn: empty text pair around the
+      // image, then the router-guaranteed system "Done." carrying thread_id.
+      final xml = '<_bondmessage id="1" thread_id="t1" type="text" role="assistant" is_error="false"></_bondmessage>'
+          '<_bondmessage id="2" thread_id="t1" type="image_file" role="assistant" is_error="false">data:image/png;base64,iVBORw0KGgo=</_bondmessage>'
+          '<_bondmessage id="3" thread_id="t1" type="text" role="assistant" is_error="false"></_bondmessage>'
+          '<_bondmessage id="4" thread_id="t1" type="text" role="system" is_error="false" is_done="true">Done.</_bondmessage>';
 
       final messages = BondMessageParser.parseAllBondMessages(xml);
       expect(messages.length, 2);
-      expect(messages[0].role, 'user');
-      expect(messages[1].isErrorAttribute, true);
+      expect(messages[0].type, 'image_file');
+      expect(messages[0].imageData, 'iVBORw0KGgo=');
+      // The last message stays the system one, so thread_id extraction from
+      // `allMessages.last` is unaffected by the skip.
+      expect(messages.last.role, 'system');
+      expect(messages.last.threadId, 't1');
     });
 
     test('resource_card content decodes XML entities to raw JSON', () {

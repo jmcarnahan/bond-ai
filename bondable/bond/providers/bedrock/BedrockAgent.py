@@ -1188,12 +1188,15 @@ Please integrate any relevant insights from the documents with your analysis of 
         return None
 
     def _make_error_response(self, action_input: Optional[Dict], inv_input: Dict,
-                             api_path: Optional[str], error_message: str) -> Dict[str, Any]:
+                             api_path: Optional[str], error_message: str,
+                             body_key: str = 'error') -> Dict[str, Any]:
         """
         Create a standardized error response for Bedrock (always HTTP 200).
 
         Every tool invocation MUST produce a response back to Bedrock.
         Non-200 codes cause dependencyFailedException which aborts the conversation.
+        body_key lets non-error synthetic responses (e.g. the depth-cap pause
+        notice) avoid the 'error' framing, which models tend to narrate.
         """
         tool_response = {
             "actionGroup": (action_input or {}).get('actionGroup') or (action_input or {}).get('actionGroupName', 'Unknown'),
@@ -1202,7 +1205,7 @@ Please integrate any relevant insights from the documents with your analysis of 
             "httpStatusCode": 200,
             "responseBody": {
                 "application/json": {
-                    "body": json.dumps({"error": error_message})
+                    "body": json.dumps({body_key: error_message})
                 }
             }
         }
@@ -1546,8 +1549,9 @@ Please integrate any relevant insights from the documents with your analysis of 
                     return current_response_id
                 seen_file_hashes.add(file_hash)
 
-        # Save any accumulated text content
-        if full_content and len(full_content) > 0:
+        # Save any accumulated text content (whitespace-only is not persisted,
+        # matching the top-level persist gate and the client parser's skip)
+        if full_content and full_content.strip():
             self.bond_provider.threads.add_message(
                 message_id=current_response_id,
                 thread_id=thread_id,
@@ -1601,8 +1605,9 @@ Please integrate any relevant insights from the documents with your analysis of 
         Returns:
             New response ID for continuation
         """
-        # Save any accumulated text content
-        if full_content and len(full_content) > 0:
+        # Save any accumulated text content (whitespace-only is not persisted,
+        # matching the top-level persist gate and the client parser's skip)
+        if full_content and full_content.strip():
             self.bond_provider.threads.add_message(
                 message_id=current_response_id,
                 thread_id=thread_id,
@@ -2070,9 +2075,12 @@ Please integrate any relevant insights from the documents with your analysis of 
         # Close bond message
         yield '</_bondmessage>'
 
-        # Save response if we have content
+        # Save response if we have content. Whitespace-only content is not
+        # persisted: the client parser skips empty text messages and the REST
+        # layer treats whitespace-only turns as no-content, so persisting it
+        # would make a thread reload disagree with the live view.
         compaction_performed = False
-        if full_content:
+        if full_content and full_content.strip():
             # Unescape XML entities before persisting — the stream escapes
             # <, >, & for safe XML transport, but the DB should store raw text.
             db_content = xml_unescape(full_content)
@@ -2377,7 +2385,8 @@ Please integrate any relevant insights from the documents with your analysis of 
                                              inv_input.get('apiInvocationInput', {}))
                 api_path = action_input.get('apiPath')
                 pause_results.append(self._make_error_response(
-                    action_input, inv_input, api_path, TOOL_DEPTH_PAUSE_NOTICE))
+                    action_input, inv_input, api_path, TOOL_DEPTH_PAUSE_NOTICE,
+                    body_key='system_notice'))
             if not pause_results:
                 raise ValueError("returnControl carried no invocation inputs")
 
@@ -2398,10 +2407,32 @@ Please integrate any relevant insights from the documents with your analysis of 
                 f"[Continuation] Answering capped returnControl with {len(pause_results)} "
                 f"pause result(s) at depth={depth}"
             )
-            response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**wrapup_request)
+            # Retry transient connection errors (mirrors the normal continuation
+            # invoke): an unanswered failure here would leave the invocation
+            # dangling - the exact state this wrap-up exists to prevent.
+            response = None
+            for attempt in range(MAX_INVOKE_RETRIES + 1):
+                try:
+                    if attempt > 0:
+                        delay = INVOKE_RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                        LOGGER.warning(
+                            f"[Continuation] Wrap-up retry {attempt}/{MAX_INVOKE_RETRIES} "
+                            f"after {delay}s delay (depth={depth})"
+                        )
+                        time.sleep(delay)
+                    response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**wrapup_request)
+                    break
+                except (RemoteDisconnected, ConnectionClosedError, ConnectionError, OSError) as e:
+                    LOGGER.warning(
+                        f"[Continuation] Wrap-up connection error on attempt "
+                        f"{attempt + 1}/{MAX_INVOKE_RETRIES + 1}: {type(e).__name__}: {e}"
+                    )
+                    if attempt == MAX_INVOKE_RETRIES:
+                        raise
 
             any_text = False
-            for event in response.get('completion', []):
+            completion = response.get('completion') or []
+            for event in completion:
                 if 'chunk' in event:
                     text = self._handle_chunk_event(event['chunk'])
                     if text:
@@ -2415,10 +2446,15 @@ Please integrate any relevant insights from the documents with your analysis of 
                         f"[Continuation] Model requested more tools past the depth cap "
                         f"(depth={depth}) - stopping with canned message"
                     )
+                    try:
+                        completion.close()  # return the half-consumed stream's connection
+                    except Exception as close_err:
+                        LOGGER.debug(f"[Continuation] Wrap-up stream close failed: {close_err}")
                     yield TOOL_DEPTH_STOP_MESSAGE
                     return
-                elif 'sessionState' in event:
-                    yield {'session_state': event['sessionState']}
+                # 'files' and 'trace' events are deliberately dropped: the
+                # wrap-up prompt requests a text summary only, and there is no
+                # message bookkeeping open for file attachments on this path.
 
             if not any_text:
                 yield TOOL_DEPTH_STOP_MESSAGE

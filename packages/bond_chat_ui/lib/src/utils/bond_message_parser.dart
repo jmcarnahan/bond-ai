@@ -96,9 +96,10 @@ class BondMessageParser {
         // any text (the open message is closed to make room, then a fresh one
         // is opened). These are never persisted server-side, so skipping them
         // keeps the live view consistent with a thread reload and avoids
-        // rendering an empty bubble.
+        // rendering an empty bubble. Deliberately narrow: only type="text"
+        // (the server always sets a type), only assistant, never errors.
         if (role == 'assistant' &&
-            (messageType == 'text' || messageType.isEmpty) &&
+            messageType == 'text' &&
             content.isEmpty &&
             !isErrorAttribute) {
           continue;
