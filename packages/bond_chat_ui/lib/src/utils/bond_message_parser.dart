@@ -87,6 +87,23 @@ class BondMessageParser {
         String? imageData;
 
         final messageType = element.getAttribute('type') ?? '';
+        final role = element.getAttribute('role') ?? '';
+        final isErrorAttribute =
+            element.getAttribute('is_error')?.toLowerCase() == 'true';
+
+        // Skip empty assistant text messages. The server emits an empty
+        // text-message pair when a tool round produces a file or card before
+        // any text (the open message is closed to make room, then a fresh one
+        // is opened). These are never persisted server-side, so skipping them
+        // keeps the live view consistent with a thread reload and avoids
+        // rendering an empty bubble.
+        if (role == 'assistant' &&
+            (messageType == 'text' || messageType.isEmpty) &&
+            content.isEmpty &&
+            !isErrorAttribute) {
+          continue;
+        }
+
         if (messageType == 'image_file' || messageType == 'image') {
           if (content.startsWith('data:image/')) {
             final commaIndex = content.indexOf(',');
@@ -102,10 +119,10 @@ class BondMessageParser {
           threadId: element.getAttribute('thread_id') ?? '',
           agentId: element.getAttribute('agent_id'),
           type: messageType,
-          role: element.getAttribute('role') ?? '',
+          role: role,
           content: content,
           imageData: imageData,
-          isErrorAttribute: element.getAttribute('is_error')?.toLowerCase() == 'true',
+          isErrorAttribute: isErrorAttribute,
           parsingHadError: false,
         ));
       }

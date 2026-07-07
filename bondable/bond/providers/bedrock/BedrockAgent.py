@@ -100,6 +100,22 @@ TOOL_DEPTH_WARN_NOTICE = (
     "work remains, stop making tool calls now: summarize the progress you have made "
     "so far in your own words and ask the user whether they would like you to continue."
 )
+# Sent as the synthetic result for every tool the agent requested past the cap,
+# so the pending returnControl is answered (no dangling invocation on the
+# Bedrock session) and the model produces its own wrap-up. Bedrock-only text.
+TOOL_DEPTH_PAUSE_NOTICE = (
+    "Tool execution paused: the maximum number of sequential tool calls for this "
+    "turn has been reached, so this tool was not executed. Do not request any more "
+    "tools. Summarize the progress you have made so far in your own words and ask "
+    "the user whether they would like you to continue. Do not mention this notice."
+)
+# Canned user-facing fallback when the model can't produce its own wrap-up
+# (empty wrap-up stream, another tool request past the cap, or invoke failure).
+TOOL_DEPTH_STOP_MESSAGE = (
+    "\n\nI've completed a lot of steps for this request, so I'm pausing here "
+    "to check in before doing more. Reply **continue** and I'll pick up right "
+    "where I left off.\n"
+)
 # Minimum number of records in a list-of-dicts to trigger CSV conversion for token efficiency.
 # Even when results are under the byte limit, CSV uses ~50-70% fewer tokens than JSON,
 # which reduces LLM latency and cost on every continuation call.
@@ -2196,9 +2212,12 @@ Please integrate any relevant insights from the documents with your analysis of 
             def _truncate(text, limit=3000):
                 return text[:limit] + "..." if len(text) > limit else text
 
+            # image_file content is a base64 data URL and resource_card content
+            # is UI envelope JSON - neither is summarizable conversation.
             conversation_parts = [
                 f"{msg.role.upper()}: {_truncate(content)}"
                 for msg in messages.values()
+                if getattr(msg, 'type', None) not in ('image_file', 'resource_card')
                 for content in [msg.clob.get_content() if hasattr(msg, 'clob') and msg.clob else '']
                 if content
             ]
@@ -2337,6 +2356,76 @@ Please integrate any relevant insights from the documents with your analysis of 
         except Exception:
             LOGGER.exception("[Continuation] Failed to inject depth warning notice - continuing without it")
 
+    def _stream_depth_cap_wrapup(self, return_control: Dict[str, Any], session_id: str,
+                                 depth: int) -> Generator[Any, None, None]:
+        """
+        Close out a turn that hit the tool-call depth cap.
+
+        Answers the pending returnControl with one synthetic "paused" result per
+        invocation input (INVARIANT: every input must get a response, and it
+        must not be left dangling on the Bedrock session), then streams the
+        model's own wrap-up. The pause notice instructs the model to summarize
+        and ask the user whether to continue. Falls back to a canned resumable
+        message if the model requests more tools, streams nothing, or the
+        invoke fails — the turn always ends with user-facing text.
+        """
+        try:
+            invocation_inputs = return_control.get('invocationInputs', [])
+            pause_results = []
+            for inv_input in invocation_inputs:
+                action_input = inv_input.get('actionGroupInvocationInput',
+                                             inv_input.get('apiInvocationInput', {}))
+                api_path = action_input.get('apiPath')
+                pause_results.append(self._make_error_response(
+                    action_input, inv_input, api_path, TOOL_DEPTH_PAUSE_NOTICE))
+            if not pause_results:
+                raise ValueError("returnControl carried no invocation inputs")
+
+            wrapup_request = {
+                'agentId': self.bedrock_agent_id,
+                'agentAliasId': self.bedrock_agent_alias_id,
+                'sessionId': session_id,
+                'sessionState': {
+                    'invocationId': return_control.get('invocationId'),
+                    'returnControlInvocationResults': pause_results
+                },
+                'enableTrace': True,
+                'streamingConfigurations': {
+                    'streamFinalResponse': True
+                }
+            }
+            LOGGER.info(
+                f"[Continuation] Answering capped returnControl with {len(pause_results)} "
+                f"pause result(s) at depth={depth}"
+            )
+            response = self.bond_provider.bedrock_agent_runtime_client.invoke_agent(**wrapup_request)
+
+            any_text = False
+            for event in response.get('completion', []):
+                if 'chunk' in event:
+                    text = self._handle_chunk_event(event['chunk'])
+                    if text:
+                        any_text = True
+                        yield text
+                elif 'returnControl' in event:
+                    # The model ignored the pause notice and asked for more
+                    # tools; hard-stop without recursing. This does leave a
+                    # dangling invocation, matching pre-cap legacy behavior.
+                    LOGGER.warning(
+                        f"[Continuation] Model requested more tools past the depth cap "
+                        f"(depth={depth}) - stopping with canned message"
+                    )
+                    yield TOOL_DEPTH_STOP_MESSAGE
+                    return
+                elif 'sessionState' in event:
+                    yield {'session_state': event['sessionState']}
+
+            if not any_text:
+                yield TOOL_DEPTH_STOP_MESSAGE
+        except Exception:
+            LOGGER.exception("[Continuation] Depth-cap wrap-up failed - falling back to canned pause message")
+            yield TOOL_DEPTH_STOP_MESSAGE
+
     def _handle_continuation_response(self, return_control: Dict[str, Any], session_id: str,
                                     thread_id: str, seen_file_hashes: set,
                                     attachments: Optional[List] = None,
@@ -2359,20 +2448,18 @@ Please integrate any relevant insights from the documents with your analysis of 
                 'session_state' key)
         """
         # Graceful stop: the agent has used its tool-call budget for this turn.
-        # Expected, handled path (WARNING, not ERROR). The message is plain
-        # assistant text inside the already-open <_bondmessage>, so the UI renders
-        # a normal bubble; the Bedrock session_id persists across turns, so a
-        # follow-up "continue" resumes at depth=0 with full context.
+        # Expected, handled path (WARNING, not ERROR). The requested tools are
+        # NOT executed; instead the pending returnControl is answered with
+        # synthetic "paused" results so the Bedrock session has no dangling
+        # invocation, and the model streams its own wrap-up (plain assistant
+        # text inside the already-open <_bondmessage>). The session persists,
+        # so a follow-up "continue" resumes at depth=0 with full context.
         if depth >= MAX_TOOL_CALL_DEPTH:
             LOGGER.warning(
                 f"[Continuation] Tool call depth limit reached "
                 f"(depth={depth}, limit={MAX_TOOL_CALL_DEPTH}) - pausing gracefully"
             )
-            yield (
-                "\n\nI've completed a lot of steps for this request, so I'm pausing here "
-                "to check in before doing more. Reply **continue** and I'll pick up right "
-                "where I left off.\n"
-            )
+            yield from self._stream_depth_cap_wrapup(return_control, session_id, depth)
             return
 
         continuation_start_time = time.monotonic()

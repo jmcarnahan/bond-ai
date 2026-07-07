@@ -109,6 +109,43 @@ void main() {
       expect(messages[0].content, '[Image]');
     });
 
+    test('skips empty assistant text messages (card/file-before-text pair)', () {
+      // Stream shape when a tool round emits a card before any text: the
+      // just-opened empty text message is closed, the card streams, and a
+      // fresh text message carries the reply.
+      final xml = '<_bondmessage id="1" thread_id="t" type="text" role="assistant" is_error="false"></_bondmessage>'
+          '<_bondmessage id="2" thread_id="t" type="resource_card" role="assistant" is_error="false">'
+          '{&quot;type&quot;: &quot;proposal&quot;, &quot;proposal_id&quot;: &quot;p-1&quot;}'
+          '</_bondmessage>'
+          '<_bondmessage id="3" thread_id="t" type="text" role="assistant" is_error="false">Here is your proposal.</_bondmessage>';
+
+      final messages = BondMessageParser.parseAllBondMessages(xml);
+      expect(messages.length, 2);
+      expect(messages[0].type, 'resource_card');
+      expect(messages[0].content, '{"type": "proposal", "proposal_id": "p-1"}');
+      expect(messages[1].content, 'Here is your proposal.');
+    });
+
+    test('keeps empty non-text and non-assistant messages', () {
+      final xml = '<_bondmessage id="1" thread_id="t" type="text" role="user"></_bondmessage>'
+          '<_bondmessage id="2" thread_id="t" type="error" role="assistant" is_error="true"></_bondmessage>';
+
+      final messages = BondMessageParser.parseAllBondMessages(xml);
+      expect(messages.length, 2);
+      expect(messages[0].role, 'user');
+      expect(messages[1].isErrorAttribute, true);
+    });
+
+    test('resource_card content decodes XML entities to raw JSON', () {
+      final xml = '<_bondmessage id="1" thread_id="t" type="resource_card" role="assistant" is_error="false">'
+          '{&quot;title&quot;: &quot;A &amp; B &lt;draft&gt;&quot;}'
+          '</_bondmessage>';
+
+      final messages = BondMessageParser.parseAllBondMessages(xml);
+      expect(messages.length, 1);
+      expect(messages[0].content, '{"title": "A & B <draft>"}');
+    });
+
     test('handles XML parse error with parsingHadError', () {
       final xml = '<_bondmessage id="1" role="assistant">content with < unescaped';
 

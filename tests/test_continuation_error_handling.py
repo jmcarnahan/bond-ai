@@ -734,10 +734,15 @@ class TestContinuationNestedReturnControl:
             f"Expected 3 invoke_agent calls (depth=0 + depth=1 with retry), got: {call_count[0]}"
 
     def test_depth_limit_yields_graceful_stop(self):
-        """Reaching MAX_TOOL_CALL_DEPTH should yield a resumable message, not an error."""
+        """Reaching MAX_TOOL_CALL_DEPTH answers the pending returnControl with
+        pause results and yields a resumable message, not an error."""
         from bondable.bond.providers.bedrock import BedrockAgent as bedrock_agent_module
 
         agent = _make_agent()
+        # Wrap-up invoke returns an empty stream -> canned resumable fallback
+        agent.bond_provider.bedrock_agent_runtime_client.invoke_agent = MagicMock(
+            side_effect=lambda **kwargs: {"completion": iter([])}
+        )
 
         return_control = _make_return_control()
         results = list(agent._handle_continuation_response(
@@ -752,3 +757,6 @@ class TestContinuationNestedReturnControl:
         assert len(text_results) > 0
         assert any("continue" in r.lower() for r in text_results)
         assert not any("[Error:" in r for r in text_results)
+        # The pending invocation was answered, not left dangling
+        kwargs = agent.bond_provider.bedrock_agent_runtime_client.invoke_agent.call_args.kwargs
+        assert kwargs["sessionState"]["invocationId"] == "inv-123"

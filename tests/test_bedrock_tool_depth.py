@@ -142,15 +142,23 @@ class TestDepthLimitConfig:
         assert bedrock_agent_module.TOOL_DEPTH_WARN_MARGIN == 3
 
     def test_limit_configurable_stops_at_5(self, monkeypatch):
+        """At the cap: tools are NOT executed, but the pending returnControl is
+        answered with synthetic pause results and the model's wrap-up streams."""
         monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
         agent = _make_agent()
 
         items, mock_hrc, mock_invoke = _run_continuation(agent, depth=5)
 
-        text = [i for i in items if isinstance(i, str)]
-        assert any("continue" in t.lower() for t in text)
-        mock_invoke.assert_not_called()
         mock_hrc.assert_not_called()  # tools at the cap must not execute
+        assert mock_invoke.call_count == 1  # single wrap-up invoke, no recursion
+        kwargs = mock_invoke.call_args.kwargs
+        assert kwargs["sessionState"]["invocationId"] == "inv-123"  # same pending invocation
+        sent = kwargs["sessionState"]["returnControlInvocationResults"]
+        assert len(sent) == 1  # one response per invocation input (INVARIANT)
+        body = _body_of(sent[0])
+        assert "paused" in body["error"]
+        # The model's own wrap-up text streams through
+        assert any("Done." in i for i in items if isinstance(i, str))
 
     def test_below_limit_proceeds(self, monkeypatch):
         monkeypatch.setattr(bedrock_agent_module, "MAX_TOOL_CALL_DEPTH", 5)
@@ -165,9 +173,12 @@ class TestDepthLimitConfig:
 
 class TestGracefulStop:
 
-    def test_graceful_stop_text(self):
-        agent = _make_agent()
-        items = list(agent._handle_continuation_response(
+    def _run_at_cap(self, agent, invoke_response):
+        """Run at the cap with a controlled wrap-up invoke response."""
+        agent.bond_provider.bedrock_agent_runtime_client.invoke_agent = MagicMock(
+            side_effect=invoke_response
+        )
+        return list(agent._handle_continuation_response(
             return_control=_make_return_control(),
             session_id="test-session",
             thread_id="test-thread",
@@ -175,11 +186,50 @@ class TestGracefulStop:
             depth=bedrock_agent_module.MAX_TOOL_CALL_DEPTH
         ))
 
+    def test_model_wrapup_streams_no_canned_message(self):
+        """When the model produces its own wrap-up, the canned text is not appended."""
+        agent = _make_agent()
+        items = self._run_at_cap(agent, lambda **kw: {
+            "completion": iter([{"chunk": {"bytes": b"I finished steps 1-3. Want me to continue?"}}])
+        })
+
+        text = "".join(i for i in items if isinstance(i, str))
+        assert "Want me to continue?" in text
+        assert "pausing here" not in text  # canned fallback not appended
+        assert "[Error:" not in text
+
+    def test_empty_wrapup_stream_falls_back_to_canned(self):
+        agent = _make_agent()
+        items = self._run_at_cap(agent, lambda **kw: {"completion": iter([])})
+
         text = [i for i in items if isinstance(i, str)]
         assert len(text) > 0
         assert any("continue" in t.lower() for t in text)
         assert not any("[Error:" in t for t in text)
         assert not any("is_error" in t for t in text)
+
+    def test_model_requests_more_tools_gets_canned_stop(self):
+        """A returnControl in the wrap-up stream must not recurse."""
+        agent = _make_agent()
+        items = self._run_at_cap(agent, lambda **kw: {
+            "completion": iter([{"returnControl": _make_return_control("inv-nested")}])
+        })
+
+        assert agent.bond_provider.bedrock_agent_runtime_client.invoke_agent.call_count == 1
+        text = "".join(i for i in items if isinstance(i, str))
+        assert "continue" in text.lower()
+
+    def test_wrapup_invoke_failure_falls_back_to_canned(self):
+        agent = _make_agent()
+
+        def boom(**kwargs):
+            raise RuntimeError("bedrock unavailable")
+
+        items = self._run_at_cap(agent, boom)
+
+        text = "".join(i for i in items if isinstance(i, str))
+        assert "continue" in text.lower()
+        assert "[Error:" not in text
 
     def test_resume_uses_same_session_at_depth_zero(self, monkeypatch):
         """After a stop, a fresh depth-0 call continues on the same session."""
@@ -350,6 +400,8 @@ class TestWarnBandInjection:
         for result in _sent_results(mock_invoke):
             assert "system_notice" not in _body_of(result)
 
-        items, _, mock_invoke = _run_continuation(agent, depth=5)
-        assert any("continue" in i.lower() for i in items if isinstance(i, str))
-        mock_invoke.assert_not_called()
+        items, mock_hrc, mock_invoke = _run_continuation(agent, depth=5)
+        mock_hrc.assert_not_called()  # cap still fires with margin 0
+        assert mock_invoke.call_count == 1  # wrap-up invoke only
+        body = _body_of(mock_invoke.call_args.kwargs["sessionState"]["returnControlInvocationResults"][0])
+        assert "paused" in body["error"]
