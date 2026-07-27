@@ -213,6 +213,21 @@ HTML
             count {}
           }
         }
+
+        # Microsoft Graph webhook validation + change notifications (sbel-crm
+        # email intelligence, /webhooks/msgraph on the shared ALB) send NO
+        # User-Agent header and were blocked with 403 before ever reaching
+        # the pod. Count instead of block — the webhook has its own auth
+        # (per-subscription clientState). Applied live via CLI 2026-07-27,
+        # but that fix never merged, so a later terraform apply reverted it
+        # and the webhooks were being blocked again (WAF sampled requests
+        # 2026-08-31). This keeps terraform in sync so applies preserve it.
+        rule_action_override {
+          name = "NoUserAgent_HEADER"
+          action_to_use {
+            count {}
+          }
+        }
       }
     }
 
