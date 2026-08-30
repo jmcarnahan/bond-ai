@@ -119,6 +119,14 @@ resource "kubernetes_config_map" "backend" {
     # cluster-internal service DNS is a later optimization.
     BOND_MCPS_DISCOVERY_URL = var.bond_mcps_discovery_url
     BOND_MCPS_AS_BASE_URL   = var.bond_mcps_as_base_url
+
+    # The databricks MCP service was retired 2026-08-30 (its DNS record went
+    # with it), but the image's nginx template still declares the
+    # /connect/databricks proxy_pass — an unresolvable upstream is a fatal
+    # nginx [emerg] at startup. Point it at the local backend so nginx boots;
+    # the path just 404s. Drop this once the template loses that location
+    # block (or databricks returns).
+    BOND_MCPS_DATABRICKS_UPSTREAM = "http://127.0.0.1:8000"
   }
 
   depends_on = [kubernetes_namespace.bond_ai]
