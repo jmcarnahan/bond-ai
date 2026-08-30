@@ -171,10 +171,14 @@ resource "aws_rds_cluster" "aurora_kb" {
   # Enable Data API (required for Bedrock KB)
   enable_http_endpoint = true
 
-  # Serverless v2 configuration
+  # Serverless v2 configuration — scales to zero when idle (2026-08-30).
+  # This cluster only serves Bedrock KB traffic over the Data API (no
+  # persistent app pools), so it actually pauses. Tradeoff: the first KB
+  # query after an idle hour eats a ~15s cold resume.
   serverlessv2_scaling_configuration {
-    min_capacity = var.aurora_min_capacity
-    max_capacity = var.aurora_max_capacity
+    min_capacity             = 0
+    max_capacity             = var.aurora_max_capacity
+    seconds_until_auto_pause = 3600
   }
 
   snapshot_identifier = var.aurora_kb_snapshot_identifier != "" ? var.aurora_kb_snapshot_identifier : null
