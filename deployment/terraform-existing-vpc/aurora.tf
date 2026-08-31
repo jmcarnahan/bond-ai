@@ -34,11 +34,11 @@ resource "aws_rds_cluster_parameter_group" "aurora" {
     apply_method = "pending-reboot"
   }
 
-  parameter {
-    name         = "ssl_min_protocol_version"
-    value        = "TLSv1.2"
-    apply_method = "pending-reboot"
-  }
+  # ssl_min_protocol_version is deliberately NOT set here: TLSv1.2 is already
+  # the engine default for aurora-postgresql15 (verified Source=engine-default
+  # on the live parameter group, 2026-08-31). Setting a parameter to its
+  # default means RDS never records it as user-set, so terraform re-proposed
+  # the "change" on every plan — a perpetual diff with no effect.
 
   # T34: Query logging for security audit trail
   parameter {
