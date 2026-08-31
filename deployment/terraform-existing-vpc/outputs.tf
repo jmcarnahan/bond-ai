@@ -252,3 +252,17 @@ output "primary_platform" {
   value       = var.primary_platform
   description = "Which platform serves the custom domain"
 }
+
+# =============================================================================
+# Deploy status (consumed by `make deploy-status`)
+# =============================================================================
+
+output "deployed_image_tag" {
+  value       = local.combined_image_tag
+  description = "Content-hash tag of the combined image this configuration deploys"
+}
+
+output "deployed_image_uri" {
+  value       = "${aws_ecr_repository.backend.repository_url}:${local.combined_image_tag}"
+  description = "Full ECR image URI this configuration deploys (compare against the running pod)"
+}

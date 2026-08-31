@@ -3,11 +3,15 @@
 ## Overview
 This directory contains everything needed to deploy Bond AI to AWS using Terraform and Docker.
 
-## Current Deployment Status (September 10, 2025)
-✅ **Successfully deployed to us-west-2 with existing VPC**
-- Backend: https://gmqf3e9my8.us-west-2.awsapprunner.com
-- Frontend: https://vsjnx2fai9.us-west-2.awsapprunner.com
-- Both services running and healthy
+## Current Deployment Status (August 31, 2026)
+✅ **EKS consume mode on the shared `bond-platform-dev` cluster (us-west-2)**
+- Single combined image (nginx + uvicorn) built by `build-stages.tf`, running as
+  `kubernetes_deployment.backend` in namespace `bond-ai`
+- Served at https://ai.southbayequity.cloud via the shared ALB (owned by the
+  bond-mcps repo's cluster; this repo attaches WAF + ingress rules to it)
+- App Runner and ECS Express are retired (`enable_apprunner = false`,
+  `enable_ecs_express = false`); their terraform remains count-0
+- Terraform state is remote: S3 + DynamoDB locking (see "Terraform state" below)
 
 ## Directory Structure
 
@@ -118,7 +122,7 @@ aws secretsmanager create-secret \
 terraform init
 
 # Deploy everything
-terraform apply -var-file=environments/my-deployment.tfvars -auto-approve
+terraform apply -var-file=environments/my-deployment.tfvars
 ```
 
 #### For New VPC:
@@ -146,7 +150,7 @@ aws secretsmanager create-secret \
 terraform init
 
 # Deploy everything
-terraform apply -var-file=environments/my-deployment.tfvars -auto-approve
+terraform apply -var-file=environments/my-deployment.tfvars
 ```
 
 ### Deployment Timeline
@@ -155,85 +159,62 @@ terraform apply -var-file=environments/my-deployment.tfvars -auto-approve
 
 ## 🚀 Deploying Code Changes
 
-**Important**: You do NOT need Makefiles or separate Docker commands. Everything is handled by Terraform!
+Deploys are driven from the **repo root Makefile**. `terraform apply` is still
+the engine underneath, but never run it by hand for a routine release — the
+make targets add the guards that keep what ships equal to what was reviewed:
+
+```bash
+make deploy-plan    # guards, then terraform plan saved to tmp/ — READ IT
+make deploy         # applies exactly that saved plan (never re-plans)
+make deploy-status  # terraform's image tag vs what the cluster is running
+make deploy-smoke   # post-deploy contract check against the live EKS service
+```
 
 ### How It Works
 
-When you run `terraform apply`, it automatically:
-1. **Detects code changes** via timestamp triggers in `build-stages.tf`
-2. **Rebuilds Docker images** for backend and/or frontend
-3. **Pushes to ECR** repositories
-4. **Updates App Runner services** with new images
-5. **Handles all dependencies** correctly
+`build-stages.tf` computes a 12-character content hash over everything
+`Dockerfile.combined` ships (`bondable/**/*.py`, `flutterui/lib`,
+`packages/bond_chat_ui/lib`, `requirements.txt`, `pubspec.lock`, the
+nginx/supervisord/entrypoint templates). If ECR doesn't already have that tag,
+apply runs `flutter build web` on the host, builds the combined image with
+`docker buildx` (linux/amd64), pushes it, and rolls
+`kubernetes_deployment.backend` in namespace `bond-ai` onto the new tag.
+Backend and frontend ship together — it's one image.
 
-### Deploying Backend Changes (Python)
+### Why the guards exist
 
-After modifying any Python code in `bondable/`:
+**The working tree is the build input.** The content hash reads files on disk,
+not a git ref — a dirty tree or a feature branch would ship to dev silently.
+`make deploy-check` (run automatically by `deploy-plan` and `deploy`) refuses
+unless the tree is clean, you're on `main`, and `HEAD == origin/main`.
+`DEPLOY_UNSAFE=1` skips only the git checks, never the tooling ones.
+`make deploy` additionally refuses if `HEAD` moved since the plan was saved.
 
-```bash
-cd deployment/terraform-existing-vpc
-terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars -auto-approve
-```
+Reading the plan matters: for a code release the only expected changes are
+`null_resource.build_combined_image` (replaced) and
+`kubernetes_deployment.backend[0]` (in-place). **Aurora, EKS, KMS, Secrets
+Manager, ACM or WAF appearing means stop and investigate** — WAF rules ride
+the shared bond-platform ALB, so WAF changes hit bond-mcps traffic too.
 
-This will:
-- Rebuild the backend Docker image with your changes
-- Push to ECR
-- Update the App Runner backend service
-- Backend typically redeploys in ~3-5 minutes
+Known guard boundary: the live tfvars file is gitignored, so variable changes
+are invisible to `git status`. The saved plan embeds the resolved values —
+what you read in the plan is exactly what applies.
 
-### Deploying Frontend Changes (Flutter)
+Escape hatch: content the hash can't see (theme assets, base-image updates,
+`pyproject.toml`-only changes) ships via `force_rebuild` — set
+`force_rebuild = "<any new value>"` in the tfvars for one deploy.
 
-After modifying any Flutter code in `flutterui/`:
+## Terraform state
 
-```bash
-cd deployment/terraform-existing-vpc
-terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars -auto-approve
-```
+State is remote — do not keep or re-add a local `terraform.tfstate` in
+`terraform-existing-vpc/`:
 
-This will:
-- Rebuild the frontend Docker image with your changes
-- Push to ECR
-- Update the App Runner frontend service
-- Frontend typically redeploys in ~3-5 minutes
-
-### Deploying Both Backend and Frontend
-
-If you've changed both backend and frontend code:
-
-```bash
-cd deployment/terraform-existing-vpc
-terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars -auto-approve
-```
-
-The same command handles everything! Terraform will:
-- Rebuild both Docker images
-- Deploy backend first (frontend depends on it)
-- Deploy frontend with the backend URL
-- Update CORS configuration
-
-### What About the Makefiles?
-
-**You don't need them!** The Makefiles in this directory were for the original deployment approach. The current `terraform-existing-vpc` setup is completely self-contained:
-
-- ❌ **No need for**: `make deploy`, `make build`, etc.
-- ✅ **Just use**: `terraform apply`
-
-The Terraform configuration includes:
-- `build-stages.tf` - Handles Docker builds and ECR pushes
-- `backend.tf` & `frontend.tf` - Manage App Runner services
-- `post-deployment-updates.tf` - Updates CORS after deployment
-
-### Quick Deploy Script (Optional)
-
-For convenience, you can create an alias or script:
-
-```bash
-# Add to your ~/.bashrc or ~/.zshrc
-alias deploy-bond='cd /Users/jcarnahan/projects/bond-ai/deployment/terraform-existing-vpc && terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars -auto-approve'
-
-# Then just run:
-deploy-bond
-```
+- Bucket: `s3://bond-ai-tfstate-119684128788`, key
+  `bond-ai/existing-vpc/dev/terraform.tfstate` (versioned, KMS-encrypted,
+  public-access-blocked; no lifecycle rule — version history is the DR story)
+- Locking: DynamoDB table `bond-ai-tfstate-lock`
+- If you see *"Backend initialization required"*, run `terraform init` once in
+  `deployment/terraform-existing-vpc/` (`make deploy-plan` does this for you)
 
 ## 🚧 Maintenance Mode
 
@@ -425,7 +406,7 @@ rm -f terraform.tfstate terraform.tfstate.backup
 After destroying, you can redeploy fresh:
 ```bash
 terraform init  # If you removed state files
-terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars -auto-approve
+terraform apply -var-file=environments/us-west-2-existing-vpc.tfvars
 ```
 
 ## Security Configuration
