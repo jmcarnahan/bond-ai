@@ -149,6 +149,11 @@ output "eks_custom_domain_url" {
   description = "EKS custom domain URL (null if not configured or EKS disabled)"
 }
 
+output "eks_alb_arn" {
+  value       = try(data.aws_lb.eks_alb[0].arn, null)
+  description = "ARN of the (shared) ALB serving this stack — used by deploy-smoke; null when DNS is managed externally"
+}
+
 output "eks_kubectl_config" {
   value       = var.enable_eks ? "aws eks update-kubeconfig --name ${local.eks_cluster_name_effective} --region ${var.aws_region}" : null
   description = "Command to configure kubectl for EKS cluster (null if EKS disabled)"
