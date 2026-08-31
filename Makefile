@@ -512,15 +512,25 @@ deploy-status:
 	  2>/dev/null || printf "    $(YELLOW)!$(RESET) kubectl not configured — %s\n" "$$(terraform -chdir=$(TF_DIR) output -raw eks_kubectl_config)"
 
 # Post-deploy contract check. boto3 lives in the project's poetry env.
-# The cluster name and ALB hostname MUST be passed: the script's defaults
-# ("bond-ai-dev-eks" and "bond-ai-dev-eks-alb") don't exist — this stack
-# consumes the shared bond-platform-dev cluster and the bond-mcps-owned ALB.
+# The cluster name, ALB hostname and ALB ARN MUST be passed: the script's
+# name-convention defaults ("bond-ai-dev-eks", "bond-ai-dev-eks-alb") don't
+# exist — this stack consumes the shared bond-platform-dev cluster and the
+# bond-mcps-owned ALB, whose name is k8s-generated.
+# --expect-public-alb: the shared ALB is internet-facing by design; the smoke
+# check verifies a WAF Web ACL is attached rather than requiring private IPs.
+# --guardrails-mode comes from terraform so the exploit test asserts the
+# deployed mode (permissive → guardrail must NOT block).
 deploy-smoke:
 	@cluster=$$(terraform -chdir=$(TF_DIR) output -raw eks_cluster_name); \
 	 host=$$(terraform -chdir=$(TF_DIR) output -raw eks_custom_domain_url | sed -e 's|^https\{0,1\}://||'); \
-	 printf "  $(BLUE)->$(RESET) smoke: cluster=$$cluster host=$$host\n"; \
+	 alb_arn=$$(terraform -chdir=$(TF_DIR) output -raw eks_alb_arn 2>/dev/null || echo ""); \
+	 gmode=$$(terraform -chdir=$(TF_DIR) output -raw guardrail_mode 2>/dev/null || echo "enforce"); \
+	 printf "  $(BLUE)->$(RESET) smoke: cluster=$$cluster host=$$host guardrails=$$gmode\n"; \
 	 poetry run python $(TF_DIR)/scripts/smoke_test_deployment.py \
 	   --env $(TF_ENV) --region $(TF_REGION) \
 	   --test-eks --skip-apprunner \
 	   --eks-cluster-name "$$cluster" \
-	   --eks-alb-hostname "$$host"
+	   --eks-alb-hostname "$$host" \
+	   --eks-alb-arn "$$alb_arn" \
+	   --guardrails-mode "$$gmode" \
+	   --expect-public-alb
