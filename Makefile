@@ -393,6 +393,134 @@ help:
 	@echo "  make nginx-logs     tail -F nginx container logs"
 	@echo "  make nginx-status   Show nginx container status"
 	@echo ""
+	@echo "Deploy to EKS dev (see deployment/README.md):"
+	@echo "  make deploy-plan    Guards + terraform plan saved to tmp/ — read it"
+	@echo "  make deploy         Apply exactly that saved plan"
+	@echo "  make deploy-status  Terraform's image tag vs what the cluster runs"
+	@echo "  make deploy-smoke   Post-deploy contract check (EKS)"
+	@echo ""
 	@echo "Override ports: BACKEND_PORT=8010 make dev"
 	@echo "External (split mode): bond-mcps auth proxy on :$(MCP_AUTH_PORT) (run 'make dev' in ../bond-mcps/)"
 	@echo "External (combined): bond-mcps auth proxy on :$(MCP_AUTH_PORT_COMBINED) (run 'make dev-combined' in ../bond-mcps/)"
+
+# ── Deploy to EKS ───────────────────────────────────────────────────────────
+# `terraform apply` IS the deploy. build-stages.tf computes a 12-char content
+# hash over what Dockerfile.combined ships (bondable/**/*.py, flutterui/lib,
+# packages/bond_chat_ui/lib, requirements.txt, pubspec.lock, the nginx/
+# supervisord/entrypoint templates), builds + pushes that tag if ECR doesn't
+# already have it, and rolls kubernetes_deployment.backend onto it.
+#
+# THE WORKING TREE IS THE INPUT. build-stages.tf hashes files on disk, not a
+# git ref, and it runs `flutter build web` from the tree — so a dirty tree or
+# a feature branch ships to dev silently. deploy-check guards exactly that,
+# and is the whole reason this wrapper exists. Note the guard's boundary: the
+# live tfvars file is gitignored, so variable changes are invisible to git —
+# the saved plan (which embeds the resolved values) is what you review.
+#
+# Two steps, on purpose:
+#   make deploy-plan   → guard, then plan, saved to $(TF_PLAN). READ IT.
+#   make deploy        → apply exactly that saved plan; it never re-plans.
+#
+# The saved plan embeds resolved variable values — including everything in
+# $(TF_VARFILE) — so it lives under tmp/ (gitignored) and is deleted after a
+# successful apply.
+
+TF_DIR     := deployment/terraform-existing-vpc
+TF_ENV     ?= dev
+TF_REGION  ?= us-west-2
+# NOT environments/$(TF_ENV).tfvars — the live var file is named for the
+# region + VPC topology. Override TF_VARFILE to target a different stack.
+TF_VARFILE ?= environments/us-west-2-existing-vpc.tfvars
+TF_PLAN    := $(CURDIR)/tmp/terraform-$(TF_ENV).tfplan
+K8S_NS     := bond-ai
+
+GREEN  := \033[32m
+RED    := \033[31m
+YELLOW := \033[33m
+BLUE   := \033[34m
+RESET  := \033[0m
+
+.PHONY: deploy-check deploy-plan deploy deploy-status deploy-smoke
+
+# Refuses to ship anything that is not exactly the merged commit.
+# DEPLOY_UNSAFE=1 skips ONLY the three git checks — never the tooling ones,
+# which are hard prerequisites rather than policy.
+deploy-check:
+	@command -v terraform >/dev/null || { printf "$(RED)x$(RESET) terraform not installed\n"; exit 1; }
+	@command -v aws       >/dev/null || { printf "$(RED)x$(RESET) aws CLI not installed\n"; exit 1; }
+	@command -v jq        >/dev/null || { printf "$(RED)x$(RESET) jq not installed (maintenance-mode build reads the theme config with it)\n"; exit 1; }
+	@command -v kubectl   >/dev/null || { printf "$(RED)x$(RESET) kubectl not installed\n"; exit 1; }
+	@command -v flutter   >/dev/null || { printf "$(RED)x$(RESET) flutter not installed — build-stages.tf runs 'flutter build web' on the HOST, not in Docker\n"; exit 1; }
+	@command -v docker    >/dev/null || { printf "$(RED)x$(RESET) docker not installed\n"; exit 1; }
+	@docker info >/dev/null 2>&1 || { printf "$(RED)x$(RESET) docker daemon is not running — apply builds the image\n"; exit 1; }
+	@docker buildx version >/dev/null 2>&1 || { printf "$(RED)x$(RESET) docker buildx missing — needed for --platform linux/amd64\n"; exit 1; }
+	@test -f $(TF_DIR)/$(TF_VARFILE) || { printf "$(RED)x$(RESET) missing $(TF_DIR)/$(TF_VARFILE) (gitignored; copy environments/example.tfvars)\n"; exit 1; }
+	@aws sts get-caller-identity >/dev/null 2>&1 || { printf "$(RED)x$(RESET) no usable AWS credentials\n"; exit 1; }
+	@if [ -n "$(DEPLOY_UNSAFE)" ]; then \
+	   printf "  $(YELLOW)!$(RESET) DEPLOY_UNSAFE=1 — shipping this working tree with no git checks\n"; \
+	 else \
+	   test -z "$$(git status --porcelain)" || { \
+	     printf "$(RED)x$(RESET) working tree is not clean — the image is built from it, so uncommitted\n"; \
+	     printf "    (and untracked) files would ship. Commit or stash first.\n"; \
+	     printf "    Deliberate? make deploy-plan DEPLOY_UNSAFE=1\n"; exit 1; }; \
+	   b=$$(git rev-parse --abbrev-ref HEAD); \
+	   [ "$$b" = "main" ] || { \
+	     printf "$(RED)x$(RESET) on branch '$$b', not main — dev serves merged code\n"; \
+	     printf "    Deliberate? make deploy-plan DEPLOY_UNSAFE=1\n"; exit 1; }; \
+	   git fetch -q origin main; \
+	   [ "$$(git rev-parse HEAD)" = "$$(git rev-parse origin/main)" ] || { \
+	     printf "$(RED)x$(RESET) local main is not identical to origin/main — pull or push first\n"; exit 1; }; \
+	 fi
+	@printf "  $(GREEN)v$(RESET) $(TF_ENV) <- $$(git rev-parse --short HEAD) ($$(git rev-parse --abbrev-ref HEAD)) as account $$(aws sts get-caller-identity --query Account --output text)\n"
+
+deploy-plan: deploy-check
+	@mkdir -p tmp
+	@terraform -chdir=$(TF_DIR) init -input=false >/dev/null
+	@terraform -chdir=$(TF_DIR) plan -input=false -var-file=$(TF_VARFILE) -out=$(TF_PLAN)
+	@git rev-parse HEAD > $(TF_PLAN).sha
+	@printf "\n  $(BLUE)->$(RESET) read the plan above. Expected for a code release:\n"
+	@printf "     null_resource.build_combined_image  must be replaced (triggers.image_tag)\n"
+	@printf "     kubernetes_deployment.backend[0]    updated in place with the new tag\n"
+	@printf "     Nothing else. Aurora, EKS, KMS, Secrets Manager, ACM or WAF\n"
+	@printf "     appearing is NOT expected — stop and investigate. (WAF rules ride\n"
+	@printf "     the shared bond-platform ALB: changes hit bond-mcps traffic too.)\n"
+	@printf "  $(BLUE)->$(RESET) then: make deploy\n"
+
+# Re-runs the guard rather than trusting the one deploy-plan ran. The saved
+# plan pins the image TAG, but `flutter build web` + `docker buildx` read the
+# tree at APPLY time — a commit landing in between would ship different
+# content under the reviewed tag. Comparing HEAD to the plan-time sha closes that.
+deploy: deploy-check
+	@test -f $(TF_PLAN) || { printf "$(RED)x$(RESET) no saved plan — run: make deploy-plan\n"; exit 1; }
+	@planned=$$(cat $(TF_PLAN).sha 2>/dev/null); \
+	 [ "$$planned" = "$$(git rev-parse HEAD)" ] || { \
+	   printf "$(RED)x$(RESET) HEAD moved since the plan was made — re-run: make deploy-plan\n"; \
+	   printf "    planned $$planned\n    now     $$(git rev-parse HEAD)\n"; exit 1; }
+	@terraform -chdir=$(TF_DIR) apply $(TF_PLAN)
+	@rm -f $(TF_PLAN) $(TF_PLAN).sha
+	@printf "  $(GREEN)v$(RESET) applied. Next: make deploy-smoke\n"
+
+# What terraform thinks is deployed vs what the cluster is actually running.
+deploy-status:
+	@printf "  $(BLUE)terraform$(RESET)\n"
+	@printf "    image tag  %s\n" "$$(terraform -chdir=$(TF_DIR) output -raw deployed_image_tag 2>/dev/null || echo '?')"
+	@printf "    image uri  %s\n" "$$(terraform -chdir=$(TF_DIR) output -raw deployed_image_uri 2>/dev/null || echo '?')"
+	@printf "    url        %s\n" "$$(terraform -chdir=$(TF_DIR) output -raw eks_custom_domain_url 2>/dev/null || echo '?')"
+	@printf "  $(BLUE)cluster$(RESET) (%s)\n" "$$(terraform -chdir=$(TF_DIR) output -raw eks_cluster_name 2>/dev/null || echo '?')"
+	@kubectl get deploy -n $(K8S_NS) \
+	  -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,IMAGE:'.spec.template.spec.containers[0].image' \
+	  2>/dev/null || printf "    $(YELLOW)!$(RESET) kubectl not configured — %s\n" "$$(terraform -chdir=$(TF_DIR) output -raw eks_kubectl_config)"
+
+# Post-deploy contract check. boto3 lives in the project's poetry env.
+# The cluster name and ALB hostname MUST be passed: the script's defaults
+# ("bond-ai-dev-eks" and "bond-ai-dev-eks-alb") don't exist — this stack
+# consumes the shared bond-platform-dev cluster and the bond-mcps-owned ALB.
+deploy-smoke:
+	@cluster=$$(terraform -chdir=$(TF_DIR) output -raw eks_cluster_name); \
+	 host=$$(terraform -chdir=$(TF_DIR) output -raw eks_custom_domain_url | sed -e 's|^https\{0,1\}://||'); \
+	 printf "  $(BLUE)->$(RESET) smoke: cluster=$$cluster host=$$host\n"; \
+	 poetry run python $(TF_DIR)/scripts/smoke_test_deployment.py \
+	   --env $(TF_ENV) --region $(TF_REGION) \
+	   --test-eks --skip-apprunner \
+	   --eks-cluster-name "$$cluster" \
+	   --eks-alb-hostname "$$host"

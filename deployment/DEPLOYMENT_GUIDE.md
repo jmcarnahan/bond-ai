@@ -1,3 +1,8 @@
+> **SUPERSEDED (2026-08-31).** The phased `make deploy-phase*` flow described
+> below refers to a Makefile that no longer exists. The current deploy flow is
+> `make deploy-plan && make deploy` from the repo root — see deployment/README.md.
+> Kept for historical context only.
+
 # Bond AI Complete Deployment Guide
 
 ## Overview
