@@ -210,7 +210,7 @@ module "eks" {
 
 # Teardown/steady-state probe (create/consume use the AWS data sources above).
 data "external" "eks_endpoint" {
-  count   = var.enable_eks ? 0 : 1
+  count = var.enable_eks ? 0 : 1
   program = ["bash", "-c", <<-EOF
     EP=$(aws eks describe-cluster --name "${local.eks_cluster_name_effective}" --region "${var.aws_region}" --query 'cluster.endpoint' --output text 2>/dev/null || echo "")
     CA=$(aws eks describe-cluster --name "${local.eks_cluster_name_effective}" --region "${var.aws_region}" --query 'cluster.certificateAuthority.data' --output text 2>/dev/null || echo "")

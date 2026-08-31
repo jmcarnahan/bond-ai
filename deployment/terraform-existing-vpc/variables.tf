@@ -38,12 +38,6 @@ variable "create_s3_vpc_endpoint" {
   default     = true
 }
 
-variable "mcp_atlassian_service_url" {
-  description = "MCP Atlassian service URL (set after first deployment to avoid circular dependency)"
-  type        = string
-  default     = ""
-}
-
 # Database
 variable "db_username" {
   description = "Database master username"
@@ -301,18 +295,6 @@ variable "custom_domain_name" {
   default     = ""
 }
 
-variable "hosted_zone_name" {
-  description = "Route 53 hosted zone name. Required when using a subdomain (e.g., 'mydomain.cloud' for 'ai.mydomain.cloud'). Leave empty to use custom_domain_name as the zone."
-  type        = string
-  default     = ""
-}
-
-variable "enable_www_subdomain" {
-  description = "Also configure www subdomain (e.g., www.mydomain.cloud)"
-  type        = bool
-  default     = false
-}
-
 # CMK Migration Snapshot Identifiers
 # Set these during CMK migration to restore from snapshot, then clear after apply.
 variable "aurora_main_snapshot_identifier" {
@@ -327,28 +309,9 @@ variable "aurora_kb_snapshot_identifier" {
   default     = ""
 }
 
-# Private App Runner Configuration
-variable "backend_is_private" {
-  description = "Make the backend App Runner service private (VPC-only access via VPN)."
-  type        = bool
-  default     = false
-}
-
-variable "has_private_mcp_services" {
-  description = "Set to true if any standalone MCP services are deployed as private App Runner services. Keeps the shared apprunner.requests VPC endpoint alive even when backend/frontend are public."
-  type        = bool
-  default     = false
-}
-
 # =============================================================================
 # Compute Platform Toggles
 # =============================================================================
-
-variable "enable_apprunner" {
-  description = "Deploy on App Runner. Disable to remove App Runner resources (requires enable_eks = true)."
-  type        = bool
-  default     = true
-}
 
 variable "enable_eks" {
   description = "Deploy on EKS (private-only, VPN access). Can run alongside App Runner."
@@ -356,32 +319,14 @@ variable "enable_eks" {
   default     = false
 }
 
-variable "enable_ecs_express" {
-  description = "Deploy on ECS Express Mode. Recommended App Runner replacement with configurable ALB timeouts. Can run alongside App Runner during migration."
-  type        = bool
-  default     = false
-}
-
-variable "ecs_express_subnet_ids" {
-  description = "Public subnet IDs for ECS Express (internet-facing ALB). Defaults to app_runner_subnet_ids (private)."
-  type        = list(string)
-  default     = []
-}
-
-variable "ecs_express_configure_alb" {
-  description = "Enable ALB configuration (WAF, timeout, domain). Set to true after first ECS Express deploy when service is running."
-  type        = bool
-  default     = false
-}
-
 variable "primary_platform" {
-  description = "Which platform serves the custom domain: apprunner, ecs_express, or eks. Only affects Route53/WAF routing."
+  description = "Which platform serves the custom domain. EKS is the only remaining platform."
   type        = string
   default     = "apprunner"
 
   validation {
-    condition     = contains(["apprunner", "ecs_express", "eks"], var.primary_platform)
-    error_message = "primary_platform must be one of: apprunner, ecs_express, eks."
+    condition     = contains(["eks"], var.primary_platform)
+    error_message = "primary_platform must be: eks (App Runner and ECS Express are retired)."
   }
 }
 

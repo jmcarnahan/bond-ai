@@ -1,13 +1,8 @@
-# App Runner Combined Service (Backend + Frontend)
-# All App Runner resources gated by var.enable_apprunner (default: true)
-# NOTE: ECS Express Mode (ecs-express.tf) is an alternative compute target.
-# Use enable_ecs_express to deploy on ECS Express instead of App Runner.
+# Shared backend configuration (environment variables) + App Runner VPC connector.
+# The App Runner compute path is retired (the platform runs on EKS consume
+# mode — see eks-kubernetes.tf); this file keeps only what is still live.
 
 locals {
-  # When private, service_url is null — use VPC Ingress Connection domain instead
-  backend_url = var.enable_apprunner ? (
-    var.backend_is_private ? aws_apprunner_vpc_ingress_connection.backend[0].domain_name : aws_apprunner_service.backend[0].service_url
-  ) : null
 
   # ==========================================================================
   # Shared environment variables for all compute platforms
@@ -77,8 +72,12 @@ locals {
   }
 }
 
-# App Runner VPC Connector for database access
-# Always created — shared by backend and MCP services (including external deployments)
+# App Runner VPC Connector for database access.
+# KEPT deliberately (2026-08-31) even though no App Runner services exist:
+# the bond-ai-dev-connector and its security group are referenced by the
+# Aurora/RDS/KB security-group ingress rules, and external MCP deployments
+# historically used it. Removing it means touching live database security
+# groups — do that as its own reviewed change, not as dead-code cleanup.
 resource "aws_apprunner_vpc_connector" "backend" {
   vpc_connector_name = "${var.project_name}-${var.environment}-connector"
   subnets            = local.app_runner_subnet_ids
@@ -87,207 +86,4 @@ resource "aws_apprunner_vpc_connector" "backend" {
   tags = {
     Name = "${var.project_name}-${var.environment}-vpc-connector"
   }
-}
-
-# App Runner Auto Scaling Configuration
-resource "aws_apprunner_auto_scaling_configuration_version" "backend" {
-  count = var.enable_apprunner ? 1 : 0
-
-  auto_scaling_configuration_name = "${var.project_name}-${var.environment}-backend-autoscaling"
-
-  min_size = 1
-  max_size = var.environment == "prod" ? 10 : 2
-
-  tags = {
-    Name = "${var.project_name}-${var.environment}-backend-autoscaling"
-  }
-}
-
-# State migration: moved blocks for adding count to existing resources
-moved {
-  from = aws_apprunner_vpc_connector.backend[0]
-  to   = aws_apprunner_vpc_connector.backend
-}
-
-moved {
-  from = aws_apprunner_auto_scaling_configuration_version.backend
-  to   = aws_apprunner_auto_scaling_configuration_version.backend[0]
-}
-
-# Wait for App Runner to finish any auto-deployment triggered by the ECR image push.
-# App Runner auto-deploys when it detects a new :latest image, which races with
-# Terraform's UpdateService call. This resource polls until the service is RUNNING.
-resource "null_resource" "wait_for_backend_auto_deploy" {
-  count = var.enable_apprunner ? 1 : 0
-
-  depends_on = [null_resource.build_combined_image]
-
-  triggers = {
-    build_id = null_resource.build_combined_image.id
-  }
-
-  provisioner "local-exec" {
-    command = <<-EOT
-      echo "Waiting for App Runner backend to finish any auto-deployment..."
-      SERVICE_NAME="bond-ai-${var.environment}-backend"
-
-      # Find the service ARN
-      SERVICE_ARN=$(aws apprunner list-services \
-        --region ${var.aws_region} \
-        --query "ServiceSummaryList[?ServiceName=='$SERVICE_NAME'].ServiceArn" \
-        --output text 2>/dev/null || echo "")
-
-      if [ -z "$SERVICE_ARN" ] || [ "$SERVICE_ARN" = "None" ]; then
-        echo "Service not found yet (first deploy) — skipping wait."
-        exit 0
-      fi
-
-      # Give App Runner a moment to detect the new image
-      sleep 15
-
-      MAX_ATTEMPTS=60
-      ATTEMPT=0
-
-      while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-        STATUS=$(aws apprunner describe-service \
-          --service-arn "$SERVICE_ARN" \
-          --region ${var.aws_region} \
-          --query 'Service.Status' \
-          --output text 2>/dev/null || echo "UNKNOWN")
-
-        if [ "$STATUS" = "RUNNING" ]; then
-          echo "✓ Backend service is RUNNING — safe to proceed with Terraform update."
-          exit 0
-        fi
-
-        echo "Backend status: $STATUS (attempt $((ATTEMPT+1))/$MAX_ATTEMPTS, waiting 10s...)"
-        ATTEMPT=$((ATTEMPT+1))
-        sleep 10
-      done
-
-      echo "Warning: Backend did not reach RUNNING within timeout. Proceeding anyway."
-      exit 0
-    EOT
-  }
-}
-
-# App Runner Service (combined frontend + backend)
-resource "aws_apprunner_service" "backend" {
-  count = var.enable_apprunner ? 1 : 0
-
-  service_name = "${var.project_name}-${var.environment}-backend"
-
-  source_configuration {
-    authentication_configuration {
-      access_role_arn = aws_iam_role.app_runner_ecr_access[0].arn
-    }
-
-    image_repository {
-      image_identifier      = "${aws_ecr_repository.backend.repository_url}:${local.combined_image_tag}"
-      image_repository_type = "ECR"
-
-      image_configuration {
-        port = "8080"
-
-        runtime_environment_variables = local.backend_env_vars
-      }
-    }
-  }
-
-  # Network configuration with VPC connector
-  network_configuration {
-    ingress_configuration {
-      is_publicly_accessible = var.backend_is_private ? false : true
-    }
-
-    egress_configuration {
-      egress_type       = "VPC"
-      vpc_connector_arn = aws_apprunner_vpc_connector.backend.arn
-    }
-  }
-
-  instance_configuration {
-    cpu               = "1 vCPU"
-    memory            = "2 GB"
-    instance_role_arn = aws_iam_role.app_runner_instance[0].arn
-  }
-
-  auto_scaling_configuration_arn = aws_apprunner_auto_scaling_configuration_version.backend[0].arn
-
-  health_check_configuration {
-    protocol            = "HTTP"
-    path                = "/health"
-    interval            = 10
-    timeout             = 5
-    healthy_threshold   = 1
-    unhealthy_threshold = 5
-  }
-
-  tags = {
-    Name = "${var.project_name}-${var.environment}-backend"
-  }
-
-  depends_on = [
-    null_resource.wait_for_backend_auto_deploy,
-    aws_secretsmanager_secret_version.db_credentials,
-    null_resource.private_ingress_ready # VPC endpoint must exist before going private
-  ]
-  # Note: Database dependency handled via local.database_endpoint
-}
-
-moved {
-  from = aws_apprunner_service.backend
-  to   = aws_apprunner_service.backend[0]
-}
-
-# Wait for App Runner backend to reach RUNNING status before dependent resources proceed
-# This prevents race conditions where WAF/other resources try to update while deploying
-resource "null_resource" "wait_for_backend_ready" {
-  count = var.enable_apprunner ? 1 : 0
-
-  depends_on = [aws_apprunner_service.backend]
-
-  triggers = {
-    # Re-trigger when the backend service changes
-    service_arn = aws_apprunner_service.backend[0].arn
-  }
-
-  provisioner "local-exec" {
-    command = <<-EOT
-      echo "Waiting for App Runner backend service to be ready..."
-      SERVICE_ARN="${aws_apprunner_service.backend[0].arn}"
-      MAX_ATTEMPTS=30
-      ATTEMPT=0
-
-      while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-        STATUS=$(aws apprunner describe-service \
-          --service-arn "$SERVICE_ARN" \
-          --region ${var.aws_region} \
-          --query 'Service.Status' \
-          --output text 2>/dev/null || echo "UNKNOWN")
-
-        if [ "$STATUS" = "RUNNING" ]; then
-          echo "✓ Backend service is ready (status: $STATUS)"
-          exit 0
-        fi
-
-        echo "Backend status: $STATUS (attempt $((ATTEMPT+1))/$MAX_ATTEMPTS)"
-        ATTEMPT=$((ATTEMPT+1))
-        sleep 10
-      done
-
-      echo "Warning: Backend service did not reach RUNNING state within timeout"
-      exit 0  # Don't fail the deployment, just warn
-    EOT
-  }
-}
-
-moved {
-  from = null_resource.wait_for_backend_auto_deploy
-  to   = null_resource.wait_for_backend_auto_deploy[0]
-}
-
-moved {
-  from = null_resource.wait_for_backend_ready
-  to   = null_resource.wait_for_backend_ready[0]
 }

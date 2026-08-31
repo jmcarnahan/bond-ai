@@ -1,26 +1,21 @@
 # ============================================================================
-# AWS WAF Web ACLs for App Runner Services
+# AWS WAF Web ACL for the combined Bond AI service (EKS)
 # ============================================================================
-# This file manages AWS WAF (Web Application Firewall) protection for the
-# Bond AI App Runner services (combined backend+frontend, and MCP Atlassian).
+# One Web ACL with maintenance-mode support, attached to the shared
+# bond-platform ALB via the Ingress annotation (see the attachment note at
+# the bottom of this file). Rule changes here affect ALL traffic on that ALB,
+# including bond-mcps services.
 #
-# IMPORTANT: File Upload Fix
-# The backend WAF has a special configuration to allow file uploads to the
-# /files endpoint. The SizeRestrictions_BODY rule is set to COUNT instead
-# of BLOCK to prevent legitimate file uploads from being rejected.
-#
-# Architecture:
-# - The combined service has a single WAF Web ACL with maintenance mode support
-# - MCP Atlassian has its own WAF Web ACL (when deployed)
-# - WAF associations link the Web ACLs to App Runner services
-# - CloudWatch metrics enabled for monitoring and debugging
+# Several managed rules are overridden to COUNT for documented false
+# positives (file uploads, agent instructions, OAuth loopback redirect URIs,
+# UA-less Microsoft Graph webhooks) — see the comments on each override.
 #
 # Managed Rule Groups Used:
 # 1. AWSManagedRulesCommonRuleSet (700 WCU) - Protection against common threats
 # 2. AWSManagedRulesKnownBadInputsRuleSet (200 WCU) - Known malicious patterns
 # 3. AWSManagedRulesUnixRuleSet (100 WCU) - Unix/Linux specific attack protection
 #
-# Total WCU per WAF: ~1100 (well under the 5000 limit)
+# Total WCU: ~1100 (well under the 5000 limit)
 # ============================================================================
 
 # -----------------------------------------------------------------------------
@@ -311,130 +306,13 @@ HTML
 }
 
 # -----------------------------------------------------------------------------
-# MCP Atlassian WAF Web ACL
+# WAF attachment
 # -----------------------------------------------------------------------------
-# Protects the MCP Atlassian service with standard rule configuration.
-# Only created when MCP Atlassian is deployed.
-# -----------------------------------------------------------------------------
-
-resource "aws_wafv2_web_acl" "mcp_atlassian" {
-  count = var.waf_enabled && local.mcp_atlassian_can_deploy ? 1 : 0
-
-  name  = "${var.project_name}-${var.environment}-mcp-atlassian-waf"
-  scope = "REGIONAL"
-
-  description = "WAF for MCP Atlassian App Runner service"
-
-  default_action {
-    allow {}
-  }
-
-  # Rule 1: Common Rule Set (standard configuration)
-  rule {
-    name     = "AWS-AWSManagedRulesCommonRuleSet"
-    priority = 0
-
-    override_action {
-      none {}
-    }
-
-    statement {
-      managed_rule_group_statement {
-        vendor_name = "AWS"
-        name        = "AWSManagedRulesCommonRuleSet"
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = var.waf_cloudwatch_enabled
-      metric_name                = "MCPCommonRuleSetMetric"
-      sampled_requests_enabled   = var.waf_sampled_requests_enabled
-    }
-  }
-
-  # Rule 2: Known Bad Inputs Rule Set
-  rule {
-    name     = "AWS-AWSManagedRulesKnownBadInputsRuleSet"
-    priority = 1
-
-    override_action {
-      none {}
-    }
-
-    statement {
-      managed_rule_group_statement {
-        vendor_name = "AWS"
-        name        = "AWSManagedRulesKnownBadInputsRuleSet"
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = var.waf_cloudwatch_enabled
-      metric_name                = "MCPKnownBadInputsRuleSetMetric"
-      sampled_requests_enabled   = var.waf_sampled_requests_enabled
-    }
-  }
-
-  # Rule 3: Unix Rule Set
-  rule {
-    name     = "AWS-AWSManagedRulesUnixRuleSet"
-    priority = 2
-
-    override_action {
-      none {}
-    }
-
-    statement {
-      managed_rule_group_statement {
-        vendor_name = "AWS"
-        name        = "AWSManagedRulesUnixRuleSet"
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = var.waf_cloudwatch_enabled
-      metric_name                = "MCPUnixRuleSetMetric"
-      sampled_requests_enabled   = var.waf_sampled_requests_enabled
-    }
-  }
-
-  visibility_config {
-    cloudwatch_metrics_enabled = var.waf_cloudwatch_enabled
-    metric_name                = "${var.project_name}-${var.environment}-mcp-atlassian-waf"
-    sampled_requests_enabled   = var.waf_sampled_requests_enabled
-  }
-
-  tags = {
-    Name = "${var.project_name}-${var.environment}-mcp-atlassian-waf"
-  }
-}
-
-# -----------------------------------------------------------------------------
-# WAF Web ACL Associations
-# -----------------------------------------------------------------------------
-
-resource "aws_wafv2_web_acl_association" "backend" {
-  count        = var.waf_enabled && var.enable_apprunner ? 1 : 0
-  resource_arn = aws_apprunner_service.backend[0].arn
-  web_acl_arn  = aws_wafv2_web_acl.backend[0].arn
-
-  # Wait for backend service to finish deploying before associating WAF
-  depends_on = [null_resource.wait_for_backend_ready]
-}
-
-# ECS Express WAF association — attaches to the auto-created ALB.
-# Only created when ecs_express_configure_alb is enabled (after first deploy).
-resource "aws_wafv2_web_acl_association" "ecs_express_backend" {
-  count        = var.waf_enabled && var.enable_ecs_express && var.ecs_express_configure_alb ? 1 : 0
-  resource_arn = data.aws_lb.ecs_express[0].arn
-  web_acl_arn  = aws_wafv2_web_acl.backend[0].arn
-}
-
-resource "aws_wafv2_web_acl_association" "mcp_atlassian" {
-  count        = var.waf_enabled && local.mcp_atlassian_can_deploy ? 1 : 0
-  resource_arn = aws_apprunner_service.mcp_atlassian[0].arn
-  web_acl_arn  = aws_wafv2_web_acl.mcp_atlassian[0].arn
-}
+# This ACL attaches to the shared bond-platform ALB via the Ingress annotation
+# alb.ingress.kubernetes.io/wafv2-acl-arn (eks-ingress.tf) — the AWS Load
+# Balancer Controller, not Terraform, performs the attach. There is no
+# aws_wafv2_web_acl_association resource; rule changes here affect all traffic
+# on that ALB, including bond-mcps services.
 
 # -----------------------------------------------------------------------------
 # Outputs
@@ -448,14 +326,4 @@ output "backend_waf_arn" {
 output "backend_waf_id" {
   value       = var.waf_enabled ? aws_wafv2_web_acl.backend[0].id : ""
   description = "ID of the backend WAF Web ACL"
-}
-
-output "mcp_atlassian_waf_arn" {
-  value       = var.waf_enabled && local.mcp_atlassian_can_deploy ? aws_wafv2_web_acl.mcp_atlassian[0].arn : ""
-  description = "ARN of the MCP Atlassian WAF Web ACL"
-}
-
-output "mcp_atlassian_waf_id" {
-  value       = var.waf_enabled && local.mcp_atlassian_can_deploy ? aws_wafv2_web_acl.mcp_atlassian[0].id : ""
-  description = "ID of the MCP Atlassian WAF Web ACL"
 }

@@ -43,25 +43,25 @@ resource "aws_rds_cluster_parameter_group" "aurora" {
   # T34: Query logging for security audit trail
   parameter {
     name         = "log_min_duration_statement"
-    value        = "1000"  # Log queries taking > 1 second
+    value        = "1000" # Log queries taking > 1 second
     apply_method = "immediate"
   }
 
   parameter {
     name         = "log_statement"
-    value        = "ddl"  # Log all DDL statements (CREATE, ALTER, DROP)
+    value        = "ddl" # Log all DDL statements (CREATE, ALTER, DROP)
     apply_method = "immediate"
   }
 
   parameter {
     name         = "log_connections"
-    value        = "1"  # Log connection attempts
+    value        = "1" # Log connection attempts
     apply_method = "immediate"
   }
 
   parameter {
     name         = "log_disconnections"
-    value        = "1"  # Log disconnections
+    value        = "1" # Log disconnections
     apply_method = "immediate"
   }
 
@@ -171,8 +171,8 @@ resource "aws_rds_cluster" "aurora" {
 
   cluster_identifier = "${var.project_name}-${var.environment}-aurora"
 
-  engine         = "aurora-postgresql"
-  engine_mode    = "provisioned"
+  engine      = "aurora-postgresql"
+  engine_mode = "provisioned"
   # 15.15: AWS auto-minor-upgraded the live cluster; pinning the old value
   # would plan an engine downgrade, which RDS rejects.
   engine_version = "15.15"

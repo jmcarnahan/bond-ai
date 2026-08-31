@@ -50,13 +50,13 @@ resource "kubernetes_config_map" "backend" {
   }
 
   data = {
-    AWS_REGION             = var.aws_region
-    BOND_PROVIDER_CLASS    = "bondable.bond.providers.bedrock.BedrockProvider.BedrockProvider"
-    S3_BUCKET_NAME         = aws_s3_bucket.uploads.id
-    BEDROCK_S3_BUCKET      = aws_s3_bucket.uploads.id
-    BEDROCK_AGENT_ROLE_ARN = aws_iam_role.bedrock_agent.arn
-    BEDROCK_DEFAULT_MODEL      = var.bedrock_default_model
-    BEDROCK_SELECTABLE_MODELS  = var.bedrock_selectable_models
+    AWS_REGION                = var.aws_region
+    BOND_PROVIDER_CLASS       = "bondable.bond.providers.bedrock.BedrockProvider.BedrockProvider"
+    S3_BUCKET_NAME            = aws_s3_bucket.uploads.id
+    BEDROCK_S3_BUCKET         = aws_s3_bucket.uploads.id
+    BEDROCK_AGENT_ROLE_ARN    = aws_iam_role.bedrock_agent.arn
+    BEDROCK_DEFAULT_MODEL     = var.bedrock_default_model
+    BEDROCK_SELECTABLE_MODELS = var.bedrock_selectable_models
 
     # OAuth Configuration — uses EKS-specific URL for redirects (not App Runner)
     # Precedence: eks_custom_domain_name > eks_oauth_base_url > wildcard fallback
@@ -207,7 +207,7 @@ resource "kubernetes_deployment" "backend" {
               # CHOWN: nginx chowns /var/lib/nginx/* to www-data (uid 33) at startup
               # DAC_OVERRIDE: nginx reads config files owned by root
               # SETGID/SETUID: nginx master drops to www-data for worker processes
-              add  = ["CHOWN", "DAC_OVERRIDE", "SETGID", "SETUID"]
+              add = ["CHOWN", "DAC_OVERRIDE", "SETGID", "SETUID"]
             }
           }
 
@@ -304,8 +304,8 @@ resource "kubernetes_service" "backend" {
         "service.beta.kubernetes.io/aws-load-balancer-subnets"         = join(",", local.app_runner_subnet_ids)
       },
       local.eks_has_tls ? {
-        "service.beta.kubernetes.io/aws-load-balancer-ssl-cert"              = local.eks_cert_arn
-        "service.beta.kubernetes.io/aws-load-balancer-ssl-ports"             = "443"
+        "service.beta.kubernetes.io/aws-load-balancer-ssl-cert"               = local.eks_cert_arn
+        "service.beta.kubernetes.io/aws-load-balancer-ssl-ports"              = "443"
         "service.beta.kubernetes.io/aws-load-balancer-ssl-negotiation-policy" = "ELBSecurityPolicy-TLS13-1-2-2021-06"
       } : {}
     )
