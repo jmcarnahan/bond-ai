@@ -173,6 +173,61 @@ HTML
             count {}
           }
         }
+
+        # The bond-platform ALB shares this ACL, so the bond-mcps
+        # Authorization Server sits behind it too. Native-app OAuth (RFC
+        # 8252) uses loopback redirect URIs — http://127.0.0.1:<port>/… in
+        # /oauth/authorize query strings and in /oauth/register (DCR) JSON
+        # bodies — which BOTH the EC2-metadata SSRF rules AND the generic
+        # RFI rules match as attacks (the RFI blocks were masked behind the
+        # SSRF blocks until the latter were counted; verified via WAF
+        # sampled requests 2026-08-31). Blocking them breaks every
+        # desktop/CLI sign-in (bond-desktop's static client AND Claude
+        # Code's dynamic registration). Counted, not blocked: the app tier
+        # never fetches or includes URLs taken from request parameters, so
+        # neither metadata SSRF nor remote file inclusion applies here.
+        rule_action_override {
+          name = "EC2MetaDataSSRF_QUERYARGUMENTS"
+          action_to_use {
+            count {}
+          }
+        }
+
+        rule_action_override {
+          name = "EC2MetaDataSSRF_BODY"
+          action_to_use {
+            count {}
+          }
+        }
+
+        rule_action_override {
+          name = "GenericRFI_QUERYARGUMENTS"
+          action_to_use {
+            count {}
+          }
+        }
+
+        rule_action_override {
+          name = "GenericRFI_BODY"
+          action_to_use {
+            count {}
+          }
+        }
+
+        # Microsoft Graph webhook validation + change notifications (sbel-crm
+        # email intelligence, /webhooks/msgraph on the shared ALB) send NO
+        # User-Agent header and were blocked with 403 before ever reaching
+        # the pod. Count instead of block — the webhook has its own auth
+        # (per-subscription clientState). Applied live via CLI 2026-07-27,
+        # but that fix never merged, so a later terraform apply reverted it
+        # and the webhooks were being blocked again (WAF sampled requests
+        # 2026-08-31). This keeps terraform in sync so applies preserve it.
+        rule_action_override {
+          name = "NoUserAgent_HEADER"
+          action_to_use {
+            count {}
+          }
+        }
       }
     }
 
