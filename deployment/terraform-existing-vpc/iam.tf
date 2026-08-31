@@ -1,42 +1,10 @@
 # IAM Roles and Policies
 
 
-# IAM Role for App Runner Instance
-resource "aws_iam_role" "app_runner_instance" {
-  count = var.enable_apprunner ? 1 : 0
-
-  name = "${var.project_name}-${var.environment}-apprunner-instance-role"
-
-  # SA-8: Added SourceAccount condition to prevent confused deputy attacks.
-  # Uses SourceAccount (not SourceArn) because the App Runner service ARN
-  # isn't known at role creation time (circular dependency).
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = [
-            "tasks.apprunner.amazonaws.com",
-            "bedrock.amazonaws.com"
-          ]
-        }
-        Condition = {
-          StringEquals = {
-            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
-          }
-        }
-      }
-    ]
-  })
-}
-
 # =============================================================================
 # Shared Backend Policy Statements
-# Used by both App Runner instance role and EKS pod role (IRSA) to ensure
-# identical permissions across compute platforms. PassRole is excluded here
-# because each role needs to reference its own ARN (avoiding circular deps).
+# Consumed by the EKS pod role (IRSA) in eks-iam.tf. PassRole is excluded here
+# because the role needs to reference its own ARN (avoiding circular deps).
 # =============================================================================
 
 locals {
@@ -111,104 +79,6 @@ locals {
 # Removing the managed policies eliminates wildcard S3 access to all buckets.
 
 # IAM Policy for App Runner to access AWS services
-resource "aws_iam_role_policy" "app_runner_instance" {
-  count = var.enable_apprunner ? 1 : 0
-
-  name = "${var.project_name}-${var.environment}-apprunner-policy"
-  role = aws_iam_role.app_runner_instance[0].id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = concat(local.backend_shared_policy_statements, [
-      {
-        Effect = "Allow"
-        Action = [
-          "iam:PassRole"
-        ]
-        Resource = [
-          aws_iam_role.app_runner_instance[0].arn,
-          aws_iam_role.bedrock_agent.arn
-        ]
-        Condition = {
-          StringEquals = {
-            "iam:PassedToService" = "bedrock.amazonaws.com"
-          }
-        }
-      }
-    ])
-  })
-}
-
-moved {
-  from = aws_iam_role.app_runner_instance
-  to   = aws_iam_role.app_runner_instance[0]
-}
-
-moved {
-  from = aws_iam_role_policy.app_runner_instance
-  to   = aws_iam_role_policy.app_runner_instance[0]
-}
-
-# App Runner Access Role for ECR
-resource "aws_iam_role" "app_runner_ecr_access" {
-  count = var.enable_apprunner ? 1 : 0
-
-  name = "${var.project_name}-${var.environment}-apprunner-ecr-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "build.apprunner.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "app_runner_ecr_access" {
-  count = var.enable_apprunner ? 1 : 0
-
-  role       = aws_iam_role.app_runner_ecr_access[0].name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess"
-}
-
-# KMS decrypt for pulling images from CMK-encrypted ECR repos
-resource "aws_iam_role_policy" "app_runner_ecr_kms" {
-  count = var.enable_apprunner ? 1 : 0
-
-  name = "${var.project_name}-${var.environment}-apprunner-ecr-kms"
-  role = aws_iam_role.app_runner_ecr_access[0].id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["kms:Decrypt"]
-        Resource = [aws_kms_key.secrets.arn]
-      }
-    ]
-  })
-}
-
-moved {
-  from = aws_iam_role.app_runner_ecr_access
-  to   = aws_iam_role.app_runner_ecr_access[0]
-}
-
-moved {
-  from = aws_iam_role_policy_attachment.app_runner_ecr_access
-  to   = aws_iam_role_policy_attachment.app_runner_ecr_access[0]
-}
-
-moved {
-  from = aws_iam_role_policy.app_runner_ecr_kms
-  to   = aws_iam_role_policy.app_runner_ecr_kms[0]
-}
 
 # =============================================================================
 # Bedrock Agent Role

@@ -160,10 +160,10 @@ resource "aws_rds_cluster" "aurora_kb" {
   engine             = "aurora-postgresql"
   engine_mode        = "provisioned"
   # 15.15: AWS auto-minor-upgraded the live cluster (see aurora.tf).
-  engine_version     = "15.15"
-  database_name      = local.aurora_kb_database
-  master_username    = "postgres"
-  master_password    = random_password.aurora_kb_password[0].result
+  engine_version  = "15.15"
+  database_name   = local.aurora_kb_database
+  master_username = "postgres"
+  master_password = random_password.aurora_kb_password[0].result
 
   db_subnet_group_name   = aws_db_subnet_group.aurora_kb[0].name
   vpc_security_group_ids = [aws_security_group.aurora_kb[0].id]
@@ -504,48 +504,6 @@ resource "aws_bedrockagent_data_source" "s3" {
     # Note: Metadata from .metadata.json sidecar files is automatically ingested
     # No special parsing configuration needed - Bedrock KB handles this by default
   }
-}
-
-# =============================================================================
-# IAM Permissions for App Runner to use Knowledge Base
-# =============================================================================
-
-resource "aws_iam_role_policy" "app_runner_knowledge_base" {
-  count = local.kb_enabled && var.enable_apprunner ? 1 : 0
-
-  name = "${var.project_name}-${var.environment}-apprunner-kb-policy"
-  role = aws_iam_role.app_runner_instance[0].id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      # Knowledge Base retrieval
-      {
-        Effect = "Allow"
-        Action = [
-          "bedrock:Retrieve",
-          "bedrock:RetrieveAndGenerate"
-        ]
-        Resource = [aws_bedrockagent_knowledge_base.main[0].arn]
-      },
-      # Ingestion job management
-      {
-        Effect = "Allow"
-        Action = [
-          "bedrock:StartIngestionJob",
-          "bedrock:GetIngestionJob",
-          "bedrock:ListIngestionJobs"
-        ]
-        Resource = ["${aws_bedrockagent_knowledge_base.main[0].arn}/datasource/*"]
-      },
-      # Pass role permission for KB role
-      {
-        Effect   = "Allow"
-        Action   = ["iam:PassRole"]
-        Resource = [aws_iam_role.bedrock_kb_role[0].arn]
-      }
-    ]
-  })
 }
 
 # =============================================================================

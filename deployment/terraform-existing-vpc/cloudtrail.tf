@@ -82,9 +82,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "cloudtrail_logs" {
   rule {
     id     = "expire-old-logs"
     status = "Enabled"
-    filter {}  # Apply to all objects
+    filter {} # Apply to all objects
     expiration {
-      days = 365  # SOC 2 minimum retention
+      days = 365 # SOC 2 minimum retention
     }
   }
 }
@@ -93,7 +93,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "cloudtrail_logs" {
 resource "aws_cloudwatch_log_group" "cloudtrail" {
   count             = var.enable_cloudtrail ? 1 : 0
   name              = "/aws/cloudtrail/${var.project_name}-${var.environment}"
-  retention_in_days = 365  # T34: SOC 2 minimum retention
+  retention_in_days = 365 # T34: SOC 2 minimum retention
   kms_key_id        = aws_kms_key.secrets.arn
 }
 

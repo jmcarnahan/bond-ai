@@ -48,17 +48,12 @@ output "ecr_backend_repository_url" {
 }
 
 # =============================================================================
-# App Runner Outputs (conditional on enable_apprunner)
+# App Runner leftovers still shared with external MCP deployments
 # =============================================================================
 
 output "app_runner_vpc_connector_arn" {
   value       = aws_apprunner_vpc_connector.backend.arn
-  description = "ARN of the App Runner VPC connector (null if App Runner disabled)"
-}
-
-output "app_runner_service_url" {
-  value       = local.backend_url != null ? "https://${local.backend_url}" : null
-  description = "App Runner service URL (null if App Runner disabled)"
+  description = "ARN of the App Runner VPC connector (kept for external MCP deployments)"
 }
 
 output "jwt_secret" {
@@ -83,29 +78,20 @@ output "private_subnet_ids" {
   description = "Private subnet IDs in the VPC"
 }
 
-output "app_runner_ecr_access_role_arn" {
-  value       = var.enable_apprunner ? aws_iam_role.app_runner_ecr_access[0].arn : null
-  description = "ARN of the IAM role for App Runner ECR access (null if App Runner disabled)"
-}
-
 output "app_runner_security_group_id" {
   value       = aws_security_group.app_runner.id
-  description = "Security group ID for App Runner VPC connector (null if App Runner disabled)"
+  description = "Security group ID for the App Runner VPC connector (kept; referenced by DB security-group ingress rules)"
 }
 
 locals {
-  # Safe versions for output interpolation (never null)
-  backend_url_display     = coalesce(local.backend_url, "DISABLED")
-  eks_url_display         = local.eks_service_url != "" ? "${local.eks_service_protocol}://${local.eks_service_url}" : "DISABLED"
-  ecs_express_url_display = local.ecs_express_service_url != "" ? local.ecs_express_service_url : "DISABLED"
+  # Safe version for output interpolation (never null)
+  eks_url_display = local.eks_service_url != "" ? "${local.eks_service_protocol}://${local.eks_service_url}" : "DISABLED"
 }
 
 output "deployment_instructions" {
   value       = <<-EOT
 
     Deployment Complete!
-    App Runner:   ${var.enable_apprunner ? "https://${local.backend_url_display}${var.backend_is_private ? " (PRIVATE)" : ""}" : "DISABLED"}
-    ECS Express:  ${var.enable_ecs_express ? local.ecs_express_url_display : "DISABLED"}
     EKS:          ${var.enable_eks ? "${local.eks_url_display} (PRIVATE — VPN required)" : "DISABLED"}
     Primary:      ${var.primary_platform}
   EOT
@@ -126,38 +112,6 @@ output "aurora_replication_secret_name" {
 output "aurora_cluster_resource_id" {
   value       = var.use_aurora ? aws_rds_cluster.aurora[0].cluster_resource_id : null
   description = "Aurora cluster resource ID for IAM database authentication"
-}
-
-# Custom Domain Outputs
-output "custom_domain_url" {
-  description = "Custom domain URL (null if not configured or service is private)"
-  value       = local.custom_domain_enabled ? "https://${var.custom_domain_name}" : null
-}
-
-output "custom_domain_status" {
-  description = "Custom domain certificate status (null if not configured or service is private)"
-  value       = local.custom_domain_enabled ? aws_apprunner_custom_domain_association.frontend[0].status : null
-}
-
-output "custom_domain_nameservers" {
-  description = "Route 53 nameservers for custom domain (null if not configured or service is private)"
-  value       = local.custom_domain_enabled ? data.aws_route53_zone.frontend[0].name_servers : null
-}
-
-# Private App Runner Outputs
-output "backend_is_private" {
-  description = "Whether the App Runner service is private (VPC-only access)"
-  value       = var.backend_is_private
-}
-
-output "backend_private_domain" {
-  description = "Private domain name for the service (via VPC Ingress Connection). Null if public or App Runner disabled."
-  value       = var.backend_is_private && var.enable_apprunner ? aws_apprunner_vpc_ingress_connection.backend[0].domain_name : null
-}
-
-output "apprunner_requests_vpc_endpoint_id" {
-  description = "VPC endpoint ID for App Runner requests (shared by all private services). Null if no private services."
-  value       = local.any_service_private ? aws_vpc_endpoint.apprunner_requests[0].id : null
 }
 
 # =============================================================================
@@ -201,51 +155,12 @@ output "eks_kubectl_config" {
 }
 
 # =============================================================================
-# ECS Express Outputs (conditional on enable_ecs_express)
-# =============================================================================
-
-output "ecs_express_service_url" {
-  value       = var.enable_ecs_express ? local.ecs_express_service_url : null
-  description = "ECS Express service URL (null if disabled)"
-}
-
-output "ecs_express_service_arn" {
-  value       = var.enable_ecs_express ? aws_ecs_express_gateway_service.backend[0].service_arn : null
-  description = "ARN of the ECS Express service (null if disabled)"
-}
-
-output "ecs_express_alb_dns_name" {
-  value       = local.ecs_express_alb_dns_name != "" ? local.ecs_express_alb_dns_name : null
-  description = "DNS name of the auto-created ALB (null if disabled or not yet discovered)"
-}
-
-output "ecs_express_alb_arn" {
-  value       = local.ecs_express_alb_arn != "" ? local.ecs_express_alb_arn : null
-  description = "ARN of the auto-created ALB (null if disabled or not yet discovered)"
-}
-
-output "ecs_express_custom_domain_url" {
-  description = "ECS Express custom domain URL (null if not configured)"
-  value       = local.ecs_express_custom_domain_enabled ? "https://${var.custom_domain_name}" : null
-}
-
-# =============================================================================
 # Platform Status
 # =============================================================================
-
-output "enable_apprunner" {
-  value       = var.enable_apprunner
-  description = "Whether App Runner is enabled"
-}
 
 output "enable_eks" {
   value       = var.enable_eks
   description = "Whether EKS is enabled"
-}
-
-output "enable_ecs_express" {
-  value       = var.enable_ecs_express
-  description = "Whether ECS Express Mode is enabled"
 }
 
 output "primary_platform" {
