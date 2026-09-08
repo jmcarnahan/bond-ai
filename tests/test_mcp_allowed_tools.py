@@ -24,7 +24,7 @@ os.environ.setdefault('JWT_SECRET_KEY', 'test-secret-key-allowed-tools')
 # ---------------------------------------------------------------------------
 
 MICROSOFT_TOOLS = [
-    "get_user_profile",
+    "get_profile",
     "list_emails",
     "read_email",
     "send_email",
@@ -36,19 +36,17 @@ MICROSOFT_TOOLS = [
     "list_sharepoint_sites",
     "list_files",
     "inspect_file",
-    "upload_file",
-    "copy_or_rename_file",
+    "manage_file",
 ]
 
 POWERBI_TOOLS = [
-    "list_powerbi_workspaces",
-    "list_powerbi_content",
+    "list_powerbi",
     "query_dataset",
     "refresh_dataset",
     "export_report",
 ]
 
-ALL_19_TOOLS = MICROSOFT_TOOLS + POWERBI_TOOLS
+ALL_TOOLS = MICROSOFT_TOOLS + POWERBI_TOOLS
 
 
 def _make_mock_tool(name: str):
@@ -67,11 +65,11 @@ def _make_mock_tool(name: str):
 class TestToolSplitDefinition:
     """Verify the intended microsoft/powerbi split is complete and non-overlapping."""
 
-    def test_all_19_tools_accounted_for(self):
-        assert len(MICROSOFT_TOOLS) == 14
-        assert len(POWERBI_TOOLS) == 5
-        assert len(ALL_19_TOOLS) == 19
-        assert len(set(ALL_19_TOOLS)) == 19, "Duplicate tool name in split definition"
+    def test_all_tools_accounted_for(self):
+        assert len(MICROSOFT_TOOLS) == 13
+        assert len(POWERBI_TOOLS) == 4
+        assert len(ALL_TOOLS) == 17
+        assert len(set(ALL_TOOLS)) == 17, "Duplicate tool name in split definition"
 
     def test_powerbi_tools_not_in_microsoft_set(self):
         ms_set = set(MICROSOFT_TOOLS)
@@ -129,7 +127,7 @@ class TestBedrockMCPAllowedToolsFilter:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.list_tools = AsyncMock(return_value=[_make_mock_tool(n) for n in ALL_19_TOOLS])
+        mock_client.list_tools = AsyncMock(return_value=[_make_mock_tool(n) for n in ALL_TOOLS])
         mock_client_cls.return_value = mock_client
 
         config = self._make_mcp_config("microsoft", allowed_tools=MICROSOFT_TOOLS)
@@ -152,13 +150,13 @@ class TestBedrockMCPAllowedToolsFilter:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.list_tools = AsyncMock(return_value=[_make_mock_tool(n) for n in ALL_19_TOOLS])
+        mock_client.list_tools = AsyncMock(return_value=[_make_mock_tool(n) for n in ALL_TOOLS])
         mock_client_cls.return_value = mock_client
 
         config = self._make_mcp_config("microsoft", allowed_tools=MICROSOFT_TOOLS)
 
         result = self._run_sync(
-            _get_mcp_tool_definitions(config, ["microsoft:list_powerbi_workspaces"], user_id=None)
+            _get_mcp_tool_definitions(config, ["microsoft:list_powerbi"], user_id=None)
         )
 
         assert result == [], "powerbi tool must not be accessible via microsoft server"
@@ -173,7 +171,7 @@ class TestBedrockMCPAllowedToolsFilter:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.list_tools = AsyncMock(return_value=[_make_mock_tool(n) for n in ALL_19_TOOLS])
+        mock_client.list_tools = AsyncMock(return_value=[_make_mock_tool(n) for n in ALL_TOOLS])
         mock_client_cls.return_value = mock_client
 
         # No allowed_tools key at all
@@ -181,11 +179,11 @@ class TestBedrockMCPAllowedToolsFilter:
 
         # Request every tool (unqualified, so first-match wins)
         result = self._run_sync(
-            _get_mcp_tool_definitions(config, ALL_19_TOOLS, user_id=None)
+            _get_mcp_tool_definitions(config, ALL_TOOLS, user_id=None)
         )
 
         returned_names = {r["name"] for r in result}
-        assert returned_names == set(ALL_19_TOOLS)
+        assert returned_names == set(ALL_TOOLS)
 
     @patch("bondable.bond.providers.bedrock.BedrockMCP.StreamableHttpTransport")
     @patch("bondable.bond.providers.bedrock.BedrockMCP.Client")
@@ -197,13 +195,13 @@ class TestBedrockMCPAllowedToolsFilter:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.list_tools = AsyncMock(return_value=[_make_mock_tool(n) for n in ALL_19_TOOLS])
+        mock_client.list_tools = AsyncMock(return_value=[_make_mock_tool(n) for n in ALL_TOOLS])
         mock_client_cls.return_value = mock_client
 
         config = self._make_mcp_config("microsoft", allowed_tools=[])
 
         result = self._run_sync(
-            _get_mcp_tool_definitions(config, ALL_19_TOOLS, user_id=None)
+            _get_mcp_tool_definitions(config, ALL_TOOLS, user_id=None)
         )
 
         assert result == []
@@ -218,7 +216,7 @@ class TestBedrockMCPAllowedToolsFilter:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.list_tools = AsyncMock(return_value=[_make_mock_tool(n) for n in ALL_19_TOOLS])
+        mock_client.list_tools = AsyncMock(return_value=[_make_mock_tool(n) for n in ALL_TOOLS])
         mock_client_cls.return_value = mock_client
 
         config = self._make_mcp_config("powerbi", allowed_tools=POWERBI_TOOLS)
@@ -284,7 +282,7 @@ class TestMCPRouterAllowedToolsFilter:
     def _call_tools_endpoint(self, mcp_config: dict):
         """
         Call GET /mcp/tools?grouped=true with a mocked MCP client that
-        returns all 19 tools from the server, then let the production filter
+        returns all 17 tools from the server, then let the production filter
         logic narrow the list based on allowed_tools.
         """
         mock_mcp_client = MagicMock()
@@ -294,7 +292,7 @@ class TestMCPRouterAllowedToolsFilter:
         mock_fastmcp_client.__aenter__ = AsyncMock(return_value=mock_fastmcp_client)
         mock_fastmcp_client.__aexit__ = AsyncMock(return_value=False)
         mock_fastmcp_client.list_tools = AsyncMock(
-            return_value=[_make_mock_tool(n) for n in ALL_19_TOOLS]
+            return_value=[_make_mock_tool(n) for n in ALL_TOOLS]
         )
 
         with patch("bondable.bond.mcp_client.MCPClient.client", return_value=mock_mcp_client), \
@@ -316,7 +314,7 @@ class TestMCPRouterAllowedToolsFilter:
         return response.json()
 
     def test_microsoft_filter_returns_only_graph_tools(self):
-        """GET /mcp/tools for a microsoft server with allowed_tools returns only the 14 Graph tools."""
+        """GET /mcp/tools for a microsoft server with allowed_tools returns only the 13 Graph tools."""
         config = _make_mcp_config_for_router("microsoft", allowed_tools=MICROSOFT_TOOLS)
         data = self._call_tools_endpoint(config)
 
@@ -327,7 +325,7 @@ class TestMCPRouterAllowedToolsFilter:
         assert not tool_names.intersection(POWERBI_TOOLS), "Power BI tools must not appear in microsoft server"
 
     def test_powerbi_filter_returns_only_powerbi_tools(self):
-        """GET /mcp/tools for a powerbi server with allowed_tools returns only the 5 Power BI tools."""
+        """GET /mcp/tools for a powerbi server with allowed_tools returns only the 4 Power BI tools."""
         config = _make_mcp_config_for_router("powerbi", allowed_tools=POWERBI_TOOLS)
         data = self._call_tools_endpoint(config)
 
@@ -344,7 +342,7 @@ class TestMCPRouterAllowedToolsFilter:
 
         server = next((s for s in data["servers"] if s["server_name"] == "unfiltered"), None)
         assert server is not None
-        assert {t["name"] for t in server["tools"]} == set(ALL_19_TOOLS)
+        assert {t["name"] for t in server["tools"]} == set(ALL_TOOLS)
 
     def test_empty_allowed_tools_returns_no_tools(self):
         """allowed_tools=[] means no tools are exposed from that server."""
