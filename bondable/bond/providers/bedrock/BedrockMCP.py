@@ -314,7 +314,7 @@ def _get_user_server_config(server_id: str) -> Optional[Tuple[str, Dict[str, Any
 # =============================================================================
 # Qualified Tool Name Utilities
 # =============================================================================
-# Storage format: "server_name:tool_name" (e.g., "microsoft:get_user_profile")
+# Storage format: "server_name:tool_name" (e.g., "microsoft:get_profile")
 # This threads server affiliation through the save/load/UI cycle so that
 # tools with the same name on different servers are correctly distinguished.
 # Bare names (no colon) are supported for backward compatibility with
@@ -332,9 +332,9 @@ def parse_qualified_tool_name(qualified: str) -> Tuple[Optional[str], str]:
         Tuple of (server_name, tool_name). server_name is None for bare names.
 
     Examples:
-        "microsoft:get_user_profile" -> ("microsoft", "get_user_profile")
-        "get_user_profile"           -> (None, "get_user_profile")
-        "server:tool:with:colons"    -> ("server", "tool:with:colons")
+        "microsoft:get_profile"   -> ("microsoft", "get_profile")
+        "get_profile"             -> (None, "get_profile")
+        "server:tool:with:colons" -> ("server", "tool:with:colons")
     """
     if ':' in qualified:
         server, tool = qualified.split(':', 1)

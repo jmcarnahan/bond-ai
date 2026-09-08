@@ -14,15 +14,15 @@ class TestParseQualifiedToolName:
 
     def test_qualified_name(self):
         from bondable.bond.providers.bedrock.BedrockMCP import parse_qualified_tool_name
-        server, tool = parse_qualified_tool_name("microsoft:get_user_profile")
+        server, tool = parse_qualified_tool_name("microsoft:get_profile")
         assert server == "microsoft"
-        assert tool == "get_user_profile"
+        assert tool == "get_profile"
 
     def test_bare_name_backward_compat(self):
         from bondable.bond.providers.bedrock.BedrockMCP import parse_qualified_tool_name
-        server, tool = parse_qualified_tool_name("get_user_profile")
+        server, tool = parse_qualified_tool_name("get_profile")
         assert server is None
-        assert tool == "get_user_profile"
+        assert tool == "get_profile"
 
     def test_split_on_first_colon_only(self):
         from bondable.bond.providers.bedrock.BedrockMCP import parse_qualified_tool_name
@@ -54,8 +54,8 @@ class TestQualifyToolName:
 
     def test_basic_qualification(self):
         from bondable.bond.providers.bedrock.BedrockMCP import qualify_tool_name
-        result = qualify_tool_name("microsoft", "get_user_profile")
-        assert result == "microsoft:get_user_profile"
+        result = qualify_tool_name("microsoft", "get_profile")
+        assert result == "microsoft:get_profile"
 
     def test_roundtrip(self):
         from bondable.bond.providers.bedrock.BedrockMCP import qualify_tool_name, parse_qualified_tool_name
@@ -70,7 +70,7 @@ class TestGetMcpToolDefinitionsQualified:
 
     @pytest.fixture
     def two_server_config(self):
-        """Config with two servers that both have a tool named 'get_user_profile'."""
+        """Config with two servers that both have a tool named 'get_profile'."""
         return {
             "mcpServers": {
                 "my_client": {
@@ -122,11 +122,11 @@ class TestGetMcpToolDefinitionsQualified:
 
     @pytest.mark.asyncio
     async def test_qualified_routes_to_correct_server(self, two_server_config):
-        """Qualified name 'microsoft:get_user_profile' routes to microsoft, not my_client."""
+        """Qualified name 'microsoft:get_profile' routes to microsoft, not my_client."""
         from bondable.bond.providers.bedrock.BedrockMCP import _get_mcp_tool_definitions
 
-        my_client_tool = self._make_mock_tool("get_user_profile", "My Client profile")
-        microsoft_tool = self._make_mock_tool("get_user_profile", "Microsoft profile")
+        my_client_tool = self._make_mock_tool("get_profile", "My Client profile")
+        microsoft_tool = self._make_mock_tool("get_profile", "Microsoft profile")
 
         mock_token_data = Mock()
         mock_token_data.access_token = "test-token"
@@ -163,20 +163,20 @@ class TestGetMcpToolDefinitionsQualified:
             # Request the microsoft-qualified tool
             result = await _get_mcp_tool_definitions(
                 two_server_config,
-                ["microsoft:get_user_profile"],
+                ["microsoft:get_profile"],
                 user_id="test-user"
             )
 
             assert len(result) == 1
-            assert result[0]['name'] == 'get_user_profile'
+            assert result[0]['name'] == 'get_profile'
             assert result[0]['server_name'] == 'microsoft'
 
     @pytest.mark.asyncio
     async def test_qualified_routes_to_my_client(self, two_server_config):
-        """Qualified name 'my_client:get_user_profile' routes to my_client."""
+        """Qualified name 'my_client:get_profile' routes to my_client."""
         from bondable.bond.providers.bedrock.BedrockMCP import _get_mcp_tool_definitions
 
-        my_client_tool = self._make_mock_tool("get_user_profile", "My Client profile")
+        my_client_tool = self._make_mock_tool("get_profile", "My Client profile")
 
         with patch('bondable.bond.providers.bedrock.BedrockMCP.StreamableHttpTransport'), \
              patch('bondable.bond.providers.bedrock.BedrockMCP.Client') as mock_client_class:
@@ -189,19 +189,19 @@ class TestGetMcpToolDefinitionsQualified:
 
             result = await _get_mcp_tool_definitions(
                 two_server_config,
-                ["my_client:get_user_profile"]
+                ["my_client:get_profile"]
             )
 
             assert len(result) == 1
-            assert result[0]['name'] == 'get_user_profile'
+            assert result[0]['name'] == 'get_profile'
             assert result[0]['server_name'] == 'my_client'
 
     @pytest.mark.asyncio
     async def test_bare_name_backward_compat_first_match(self, two_server_config):
-        """Bare name 'get_user_profile' matches first server (backward compat)."""
+        """Bare name 'get_profile' matches first server (backward compat)."""
         from bondable.bond.providers.bedrock.BedrockMCP import _get_mcp_tool_definitions
 
-        my_client_tool = self._make_mock_tool("get_user_profile", "My Client profile")
+        my_client_tool = self._make_mock_tool("get_profile", "My Client profile")
 
         with patch('bondable.bond.providers.bedrock.BedrockMCP.StreamableHttpTransport'), \
              patch('bondable.bond.providers.bedrock.BedrockMCP.Client') as mock_client_class:
@@ -214,11 +214,11 @@ class TestGetMcpToolDefinitionsQualified:
 
             result = await _get_mcp_tool_definitions(
                 two_server_config,
-                ["get_user_profile"]  # bare name
+                ["get_profile"]  # bare name
             )
 
             assert len(result) == 1
-            assert result[0]['name'] == 'get_user_profile'
+            assert result[0]['name'] == 'get_profile'
             # First server in iteration is my_client
             assert result[0]['server_name'] == 'my_client'
 
@@ -228,11 +228,11 @@ class TestGetMcpToolDefinitionsQualified:
         from bondable.bond.providers.bedrock.BedrockMCP import _get_mcp_tool_definitions
 
         my_client_tools = [
-            self._make_mock_tool("get_user_profile", "My Client profile"),
+            self._make_mock_tool("get_profile", "My Client profile"),
             self._make_mock_tool("list_files", "List files"),
         ]
         microsoft_tools = [
-            self._make_mock_tool("get_user_profile", "Microsoft profile"),
+            self._make_mock_tool("get_profile", "Microsoft profile"),
             self._make_mock_tool("read_emails", "Read emails"),
         ]
 
@@ -268,7 +268,7 @@ class TestGetMcpToolDefinitionsQualified:
             result = await _get_mcp_tool_definitions(
                 two_server_config,
                 [
-                    "microsoft:get_user_profile",  # Qualified: must go to microsoft
+                    "microsoft:get_profile",  # Qualified: must go to microsoft
                     "list_files",                   # Bare: first match (my_client)
                 ],
                 user_id="test-user"
@@ -276,7 +276,7 @@ class TestGetMcpToolDefinitionsQualified:
 
             result_map = {(r['name'], r['server_name']): r for r in result}
             assert len(result) == 2
-            assert ('get_user_profile', 'microsoft') in result_map
+            assert ('get_profile', 'microsoft') in result_map
             assert ('list_files', 'my_client') in result_map
 
     @pytest.mark.asyncio
@@ -284,7 +284,7 @@ class TestGetMcpToolDefinitionsQualified:
         """Qualified name with nonexistent server doesn't match any server."""
         from bondable.bond.providers.bedrock.BedrockMCP import _get_mcp_tool_definitions
 
-        my_client_tool = self._make_mock_tool("get_user_profile")
+        my_client_tool = self._make_mock_tool("get_profile")
 
         with patch('bondable.bond.providers.bedrock.BedrockMCP.StreamableHttpTransport'), \
              patch('bondable.bond.providers.bedrock.BedrockMCP.Client') as mock_client_class:
@@ -297,7 +297,7 @@ class TestGetMcpToolDefinitionsQualified:
 
             result = await _get_mcp_tool_definitions(
                 two_server_config,
-                ["nonexistent_server:get_user_profile"]
+                ["nonexistent_server:get_profile"]
             )
 
             # Tool should NOT be found since it's targeted to a server that doesn't exist
@@ -376,8 +376,8 @@ class TestGetMcpToolDefinitionsQualified:
         """Can select the same tool name from two different servers simultaneously."""
         from bondable.bond.providers.bedrock.BedrockMCP import _get_mcp_tool_definitions
 
-        my_client_tool = self._make_mock_tool("get_user_profile", "My Client profile")
-        microsoft_tool = self._make_mock_tool("get_user_profile", "Microsoft profile")
+        my_client_tool = self._make_mock_tool("get_profile", "My Client profile")
+        microsoft_tool = self._make_mock_tool("get_profile", "Microsoft profile")
 
         mock_token_data = Mock()
         mock_token_data.access_token = "test-token"
@@ -412,8 +412,8 @@ class TestGetMcpToolDefinitionsQualified:
             result = await _get_mcp_tool_definitions(
                 two_server_config,
                 [
-                    "my_client:get_user_profile",
-                    "microsoft:get_user_profile",
+                    "my_client:get_profile",
+                    "microsoft:get_profile",
                 ],
                 user_id="test-user"
             )
@@ -427,8 +427,8 @@ class TestGetMcpToolDefinitionsQualified:
         """Mixed qualified + bare name for same tool should NOT produce duplicates."""
         from bondable.bond.providers.bedrock.BedrockMCP import _get_mcp_tool_definitions
 
-        my_client_tool = self._make_mock_tool("get_user_profile", "My Client profile")
-        microsoft_tool = self._make_mock_tool("get_user_profile", "Microsoft profile")
+        my_client_tool = self._make_mock_tool("get_profile", "My Client profile")
+        microsoft_tool = self._make_mock_tool("get_profile", "Microsoft profile")
 
         mock_token_data = Mock()
         mock_token_data.access_token = "test-token"
@@ -464,8 +464,8 @@ class TestGetMcpToolDefinitionsQualified:
             result = await _get_mcp_tool_definitions(
                 two_server_config,
                 [
-                    "microsoft:get_user_profile",
-                    "get_user_profile",  # bare name - should be deduplicated
+                    "microsoft:get_profile",
+                    "get_profile",  # bare name - should be deduplicated
                 ],
                 user_id="test-user"
             )
