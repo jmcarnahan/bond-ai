@@ -3,14 +3,35 @@
 #
 # Rendered at container start by deployment/docker-entrypoint.sh, which runs
 # envsubst with an explicit variable WHITELIST so nginx's own $variables (e.g.
-# $http_host, $remote_addr) survive and only the ${BOND_MCPS_*_UPSTREAM}
-# placeholders below are substituted. The rendered file is written to
+# $http_host, $remote_addr) survive and only the ${BOND_MCPS_*_UPSTREAM} and
+# NGINX_RESOLVER placeholders below are substituted. The rendered file is written to
 # /etc/nginx/conf.d/default.conf.
 #
 # The ${BOND_MCPS_*_UPSTREAM} values are full origins (scheme + host, no path).
 # Defaults (set by the entrypoint if unset) are the public *.mcps.* ALB
 # hostnames; in EKS consume mode they are overridden to in-cluster service DNS
 # (e.g. http://auth-server.bond-mcps.svc.cluster.local:8001).
+#
+# Every bond-mcps upstream is handed to proxy_pass through a VARIABLE
+# ($mcps_<name>, set once per request in the server block below) and never as
+# a literal. This is deliberate and load-bearing: nginx resolves a literal
+# proxy_pass hostname ONCE, when the configuration is loaded, and keeps those
+# addresses for the life of the worker. The *.mcps.* hostnames point at an AWS
+# ALB whose addresses change (a bond-mcps redeploy replaced them on
+# 2026-09-08), and on 2026-09-09 every proxied path here — /connect/<p>,
+# /connections/<p>/callback, /connections/discovery — hung for the full
+# connect timeout against the two addresses nginx had cached at pod start on
+# 2026-08-31, while the hostname already resolved elsewhere. With a variable,
+# nginx resolves the hostname at request time through the `resolver` directive
+# and re-resolves after `valid=` expires, so an address change is picked up
+# within that window without a restart. NGINX_RESOLVER is the pod's own
+# nameserver, read from /etc/resolv.conf by the entrypoint (override with the
+# env var of the same name), so the same template works in EKS (CoreDNS) and
+# under plain Docker (127.0.0.11).
+#
+# A variable proxy_pass with no URI part forwards the request URI unchanged,
+# exactly as the origin-only literal form did, so /connections/<p>/callback
+# keeps its ?code=&state= query and /connect/<p>?ticket= keeps its ticket.
 # =============================================================================
 
 # Map for conditional WebSocket Connection header:
@@ -26,6 +47,17 @@ server {
     server_name localhost;
     root /usr/share/nginx/html;
     index index.html;
+
+    # bond-mcps upstreams, resolved per request (see the header comment).
+    # `valid=30s` bounds how long a stale address can be used after the ALB
+    # moves; `ipv6=off` skips AAAA lookups the VPC cannot route anyway.
+    resolver ${NGINX_RESOLVER} valid=30s ipv6=off;
+    resolver_timeout 5s;
+    set $mcps_auth       ${BOND_MCPS_AUTH_UPSTREAM};
+    set $mcps_microsoft  ${BOND_MCPS_MICROSOFT_UPSTREAM};
+    set $mcps_atlassian  ${BOND_MCPS_ATLASSIAN_UPSTREAM};
+    set $mcps_github     ${BOND_MCPS_GITHUB_UPSTREAM};
+    set $mcps_databricks ${BOND_MCPS_DATABRICKS_UPSTREAM};
 
     # Hide nginx version in response headers
     server_tokens off;
@@ -115,7 +147,7 @@ server {
 
     # /connections/discovery → bond-mcps Authorization Server
     location = /connections/discovery {
-        proxy_pass ${BOND_MCPS_AUTH_UPSTREAM};
+        proxy_pass $mcps_auth;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -129,7 +161,7 @@ server {
     # MCP OAuth callbacks → the per-provider MCP that serves that provider's
     # connect routes (canonical, already-registered provider redirect paths).
     location = /connections/microsoft/callback {
-        proxy_pass ${BOND_MCPS_MICROSOFT_UPSTREAM};
+        proxy_pass $mcps_microsoft;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -141,7 +173,7 @@ server {
     }
 
     location = /connections/github/callback {
-        proxy_pass ${BOND_MCPS_GITHUB_UPSTREAM};
+        proxy_pass $mcps_github;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -153,7 +185,7 @@ server {
     }
 
     location = /connections/atlassian/callback {
-        proxy_pass ${BOND_MCPS_ATLASSIAN_UPSTREAM};
+        proxy_pass $mcps_atlassian;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -168,7 +200,7 @@ server {
     # OAuth Connect flow. The browser hits these at the front door. Exact
     # no-slash variants avoid a fall-through to the SPA on a bare /connect/<p>.
     location /connect/microsoft/ {
-        proxy_pass ${BOND_MCPS_MICROSOFT_UPSTREAM};
+        proxy_pass $mcps_microsoft;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -177,7 +209,7 @@ server {
         proxy_ssl_server_name on;
     }
     location = /connect/microsoft {
-        proxy_pass ${BOND_MCPS_MICROSOFT_UPSTREAM};
+        proxy_pass $mcps_microsoft;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -187,7 +219,7 @@ server {
     }
 
     location /connect/github/ {
-        proxy_pass ${BOND_MCPS_GITHUB_UPSTREAM};
+        proxy_pass $mcps_github;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -196,7 +228,7 @@ server {
         proxy_ssl_server_name on;
     }
     location = /connect/github {
-        proxy_pass ${BOND_MCPS_GITHUB_UPSTREAM};
+        proxy_pass $mcps_github;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -206,7 +238,7 @@ server {
     }
 
     location /connect/atlassian/ {
-        proxy_pass ${BOND_MCPS_ATLASSIAN_UPSTREAM};
+        proxy_pass $mcps_atlassian;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -215,7 +247,7 @@ server {
         proxy_ssl_server_name on;
     }
     location = /connect/atlassian {
-        proxy_pass ${BOND_MCPS_ATLASSIAN_UPSTREAM};
+        proxy_pass $mcps_atlassian;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -225,7 +257,7 @@ server {
     }
 
     location /connect/databricks/ {
-        proxy_pass ${BOND_MCPS_DATABRICKS_UPSTREAM};
+        proxy_pass $mcps_databricks;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -234,7 +266,7 @@ server {
         proxy_ssl_server_name on;
     }
     location = /connect/databricks {
-        proxy_pass ${BOND_MCPS_DATABRICKS_UPSTREAM};
+        proxy_pass $mcps_databricks;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
